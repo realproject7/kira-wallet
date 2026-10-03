@@ -1,0 +1,29 @@
+{
+  "provider": "built-in image_gen",
+  "reference": "viewer/static/kira.png",
+  "transparent_background": true,
+  "identity": "Approved adult Kira: espresso low bun, ivory shirt, charcoal blazer, lavender notebook.",
+  "assets": [
+    {
+      "path": "viewer/static/kira-research.png",
+      "state": "Active research",
+      "prompt": "Use case: identity-preserve. Asset type: Kira Wallet application character illustration, transparent cutout. Input image: approved adult Kira identity reference only, keep exactly the same woman, espresso loose low bun with side fringe, gray-violet eyes, ivory shirt, charcoal tailored blazer, lavender notebook and refined mature webtoon drawing style. Primary request: a new waist-up pose for Kira actively researching. She is in a three-quarter profile, calmly focused, writing in the opened lavender notebook with a slender pen, looking down at her notes; both hands natural. Intelligent, chic, understated editorial mood. Composition: one waist-up woman centered, complete silhouette and generous safe margin, drawn with clean confident ink lines, restrained crosshatching and muted flat color, slightly simplified for a desktop app at 190px. Transparent background, no scenery or surrounding UI. No lettering, numbers, wallet addresses, charts, coins, symbols, logos, speech bubbles, extra people, juvenile proportions or glow. Preserve the character identity and palette."
+    },
+    {
+      "path": "viewer/static/kira-explain.png",
+      "state": "Wallet, token and network explanation",
+      "prompt": "Use case: identity-preserve. Asset type: Kira Wallet application character illustration, transparent cutout. The reference is the approved adult Kira. Preserve exactly her espresso low bun with side fringe, mature face, gray-violet eyes, ivory shirt, charcoal tailored blazer, lavender notebook, refined detailed webtoon ink style and muted palette. Create a NEW waist-up pose of Kira explaining a finding: looking toward the viewer, a subtle confident smile, one hand holding the lavender notebook against her waist, the other open palm held outward in a composed explanatory gesture. Intelligent editorial personality, natural hands and adult proportions. One centered woman with safe transparent margin and no scenery. Clean ink outlines and restrained crosshatching. No text, labels, digits, coins, addresses, charts, screens, logos, glow or extra characters."
+    },
+    {
+      "path": "viewer/static/kira-review.png",
+      "state": "Activity review",
+      "prompt": "Use case: identity-preserve. Asset type: Kira Wallet application character illustration, transparent cutout. Reference image is the approved adult Kira, identity and style only. Keep her identical espresso loose low bun and side fringe, gray-violet eyes, mature features, ivory shirt and charcoal blazer, understated lavender notebook and refined webtoon ink style. Primary request: NEW waist-up pose of Kira reviewing saved research. She wears slender elegant dark reading glasses, holds her lavender notebook open in one hand, lifting her gaze slightly toward the viewer with a knowing gentle smile; the other hand lightly adjusts the glasses at her temple. Chic and intelligent professional researcher, calm natural posture, realistic hands, restrained crosshatching and muted colors matching the reference. One centered person with safe margin on genuinely transparent background. No lettering, charts, addresses, coins, numbers, screens, scenery, glow, logos or other people. Adult proportions."
+    },
+    {
+      "path": "viewer/static/kira-attention.png",
+      "state": "Coverage gaps",
+      "prompt": "Use case: identity-preserve. Asset type: Kira Wallet application character illustration, transparent cutout. Reference is the approved adult Kira, preserve exactly her espresso loose low bun and side fringe, mature calm face, gray-violet eyes, ivory shirt, charcoal tailored blazer and lavender notebook, refined webtoon drawing style, ink contours, muted palette and subtle crosshatching. Create a NEW waist-up pose for carefully checking incomplete evidence: her eyebrows very slightly furrowed in concentration, gaze thoughtfully to one side, one hand lightly rests at her chin, other arm holds the lavender notebook against her torso. Composed intelligent adult professional, not distressed or alarmed. One centered woman, safe margins, naturally drawn hands, truly transparent background. No typography, digits, addresses, warning symbols, charts, screens, coins, scenery, extra people, logos or glow."
+    }
+  ],
+  "delivery": "Generated cutouts were copied to the workspace and resized to an 800 pixel maximum edge for local UI delivery. Original identity asset is unchanged."
+}

@@ -46,8 +46,12 @@ class Handler(BaseHTTPRequestHandler):
             if not 0<length<=65536:self.send_error(413);return
             request=json.loads(self.rfile.read(length),parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
             if not isinstance(request,dict):raise ValueError()
-            if json.loads((ROOT/'wallets.json').read_text()).get('demo') and request.get('operation') in ('wallet.add','wallet.refresh','prices.refresh'):
-                raise JobError('demo_read_only','Sample research cannot contact providers. Use a separate personal data directory.')
+            if json.loads((ROOT/'wallets.json').read_text()).get('demo'):
+                operation=request.get('operation')
+                if operation=='job.resume' and isinstance(request.get('input'),dict):
+                    operation=self.server.jobs.get(request['input'].get('job_id'))['operation']
+                if operation in ('wallet.add','wallet.refresh','prices.refresh'):
+                    raise JobError('demo_read_only','Sample research cannot contact providers. Use a separate personal data directory.')
             job=self.server.jobs.submit(request)
             if job['state']=='queued':self.server.jobs.launch()
             self.json(job,202)
@@ -94,7 +98,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not entry or not entry.get('latest_snapshot',{}).get('report'):self.send_error(404);return
                 body=within(ROOT,entry['latest_snapshot']['report']).read_bytes()
                 self.respond(body,'text/plain; charset=utf-8');return
-            files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/jobs.js':'jobs.js','/style.css':'style.css','/favicon.svg':'favicon.svg','/kira.png':'kira.png','/kira-logo.png':'kira-logo.png'}
+            files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/jobs.js':'jobs.js','/workspace.js':'workspace.js','/workspace-model.js':'workspace-model.js','/workspace.css':'workspace.css','/style.css':'style.css','/favicon.svg':'favicon.svg','/kira.png':'kira.png','/kira-logo.png':'kira-logo.png',**{f'/kira-{pose}.png':f'kira-{pose}.png' for pose in ('research','explain','review','attention')}}
             if path not in files:self.send_error(404);return
             file=STATIC/files[path]
             content={'html':'text/html; charset=utf-8','js':'text/javascript; charset=utf-8','css':'text/css; charset=utf-8','svg':'image/svg+xml','png':'image/png'}[file.suffix[1:]]

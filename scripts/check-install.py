@@ -47,6 +47,8 @@ def main():
                 else:raise AssertionError('Private file was exposed.')
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/kira.png') as response:assert response.headers['Content-Type']=='image/png'
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/kira-logo.png') as response:assert response.headers['Content-Type']=='image/png'
+            for asset in ['workspace.js','workspace-model.js','workspace.css','kira-research.png','kira-explain.png','kira-review.png','kira-attention.png']:
+                with urllib.request.urlopen(f'http://127.0.0.1:{port}/'+asset) as response:assert response.status==200 and len(response.read())>100
             transcript='\n'.join(json.dumps(item) for item in [
                 {'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-06-18'}},
                 {'jsonrpc':'2.0','method':'notifications/initialized'},

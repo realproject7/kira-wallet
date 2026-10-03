@@ -54,6 +54,7 @@ class Job(TypedDict):
     raw_hash: str
     created_at: str
     updated_at: str
+    started_at: NotRequired[str]
     cancel_requested: bool
     checkpoint: str
     stage: str
@@ -122,7 +123,7 @@ class JobStore:
         job = read(path)
         if not isinstance(job,dict) or type(job.get('schema_version')) is not int or job.get('schema_version') != 1: raise JobError('unsupported_version', 'Unsupported persisted job version.')
         required={'schema_version','job_id','operation','input','state','attempt','sequence','result','previous_result','key_hash','request_hash','created_at','updated_at','cancel_requested','checkpoint','stage','events','errors','chains'}
-        optional={'raw_hash','control_receipts','control_raw','provider_configuration'}
+        optional={'raw_hash','control_receipts','control_raw','provider_configuration','started_at'}
         if required-set(job) or set(job)-required-optional or job['job_id']!=job_id or job['checkpoint']!='snapshots/jobs/'+job_id or not isinstance(job['operation'],str) or job['operation'] not in {'wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery'} or not isinstance(job['state'],str) or job['state'] not in TERMINAL|{'queued','running'} or any(type(job[k]) is not int or job[k]<0 for k in ('attempt','sequence')) or type(job['cancel_requested']) is not bool or not isinstance(job['input'],dict) or any(not isinstance(job[k],list) for k in ('events','errors')) or not isinstance(job['chains'],dict):
             raise JobError('invalid_envelope','Persisted job validation failed. Preserve the file for recovery.')
         names={'wallet.add':['address','tag'],'wallet.refresh':['wallet'],'prices.refresh':['wallet'],'wallet.setTags':['wallet','tags'],
@@ -472,7 +473,7 @@ class JobStore:
                     config=load_config()
                     job['provider_configuration']={'rpc_mode':config['rpc']['mode'],'discovery_provider':config['discovery']['provider'],
                         'public_fallback':config['rpc']['allow_public_fallback'],'endpoint_refs':{cid:row['url_env'] for cid,row in config['rpc']['chains'].items()}}
-                    job.update(state='running', stage='starting', attempt=job['attempt'] + 1, errors=[]); self.save(job)
+                    job.update(state='running', stage='starting', started_at=now(), attempt=job['attempt'] + 1, errors=[]); self.save(job)
                 try:
                     result = self.execute(job, lease, writer)
                     with self.locked():

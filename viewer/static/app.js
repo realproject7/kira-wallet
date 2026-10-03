@@ -25,6 +25,7 @@ function readRoute(){
   if(parts[0]==='wallet'&&/^0x[0-9a-f]{40}$/i.test(parts[1]||'')){selectedWallet=parts[1].toLowerCase();selectedView='wallet';selectedChain='all';}
   else if(parts[0]==='network'&&/^\d+$/.test(parts[1]||'')){selectedNetwork=Number(parts[1]);selectedView='network';tokenSearch='';}
   else if(parts[0]==='token'&&/^\d+$/.test(parts[1]||'')&&/^(native|0x[0-9a-f]{40})$/i.test(parts[2]||'')){selectedToken=Number(parts[1])+':'+parts[2].toLowerCase();selectedView='token';}
+  else if(['tokens','activity'].includes(parts[0])){selectedView=parts[0];}
   else if(location.hash){selectedView='home';}
   localStorage.setItem('wallet-view',selectedView);if(selectedWallet)localStorage.setItem('wallet-selection',selectedWallet);
   if(state)renderView();window.scrollTo({top:0,behavior:'instant'});
@@ -41,8 +42,6 @@ function renderBreadcrumb(items){
 }
 function renderWallets(){
   $('wallet-count').textContent=state.wallets.length;
-  $('home-button').classList.toggle('active',selectedView==='home');
-  if(selectedView==='home')$('home-button').setAttribute('aria-current','page');else $('home-button').removeAttribute('aria-current');
   $('wallet-list').innerHTML=state.wallets.map(w=>{
     const active=selectedView==='wallet'&&w.key===selectedWallet;
     return `<button class="wallet-button ${active?'active':''}" data-wallet="${escapeHTML(w.key)}" aria-label="Select ${escapeHTML(w.name)}" ${active?'aria-current="page"':''}><span class="wallet-glyph">${walletGlyph}</span><span class="wallet-nav-name">${escapeHTML(w.name)}<span class="wallet-nav-address">${escapeHTML(shortAddress(w.address))}</span></span><span class="wallet-arrow" aria-hidden="true">›</span></button>`;
@@ -54,8 +53,9 @@ function renderView(){
   $('detail-view').hidden=!['token','network'].includes(selectedView);
   if(selectedView==='home'){renderHome();document.title='Home · Kira Wallet';}
   else if(selectedView==='wallet'){renderWallet();document.title=(currentWallet()?.name||'Wallet')+' · Kira Wallet';}
-  else renderDetail();
+  else if(['token','network'].includes(selectedView))renderDetail();
   renderKiraNote();
+  if(typeof renderWorkspace==='function')renderWorkspace();
 }
 function renderKiraNote(){
   let text='I keep unknown prices and incomplete coverage visible. These are recorded estimates.';
@@ -240,7 +240,6 @@ async function poll(){
   }catch{ $('connection').textContent='Reconnecting';if(!state){$('load-error').hidden=false;$('content').hidden=true;} }
   finally{busy=false;}
 }
-$('home-button').addEventListener('click',goHome);
 document.querySelector('.skip-link').addEventListener('click',e=>{e.preventDefault();$('main').focus();$('main').scrollIntoView({block:'start'});});
 $('brand-home').addEventListener('click',e=>{e.preventDefault();goHome();});
 for(const id of ['wallet-list','wallet-cards'])$(id).addEventListener('click',e=>{const b=e.target.closest('[data-wallet]');if(b)selectWallet(b.dataset.wallet);});

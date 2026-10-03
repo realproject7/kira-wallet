@@ -1,11 +1,13 @@
 # Kira Wallet
 
-A local, agent-managed EVM wallet research engine and read-only browser viewer.
+A local EVM wallet research workspace with Kira and durable research jobs.
 It records direct holdings, Mint Club bonding curves and DEX liquidity evidence.
 Missing coverage and prices stay unknown.
 
-This is a private development build. Publication and an open-source license
-are pending operator selection. No signing, transfers or trades are implemented.
+Original code and character assets are open source under MIT. Third-party
+references retain their own terms; see [notices](THIRD_PARTY_NOTICES.md). The npm
+package remains a private development build. No signing, transfers or trades
+are implemented.
 
 ## Local installation
 
@@ -84,3 +86,26 @@ changes and missing records remain unknown.
 `kira tools` is a read-only local MCP adapter, with no automatic account or
 model connection. See [CLI usage](docs/CLI.md), [job contract](docs/JOB_CONTRACT.md),
 [tool setup gate](docs/AGENT_TOOLS.md) and [continuation evidence](docs/KIRA_JOBS_BUILD_REPORT.md).
+
+## Kira research workspace
+
+The workspace places Kira's local briefing and a browser-only conversation
+draft beside the evidence. The brand link returns Home. Overview, All tokens
+and Activity have distinct tabs; wallet controls stay together. On small
+screens, switch directly between Portfolio and Kira.
+
+All tokens uses existing recorded aggregates with chain-plus-contract identity,
+search, network and pricing filters, and 50 rows per page. It does not query
+providers. Activity separates active work from persisted job history and shows
+state, elapsed time, last progress and recovery controls. Missing progress does
+not silently turn a running job into a completed or failed job.
+
+Connected chat still needs an account route and an approved portfolio disclosure
+boundary. Drafts stay in browser storage and sending is disabled. See the
+[redesign report](docs/KIRA_REDESIGN_REPORT.md) and
+[agreed wallet capability direction](docs/WALLET_CAPABILITIES.md).
+
+For a contribution, use synthetic data and run `python3 scripts/check-public.py`
+before a push. Never attach a personal portfolio screenshot, registry, snapshot,
+job, credential, local path or log to an issue or PR. Repository history uses a
+public noreply identity. The `kira-workspace-v1` tag preserves the prior UI.

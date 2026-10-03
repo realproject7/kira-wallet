@@ -30,6 +30,13 @@ previous_result. Events contain only allowed stage names and real counts.
 Unknown totals stay null. Result references use paths relative to snapshots/;
 no absolute paths or arbitrary file reads are supported.
 
+The optional `started_at` timestamp records when the current attempt was
+claimed by the worker. Resuming replaces it on the next claim. Older envelopes
+remain valid without it. The viewer then labels its timer "Since request"
+instead of claiming an exact execution time. Terminal timers stop at the last
+recorded update. A queued job uses its latest queue transition, not a previous
+attempt's start.
+
 States: queued -> running -> succeeded | partial | failed | cancelled.
 Recovery converts unfinished running jobs to interrupted. Explicit resume may
 move interrupted, failed or cancelled to queued. Succeeded and partial jobs

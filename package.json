@@ -1,8 +1,8 @@
 {
   "name": "kira-wallet",
-  "version": "0.1.0-dev.2",
+  "version": "0.1.0-dev.3",
   "description": "A local watch-only EVM wallet research workspace with durable jobs",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "private": true,
   "bin": {
     "kira": "bin/kira.cjs"
@@ -42,10 +42,14 @@
     "sources/job-request-v1.schema.json",
     "docs/KIRA_JOBS_BUILD_REPORT.md",
     "docs/character/brand-generation.json",
-    "docs/screenshots/kira-jobs-desktop.jpg"
+    "docs/screenshots/kira-jobs-desktop.jpg",
+    "THIRD_PARTY_NOTICES.md",
+    "docs/KIRA_REDESIGN_REPORT.md",
+    "docs/WALLET_CAPABILITIES.md",
+    "docs/character/workspace-generation.json"
   ],
   "scripts": {
-    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js"
+    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js"
   },
   "dependencies": {
     "viem": "2.57.2"

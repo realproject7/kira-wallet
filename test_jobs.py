@@ -80,6 +80,7 @@ class JobsTest(JobFixtures, unittest.TestCase):
         (self.store.jobs/'requests'/(digest('cancel-test')+'.json')).unlink();self.assertEqual(self.store.submit(cancel)['state'],'cancelled')
     def test_tag_duplicate_after_selector_changed(self):
         request=self.request('wallet.setTags',{'wallet':'Original','tags':['Renamed']});job=self.store.submit(request);self.store.worker()
+        self.assertIsInstance(self.store.get(job['job_id'])['started_at'],str)
         self.assertEqual(self.store.get(job['job_id'])['state'],'succeeded');self.assertEqual(self.store.submit(request)['job_id'],job['job_id'])
         self.assertEqual(self.store.wallet(ADDRESS)['tags'],['Renamed'])
     def test_comparison_precision_missing_not_zero_chain_identity(self):

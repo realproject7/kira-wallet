@@ -249,6 +249,10 @@
         }
       },
       "additionalProperties": false
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
     }
   },
   "additionalProperties": false,

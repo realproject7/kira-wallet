@@ -59,6 +59,14 @@ class JobsHTTPTest(unittest.TestCase):
         self.assertEqual(self.request(body=body)[0],400);self.assertEqual(len(self.http.jobs.list()),0)
         for path in ['/wallets.json','/.kira.local.json','/jobs/private.json','/snapshots/private/results.json']:
             self.assertEqual(self.request(path,method='GET')[0],404)
+    def test_demo_cannot_resume_a_provider_job(self):
+        registry=json.loads((self.root/'wallets.json').read_text());registry['demo']=True;atomic(self.root/'wallets.json',registry)
+        job=self.http.jobs.submit({'schema_version':1,'operation':'wallet.refresh','input':{'wallet':ADDRESS},'idempotency_key':'demo-persisted'})
+        job['state']='interrupted';self.http.jobs.save(job)
+        body=json.dumps({'schema_version':1,'operation':'job.resume','input':{'job_id':job['job_id']},'idempotency_key':'demo-resume'}).encode()
+        self.assertEqual(self.request(body=body)[0],400)
+        self.assertEqual(self.http.jobs.get(job['job_id'])['state'],'interrupted')
+        self.http.jobs.launch.assert_not_called()
     def test_origin_cannot_read_session(self):
         self.assertEqual(self.request('/api/session',headers={'Origin':'https://foreign.test'},method='GET')[0],403)
 
