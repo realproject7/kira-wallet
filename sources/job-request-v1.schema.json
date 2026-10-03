@@ -1,0 +1,352 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:kira:job-request:1",
+  "title": "Kira typed mutation requests v1",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "operation": {
+          "const": "wallet.add"
+        },
+        "input": {
+          "type": "object",
+          "properties": {
+            "address": {
+              "type": "string",
+              "pattern": "^0x[0-9a-fA-F]{40}$"
+            },
+            "tag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "address",
+            "tag"
+          ],
+          "additionalProperties": false
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "schema_version",
+        "operation",
+        "input",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "operation": {
+          "const": "wallet.refresh"
+        },
+        "input": {
+          "type": "object",
+          "properties": {
+            "wallet": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "wallet"
+          ],
+          "additionalProperties": false
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "schema_version",
+        "operation",
+        "input",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "operation": {
+          "const": "prices.refresh"
+        },
+        "input": {
+          "type": "object",
+          "properties": {
+            "wallet": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "wallet"
+          ],
+          "additionalProperties": false
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "schema_version",
+        "operation",
+        "input",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "operation": {
+          "const": "wallet.setTags"
+        },
+        "input": {
+          "type": "object",
+          "properties": {
+            "wallet": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "minItems": 1,
+              "maxItems": 20,
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "wallet",
+            "tags"
+          ],
+          "additionalProperties": false
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "schema_version",
+        "operation",
+        "input",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "operation": {
+          "const": "job.resume"
+        },
+        "input": {
+          "type": "object",
+          "properties": {
+            "job_id": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "job_id"
+          ],
+          "additionalProperties": false
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "schema_version",
+        "operation",
+        "input",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "operation": {
+          "const": "job.cancel"
+        },
+        "input": {
+          "type": "object",
+          "properties": {
+            "job_id": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "job_id"
+          ],
+          "additionalProperties": false
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "schema_version",
+        "operation",
+        "input",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "operation": {
+          "const": "settings.rpc"
+        },
+        "input": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "enum": [
+                "public",
+                "custom"
+              ]
+            },
+            "chains": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "chain_id": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "url_env": {
+                    "type": "string",
+                    "pattern": "^[A-Z_][A-Z0-9_]{0,99}$"
+                  }
+                },
+                "required": [
+                  "chain_id",
+                  "url_env"
+                ],
+                "additionalProperties": false
+              },
+              "maxItems": 30
+            },
+            "allow_public_fallback": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "mode",
+            "chains",
+            "allow_public_fallback"
+          ],
+          "additionalProperties": false
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "schema_version",
+        "operation",
+        "input",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "operation": {
+          "const": "settings.discovery"
+        },
+        "input": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "enum": [
+                "none",
+                "alchemy"
+              ]
+            },
+            "key_env": {
+              "type": "string",
+              "pattern": "^[A-Z_][A-Z0-9_]{0,99}$"
+            }
+          },
+          "required": [
+            "provider",
+            "key_env"
+          ],
+          "additionalProperties": false
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "schema_version",
+        "operation",
+        "input",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

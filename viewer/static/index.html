@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light"><meta name="description" content="A quiet view of your wallet research.">
+  <title>Kira Wallet</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/kira-logo.png" type="image/png" sizes="1254x1254"><link rel="apple-touch-icon" href="/kira-logo.png">
+  <link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script><script src="/jobs.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="app">
+    <aside class="sidebar" aria-label="Wallet navigation">
+      <a id="brand-home" class="brand" href="#/home" aria-label="Kira Wallet home"><img class="brand-logo" src="/kira-logo.png" width="42" height="42" alt=""><span>Kira<span class="brand-caption">WALLET RESEARCH</span></span></a>
+      <nav class="primary-nav" aria-label="Overview">
+        <button id="home-button" class="wallet-button home-button active" aria-current="page"><img class="nav-logo" src="/kira-logo.png" width="24" height="24" alt=""><span class="wallet-nav-name">Home</span></button>
+      </nav>
+      <div class="sidebar-label">YOUR WALLETS <span id="wallet-count"></span></div>
+      <nav id="wallet-list" aria-label="Registered wallets"></nav>
+      <div class="sidebar-bottom"><span class="status-dot" aria-hidden="true"></span><span id="connection">Connected</span><span id="service-mode" class="read-only">Watch only</span></div>
+    </aside>
+    <main id="main" tabindex="-1">
+      <header class="topbar"><nav id="breadcrumbs" class="breadcrumb" aria-label="Breadcrumb"><ol><li><span aria-current="page">Home</span></li></ol></nav><span id="demo-badge" class="demo-badge" hidden>SYNTHETIC DEMO</span><div class="sync-status"><span id="sync-label">Loading research…</span><span class="sync-dot" aria-hidden="true"></span></div></header>
+      <div class="content" id="content" hidden>
+        <div id="research-controls" class="research-controls" hidden><div><span class="eyebrow">YOUR RESEARCH NOTEBOOK</span><p>Saved evidence stays here while Kira checks new facts.</p></div><div class="control-buttons"><button id="open-settings" class="quiet-button">Connections</button><button id="open-wallet" class="primary-button">+ Add wallet</button></div></div>
+        <section id="research-jobs" class="research-jobs" hidden aria-label="Research activity"><div class="section-heading"><h2>Research activity</h2><span id="jobs-summary" class="section-note"></span></div><div id="jobs-list"></div></section>
+        <div id="home-view">
+          <section class="home-heading kira-welcome"><div><div class="eyebrow">YOUR PORTFOLIO, WITH KIRA</div><h1>A clearer view of your wallets.</h1><p>Recorded holdings. Careful research. A little peace of mind.</p></div><img src="/kira.png" class="kira-welcome-art" alt="Kira, your wallet research companion" width="165" height="215"></section>
+          <section class="home-summary" aria-label="All wallets summary">
+            <div class="valuation"><div class="summary-label">Estimated total value</div><div id="home-total" class="total-value">—</div><div id="home-valuation-note" class="valuation-note"></div></div>
+            <div class="home-stats">
+              <div class="summary-stat"><span class="summary-label">Wallets</span><strong id="home-wallet-count">—</strong><span id="home-wallet-note" class="stat-note"></span></div>
+              <div class="summary-stat"><span class="summary-label">Networks</span><strong id="home-network-count">—</strong><span class="stat-note">With holdings</span></div>
+              <div class="summary-stat"><span class="summary-label">Positions</span><strong id="home-position-count">—</strong><span id="home-position-note" class="stat-note"></span></div>
+            </div>
+          </section>
+          <div id="home-empty" class="empty" hidden><img src="/kira-logo.png" width="64" height="64" alt=""><h3>Your notebook starts with a wallet.</h3><p>Use a public EVM address and a name you recognise. You keep your keys.</p><button id="empty-add-wallet" class="primary-button" hidden>Add your first wallet</button></div>
+          <div id="home-details">
+            <div class="dashboard-grid">
+              <section class="dashboard-panel" aria-labelledby="home-wallets-title"><div class="section-heading"><h2 id="home-wallets-title">Your wallets</h2><span class="section-note">Explore holdings <span aria-hidden="true">↗</span></span></div><div id="wallet-cards" class="wallet-cards"></div></section>
+              <section class="dashboard-panel" aria-labelledby="home-networks-title"><div class="section-heading"><h2 id="home-networks-title">By network</h2><span class="section-note">Priced value</span></div><div id="network-allocation" class="network-allocation"></div></section>
+            </div>
+            <section class="largest-holdings" aria-labelledby="home-holdings-title"><div class="section-heading"><h2 id="home-holdings-title">Largest holdings</h2><span class="section-note">Across all wallets</span></div><div id="home-holdings" class="home-holdings"></div></section>
+          </div>
+          <footer class="page-footer home-footer"><span id="home-coverage-note"></span><span id="home-price-time"></span></footer>
+        </div>
+        <div id="wallet-view" hidden>
+        <div id="wallet-actions" class="wallet-actions" hidden><button id="refresh-wallet" class="quiet-button">Refresh holdings</button><button id="refresh-prices" class="quiet-button">Refresh prices</button><button id="edit-tags" class="quiet-button">Edit names</button><button id="view-history" class="quiet-button">Saved analyses</button></div>
+        <section class="wallet-heading"><div><div class="eyebrow">WALLET OVERVIEW</div><h1 id="wallet-name">Your wallets</h1><div class="wallet-address"><span id="address"></span><button id="copy-address" class="icon-button" aria-label="Copy wallet address" title="Copy wallet address"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="11" height="12" rx="2"/><path d="M15 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3"/></svg></button><span id="wallet-tags"></span></div></div><a id="report-link" class="text-link" target="_blank" rel="noreferrer">Research notes <span aria-hidden="true">↗</span></a></section>
+        <section class="portfolio-summary" aria-label="Portfolio summary"><div class="valuation"><div class="summary-label">Estimated portfolio value</div><div id="total-value" class="total-value">—</div><div id="valuation-note" class="valuation-note">Loading the latest analysis</div></div><div class="summary-stat"><span class="summary-label">Assets</span><strong id="asset-count">—</strong><span id="unpriced-count" class="stat-note"></span></div><div class="summary-stat"><span class="summary-label">Networks</span><strong id="chain-count">—</strong><span id="coverage-note" class="stat-note"></span></div></section>
+        <section class="holdings" aria-labelledby="holdings-title"><div class="holdings-toolbar"><div><h2 id="holdings-title">Holdings <span id="visible-count"></span></h2></div><div class="filters"><label class="chain-select"><span class="sr-only">Filter by chain</span><select id="chain-filter"><option value="all">All chains</option></select><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></label><div class="segment" role="group" aria-label="Minimum token value"><button data-min="0" aria-pressed="true">All</button><button data-min="5" aria-pressed="false">≥ $5</button><button data-min="10" aria-pressed="false">≥ $10</button></div></div></div>
+          <div id="asset-groups"></div>
+          <div id="empty" class="empty" hidden><div class="empty-mark" aria-hidden="true">∅</div><h3>No assets in this view</h3><p>Choose another chain or lower the minimum value.</p></div>
+        </section>
+        <footer class="page-footer"><span>Prices are estimates at the latest research update.</span><span id="price-time"></span></footer>
+        </div>
+        <div id="detail-view" hidden></div>
+        <section id="kira-note" class="kira-note" aria-label="Kira research note"><img class="note-logo" src="/kira-logo.png" width="42" height="42" alt=""><div><div class="kira-note-label">A NOTE FROM KIRA</div><p id="kira-note-text"></p><details><summary>How to read these estimates</summary><p>Totals include priced direct mainnet holdings. Unpriced positions and testnets are excluded. Pool liquidity and shared curve reserves are separate from wallet value. Recorded prices and balances can have different observation times.</p></details></div></section>
+      </div>
+      <div id="load-error" class="load-error" hidden><h2>Research is temporarily unavailable</h2><p>The viewer will reconnect automatically.</p></div>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="wallet-dialog" class="research-dialog" aria-labelledby="wallet-dialog-title"><form id="wallet-form"><div class="dialog-heading"><img src="/kira-logo.png" width="42" height="42" alt=""><h2 id="wallet-dialog-title">Add a wallet to your notebook</h2><button type="button" data-close-dialog aria-label="Close dialog">×</button></div><p>Kira researches a public address. No wallet connection or signature is needed.</p><label>Wallet address<input id="new-wallet-address" required pattern="0x[0-9a-fA-F]{40}" placeholder="0x…" autocomplete="off" spellcheck="false"></label><label>Wallet name<input id="new-wallet-tag" required maxlength="200" placeholder="My research wallet" autocomplete="off"></label><p class="form-note">Public RPC checks known assets and Mint Club. Broader token discovery may be incomplete. Research can consume provider allowance.</p><p id="wallet-form-error" class="form-error" role="alert"></p><button class="primary-button" type="submit">Add and research</button></form></dialog>
+  <dialog id="tags-dialog" class="research-dialog" aria-labelledby="tags-title"><form id="tags-form"><div class="dialog-heading"><h2 id="tags-title">Wallet names</h2><button type="button" data-close-dialog aria-label="Close dialog">×</button></div><label>One exact name per line<textarea id="tag-values" required rows="4"></textarea></label><p class="form-note">The first name is shown in navigation. Saved analyses retain their original names.</p><p id="tags-error" class="form-error" role="alert"></p><button class="primary-button" type="submit">Save names</button></form></dialog>
+  <dialog id="settings-dialog" class="research-dialog" aria-labelledby="settings-title"><div class="dialog-heading"><h2 id="settings-title">Research connections</h2><button type="button" data-close-dialog aria-label="Close dialog">×</button></div><form id="rpc-form"><label>RPC reads<select id="rpc-mode"><option value="public">Public RPC · no API key</option><option value="custom">Custom RPC references</option></select></label><p class="form-note">RPC reads and token discovery are separate. A connection is not proof of complete holdings.</p><label>Custom references, one per line<textarea id="rpc-references" rows="3" placeholder="8453 KIRA_BASE_RPC"></textarea></label><p class="form-note">Enter chain ID and environment variable name. Keep endpoint URLs and keys outside the browser. Restart the app after changing its environment.</p><label class="checkbox-label"><input id="rpc-fallback" type="checkbox">Allow public fallback for custom RPC</label><button class="quiet-button" type="submit">Save RPC settings</button></form><form id="discovery-form"><label>Broader token discovery<select id="discovery-provider"><option value="none">Limited · no indexer</option><option value="alchemy">Alchemy · your credential</option></select></label><label>Credential environment variable<input id="discovery-key" value="ALCHEMY_API_KEY" pattern="[A-Z_][A-Z0-9_]*"></label><button class="quiet-button" type="submit">Save discovery settings</button></form><p id="settings-error" class="form-error" role="alert"></p><div class="assistant-gate"><strong>Kira chat · not connected</strong><p>Direct research works without a model. Account connection requires the operator's setup.</p></div></dialog>
+  <dialog id="history-dialog" class="research-dialog history-dialog" aria-labelledby="history-title"><div class="dialog-heading"><h2 id="history-title">Saved analyses</h2><button type="button" data-close-dialog aria-label="Close dialog">×</button></div><div id="history-list"></div><form id="compare-form" hidden><label>Earlier analysis<select id="compare-before"></select></label><label>Later analysis<select id="compare-after"></select></label><button class="quiet-button" type="submit">Compare evidence</button></form><div id="comparison-result" class="comparison-result"></div><p id="history-error" class="form-error" role="alert"></p></dialog>
+</body>
+</html>

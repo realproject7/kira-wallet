@@ -1,0 +1,388 @@
+"""Register, analyse and publish supplied wallets to the local read-only viewer."""
+from __future__ import annotations
+
+import argparse
+from concurrent.futures import ThreadPoolExecutor
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import time
+
+import research as h
+from kira_config import ASSETS, data_root, load_config
+
+ROOT = data_root()
+ALCHEMY = {1:'eth-mainnet',8453:'base-mainnet',81457:'blast-mainnet',10:'opt-mainnet',42161:'arb-mainnet',
+    43114:'avax-mainnet',137:'polygon-mainnet',56:'bnb-mainnet',130:'unichain-mainnet',7777777:'zora-mainnet',
+    33139:'apechain-mainnet',4663:'robinhood-mainnet',11155111:'eth-sepolia',84532:'base-sepolia',
+    168587773:'blast-sepolia',43113:'avax-fuji'}
+EXPLORERS = {109:'https://shibariumscan.io',7560:'https://cyberscan.co',177:'https://hashkey.blockscout.com',
+    5112:'https://explorer.ham.fun'}
+DEX = {1:'ethereum',8453:'base',81457:'blast',10:'optimism',42161:'arbitrum',43114:'avalanche',137:'polygon',
+    56:'bsc',109:'shibarium',7560:'cyber',8217:'kaia',130:'unichain',7777777:'zora',33139:'apechain',177:'hashkey',4663:'robinhood'}
+NATIVE = {137:'POL',56:'BNB',43114:'AVAX',109:'BONE',8217:'KAIA',33139:'APE',177:'HSK',54176:'OVER',157:'BONE',43113:'AVAX'}
+CONTRACT_SOURCE = 'https://raw.githubusercontent.com/Steemhunt/mint.club-v2-sdk/main/src/constants/contracts.ts'
+SOURCE_NAMES = {1:'mainnet',8453:'base',81457:'blast',10:'optimism',42161:'arbitrum',43114:'avalanche',137:'polygon',56:'bsc',
+    109:'shibarium',7560:'cyber',5112:'ham',8217:'kaia',130:'unichain',7777777:'zora',33139:'apeChain',177:'hashkey',
+    4663:'robinhood',54176:'over',11155111:'sepolia',84532:'baseSepolia',168587773:'blastSepolia',157:'shibariumTestnet',43113:'avalancheFuji',111557560:'cyberTestnet'}
+
+
+def read(path):
+    return json.loads(Path(path).read_text())
+
+
+def atomic(path, data):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(path.suffix+'.tmp')
+    text = data if isinstance(data, str) else json.dumps(data, indent=2, ensure_ascii=False)+'\n'
+    # Providers occasionally include credentialed URLs in an error response.
+    for secret in h.secrets().values():
+        if secret:
+            text=text.replace(secret,'[redacted]')
+    temp.write_text(text)
+    os.replace(temp, path)
+
+
+def event(stage, **data):
+    print(json.dumps({'stage':stage, **data}, ensure_ascii=False), flush=True)
+
+
+def fetch(url, body=None):
+    for attempt in range(3):
+        response = h.fetch(url, body, timeout=25)
+        error = response.get('transport_error') if isinstance(response, dict) else None
+        if not error or (error.get('status') not in (429,500,502,503,504) and 'status' in error):
+            return response
+        if attempt < 2:
+            time.sleep(attempt+1)
+    return response
+
+
+def validate_address(address):
+    if not re.fullmatch(r'0x[0-9a-fA-F]{40}', address):
+        raise ValueError('Expected a 20-byte EVM wallet address.')
+    node = subprocess.run(['node','-e',"const v=require('./onchain.cjs').viem;const a=process.argv[1];if(!v.isAddress(a))process.exit(1);process.stdout.write(v.getAddress(a))",address],
+        cwd=ASSETS, capture_output=True, text=True, timeout=10)
+    if node.returncode:
+        raise ValueError('Invalid EVM address checksum.')
+    return node.stdout
+
+
+def register(registry, address, tag):
+    key = address.lower()
+    wallet = next((w for w in registry['wallets'] if w['address_key']==key), None)
+    if wallet is None:
+        wallet = {'address':address,'address_key':key,'tags':[],'registered_at':h.now()}
+        registry['wallets'].append(wallet)
+    if tag and tag not in wallet['tags']:
+        wallet['tags'].append(tag)
+        registry.setdefault('tag_history',[]).append({'address_key':key,'tag':tag,'action':'add','observed_at':h.now(),'source':'operator'})
+    return wallet
+
+
+def discover(wallet, n, folder):
+    cid = n['chain_id']
+    evidence = folder/f'discovery-{cid}.json'
+    if evidence.exists():
+        cached=read(evidence)
+        if cached['wallet'].lower()==wallet.lower() and cached['complete']:
+            return cached
+    row = {'wallet':wallet,'chain_id':cid,'observed_at':h.now(),'complete':False,'tokens':[],'native':[], 'pages':[],'source':None}
+    cfg=load_config()
+    key=h.secrets().get('ALCHEMY_CUSTOM_APY_KEY') if cfg['discovery']['provider']=='alchemy' else None
+    if cid in ALCHEMY and key:
+        row['source']='Alchemy Portfolio Tokens By Wallet'
+        network=ALCHEMY[cid]
+        endpoint=f'https://api.g.alchemy.com/data/v1/{key}/assets/tokens/by-address'
+        body={'addresses':[{'address':wallet,'networks':[network]}], 'withMetadata':True,'withPrices':True,
+              'includeNativeTokens':True,'includeErc20Tokens':True,'includeBlockMetadata':True}
+        seen=set()
+        for page in range(100):
+            response=fetch(endpoint,body)
+            row['pages'].append({'observed_at':h.now(),'request':dict(body),'response':response})
+            data=response.get('data') or {}
+            for t in data.get('tokens',[]):
+                if t.get('network')!=network or t.get('address','').lower()!=wallet.lower():
+                    continue
+                try:
+                    balance=int(t.get('tokenBalance') or '0',16)
+                except (TypeError,ValueError):
+                    continue
+                if not t.get('tokenAddress'):
+                    row['native'].append(t)
+                elif balance>0:
+                    meta=t.get('tokenMetadata') or {}
+                    row['tokens'].append({'chain_id':cid,'address':t['tokenAddress'],'name':meta.get('name'),'symbol':meta.get('symbol'),
+                                          'decimals':meta.get('decimals'),'prices':t.get('tokenPrices') or []})
+            if 'data' not in response or response.get('error') or response.get('transport_error'):
+                row['error']=response.get('error') or response.get('transport_error') or {'message':'Missing provider data'}
+                break
+            cursor=data.get('pageKey')
+            if not cursor:
+                row['complete']=True
+                break
+            if cursor in seen:
+                row['error']={'message':'Repeated pagination cursor'}
+                break
+            seen.add(cursor)
+            body['pageKey']=cursor
+        else:
+            row['error']={'message':'Pagination safety limit reached; discovery incomplete'}
+    elif cid in EXPLORERS and cfg['discovery'].get('explorers'):
+        row['source']=EXPLORERS[cid]+'/api/v2/addresses/'+wallet+'/token-balances'
+        response=fetch(row['source'])
+        row['pages'].append({'observed_at':h.now(),'response':response})
+        if isinstance(response,list):
+            row['complete']=True
+            for t in response:
+                meta=t.get('token') or {}
+                if meta.get('type')=='ERC-20' and int(t.get('value') or 0)>0:
+                    row['tokens'].append({'chain_id':cid,'address':meta['address_hash'],'name':meta.get('name'),'symbol':meta.get('symbol'),
+                                          'decimals':int(meta['decimals']) if meta.get('decimals') is not None else None,'prices':[]})
+        else:
+            row['error']=response
+    else:
+        row['error']={'message':'No general ERC20 indexer configured for this network. Mint Club registry and native balances are queried independently.'}
+    row['tokens']=list({t['address'].lower():t for t in row['tokens']}.values())
+    atomic(evidence,row)
+    return row
+
+
+def run_node(mode, source, destination):
+    subprocess.run(['node',str(ASSETS/'pipeline-onchain.cjs'),mode,str(source),str(destination)],cwd=ASSETS,check=True)
+
+
+def source_check(networks, folder):
+    import urllib.request
+    with urllib.request.urlopen(CONTRACT_SOURCE,timeout=20) as response:
+        source=response.read().decode()
+    bond=source.split('  BOND: {',1)[1].split('\n  },',1)[0]
+    configured={name:address.lower() for name,address in re.findall(r"\[(\w+)\.id\]:\s*'([^']+)'",bond)}
+    expected={SOURCE_NAMES[n['chain_id']]:n['mintclub_bond_address'].lower() for n in networks}
+    if configured!=expected:
+        raise ValueError('Mint Club SDK network/deployment scope changed. Reconcile networks.json before analysis.')
+    atomic(folder/'mintclub-support.json',{'observed_at':h.now(),'source':CONTRACT_SOURCE,'networks_verified':len(networks),'bond_deployments':configured})
+
+
+def dex_fetch(t, folder):
+    chain=DEX.get(t['chain_id'])
+    if not chain or t.get('token_type')=='ERC1155':
+        return {'chain_id':t['chain_id'],'token_address':t['token_address'],'response':[], 'status':'outside_dex_indexer_scope'}
+    name=f"dex-{t['chain_id']}-{t['token_address'].lower()}.json"
+    if (folder/name).exists():
+        old=read(folder/name)
+        if isinstance(old.get('response'),list):return old
+    url='https://api.dexscreener.com/token-pairs/v1/'+chain+'/'+t['token_address']
+    row={'chain_id':t['chain_id'],'token_address':t['token_address'],'source':url,'observed_at':h.now(),'response':fetch(url)}
+    atomic(folder/name,row)
+    return row
+
+
+def pool_row(p, observed):
+    return {'pool':p['pairAddress'],'venue':p['dexId'],'version_labels':p.get('labels') or [],
+            'paired_tokens':[p['baseToken'],p['quoteToken']],'reported_liquidity':p.get('liquidity'),
+            'reported_volume_24h_usd':(p.get('volume') or {}).get('h24'),'reported_price_usd':p.get('priceUsd'),
+            'observed_at':observed,'source_url':p['url'],'rpc_verification':None,'factory_measurement':None}
+
+
+def finish(wallet, folder, networks, discovered):
+    raw=read(folder/'onchain-summary.json')
+    tokens=[t for c in raw['chains'] for t in c['tokens']]
+    event('dex_discovery', tokens=len(tokens))
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        responses=list(executor.map(lambda t:dex_fetch(t,folder),tokens))
+    for t,r in zip(tokens,responses):
+        if isinstance(r['response'],list):
+            t['dex_pools']=[pool_row(p,r.get('observed_at')) for p in r['response'] if p.get('chainId')==DEX.get(t['chain_id']) and
+                            t['token_address'].lower() in {p['baseToken']['address'].lower(),p['quoteToken']['address'].lower()}]
+            t['dex_discovery_status']='queried' if r.get('status') is None else r['status']
+        else:
+            t['dex_discovery_status']='provider_error'
+    atomic(folder/'dex-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':tokens})
+    run_node('dex',folder/'dex-input.json',folder/'dex-verified.json')
+    tokens=read(folder/'dex-verified.json')['tokens']
+    for t in tokens:
+        t['dex_liquidity_found']=any((p.get('reported_liquidity') or {}).get('usd',0)>0 or
+            (p.get('factory_measurement') or {}).get('active_liquidity_verified',False) for p in t['dex_pools'])
+        if t['dex_liquidity_found']:t['dex_discovery_status']='pool_liquidity_found'
+    minted=[t for t in tokens if t.get('mintclub')]
+    # The API supplies supplementary metadata. On-chain bond reserves determine liquidity.
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        api=list(executor.map(lambda t:{'chain_id':t['chain_id'],'token_address':t['token_address'],'observed_at':h.now(),
+            'source':f"https://mint.club/api/tokens/byAddress/{t['chain_id']}/{t['token_address']}",
+            'response':fetch(f"https://mint.club/api/tokens/byAddress/{t['chain_id']}/{t['token_address']}")},minted))
+    atomic(folder/'mintclub-held-api.json',api)
+    coverage=[]
+    by_discovery={d['chain_id']:d for d in discovered}
+    by_raw={d['chain_id']:d for d in raw['chains']}
+    for n in networks:
+        c=by_raw[n['chain_id']];d=by_discovery[n['chain_id']]
+        row={**{k:v for k,v in n.items() if k not in ('public_rpc','explorer')},'rpc_status':c.get('rpc_status','unavailable'),
+             'native_symbol':NATIVE.get(n['chain_id'],'ETH'),'native_balance':c['native_balance'],
+             'native_observed_at':c['observed_at'],'native_block_number':c.get('block_number'),
+             'general_erc20_discovery':'indexer_checked' if d['complete'] else 'incomplete',
+             'indexer_source':d['source'],'indexer_pages':len(d['pages']),'indexer_complete':d['complete'],
+             'positive_erc20_count_discovered':sum(t['chain_id']==n['chain_id'] and t['token_type']=='ERC20' for t in tokens),
+             'mintclub_inventory_scan':None,'mintclub_registry_scan':c.get('registry_scan'),'notes':[]}
+        if not d['complete']:row['notes'].append('General token discovery incomplete. See discovery evidence; this is not proof of no holdings.')
+        if not c.get('registry_scan',{}).get('complete'):row['notes'].append('Mint Club registry scan incomplete. Unchecked balances remain unknown.')
+        if c.get('balance_errors'):row['notes'].append(f"{len(c['balance_errors'])} candidate token balances could not be read.")
+        coverage.append(row)
+    refs={}
+    for d in discovered:
+        n=next(n for n in networks if n['chain_id']==d['chain_id'])
+        if n['environment']!='mainnet':continue
+        symbol=NATIVE.get(d['chain_id'],'ETH')
+        for t in d['native']:
+            price=next((p for p in t.get('tokenPrices',[]) if p.get('currency')=='usd' and p.get('value') is not None),None)
+            if price:refs[symbol+'_USD']={'value':price['value'],'observed_at':price.get('lastUpdatedAt'),'source':'Alchemy Portfolio Tokens By Wallet'}
+    # Obtain prices of reserve assets separately, including tokens not held by the wallet.
+    reserve_candidates={(t['chain_id'],t['mintclub']['reserve_token'].lower()):{'chain_id':t['chain_id'],'token_address':t['mintclub']['reserve_token'],'token_type':'ERC20'} for t in minted}
+    reserve_rows=list(ThreadPoolExecutor(max_workers=5).map(lambda t:dex_fetch(t,folder),reserve_candidates.values()))
+    sys.path.insert(0,str(ASSETS/'viewer'))
+    from model import dex_price
+    reserve_prices=[]
+    for t,r in zip(reserve_candidates.values(),reserve_rows):
+        if not isinstance(r['response'],list):continue
+        shadow={**t,'dex_pools':[pool_row(p,r['observed_at']) for p in r['response'] if p.get('chainId')==DEX.get(t['chain_id'])],'indexer_price_references':[]}
+        price=dex_price(shadow,r['observed_at'])
+        if price and price.get('usd') is not None:reserve_prices.append({'chain_id':t['chain_id'],'address':t['token_address'],**price})
+    counts={'mainnets_in_scope':sum(n['environment']=='mainnet' for n in networks),'testnets_in_scope':sum(n['environment']=='testnet' for n in networks),
+            'mainnets_with_general_indexer':sum(c['environment']=='mainnet' and c['general_erc20_discovery']=='indexer_checked' for c in coverage),
+            'positive_erc20_tokens_discovered':sum(t['token_type']=='ERC20' for t in tokens),'positive_erc1155_tokens_discovered':sum(t['token_type']=='ERC1155' for t in tokens),
+            'dex_tokens_with_liquidity_evidence':sum(t['dex_liquidity_found'] for t in tokens),'mintclub_tokens':len(minted),
+            'mintclub_tokens_with_nonzero_reserve':sum(t['mintclub']['funded'] for t in minted),
+            'mintclub_registry_assets_checked':sum(c.get('mintclub_registry_scan',{}).get('checked',0) if c.get('mintclub_registry_scan') else 0 for c in coverage)}
+    gaps=any(not c['indexer_complete'] or not (c.get('mintclub_registry_scan') or {}).get('complete') or c['rpc_status']!='available' for c in coverage)
+    result={'schema_version':1,'wallet_address':wallet['address'],'tags':wallet['tags'],'compiled_at':h.now(),'status':'completed_with_coverage_gaps' if gaps else 'completed',
+        'scope':'Direct ERC20, registered Mint Club ERC1155 and native holdings across all configured Mint Club EVM networks. Testnets are separate.',
+        'counts':counts,'coverage':coverage,'tokens':tokens,'nested_curve_independent_redemption_estimates':[], 'price_references':refs,
+        'limitations':['General indexers can omit arbitrary ERC20 assets. Failed or incomplete discovery is never interpreted as no holdings.',
+            'Mint Club registry enumeration includes all reachable deployed bond assets, including ERC1155 token ID 0. Deposits or stakes held by other contracts are outside direct wallet balances.',
+            'DEX discovery combines DEX Screener and supplemental Base WETH/USDC factory queries. Other quote assets, custom fee tiers and unindexed pools can be missed.',
+            'DEX TVL and curve reserves describe the entire pool or curve. Spot wallet values are estimates, distinct from executable cash-out value.',
+            'Full-wallet burn quotes subtract the recorded creator royalty and exclude gas. Nested reserve backing overlaps and must not be summed as independent cash reserves.',
+            'Testnet assets are excluded from USD totals. Missing prices stay unknown.'],
+        'actions':{'paid_provider_calls':None,'provider_billing':'Not determined; provider allowance can be consumed.','signatures':0,'approvals':0,'swaps':0,'transfers':0,'rpc_read_only':True},
+        'pipeline':{'version':1,'entrypoint':'wallet.py','resumable':True,'registry_cache':'Shared append-only asset identity cache. Wallet balances are not reused between wallets.'},
+        'evidence_files':[f.name for f in sorted(folder.glob('*.json')) if f.name not in ('results.json','market-prices.json')]}
+    atomic(folder/'results.json',result)
+    prices=[]
+    for t in tokens:
+        p=dex_price(t,result['compiled_at'])
+        if p:prices.append({'chain_id':t['chain_id'],'address':t['token_address'],**p})
+    atomic(folder/'market-prices.json',{'observed_at':result['compiled_at'],'wallet_address':wallet['address'],'balance_refresh':True,
+        'native_usd':{k.removesuffix('_USD'):{'usd':float(p['value']),'observed_at':p.get('observed_at')} for k,p in refs.items()},
+        'tokens':prices+reserve_prices,'note':'DEX and reserve prices observed during this run. Curve spot prices use recorded on-chain state. Unknown prices remain null.'})
+    from curve_pricing import enrich
+    atomic(folder/'market-prices.json',enrich(result,read(folder/'market-prices.json'),folder))
+    from token_images import refresh_catalog
+    try:event('token_images',**refresh_catalog([result],ROOT))
+    except (OSError,ValueError):event('token_images',status='unavailable')
+    result['evidence_files']=[f.name for f in sorted(folder.glob('*.json')) if f.name not in ('results.json','market-prices.json')]
+    atomic(folder/'results.json',result)
+    report(result,folder)
+    return result
+
+
+def md(value):
+    return str(value if value is not None else 'Unknown').replace('|','\\|').replace('\n',' ')
+
+
+def table(headers, rows):
+    return '\n'.join(['| '+' | '.join(headers)+' |','| '+' | '.join(['---']*len(headers))+' |']+['| '+' | '.join(md(x) for x in row)+' |' for row in rows])
+
+
+def report(result, folder):
+    tokens=result['tokens'];counts=result['counts']
+    lines=[f"# {', '.join(result['tags'])} wallet research",'',f"Wallet: `{result['wallet_address']}`. Compiled: {result['compiled_at']}.",'',
+        f"{counts['positive_erc20_tokens_discovered']} ERC20 and {counts['positive_erc1155_tokens_discovered']} registered Mint Club ERC1155 holdings were found. "
+        f"{counts['mintclub_tokens']} holdings have Mint Club curves; {counts['mintclub_tokens_with_nonzero_reserve']} have nonzero reserves. "
+        f"{counts['dex_tokens_with_liquidity_evidence']} holdings have DEX liquidity evidence.",'',
+        '## Mint Club holdings','',table(['Chain','Token','Balance','Entire curve reserve','Full wallet burn, net'],[
+            (t['network'],f"[{md(t['symbol'])}]({t['mintclub']['source_url']})",t['wallet_balance'],
+             t['mintclub']['reserve_balance']+' '+t['mintclub']['reserve_symbol'],
+             (t['mintclub']['wallet_full_burn']['net_refund']+' '+t['mintclub']['reserve_symbol']) if t['mintclub']['wallet_full_burn'] else 'Unknown')
+            for t in tokens if t.get('mintclub')]),'',
+        '## Held tokens with DEX liquidity','',table(['Chain','Token','Balance','Venues','Largest source-reported pool TVL'],[
+            (t['network'],t['symbol'],t['wallet_balance'],', '.join(sorted({p['venue'] for p in t['dex_pools']})),
+             max(((p.get('reported_liquidity') or {}).get('usd',0) or 0 for p in t['dex_pools']),default=0)) for t in tokens if t['dex_liquidity_found']]),'',
+        '## Network coverage','',table(['Network','Environment','General discovery','Mint registry checked / total','RPC'],[
+            (c['name'],c['environment'],c['general_erc20_discovery'],
+             f"{c['mintclub_registry_scan']['checked']} / {c['mintclub_registry_scan']['registry_count']}" if c.get('mintclub_registry_scan') else 'Unknown',c['rpc_status']) for c in result['coverage']]),'',
+        '## Limits','']+['- '+l for l in result['limitations']]+['','## Evidence','',
+        '[Structured results](results.json), [on-chain balances and curve states](onchain-summary.json), [DEX verification](dex-verified.json) and per-chain discovery files preserve timestamps, fixed blocks, errors and exact quantities.', '',
+        'Source interfaces: [Mint Club API](https://sdk.mint.club/docs/api), [Mint Club bond](https://github.com/Steemhunt/mint.club-v2-contract), '
+        '[Alchemy Portfolio](https://www.alchemy.com/docs/data/portfolio-apis/portfolio-api-endpoints/portfolio-api-endpoints/get-tokens-by-address), '
+        '[DEX Screener](https://docs.dexscreener.com/api/reference).']
+    atomic(folder/'report.md','\n'.join(lines)+'\n')
+
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    sub=parser.add_subparsers(dest='command',required=True)
+    add=sub.add_parser('add');add.add_argument('address');add.add_argument('--tag',required=True)
+    refresh=sub.add_parser('refresh');refresh.add_argument('wallet',help='Registered address or exact tag')
+    for p in (add,refresh):p.add_argument('--resume',help='Existing snapshot directory relative to the research root')
+    args=parser.parse_args()
+    # Serialize shared registry and cache writers for the entire run.
+    with (os.fdopen(int(os.environ['KIRA_ANALYSIS_FD']), 'a') if os.environ.get('KIRA_ANALYSIS_FD') else (ROOT/'.analysis.lock').open('a')) as lock:
+        try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:raise SystemExit('Another wallet analysis is running. Resume after it finishes.')
+        read(ROOT/'session.json');registry=read(ROOT/'wallets.json');registered=read(ROOT/'networks.json')['networks']
+        candidates=read(ASSETS/'sources/rpc-candidates.json')
+        networks=[{**n,**next((c for c in candidates if c['chain_id']==n['chain_id']),{})} for n in registered]
+        if args.command=='add':
+            address=validate_address(args.address);wallet=register(registry,address,args.tag)
+            atomic(ROOT/'wallets.json',registry)
+        else:
+            wallet=next((w for w in registry['wallets'] if w['address_key']==args.wallet.lower() or args.wallet in w['tags']),None)
+            if wallet is None:raise SystemExit('No registered wallet matches this address or tag.')
+        if args.resume:
+            folder=(ROOT/args.resume).resolve()
+            if not folder.is_relative_to(ROOT/'snapshots'):raise ValueError('Resume path must be within snapshots/.')
+            manifest=read(folder/'run.json')
+            if manifest['wallet_address'].lower()!=wallet['address_key']:raise ValueError('Resume wallet mismatch.')
+            relative=str(folder.relative_to(ROOT))
+            published=any(w.get('latest_snapshot',{}).get('directory')==relative for w in registry['wallets']) or any(r.get('snapshot')==relative for r in registry.get('research_runs',[]))
+            if manifest.get('completed_at') or published:raise ValueError('Published snapshots are immutable. Use refresh without --resume for a new analysis.')
+        else:
+            if os.environ.get('KIRA_JOB_SNAPSHOT'):
+                folder=(ROOT/os.environ['KIRA_JOB_SNAPSHOT']).resolve()
+                if not folder.is_relative_to(ROOT/'snapshots'):raise ValueError('Job path must be within snapshots/.')
+            else:
+                slug=re.sub(r'[^A-Za-z0-9_-]+','-',wallet['tags'][0] if wallet['tags'] else wallet['address_key']).strip('-')
+                folder=ROOT/'snapshots'/slug/(time.strftime('%Y-%m-%dT%H%M%S')+'-'+wallet['address_key'][2:10])
+            folder.mkdir(parents=True,exist_ok=bool(os.environ.get('KIRA_JOB_SNAPSHOT')))
+        atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'started_or_resumed_at':h.now(),'status':'running'})
+        event('registered',wallet=wallet['address'],tags=wallet['tags'],snapshot=str(folder.relative_to(ROOT)))
+        try:
+            source_check(networks,folder)
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                discovered=list(executor.map(lambda n:discover(wallet['address'],n,folder),networks))
+            event('discovery',complete_chains=sum(d['complete'] for d in discovered),candidates=sum(len(d['tokens']) for d in discovered))
+            atomic(folder/'scan-input.json',{'wallet':wallet['address'],'networks':networks,'candidates':[t for d in discovered for t in d['tokens']]})
+            run_node('scan',folder/'scan-input.json',folder)
+            result=finish(wallet,folder,networks,discovered)
+            # Reload before publication. Preserve all other wallets and historical runs.
+            registry=read(ROOT/'wallets.json')
+            entry=next(w for w in registry['wallets'] if w['address_key']==wallet['address_key'])
+            relative=str(folder.relative_to(ROOT))
+            entry['latest_snapshot']={'directory':relative,'result':relative+'/results.json','report':relative+'/report.md','observed_on':time.strftime('%Y-%m-%d'),'status':result['status']}
+            registry.setdefault('research_runs',[]).append({'address_key':wallet['address_key'],'tags':entry['tags'],'completed_at':result['compiled_at'],'status':result['status'],'snapshot':relative,'counts':result['counts']})
+            atomic(ROOT/'wallets.json',registry)
+            atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'completed_at':h.now(),'status':result['status']})
+            event('published',snapshot=relative,counts=result['counts'],status=result['status'],viewer='http://127.0.0.1:8765')
+        except Exception as error:
+            atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'failed_at':h.now(),'status':'failed','error':h.redact(str(error))})
+            event('failed',error=h.redact(str(error)),resume=str(folder.relative_to(ROOT)))
+            raise SystemExit(1)
+
+
+if __name__=='__main__':
+    main()

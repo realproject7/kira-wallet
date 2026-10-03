@@ -1,0 +1,317 @@
+import { defineChain } from 'viem';
+import {
+  apeChain,
+  arbitrum,
+  avalanche,
+  avalancheFuji,
+  base,
+  baseSepolia,
+  blast,
+  blastSepolia,
+  bsc,
+  cyber,
+  cyberTestnet,
+  ham,
+  hashkey,
+  kaia,
+  mainnet,
+  optimism,
+  polygon,
+  sepolia,
+  shibarium,
+  shibariumTestnet,
+  unichain,
+  zora,
+} from 'viem/chains';
+
+export const over = defineChain({
+  id: 54176,
+  name: 'OverProtocol Mainnet',
+  network: 'over',
+  nativeCurrency: {
+    name: 'OverProtocol',
+    symbol: 'OVER',
+    decimals: 18,
+  },
+  rpcUrls: {
+    default: {
+      http: ['https://rpc.overprotocol.com'],
+    },
+    public: {
+      http: ['https://rpc.overprotocol.com'],
+    },
+  },
+});
+
+export const robinhood = defineChain({
+  id: 4663,
+  name: 'Robinhood Chain',
+  network: 'robinhood',
+  nativeCurrency: {
+    name: 'Ether',
+    symbol: 'ETH',
+    decimals: 18,
+  },
+  rpcUrls: {
+    default: {
+      http: ['https://rpc.mainnet.chain.robinhood.com'],
+    },
+    public: {
+      http: ['https://rpc.mainnet.chain.robinhood.com'],
+    },
+  },
+  blockExplorers: {
+    default: {
+      name: 'Robinhood Chain Explorer',
+      url: 'https://robinhoodchain.blockscout.com',
+    },
+  },
+  contracts: {
+    multicall3: {
+      address: '0xcA11bde05977b3631167028862bE2a173976CA11',
+    },
+  },
+});
+
+const SDK_CONTRACT_ADDRESSES = {
+  ERC20: {
+    [apeChain.id]: '0xAa70bC79fD1cB4a6FBA717018351F0C3c64B79Df',
+    [arbitrum.id]: '0xAa70bC79fD1cB4a6FBA717018351F0C3c64B79Df',
+    [avalanche.id]: '0x5DaE94e149CF2112Ec625D46670047814aA9aC2a',
+    [avalancheFuji.id]: '0xAD5a113ee65F30269f7558f96483126B1FB60c4E',
+    [base.id]: '0xAa70bC79fD1cB4a6FBA717018351F0C3c64B79Df',
+    [baseSepolia.id]: '0x37F540de37afE8bDf6C722d87CB019F30e5E406a',
+    [blast.id]: '0x1349A9DdEe26Fe16D0D44E35B3CB9B0CA18213a4',
+    [blastSepolia.id]: '0x37F540de37afE8bDf6C722d87CB019F30e5E406a',
+    [bsc.id]: '0xAa70bC79fD1cB4a6FBA717018351F0C3c64B79Df',
+    [cyber.id]: '0xAa70bC79fD1cB4a6FBA717018351F0C3c64B79Df',
+    [cyberTestnet.id]: '0x37F540de37afE8bDf6C722d87CB019F30e5E406a',
+    [ham.id]: '0xAa70bC79fD1cB4a6FBA717018351F0C3c64B79Df',
+    [hashkey.id]: '0xAa70bC79fD1cB4a6FBA717018351F0C3c64B79Df',
+    [kaia.id]: '0xAa70bC79fD1cB4a6FBA717018351F0C3c64B79Df',
+    [mainnet.id]: '0xAa70bC79fD1cB4a6FBA717018351F0C3c64B79Df',
+    [optimism.id]: '0xAa70bC79fD1cB4a6FBA717018351F0C3c64B79Df',
+    [over.id]: '0xAa70bC79fD1cB4a6FBA717018351F0C3c64B79Df',
+    [polygon.id]: '0xAa70bC79fD1cB4a6FBA717018351F0C3c64B79Df',
+    [robinhood.id]: '0xEb54dACB4C2ccb64F8074eceEa33b5eBb38E5387',
+    [sepolia.id]: '0x749bA94344521727f55a3007c777FbeB5F52C2Eb',
+    [shibarium.id]: '0xAa70bC79fD1cB4a6FBA717018351F0C3c64B79Df',
+    [shibariumTestnet.id]: '0x37F540de37afE8bDf6C722d87CB019F30e5E406a',
+    [unichain.id]: '0xAa70bC79fD1cB4a6FBA717018351F0C3c64B79Df',
+    [zora.id]: '0xAa70bC79fD1cB4a6FBA717018351F0C3c64B79Df',
+  },
+
+  ERC1155: {
+    [apeChain.id]: '0x6c61918eECcC306D35247338FDcf025af0f6120A',
+    [arbitrum.id]: '0x6c61918eECcC306D35247338FDcf025af0f6120A',
+    [avalanche.id]: '0x621c335b4BD8f2165E120DC70d3AfcAfc6628681',
+    [avalancheFuji.id]: '0xB43826E079dFB2e2b48a0a473Efc7F1fe6391763',
+    [base.id]: '0x6c61918eECcC306D35247338FDcf025af0f6120A',
+    [baseSepolia.id]: '0x4bF67e5C9baD43DD89dbe8fCAD3c213C868fe881',
+    [blast.id]: '0x5DaE94e149CF2112Ec625D46670047814aA9aC2a',
+    [blastSepolia.id]: '0x4bF67e5C9baD43DD89dbe8fCAD3c213C868fe881',
+    [bsc.id]: '0x6c61918eECcC306D35247338FDcf025af0f6120A',
+    [cyber.id]: '0x6c61918eECcC306D35247338FDcf025af0f6120A',
+    [cyberTestnet.id]: '0x4bF67e5C9baD43DD89dbe8fCAD3c213C868fe881',
+    [ham.id]: '0x6c61918eECcC306D35247338FDcf025af0f6120A',
+    [hashkey.id]: '0x6c61918eECcC306D35247338FDcf025af0f6120A',
+    [kaia.id]: '0x6c61918eECcC306D35247338FDcf025af0f6120A',
+    [mainnet.id]: '0x6c61918eECcC306D35247338FDcf025af0f6120A',
+    [optimism.id]: '0x6c61918eECcC306D35247338FDcf025af0f6120A',
+    [over.id]: '0x6c61918eECcC306D35247338FDcf025af0f6120A',
+    [polygon.id]: '0x6c61918eECcC306D35247338FDcf025af0f6120A',
+    [robinhood.id]: '0xaF987E88bf30581F7074E628c894A3FCbf4EE12e',
+    [sepolia.id]: '0x3cABE5125C5D8922c5f38c5b779F6E96F563cdc0',
+    [shibarium.id]: '0x6c61918eECcC306D35247338FDcf025af0f6120A',
+    [shibariumTestnet.id]: '0x4bF67e5C9baD43DD89dbe8fCAD3c213C868fe881',
+    [unichain.id]: '0x6c61918eECcC306D35247338FDcf025af0f6120A',
+    [zora.id]: '0x6c61918eECcC306D35247338FDcf025af0f6120A',
+  },
+
+  BOND: {
+    [apeChain.id]: '0xc5a076cad94176c2996B32d8466Be1cE757FAa27',
+    [arbitrum.id]: '0xc5a076cad94176c2996B32d8466Be1cE757FAa27',
+    [avalanche.id]: '0x3Fd5B4DcDa968C8e22898523f5343177F94ccfd1',
+    [avalancheFuji.id]: '0x20fBC8a650d75e4C2Dab8b7e85C27135f0D64e89',
+    [base.id]: '0xc5a076cad94176c2996B32d8466Be1cE757FAa27',
+    [baseSepolia.id]: '0x5dfA75b0185efBaEF286E80B847ce84ff8a62C2d',
+    [blast.id]: '0x621c335b4BD8f2165E120DC70d3AfcAfc6628681',
+    [blastSepolia.id]: '0x5dfA75b0185efBaEF286E80B847ce84ff8a62C2d',
+    [bsc.id]: '0xc5a076cad94176c2996B32d8466Be1cE757FAa27',
+    [cyber.id]: '0xc5a076cad94176c2996B32d8466Be1cE757FAa27',
+    [cyberTestnet.id]: '0x5dfA75b0185efBaEF286E80B847ce84ff8a62C2d',
+    [ham.id]: '0xc5a076cad94176c2996B32d8466Be1cE757FAa27',
+    [hashkey.id]: '0xc5a076cad94176c2996B32d8466Be1cE757FAa27',
+    [kaia.id]: '0xc5a076cad94176c2996B32d8466Be1cE757FAa27',
+    [mainnet.id]: '0xc5a076cad94176c2996B32d8466Be1cE757FAa27',
+    [optimism.id]: '0xc5a076cad94176c2996B32d8466Be1cE757FAa27',
+    [over.id]: '0xc5a076cad94176c2996B32d8466Be1cE757FAa27',
+    [polygon.id]: '0xc5a076cad94176c2996B32d8466Be1cE757FAa27',
+    [robinhood.id]: '0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa',
+    [sepolia.id]: '0x8dce343A86Aa950d539eeE0e166AFfd0Ef515C0c',
+    [shibarium.id]: '0xc5a076cad94176c2996B32d8466Be1cE757FAa27',
+    [shibariumTestnet.id]: '0x5dfA75b0185efBaEF286E80B847ce84ff8a62C2d',
+    [unichain.id]: '0xc5a076cad94176c2996B32d8466Be1cE757FAa27',
+    [zora.id]: '0xc5a076cad94176c2996B32d8466Be1cE757FAa27',
+  },
+
+  ZAP: {
+    [apeChain.id]: '0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa',
+    [arbitrum.id]: '0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa',
+    [avalanche.id]: '0x29b0E6D2C2884aEa3FB4CB5dD1C7002A8E10c724',
+    [avalancheFuji.id]: '0x60432191893c4F742205a2C834817a1891feC435',
+    [base.id]: '0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa',
+    [baseSepolia.id]: '0x40c7DC399e01029a51cAb316f8Bca7D20DE31bad',
+    [blast.id]: '0x06FD26c092Db44E5491abB7cDC580CE24D93030c',
+    [blastSepolia.id]: '0x40c7DC399e01029a51cAb316f8Bca7D20DE31bad',
+    [bsc.id]: '0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa',
+    [cyber.id]: '0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa',
+    [cyberTestnet.id]: '0x40c7DC399e01029a51cAb316f8Bca7D20DE31bad',
+    [ham.id]: '0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa',
+    [hashkey.id]: '0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa',
+    [kaia.id]: '0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa',
+    [mainnet.id]: '0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa',
+    [optimism.id]: '0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa',
+    [over.id]: '0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa',
+    [polygon.id]: '0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa',
+    [robinhood.id]: '0xA3dCf3Ca587D9929d540868c924f208726DC9aB6',
+    [sepolia.id]: '0x1Bf3183acc57571BecAea0E238d6C3A4d00633da',
+    [shibarium.id]: '0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa',
+    [shibariumTestnet.id]: '0x40c7DC399e01029a51cAb316f8Bca7D20DE31bad',
+    [unichain.id]: '0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa',
+    [zora.id]: '0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa',
+  },
+
+  LOCKER: {
+    [apeChain.id]: '0xA3dCf3Ca587D9929d540868c924f208726DC9aB6',
+    [arbitrum.id]: '0xA3dCf3Ca587D9929d540868c924f208726DC9aB6',
+    [avalanche.id]: '0x5b64cECC5cF3E4B1A668Abd895D16BdDC0c77a17',
+    [avalancheFuji.id]: '0x789771E410527691729e54A84103594ee6Be6C3C',
+    [base.id]: '0xA3dCf3Ca587D9929d540868c924f208726DC9aB6',
+    [baseSepolia.id]: '0x2c6B3fe4D6de27363cFEC95f703889EaF6b770fB',
+    [blast.id]: '0x3Fd5B4DcDa968C8e22898523f5343177F94ccfd1',
+    [blastSepolia.id]: '0x2c6B3fe4D6de27363cFEC95f703889EaF6b770fB',
+    [bsc.id]: '0xA3dCf3Ca587D9929d540868c924f208726DC9aB6',
+    [cyber.id]: '0xA3dCf3Ca587D9929d540868c924f208726DC9aB6',
+    [cyberTestnet.id]: '0x2c6B3fe4D6de27363cFEC95f703889EaF6b770fB',
+    [ham.id]: '0xA3dCf3Ca587D9929d540868c924f208726DC9aB6',
+    [hashkey.id]: '0xA3dCf3Ca587D9929d540868c924f208726DC9aB6',
+    [kaia.id]: '0xA3dCf3Ca587D9929d540868c924f208726DC9aB6',
+    [mainnet.id]: '0xA3dCf3Ca587D9929d540868c924f208726DC9aB6',
+    [optimism.id]: '0xA3dCf3Ca587D9929d540868c924f208726DC9aB6',
+    [over.id]: '0xA3dCf3Ca587D9929d540868c924f208726DC9aB6',
+    [polygon.id]: '0xA3dCf3Ca587D9929d540868c924f208726DC9aB6',
+    [robinhood.id]: '0x3bc6B601196752497a68B2625DB4f2205C3b150b',
+    [sepolia.id]: '0x7c204B1B03A88D24088941068f6DFC809f2fd022',
+    [shibarium.id]: '0xA3dCf3Ca587D9929d540868c924f208726DC9aB6',
+    [shibariumTestnet.id]: '0x2c6B3fe4D6de27363cFEC95f703889EaF6b770fB',
+    [unichain.id]: '0xA3dCf3Ca587D9929d540868c924f208726DC9aB6',
+    [zora.id]: '0xA3dCf3Ca587D9929d540868c924f208726DC9aB6',
+  },
+
+  MERKLE: {
+    [apeChain.id]: '0x3bc6B601196752497a68B2625DB4f2205C3b150b',
+    [arbitrum.id]: '0x1349A9DdEe26Fe16D0D44E35B3CB9B0CA18213a4',
+    [avalanche.id]: '0x841A2bD2fc97DCB865b4Ddb352540148Bad2dB09',
+    [avalancheFuji.id]: '0x6d1f4ecd17ddA7fb39C56Da566b66d63f06671d9',
+    [base.id]: '0x1349A9DdEe26Fe16D0D44E35B3CB9B0CA18213a4',
+    [baseSepolia.id]: '0xCbb23973235feA43E62C41a0c67717a92a2467f2',
+    [blast.id]: '0x29b0E6D2C2884aEa3FB4CB5dD1C7002A8E10c724',
+    [blastSepolia.id]: '0xCbb23973235feA43E62C41a0c67717a92a2467f2',
+    [bsc.id]: '0x1349A9DdEe26Fe16D0D44E35B3CB9B0CA18213a4',
+    [cyber.id]: '0x3bc6B601196752497a68B2625DB4f2205C3b150b',
+    [cyberTestnet.id]: '0xCbb23973235feA43E62C41a0c67717a92a2467f2',
+    [ham.id]: '0x3bc6B601196752497a68B2625DB4f2205C3b150b',
+    [hashkey.id]: '0x3bc6B601196752497a68B2625DB4f2205C3b150b',
+    [kaia.id]: '0x3bc6B601196752497a68B2625DB4f2205C3b150b',
+    [mainnet.id]: '0x1349A9DdEe26Fe16D0D44E35B3CB9B0CA18213a4',
+    [optimism.id]: '0x1349A9DdEe26Fe16D0D44E35B3CB9B0CA18213a4',
+    [over.id]: '0x3bc6B601196752497a68B2625DB4f2205C3b150b',
+    [polygon.id]: '0x1349A9DdEe26Fe16D0D44E35B3CB9B0CA18213a4',
+    [robinhood.id]: '0x1349A9DdEe26Fe16D0D44E35B3CB9B0CA18213a4',
+    [sepolia.id]: '0x0CD940395566d509168977Cf10E5296302efA57A',
+    [shibarium.id]: '0x3bc6B601196752497a68B2625DB4f2205C3b150b',
+    [shibariumTestnet.id]: '0xCbb23973235feA43E62C41a0c67717a92a2467f2',
+    [unichain.id]: '0x3bc6B601196752497a68B2625DB4f2205C3b150b',
+    [zora.id]: '0x3bc6B601196752497a68B2625DB4f2205C3b150b',
+  },
+
+  // REF: https://github.com/1inch/spot-price-aggregator
+  ONEINCH: {
+    [mainnet.id]: '0x00000000000D6FFc74A8feb35aF5827bf57f6786',
+    [optimism.id]: '0x00000000000D6FFc74A8feb35aF5827bf57f6786',
+    [arbitrum.id]: '0x00000000000D6FFc74A8feb35aF5827bf57f6786',
+    [avalanche.id]: '0x00000000000D6FFc74A8feb35aF5827bf57f6786',
+    [polygon.id]: '0x00000000000D6FFc74A8feb35aF5827bf57f6786',
+    [bsc.id]: '0x00000000000D6FFc74A8feb35aF5827bf57f6786',
+    [base.id]: '0x00000000000D6FFc74A8feb35aF5827bf57f6786',
+    [kaia.id]: '0x00000000000D6FFc74A8feb35aF5827bf57f6786',
+    [sepolia.id]: '0x',
+    [baseSepolia.id]: '0x',
+    [blast.id]: '0x',
+    [blastSepolia.id]: '0x',
+    [avalancheFuji.id]: '0x',
+    [cyberTestnet.id]: '0x',
+    [cyber.id]: '0x',
+    [ham.id]: '0x',
+    [shibarium.id]: '0x',
+    [shibariumTestnet.id]: '0x',
+    [unichain.id]: '0x00000000000D6FFc74A8feb35aF5827bf57f6786',
+    [apeChain.id]: '0x',
+    [zora.id]: '0x',
+    [hashkey.id]: '0x',
+    [over.id]: '0x',
+    [robinhood.id]: '0x',
+  },
+
+  STAKE: {
+    [apeChain.id]: '0xa4021a8907197Df92341F1218B32E26b250F6798',
+    [arbitrum.id]: '0xf7e2cDe9E603F15118E6E389cF14f11f19C1afbc',
+    [avalanche.id]: '0x68f54a53d3E69e2191bCF586fB507c81E5353413',
+    [avalancheFuji.id]: '0x',
+    [base.id]: '0x9Ab05EcA10d087f23a1B22A44A714cdbBA76E802',
+    [baseSepolia.id]: '0x',
+    [blast.id]: '0x68f54a53d3E69e2191bCF586fB507c81E5353413',
+    [blastSepolia.id]: '0x',
+    [bsc.id]: '0x7B09b728ee8c6a714dC3F10367b5DF9b217FE633',
+    [cyber.id]: '0x3Fd5B4DcDa968C8e22898523f5343177F94ccfd1',
+    [cyberTestnet.id]: '0x',
+    [ham.id]: '0x',
+    [hashkey.id]: '0xa4021a8907197Df92341F1218B32E26b250F6798',
+    [kaia.id]: '0x29b0E6D2C2884aEa3FB4CB5dD1C7002A8E10c724',
+    [mainnet.id]: '0x841A2bD2fc97DCB865b4Ddb352540148Bad2dB09',
+    [optimism.id]: '0xF187645D1C5AE70C3ddCDeE6D746E5A7619a2A65',
+    [over.id]: '0x621c335b4BD8f2165E120DC70d3AfcAfc6628681',
+    [polygon.id]: '0x95BDA90196c4e737933360F4639c46Ace657AAb7',
+    [robinhood.id]: '0xF44939c1613143ad587c79602182De7DcF593e33',
+    [sepolia.id]: '0xd1cFAf476c8311792c329359B012bA515399f3a4',
+    [shibarium.id]: '0xa4021a8907197Df92341F1218B32E26b250F6798',
+    [shibariumTestnet.id]: '0x',
+    [unichain.id]: '0xa4021a8907197Df92341F1218B32E26b250F6798',
+    [zora.id]: '0x3Fd5B4DcDa968C8e22898523f5343177F94ccfd1',
+  },
+} as const;
+
+export function getMintClubContractAddress(contractName: ContractNames, chainId: SdkSupportedChainIds) {
+  const contractAddress = SDK_CONTRACT_ADDRESSES[contractName][chainId];
+
+  if (!contractAddress) {
+    throw new Error(`Contract address for ${contractName} on chain ${chainId} not found`);
+  }
+  return contractAddress;
+}
+
+type ExcludeValue<T, V> = T extends V ? never : T;
+type ExtractChainIds<T> = T extends { [key: string]: infer U }
+  ? U extends { [key: number]: any }
+    ? keyof U
+    : never
+  : never;
+
+export type ContractNames = keyof typeof SDK_CONTRACT_ADDRESSES;
+export type SdkSupportedChainIds = ExtractChainIds<typeof SDK_CONTRACT_ADDRESSES>;
+export type TokenType = 'ERC20' | 'ERC1155';
+export type MainnetChain = ExcludeValue<
+  SdkSupportedChainIds,
+  typeof sepolia.id | typeof blastSepolia.id | typeof avalancheFuji.id | typeof cyberTestnet.id
+>;

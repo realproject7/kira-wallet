@@ -1,0 +1,465 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:kira:job-envelope:1",
+  "title": "Kira persisted job envelope v1",
+  "type": "object",
+  "required": [
+    "attempt",
+    "cancel_requested",
+    "chains",
+    "checkpoint",
+    "created_at",
+    "errors",
+    "events",
+    "input",
+    "job_id",
+    "key_hash",
+    "operation",
+    "previous_result",
+    "request_hash",
+    "result",
+    "schema_version",
+    "sequence",
+    "stage",
+    "state",
+    "updated_at"
+  ],
+  "properties": {
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "raw_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "previous_result": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stage": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operation": {
+      "enum": [
+        "wallet.add",
+        "wallet.refresh",
+        "prices.refresh",
+        "wallet.setTags",
+        "settings.rpc",
+        "settings.discovery"
+      ]
+    },
+    "result": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "key_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "control_raw": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[0-9a-f]{64}$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "state": {
+      "enum": [
+        "queued",
+        "running",
+        "interrupted",
+        "succeeded",
+        "partial",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "control_receipts": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[0-9a-f]{64}$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "job_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cancel_requested": {
+      "type": "boolean"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "stage",
+          "observed_at",
+          "counts"
+        ],
+        "properties": {
+          "stage": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "context": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "chains": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[0-9]+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "block_number",
+          "endpoint_index",
+          "status"
+        ],
+        "properties": {
+          "block_number": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "endpoint_index": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "status": {
+            "enum": [
+              "complete",
+              "partial",
+              "unavailable",
+              "unknown"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "request_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "input": {
+      "type": "object"
+    },
+    "checkpoint": {
+      "type": "string",
+      "pattern": "^snapshots/jobs/[0-9a-f-]{36}$"
+    },
+    "provider_configuration": {
+      "type": "object",
+      "required": [
+        "rpc_mode",
+        "discovery_provider",
+        "public_fallback",
+        "endpoint_refs"
+      ],
+      "properties": {
+        "rpc_mode": {
+          "enum": [
+            "public",
+            "custom"
+          ]
+        },
+        "discovery_provider": {
+          "enum": [
+            "none",
+            "alchemy"
+          ]
+        },
+        "public_fallback": {
+          "type": "boolean"
+        },
+        "endpoint_refs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[A-Z_][A-Z0-9_]{0,99}$"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "wallet.add"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "input": {
+            "type": "object",
+            "properties": {
+              "address": {
+                "type": "string",
+                "pattern": "^0x[0-9a-fA-F]{40}$"
+              },
+              "tag": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "address",
+              "tag"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "wallet.refresh"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "input": {
+            "type": "object",
+            "properties": {
+              "wallet": {
+                "type": "string",
+                "pattern": "^0x[0-9a-fA-F]{40}$"
+              }
+            },
+            "required": [
+              "wallet"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "prices.refresh"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "input": {
+            "type": "object",
+            "properties": {
+              "wallet": {
+                "type": "string",
+                "pattern": "^0x[0-9a-fA-F]{40}$"
+              }
+            },
+            "required": [
+              "wallet"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "wallet.setTags"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "input": {
+            "type": "object",
+            "properties": {
+              "wallet": {
+                "type": "string",
+                "pattern": "^0x[0-9a-fA-F]{40}$"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "minItems": 1,
+                "maxItems": 20,
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "wallet",
+              "tags"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "settings.rpc"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "input": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "enum": [
+                  "public",
+                  "custom"
+                ]
+              },
+              "chains": {
+                "type": "object",
+                "maxProperties": 30,
+                "propertyNames": {
+                  "pattern": "^[0-9]+$"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "url_env"
+                  ],
+                  "properties": {
+                    "url_env": {
+                      "type": "string",
+                      "pattern": "^[A-Z_][A-Z0-9_]{0,99}$"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "allow_public_fallback": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "mode",
+              "chains",
+              "allow_public_fallback"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "settings.discovery"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "input": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "enum": [
+                  "none",
+                  "alchemy"
+                ]
+              },
+              "key_env": {
+                "type": "string",
+                "pattern": "^[A-Z_][A-Z0-9_]{0,99}$"
+              }
+            },
+            "required": [
+              "provider",
+              "key_env"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  ]
+}

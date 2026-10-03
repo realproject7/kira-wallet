@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "created_on": "2026-10-03",
+  "provider": "Built-in imagegen",
+  "mode": "generate",
+  "transparent_background": true,
+  "seed_control": "Not exposed by built-in provider; no deterministic replay guarantee.",
+  "toony_workflow": "Story context, verbatim identity lockstring, scene, palette, constraints, recorded prompt and visible review.",
+  "concepts": [
+    {
+      "id": "star-scout",
+      "prompt": "Use case: stylized-concept\nAsset type: original Kira Wallet companion mascot, one transparent full-body character asset for a small calm financial research UI.\nStory context: Kira is a curious, careful companion who checks wallet holdings and explains incomplete evidence. Warm and trustworthy, never hype or gambling imagery.\nIdentity lockstring: Kira Star Scout, original tiny rounded five-point star creature, buttery cream body #F3DEAF, two small dark ink oval eyes, tiny soft smile, lavender #7762D5 crossbody research satchel with a circular brass clasp, short pill-shaped feet, slightly asymmetric upper star point. No gloves. Keep the five-point star silhouette recognizable.\nScene: Kira standing in a relaxed three-quarter front pose, holding a very small closed lavender notebook with both little arms, welcoming expression.\nStyle: premium soft painted 3D illustration with tactile matte clay and delicate hand-painted shading, sophisticated cute app mascot, exceptionally clean silhouette, tasteful restrained detail, tiny warm cheek tint, soft directional studio lighting. A friendly carefully designed collectible character, no resemblance to any existing mascot.\nComposition: single character centered, full body completely visible, generous transparent margin, clean alpha edge. No shadow plane, no scene, no labels or text, no coins, no charts, no cryptocurrency logos, no extra characters, no watermark.",
+      "file": "prototype/assets/kira-star.png"
+    },
+    {
+      "id": "cloud-archivist",
+      "prompt": "Use case: stylized-concept\nAsset type: original Kira companion alternative, one transparent full-body character for a calm wallet research UI.\nStory context: patient curious researcher who explains incomplete evidence. No trading hype.\nIdentity lockstring: Kira Cloud Archivist, a tiny original ivory cloud creature with three softly rounded head lobes, small plum oval eyes, a lavender #7762D5 short cape clasped by an apricot round button, two small rounded feet, a very small cream research notebook. No wings and no gloves.\nScene: full body relaxed three-quarter pose, one little hand resting on closed notebook, quietly attentive expression.\nStyle: premium matte clay 3D illustration with delicate painterly shading, tactile soft surface, polished sophisticated cute companion. Ivory cream and muted lavender palette, warm apricot tiny accents, dark ink eyes. Soft studio light.\nComposition: one character centered with generous alpha margin, full feet visible, transparent background, clean isolated silhouette. No floor or shadow plane, no letters, no coins, no charts, no logos, no extra characters, no watermark. Original design with no resemblance to existing mascots.",
+      "file": "prototype/assets/kira-cloud.png"
+    },
+    {
+      "id": "moon-librarian",
+      "prompt": "Use case: stylized-concept\nAsset type: original Kira companion alternative, a transparent full-body chibi character for a calm wallet research UI.\nStory context: careful little celestial librarian who records evidence and explains gaps, helpful quiet personality. No investment hype.\nIdentity lockstring: Kira Moon Librarian, original chibi girl with oversized rounded head and tiny compact body, lavender #7762D5 chin-length bob with one short curved side fringe, small dark ink eyes, ivory #F6EAD1 hooded cape with apricot lining, tiny asymmetrical brass crescent hair clip, lavender crossbody notebook pouch, short rounded ivory boots.\nScene: full body front three-quarter pose, holding a small closed lavender notebook at chest height, curious gentle smile.\nStyle: high-end storybook character illustration rendered as tactile matte clay 3D, subtle hand-painted shading, sophisticated cute proportions, beautifully designed minimal outfit with few details, warm studio light. Original character no resemblance to existing character IP.\nComposition: single figure centered full body entirely visible with generous transparent margin, clean alpha silhouette. No setting or floor, no letters, no coins, no charts, no logos, no extra characters, no watermark.",
+      "file": "prototype/assets/kira-moon.png"
+    }
+  ]
+}

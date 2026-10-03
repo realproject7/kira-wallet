@@ -1,0 +1,20 @@
+{
+  "provider": "built-in image_gen",
+  "use_case": "logo-brand",
+  "reference": "viewer/static/kira.png",
+  "generation_prompt": "Use case: logo-brand. Asset type: Kira Wallet web app logo and favicon master. Reference image is the approved Kira character, for identity only. Create ONE centered compact square brand icon, with generous safe padding, no text or wordmark. Original crisp flat 2D webtoon emblem of an adult chic researcher: espresso hair in a recognizable loose low bun with side fringe, calm gray-violet eyes, composed subtle smile, ivory shirt and charcoal blazer neckline. Include a small simple lavender notebook at the lower edge. Simplify into bold clean shapes and restrained face lines that read at 32px; preserve adult proportions, no child/chibi look. Warm ivory, ink #292536, violet #6755CE and soft lavender. A rounded violet tile behind her, its outside truly transparent. No glow, gradients, detailed hatching, coins, wallet connector symbols, watermarks, scenery, multiple options or presentation sheet. The icon fills about 84% of the canvas and remains clear at small sizes.",
+  "refinement_prompt": "Clean the outside silhouette only; preserve face, espresso low bun, adult identity, lavender notebook, charcoal blazer, ivory shirt, violet tile and composition. Remove every stray pixel outside the tile, especially the white fragment below the bottom edge. Transparent exterior, no shadow, one icon, no text.",
+  "transparent_background": true,
+  "master": "viewer/static/kira-logo.png",
+  "secondary": "viewer/static/favicon.svg",
+  "secondary_method": "Original code-native notebook mark for tiny sizes; matching Kira's palette and accessory.",
+  "applications": [
+    "brand home link",
+    "Home button",
+    "Kira notes",
+    "empty state",
+    "add wallet dialog",
+    "browser icons",
+    "prototype navigation"
+  ]
+}

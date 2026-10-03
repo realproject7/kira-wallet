@@ -1,0 +1,53 @@
+{
+  "name": "kira-wallet",
+  "version": "0.1.0-dev.2",
+  "description": "A local watch-only EVM wallet research workspace with durable jobs",
+  "license": "UNLICENSED",
+  "private": true,
+  "bin": {
+    "kira": "bin/kira.cjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "bin/kira.cjs",
+    "kira_cli.py",
+    "kira_config.py",
+    "kira_jobs.py",
+    "kira_tools.py",
+    "research.py",
+    "wallet.py",
+    "curve_pricing.py",
+    "onchain.cjs",
+    "pipeline-onchain.cjs",
+    "networks.json",
+    "sources/rpc-candidates.json",
+    "sources/mintclub-bond-abi.json",
+    "sources/uniswap-deployments.json",
+    "viewer/server.py",
+    "viewer/model.py",
+    "viewer/details.py",
+    "viewer/token_images.py",
+    "viewer/chain_images.py",
+    "viewer/refresh_prices.py",
+    "viewer/refresh-curve-prices.cjs",
+    "viewer/static",
+    "README.md",
+    "viewer/README.md",
+    "docs/CLI.md",
+    "docs/JOB_CONTRACT.md",
+    "docs/AGENT_TOOLS.md",
+    "sources/job-envelope-v1.schema.json",
+    "sources/job-request-v1.schema.json",
+    "docs/KIRA_JOBS_BUILD_REPORT.md",
+    "docs/character/brand-generation.json",
+    "docs/screenshots/kira-jobs-desktop.jpg"
+  ],
+  "scripts": {
+    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js"
+  },
+  "dependencies": {
+    "viem": "2.57.2"
+  }
+}

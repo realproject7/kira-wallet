@@ -1,0 +1,214 @@
+{
+  "schema_version": 1,
+  "support_verified_on": "2026-10-03",
+  "sdk_commit": "f71489e59f7195d75c37e595ff2b9ffb050edb3c",
+  "scope": "All EVM networks in the current official Mint Club SDK with a configured BOND deployment. Recheck current official support at each research batch.",
+  "support_sources": [
+    "https://github.com/Steemhunt/mint.club-v2-sdk/blob/f71489e59f7195d75c37e595ff2b9ffb050edb3c/src/constants/chains.ts",
+    "https://github.com/Steemhunt/mint.club-v2-sdk/blob/f71489e59f7195d75c37e595ff2b9ffb050edb3c/src/constants/contracts.ts"
+  ],
+  "verification_limit": "Network configuration and chain IDs verified. Per-wallet RPC, inventory, and liquidity coverage is recorded in dated snapshots. Some configured networks are currently unreachable.",
+  "networks": [
+    {
+      "network": "ethereum",
+      "name": "Ethereum",
+      "chain_id": 1,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/mainnet.ts"
+    },
+    {
+      "network": "base",
+      "name": "Base",
+      "chain_id": 8453,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/base.ts"
+    },
+    {
+      "network": "blast",
+      "name": "Blast",
+      "chain_id": 81457,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0x621c335b4BD8f2165E120DC70d3AfcAfc6628681",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/blast.ts"
+    },
+    {
+      "network": "optimism",
+      "name": "Optimism",
+      "chain_id": 10,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/optimism.ts"
+    },
+    {
+      "network": "arbitrum",
+      "name": "Arbitrum One",
+      "chain_id": 42161,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/arbitrum.ts"
+    },
+    {
+      "network": "avalanche",
+      "name": "Avalanche C-Chain",
+      "chain_id": 43114,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0x3Fd5B4DcDa968C8e22898523f5343177F94ccfd1",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/avalanche.ts"
+    },
+    {
+      "network": "polygon",
+      "name": "Polygon PoS",
+      "chain_id": 137,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/polygon.ts"
+    },
+    {
+      "network": "bnbchain",
+      "name": "BNB Chain",
+      "chain_id": 56,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/bsc.ts"
+    },
+    {
+      "network": "shibarium",
+      "name": "Shibarium",
+      "chain_id": 109,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/shibarium.ts"
+    },
+    {
+      "network": "cyber",
+      "name": "Cyber",
+      "chain_id": 7560,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/cyber.ts"
+    },
+    {
+      "network": "ham",
+      "name": "Ham",
+      "chain_id": 5112,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/ham.ts"
+    },
+    {
+      "network": "kaia",
+      "name": "Kaia",
+      "chain_id": 8217,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/kaia.ts"
+    },
+    {
+      "network": "unichain",
+      "name": "Unichain",
+      "chain_id": 130,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/unichain.ts"
+    },
+    {
+      "network": "zora",
+      "name": "Zora",
+      "chain_id": 7777777,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/zora.ts"
+    },
+    {
+      "network": "apechain",
+      "name": "ApeChain",
+      "chain_id": 33139,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/apeChain.ts"
+    },
+    {
+      "network": "hashkey",
+      "name": "HashKey",
+      "chain_id": 177,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/hashKeyChain.ts"
+    },
+    {
+      "network": "robinhood",
+      "name": "Robinhood Chain",
+      "chain_id": 4663,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0x91523b39813F3F4E406ECe406D0bEAaA9dE251fa",
+      "chain_id_source": "https://github.com/Steemhunt/mint.club-v2-sdk/blob/f71489e59f7195d75c37e595ff2b9ffb050edb3c/src/constants/contracts.ts"
+    },
+    {
+      "network": "over",
+      "name": "OverProtocol",
+      "chain_id": 54176,
+      "environment": "mainnet",
+      "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
+      "chain_id_source": "https://github.com/Steemhunt/mint.club-v2-sdk/blob/f71489e59f7195d75c37e595ff2b9ffb050edb3c/src/constants/contracts.ts"
+    },
+    {
+      "network": "sepolia",
+      "name": "Sepolia",
+      "chain_id": 11155111,
+      "environment": "testnet",
+      "mintclub_bond_address": "0x8dce343A86Aa950d539eeE0e166AFfd0Ef515C0c",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/sepolia.ts"
+    },
+    {
+      "network": "basesepolia",
+      "name": "Base Sepolia",
+      "chain_id": 84532,
+      "environment": "testnet",
+      "mintclub_bond_address": "0x5dfA75b0185efBaEF286E80B847ce84ff8a62C2d",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/baseSepolia.ts"
+    },
+    {
+      "network": "blastsepolia",
+      "name": "Blast Sepolia",
+      "chain_id": 168587773,
+      "environment": "testnet",
+      "mintclub_bond_address": "0x5dfA75b0185efBaEF286E80B847ce84ff8a62C2d",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/blastSepolia.ts"
+    },
+    {
+      "network": "puppynet",
+      "name": "Puppynet",
+      "chain_id": 157,
+      "environment": "testnet",
+      "mintclub_bond_address": "0x5dfA75b0185efBaEF286E80B847ce84ff8a62C2d",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/shibariumTestnet.ts"
+    },
+    {
+      "network": "avalanchefuji",
+      "name": "Avalanche Fuji",
+      "chain_id": 43113,
+      "environment": "testnet",
+      "mintclub_bond_address": "0x20fBC8a650d75e4C2Dab8b7e85C27135f0D64e89",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/avalancheFuji.ts"
+    },
+    {
+      "network": "cybertestnet",
+      "name": "Cyber Testnet",
+      "chain_id": 111557560,
+      "environment": "testnet",
+      "mintclub_bond_address": "0x5dfA75b0185efBaEF286E80B847ce84ff8a62C2d",
+      "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/cyberTestnet.ts"
+    }
+  ],
+  "legacy_networks": [
+    {
+      "network": "degen",
+      "chain_id": 666666666,
+      "status": "Listed in older SDK web documentation but absent from the latest SDK chain configuration.",
+      "source": "https://sdk.mint.club/docs/sdk/network",
+      "policy": "If legacy holdings are discovered, report them separately with current connectivity and redemption limitations. Do not silently label them as zero."
+    }
+  ]
+}
