@@ -19,17 +19,15 @@ function renderAgent() {
   $('chat-model-label').textContent = config ? (config.provider === 'codex' ? 'Codex' : 'Claude') + ' · ' + (config.model || 'CLI default') : 'Connect a model';
   $('chat-setup').classList.toggle('connected', Boolean(config));
   $('chat-context').textContent = scopeLabel(config);
-  $('chat-choose-context').hidden = !config || config.scope !== 'none' || !state?.wallets.length || !localSession?.controls;
-  $('chat-status').textContent = chatTurn ? 'Kira is thinking…' : config ? (config.retain_history ? 'History saved locally' : 'History in memory') : 'Connect your AI';
+  $('chat-status').textContent = chatTurn ? 'Kira is thinking…' : config ? (config.retain_history ? 'History saved locally' : 'History in memory') : 'Connect your account';
   $('chat-send').hidden = Boolean(chatTurn); $('chat-stop').hidden = !chatTurn;
   $('chat-send').disabled = !config || !localSession?.controls || !$('kira-draft').value.trim() || Boolean(chatRequest);
-  if (typeof renderBriefing === 'function') renderBriefing();
   const messages = agentState?.messages || [];
   $('kira-panel').classList.toggle('chatting', Boolean(messages.length || chatTurn));
   const signature = JSON.stringify([messages, chatTurn, chatRequest?.message]);
   if (signature !== chatSignature) {
     chatSignature = signature;
-    $('chat-messages').innerHTML = messages.map(message => `<article class="chat-message ${message.role === 'user' ? 'user' : 'assistant'}"><strong>${message.role === 'user' ? 'You' : 'Kira'}</strong><p>${escapeHTML(message.text)}</p></article>`).join('') + (chatTurn && chatRequest?.message ? `<article class="chat-message user"><strong>You</strong><p>${escapeHTML(chatRequest.message)}</p></article>` : '') + (chatTurn ? '<div class="chat-message pending"><span class="spinner" aria-hidden="true"></span> Preparing your answer…</div>' : '');
+    $('chat-messages').innerHTML = messages.map(message => `<article class="chat-message ${message.role === 'user' ? 'user' : 'assistant'}"><strong>${message.role === 'user' ? 'YOU' : 'KIRA'}</strong><p>${escapeHTML(message.text)}</p></article>`).join('') + (chatTurn && chatRequest?.message ? `<article class="chat-message user"><strong>YOU</strong><p>${escapeHTML(chatRequest.message)}</p></article>` : '') + (chatTurn ? '<div class="chat-message pending"><span class="spinner" aria-hidden="true"></span> Reading the context you approved…</div>' : '');
   }
 }
 function renderProviders() {
@@ -98,7 +96,6 @@ async function openAgent() {
   } catch (error) { $('agent-error').textContent = error.message; }
 }
 $('chat-setup').addEventListener('click', openAgent);
-$('chat-choose-context').addEventListener('click', openAgent);
 $('settings-agent').addEventListener('click', () => { $('settings-dialog').close(); openAgent(); });
 $('agent-providers').addEventListener('click', event => {
   const button = event.target.closest('[data-provider]'); if (!button || setupTesting) return;

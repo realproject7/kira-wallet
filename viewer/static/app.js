@@ -62,7 +62,7 @@ function renderKiraNote(){
   let text='I keep unknown prices and incomplete coverage visible. These are recorded estimates.';
   if(selectedView==='home'){
     const s=state.dashboard;
-    text=s.wallet_count?`I have gathered ${s.wallet_count} registered ${s.wallet_count===1?'wallet':'wallets'}. ${s.priced_count} mainnet ${s.priced_count===1?'position has':'positions have'} a price reference; ${s.unpriced_count} remain unpriced. Open a wallet or a network to inspect the recorded evidence.`:'Add a public wallet address to find and track its holdings.';
+    text=s.wallet_count?`I have gathered ${s.wallet_count} registered ${s.wallet_count===1?'wallet':'wallets'}. ${s.priced_count} mainnet ${s.priced_count===1?'position has':'positions have'} a price reference; ${s.unpriced_count} remain unpriced. Open a wallet or a network to inspect the recorded evidence.`:'Your notebook is ready. Add a public wallet address to begin recorded research.';
   }else if(selectedView==='wallet'){
     const w=currentWallet();
     if(w){const gaps=w.chains.filter(c=>c.environment==='mainnet'&&(!c.complete||!c.rpc_available)).length;
