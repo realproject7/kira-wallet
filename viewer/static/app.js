@@ -152,7 +152,7 @@ function bindImages(){
 }
 function assetRow(a){
   const p=a.price;
-  const source=p?.usd!=null ? p.basis : p?.quality==='unreliable'?'Thin quote side':p?.quality==='unfunded'?'No funded reserve':'No price';
+  const source=p?.usd!=null ? (p.retained_from_previous?'Previous '+(p.basis||'estimate'):p.basis) : p?.quality==='unreliable'?'Thin quote side':p?.quality==='unfunded'?'No funded reserve':'No price';
   const links=a.links.filter(l=>l.label!=='Explorer');
   if(!links.length){const e=a.links.find(l=>l.label==='Explorer');if(e)links.push(e);}
   const reserve=a.curve_reserve?`Curve reserve: ${a.curve_reserve.amount} ${a.curve_reserve.symbol}`:'';

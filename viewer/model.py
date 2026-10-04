@@ -10,6 +10,7 @@ import os
 import re
 from token_images import image_for, read_catalog
 from chain_images import chain_image
+from native_assets import native_identity
 from details import project_details
 
 ROOT = Path(os.environ.get('KIRA_DATA_DIR',Path(__file__).resolve().parents[1])).expanduser().resolve()
@@ -113,7 +114,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         seen.add(k)
         override=prices.get(k)
         mint=t.get('mintclub')
-        if override and override.get('basis')!='Curve spot':
+        if override and (override.get('basis')!='Curve spot' or override.get('retained_from_previous')):
             cache[k]=override;return override
         if mint:
             reserve=mint['reserve_symbol'];reserve_price=None
@@ -172,7 +173,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         raw=c.get('native_balance');quantity=number(raw)
         if quantity is None or quantity<=0:continue
         sym=c['native_symbol'];ref=market.get('native_usd',{}).get(sym)
-        px=number(ref.get('usd')) if ref else eth if sym=='ETH' else number(refs.get(sym+'_USD',{}).get('value'))
+        px=(number(ref.get('usd')) if ref else eth if sym=='ETH' else number(refs.get(sym+'_USD',{}).get('value'))) if native_identity(c['chain_id'],sym) else None
         assets.append({'id':f'{c["chain_id"]}:native','chain_id':c['chain_id'],'symbol':sym,'name':'Ether' if sym=='ETH' else sym,
             'address':None,'balance':raw,'is_native':True,'curve_reserve':None,
             'image_url':image_for(images,c['chain_id'],native_symbol=sym),

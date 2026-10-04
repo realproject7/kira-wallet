@@ -181,6 +181,18 @@ class ViewerTests(unittest.TestCase):
             self.assertIsNone(token_images.image_for(catalog,33139,'0x'+'1'*40))
         fetch.assert_not_called()
 
+    def test_native_usd_projection_rejects_unknown_and_mismatched_chains(self):
+        self.snapshot['tokens']=[]
+        self.snapshot['price_references']={'APE_USD':{'value':2}}
+        self.snapshot['coverage']=[{'chain_id':cid,'name':'Synthetic '+str(cid),'environment':'mainnet',
+            'native_symbol':'APE','native_balance':'100','general_erc20_discovery':'incomplete','rpc_status':'available'}
+            for cid in (33139,999999,1)]
+        wallet=model.project_wallet(self.entry,self.snapshot,self.root)
+        self.assertEqual(wallet['known_value_usd'],200)
+        for asset in wallet['assets']:
+            if asset['chain_id']==33139:self.assertEqual(asset['value_usd'],200)
+            else:self.assertIsNone(asset['value_usd']);self.assertIsNone(asset['price'])
+
     def test_unpriced_wallet_and_network_totals_are_unknown(self):
         self.snapshot['tokens']=[];self.snapshot['price_references']={}
         wallet=model.project_wallet(self.entry,self.snapshot,self.root)
@@ -188,6 +200,15 @@ class ViewerTests(unittest.TestCase):
         self.assertTrue(all(asset['value_usd'] is None for asset in wallet['assets']))
         self.assertIsNone(wallet['known_value_usd'])
         self.assertTrue(all(chain['value_usd'] is None for chain in wallet['chains']))
+
+    def test_retained_curve_quote_is_not_rederived_with_a_new_reserve_price(self):
+        token=next(t for t in self.snapshot['tokens'] if t.get('mintclub'))
+        old={'chain_id':token['chain_id'],'address':token['token_address'],'usd':100,'basis':'Curve spot',
+             'quality':'estimated','observed_at':'2026-10-01T00:00:00Z','retained_from_previous':True}
+        (self.directory/'market-prices.json').write_text(json.dumps({'native_usd':{'ETH':{'usd':9999}},'tokens':[old]}))
+        wallet=model.project_wallet(self.entry,self.snapshot,self.root)
+        asset=next(a for a in wallet['assets'] if a['address']==token['token_address'])
+        self.assertEqual(asset['price'],old)
 
     def test_failed_image_metadata_refresh_preserves_existing_catalog(self):
         address='0x0000000000000000000000000000000000000001'

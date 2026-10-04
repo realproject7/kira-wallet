@@ -49,6 +49,13 @@ class NativeMarketTests(unittest.TestCase):
         result = market_metadata(self.coverage, fetch=lambda _:{'transport_error': {'status':429}}, observed=self.observed)
         self.assertEqual(result['prices'], {})
 
+    def test_malformed_identity_does_not_abort_other_native_records(self):
+        rows=[self.row(id=[]),self.row(id={'coin':'apecoin'}),self.row()]
+        result=market_metadata(self.coverage,fetch=lambda _:rows,observed=self.observed)
+        self.assertEqual(set(result['prices']),{'APE_USD'})
+        self.assertIsNone(native_identity([], 'APE'))
+        self.assertIsNone(native_identity(True, 'ETH'))
+
     def test_testnets_and_unknown_chains_do_not_create_market_requests(self):
         coverage = [{**self.coverage[0], 'environment':'testnet'},
                     {**self.coverage[1], 'chain_id':999999}]
@@ -56,13 +63,13 @@ class NativeMarketTests(unittest.TestCase):
             self.assertEqual(market_metadata(coverage)['prices'], {})
         fetch.assert_not_called()
 
-    def run_price_job(self, rows, *, dex=None, previous=None, images_error=None):
+    def run_price_job(self, rows, *, dex=None, previous=None, images_error=None, tokens=None, rpc_tokens=None):
         import research
         sys.path.insert(0, str(Path(__file__).parent/'viewer'))
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary).resolve();folder=root/'snapshots/fixture';folder.mkdir(parents=True)
             address='0x'+'1'*40
-            snapshot={'wallet_address':address,'tokens':[],'coverage':self.coverage,'price_references':{}}
+            snapshot={'wallet_address':address,'tokens':tokens or [],'coverage':self.coverage,'price_references':{}}
             original=json.dumps(snapshot);(folder/'results.json').write_text(original)
             if previous is not None:(folder/'market-prices.json').write_text(json.dumps(previous))
             (root/'wallets.json').write_text(json.dumps({'wallets':[{'address':address,'address_key':address,
@@ -71,7 +78,7 @@ class NativeMarketTests(unittest.TestCase):
             error=None;real_fdopen=os.fdopen
             with (root/'.analysis.lock').open('a') as lock,\
                  patch.object(research,'ROOT',root),patch.object(research,'fetch',side_effect=fetch),\
-                 patch('subprocess.run',return_value=SimpleNamespace(returncode=0,stdout='{"tokens":[],"errors":[]}')),\
+                 patch('subprocess.run',return_value=SimpleNamespace(returncode=0,stdout=json.dumps({'tokens':rpc_tokens or [],'errors':[]}))),\
                  patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder:market),\
                  patch('token_images.refresh_catalog',return_value={},side_effect=images_error) as images,\
                  patch.object(sys,'argv',['refresh_prices.py','--wallet','Fixture']),\
@@ -120,6 +127,33 @@ class NativeMarketTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual(market['image_refresh_status'],'unavailable')
         self.assertEqual(overlay['job_result_status'],'completed')
+
+    def test_partial_provider_success_preserves_older_token_quote(self):
+        token={'chain_id':8453,'token_address':'0x'+'2'*40,'dex_pools':[],
+               'mintclub':{'reserve_token':'0x4200000000000000000000000000000000000006','reserve_symbol':'WETH'}}
+        old_price={'chain_id':8453,'address':token['token_address'],'usd':100,'basis':'Curve spot',
+                   'quality':'estimated','observed_at':'2026-10-01T00:00:00Z'}
+        old={'native_usd':{'ETH':{'usd':1000,'observed_at':old_price['observed_at']}},'tokens':[old_price]}
+        rpc={'chain_id':8453,'address':token['token_address'],'price_in_weth':1,'basis':'Curve spot'}
+        market,overlay,_,error=self.run_price_job(self.fresh_rows()[:1],previous=old,tokens=[token],rpc_tokens=[rpc])
+        self.assertIsNone(error)
+        preserved=next(p for p in market['tokens'] if p['address']==token['token_address'])
+        self.assertEqual(preserved,{**old_price,'retained_from_previous':True})
+        self.assertEqual(market['native_usd']['ETH'],old['native_usd']['ETH'])
+        self.assertEqual(overlay['job_result_status'],'completed_with_coverage_gaps')
+        self.assertEqual(market['retained_price_records'],1)
+
+    def test_fresh_negative_evidence_invalidates_previous_estimate(self):
+        address='0x'+'2'*40
+        old={'tokens':[{'chain_id':8453,'address':address,'usd':100,'quality':'estimated'}]}
+        for quality in ('unfunded','unreliable'):
+            with self.subTest(quality=quality):
+                rpc={'chain_id':8453,'address':address,'usd':None,'basis':'Curve spot','quality':quality}
+                market,_,_,error=self.run_price_job(self.fresh_rows(),previous=old,rpc_tokens=[rpc])
+                self.assertIsNone(error)
+                self.assertIsNone(market['tokens'][0]['usd'])
+                self.assertEqual(market['retained_price_records'],0)
+
 
 
 if __name__=='__main__':unittest.main()

@@ -27,3 +27,9 @@ assert.equal(saved.get('wallet-minimum'),'0');assert.equal(node('visible-count')
 assert.equal(node('holdings-filter-note').hidden,true);assert.equal(node('empty').hidden,true);
 assert.match(node('asset-groups').innerHTML,/ETH/);assert.match(node('asset-groups').innerHTML,/APE/);assert.match(node('asset-groups').innerHTML,/BNB/);
 console.log('Unknown wallet value and explicit filter recovery preserve all recorded holdings.');
+context.unitPrice=n=>'$'+n;context.quantity=String;context.tokenHref=String;context.coinIcon=()=>'';
+vm.runInContext(source.slice(source.indexOf('function assetRow(a){'),source.indexOf('function renderHoldings(){')),context);
+const historic=context.assetRow({id:'fixture',symbol:'Fixture',name:'Fixture',balance:'1',value_usd:100,links:[],
+  price:{usd:100,basis:'Curve spot',retained_from_previous:true,observed_at:'2026-10-01T00:00:00Z'}});
+assert.match(historic,/Previous Curve spot/);assert.match(historic,/title="2026-10-01T00:00:00Z"/);
+console.log('Retained price labels preserve the original observation time.');

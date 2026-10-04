@@ -10,7 +10,7 @@ import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import research as h
-from model import dex_price, within
+from model import dex_price, within, number
 from curve_pricing import enrich
 from native_assets import market_metadata
 from token_images import refresh_catalog
@@ -87,7 +87,8 @@ for w in selected:
   else:by_address[key]=p
  native_prices={k.removesuffix('_USD'):{'usd':float(p['value']),'observed_at':p.get('observed_at'),'source':p.get('source'),'basis':p.get('basis','Market index')} for k,p in snapshot.get('price_references',{}).items() if p.get('value') is not None}
  previous=folder/'market-prices.json'
- if previous.exists():native_prices.update(json.loads(previous.read_text()).get('native_usd',{}))
+ previous_market=json.loads(previous.read_text()) if previous.exists() else {}
+ native_prices.update(previous_market.get('native_usd',{}))
  for key,row in fresh_native.items():
   native_prices[key.removesuffix('_USD')]={**row,'usd':row['value']};native_prices[key.removesuffix('_USD')].pop('value')
  output={'observed_at':h.now(),'wallet_address':w['address'],'balance_refresh':False,
@@ -96,6 +97,17 @@ for w in selected:
          'note':'Prices only. Balances and research coverage remain at their recorded analysis time.'}
  destination=folder/'market-prices.json';temporary=destination.with_suffix('.json.tmp')
  output=enrich(snapshot,output,folder)
+ # Preserve historical quotes on a provider gap, after fresh reserve derivation.
+ # Fresh unfunded/unreliable evidence must invalidate an old estimate.
+ published={(p['chain_id'],p['address'].lower()):p for p in output['tokens']}
+ retained=0
+ for p in previous_market.get('tokens',[]):
+  key=(p['chain_id'],p['address'].lower());current=published.get(key)
+  if number(p.get('usd')) is None or p.get('quality') in ('unfunded','unreliable'):continue
+  if current and (number(current.get('usd')) is not None or current.get('quality') in ('unfunded','unreliable')):continue
+  published[key]={**p,'retained_from_previous':True};retained+=1
+ output['tokens']=list(published.values());output['retained_price_records']=retained
+ if retained:output['note']+=f' {retained} token price references retain their earlier observation times because fresh USD was unavailable.'
  try:refresh_catalog([snapshot],h.ROOT,native_images=native_market['images'])
  except (OSError,ValueError):output['image_refresh_status']='unavailable'
  if os.environ.get('KIRA_JOB_SNAPSHOT'):
@@ -105,7 +117,7 @@ for w in selected:
   overlay=job_folder/'prices.json'
   output['snapshot_id']=w['latest_snapshot']['directory']
   missing_native=any(c.get('environment')=='mainnet' and float(c.get('native_balance') or 0)>0 and c.get('native_symbol')+'_USD' not in fresh_native for c in snapshot.get('coverage',[]))
-  output['job_result_status']='completed_with_coverage_gaps' if missing_native or rpc.get('errors') or any('error' in p for p in rpc['tokens']) or any(isinstance(r['response'],dict) and 'transport_error' in r['response'] for r in fetched) else 'completed'
+  output['job_result_status']='completed_with_coverage_gaps' if missing_native or retained or rpc.get('errors') or any('error' in p for p in rpc['tokens']) or any(isinstance(r['response'],dict) and 'transport_error' in r['response'] for r in fetched) else 'completed'
   atomic(overlay,output)
   atomic(job_folder/'price-publication.json',{'schema_version':1,'snapshot_id':w['latest_snapshot']['directory'],
       'overlay':str(overlay.relative_to(h.ROOT)),'projection':str(destination.relative_to(h.ROOT)),

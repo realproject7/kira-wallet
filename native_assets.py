@@ -16,6 +16,7 @@ NATIVE_ASSETS.update({137: ('POL', 'polygon-ecosystem-token'), 56: ('BNB', 'bina
 
 
 def native_identity(chain_id, symbol):
+    if type(chain_id) is not int or not isinstance(symbol, str): return None
     row = NATIVE_ASSETS.get(chain_id)
     return row[1] if row and row[0] == symbol else None
 
@@ -35,7 +36,9 @@ def market_metadata(coverage, *, fetch=None, observed=None):
     prices, images = {}, {}
     for row in response if isinstance(response, list) else []:
         if not isinstance(row, dict): continue
-        asset = row.get('id'); symbol = identities.get(asset)
+        asset = row.get('id')
+        if not isinstance(asset, str): continue
+        symbol = identities.get(asset)
         if not symbol or not isinstance(row.get('symbol'), str) or row['symbol'].upper() != symbol: continue
         if isinstance(row.get('image'), str):
             images[asset] = {'image_url': row['image'], 'observed_at': observed.isoformat()}

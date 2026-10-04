@@ -28,7 +28,11 @@ from a public CoinGecko batch. The batch uses explicit native coin IDs, with no
 wallet address or credentials. ETH, APE and BNB are included. Unknown identities,
 invalid numbers and quotes outside the freshness window remain unknown. Testnets
 never contribute USD totals. Price refresh preserves the established Base WETH DEX
-priority for ETH. Failed providers preserve prior prices and their original times.
+priority for ETH. Failed providers preserve prior prices and their original times. Partial provider
+success also retains older valid token quotes after fresh reserve derivation, with
+a Previous label and partial job status. Fresh unfunded or unreliable evidence
+invalidates an old estimate. Malformed provider IDs are skipped independently.
+Native USD projection rejects unsupported or mismatched chain/currency identities.
 
 Native artwork uses the same explicit currency identities. Existing ERC20/Mint Club
 images continue to use chain and contract identity. Known currency/network artwork
