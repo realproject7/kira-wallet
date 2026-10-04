@@ -2,7 +2,8 @@
 
 The published npm package is 0.1.0. The next source candidate is 0.1.1, with
 wallet-first setup, safe Markdown answers, a five-token home preview and editable
-question starters. The operator removed the recovery-home report.
+question starters, native price/artwork fallback and clearer unknown-value filters.
+The operator removed the recovery-home report.
 Registry publication remains operator-only. The coding agent never publishes.
 
 Required preparation from a clean, reviewed source checkout:

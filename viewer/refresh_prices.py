@@ -10,8 +10,10 @@ import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import research as h
-from model import dex_price, within
+from model import dex_price, within, number
 from curve_pricing import enrich
+from native_assets import market_metadata
+from token_images import refresh_catalog
 DEX_CHAINS={1:'ethereum',8453:'base',10:'optimism',42161:'arbitrum',137:'polygon',56:'bsc',43114:'avalanche',81457:'blast',130:'unichain',7777777:'zora',33139:'apechain',177:'hashkey',8217:'kaia',7560:'cyber',109:'shibarium',4663:'robinhood'}
 
 parser=argparse.ArgumentParser();parser.add_argument('--wallet',help='Registered wallet address or tag. Omit to refresh all registered snapshots.')
@@ -25,6 +27,12 @@ if not selected:raise SystemExit('No analysed registered wallet matches this sel
 
 for w in selected:
  folder=within(h.ROOT,w['latest_snapshot']['directory']);path=within(h.ROOT,w['latest_snapshot']['result']);snapshot=json.loads(path.read_text())
+ native_market=market_metadata(snapshot.get('coverage',[]))
+ evidence_folder=folder
+ if os.environ.get('KIRA_JOB_SNAPSHOT'):
+  evidence_folder=(h.ROOT/os.environ['KIRA_JOB_SNAPSHOT']).resolve()
+  if not evidence_folder.is_relative_to((h.ROOT/'snapshots').resolve()):raise ValueError('Job path must be within snapshots/.')
+ if native_market['evidence']:h.save(evidence_folder/'native-market.json',native_market['evidence'])
  pools={}
  for t in snapshot['tokens']:
   chain=DEX_CHAINS.get(t['chain_id'])
@@ -62,33 +70,56 @@ for w in selected:
  rpc=json.loads(node.stdout)
  if node.returncode!=0:raise SystemExit('Curve refresh failed: '+h.redact(rpc))
  by_address={(p['chain_id'],p['address'].lower()):p for p in prices}
- eth=next((p['usd'] for p in prices if p.get('chain_id')==8453 and p['address'].lower()=='0x4200000000000000000000000000000000000006' and p.get('usd') is not None),None)
- if eth is None:raise SystemExit('ETH price refresh failed. Previous market cache preserved.')
+ # Preserve the established Base WETH market reference. Native metadata fills gaps.
+ eth_reference=next((p for p in prices if p.get('chain_id')==8453 and p['address'].lower()=='0x4200000000000000000000000000000000000006' and p.get('usd') is not None),None)
+ eth=eth_reference['usd'] if eth_reference else None
+ fresh_native=dict(native_market['prices'])
+ if eth is not None:fresh_native['ETH_USD']={'value':eth,'observed_at':eth_reference.get('observed_at'),'source':eth_reference.get('source'),'basis':'DEX market'}
+ else:eth=fresh_native.get('ETH_USD',{}).get('value')
+ if not native_market['prices'] and not prices:raise SystemExit('Price refresh failed. Previous market cache preserved.')
  for p in rpc['tokens']:
   key=(p['chain_id'],p['address'].lower())
   if 'error' in p:continue
-  if p.get('price_in_weth') is not None:p['usd']=p['price_in_weth']*eth;p['quality']='estimated'
+  if p.get('price_in_weth') is not None:p['usd']=p['price_in_weth']*eth if eth is not None else None;p['quality']='estimated'
   # Keep a valid DEX quote as the market price; retain current curve spot metadata.
   if key in by_address and by_address[key].get('usd') is not None and p['basis']=='Curve spot':
    by_address[key].update({k:v for k,v in p.items() if k.startswith('curve_') or k in ['reserve_symbol','block_number']})
-  else:by_address[key]=p
- native_prices={k.removesuffix('_USD'):{'usd':float(p['value']),'observed_at':p.get('observed_at')} for k,p in snapshot.get('price_references',{}).items() if p.get('value') is not None}
+  else:
+   if p['basis']=='Curve spot' and number(p.get('curve_reserve'))==0:p={**p,'usd':None,'quality':'unfunded'}
+   by_address[key]=p
+ native_prices={k.removesuffix('_USD'):{'usd':float(p['value']),'observed_at':p.get('observed_at'),'source':p.get('source'),'basis':p.get('basis','Market index')} for k,p in snapshot.get('price_references',{}).items() if p.get('value') is not None}
  previous=folder/'market-prices.json'
- if previous.exists():native_prices.update(json.loads(previous.read_text()).get('native_usd',{}))
- native_prices['ETH']={'usd':eth,'observed_at':h.now()}
+ previous_market=json.loads(previous.read_text()) if previous.exists() else {}
+ native_prices.update(previous_market.get('native_usd',{}))
+ for key,row in fresh_native.items():
+  native_prices[key.removesuffix('_USD')]={**row,'usd':row['value']};native_prices[key.removesuffix('_USD')].pop('value')
  output={'observed_at':h.now(),'wallet_address':w['address'],'balance_refresh':False,
          'native_usd':native_prices,'tokens':list(by_address.values()),
          'source_requests':fetched,'rpc_price_state':rpc,
          'note':'Prices only. Balances and research coverage remain at their recorded analysis time.'}
  destination=folder/'market-prices.json';temporary=destination.with_suffix('.json.tmp')
  output=enrich(snapshot,output,folder)
+ # Preserve historical quotes on a provider gap, after fresh reserve derivation.
+ # Fresh unfunded/unreliable evidence must invalidate an old estimate.
+ published={(p['chain_id'],p['address'].lower()):p for p in output['tokens']}
+ retained=0
+ for p in previous_market.get('tokens',[]):
+  key=(p['chain_id'],p['address'].lower());current=published.get(key)
+  if number(p.get('usd')) is None or p.get('quality') in ('unfunded','unreliable'):continue
+  if current and (number(current.get('usd')) is not None or current.get('quality') in ('unfunded','unreliable')):continue
+  published[key]={**p,'retained_from_previous':True};retained+=1
+ output['tokens']=list(published.values());output['retained_price_records']=retained
+ if retained:output['note']+=f' {retained} token price references retain their earlier observation times because fresh USD was unavailable.'
+ try:refresh_catalog([snapshot],h.ROOT,native_images=native_market['images'])
+ except (OSError,ValueError):output['image_refresh_status']='unavailable'
  if os.environ.get('KIRA_JOB_SNAPSHOT'):
   from kira_jobs import atomic
   job_folder=(h.ROOT/os.environ['KIRA_JOB_SNAPSHOT']).resolve()
-  if not job_folder.is_relative_to(h.ROOT/'snapshots'):raise ValueError('Job path must be within snapshots/.')
+  if not job_folder.is_relative_to((h.ROOT/'snapshots').resolve()):raise ValueError('Job path must be within snapshots/.')
   overlay=job_folder/'prices.json'
   output['snapshot_id']=w['latest_snapshot']['directory']
-  output['job_result_status']='completed_with_coverage_gaps' if rpc.get('errors') or any('error' in p for p in rpc['tokens']) or any(isinstance(r['response'],dict) and 'transport_error' in r['response'] for r in fetched) else 'completed'
+  missing_native=any(c.get('environment')=='mainnet' and float(c.get('native_balance') or 0)>0 and c.get('native_symbol')+'_USD' not in fresh_native for c in snapshot.get('coverage',[]))
+  output['job_result_status']='completed_with_coverage_gaps' if missing_native or retained or rpc.get('errors') or any('error' in p for p in rpc['tokens']) or any(isinstance(r['response'],dict) and 'transport_error' in r['response'] for r in fetched) else 'completed'
   atomic(overlay,output)
   atomic(job_folder/'price-publication.json',{'schema_version':1,'snapshot_id':w['latest_snapshot']['directory'],
       'overlay':str(overlay.relative_to(h.ROOT)),'projection':str(destination.relative_to(h.ROOT)),

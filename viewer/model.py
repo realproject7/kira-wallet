@@ -10,6 +10,7 @@ import os
 import re
 from token_images import image_for, read_catalog
 from chain_images import chain_image
+from native_assets import native_identity
 from details import project_details
 
 ROOT = Path(os.environ.get('KIRA_DATA_DIR',Path(__file__).resolve().parents[1])).expanduser().resolve()
@@ -113,7 +114,9 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         seen.add(k)
         override=prices.get(k)
         mint=t.get('mintclub')
-        if override and override.get('basis')!='Curve spot':
+        if override and override.get('quality') in ('unfunded','unreliable'):
+            cache[k]={**override,'usd':None};return cache[k]
+        if override and (override.get('basis')!='Curve spot' or override.get('retained_from_previous')):
             cache[k]=override;return override
         if mint:
             reserve=mint['reserve_symbol'];reserve_price=None
@@ -172,11 +175,12 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         raw=c.get('native_balance');quantity=number(raw)
         if quantity is None or quantity<=0:continue
         sym=c['native_symbol'];ref=market.get('native_usd',{}).get(sym)
-        px=number(ref.get('usd')) if ref else eth if sym=='ETH' else number(refs.get(sym+'_USD',{}).get('value'))
+        px=(number(ref.get('usd')) if ref else eth if sym=='ETH' else number(refs.get(sym+'_USD',{}).get('value'))) if native_identity(c['chain_id'],sym) else None
         assets.append({'id':f'{c["chain_id"]}:native','chain_id':c['chain_id'],'symbol':sym,'name':'Ether' if sym=='ETH' else sym,
             'address':None,'balance':raw,'is_native':True,'curve_reserve':None,
             'image_url':image_for(images,c['chain_id'],native_symbol=sym),
-            'price':{'usd':px,'basis':'Market index','quality':'estimated','observed_at':price_time} if px is not None else None,
+            'price':{'usd':px,'basis':ref.get('basis','Market index') if ref else 'Market index','quality':'estimated','observed_at':ref.get('observed_at') if ref else price_time,
+                     'source':ref.get('source') if ref else refs.get(sym+'_USD',{}).get('source')} if px is not None else None,
             'value_usd':quantity*px if px is not None and c['environment']=='mainnet' else None,
             'links':[{'label':'Explorer','url':EXPLORERS[c['chain_id']]+'/address/'+entry['address']}] if c['chain_id'] in EXPLORERS else []})
     chains=[]
@@ -187,9 +191,10 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             if c['environment']=='testnet':a['value_usd']=None
         chains.append({'id':c['chain_id'],'name':c['name'],'environment':c['environment'],
             'image_url':chain_image(c['chain_id']),
-            'assets':len(rows),'value_usd':sum(a['value_usd'] or 0 for a in rows) if c['environment']=='mainnet' else None,
+            'assets':len(rows),'value_usd':sum(a['value_usd'] for a in rows if a['value_usd'] is not None) if c['environment']=='mainnet' and any(a['value_usd'] is not None for a in rows) else None,
             'complete':c['general_erc20_discovery']=='indexer_checked','rpc_available':c['rpc_status']=='available'})
-    total=sum(a['value_usd'] or 0 for a in assets if a['environment']=='mainnet')
+    values=[a['value_usd'] for a in assets if a['environment']=='mainnet' and a['value_usd'] is not None]
+    total=sum(values) if values else None
     return {'address':entry['address'],'key':entry['address_key'],'tags':entry.get('tags',[]),
         'name':(entry.get('tags') or [entry['address'][:10]])[0],'analysed_at':snapshot.get('compiled_at'),
         'prices_at':price_time,'balance_observed_at':max((t.get('balance_observed_at','') for t in tokens),default=snapshot.get('compiled_at')),

@@ -11,3 +11,5 @@ license does not relicense them.
   [Mint Club](https://github.com/Steemhunt/mint.club-v2-contract).
 - Installed dependencies retain their package licenses. Remote token and chain
   artwork is referenced from its provider; the app does not claim ownership.
+- Native coin prices and artwork reference [CoinGecko market metadata](https://docs.coingecko.com/reference/coins-markets).
+  Provider availability and rate limits apply. Artwork belongs to the respective projects.

@@ -17,6 +17,7 @@
     "kira_jobs.py",
     "kira_tools.py",
     "research.py",
+    "native_assets.py",
     "wallet.py",
     "curve_pricing.py",
     "onchain.cjs",
@@ -53,7 +54,7 @@
     "viewer/onboarding.py"
   ],
   "scripts": {
-    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js && node test-watching.cjs && node test-watching-ui.cjs && node --check viewer/static/watching.js && node --check viewer/static/watching-model.js && node --check viewer/static/agent.js && node test-agent-ui.cjs && node test-markdown.cjs && node --check viewer/static/report.js && node test-report-ui.cjs"
+    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js && node test-watching.cjs && node test-watching-ui.cjs && node --check viewer/static/watching.js && node --check viewer/static/watching-model.js && node --check viewer/static/agent.js && node test-agent-ui.cjs && node test-markdown.cjs && node --check viewer/static/report.js && node test-report-ui.cjs && node test-holdings-ui.cjs"
   },
   "dependencies": {
     "viem": "2.57.2"

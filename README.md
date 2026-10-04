@@ -58,6 +58,7 @@ Registry publication is atomic and analysis writers are serialized.
 
 Public RPC can read native balances, known tokens and reachable bond registries.
 General ERC20 discovery requires an indexed provider and successful responses.
+Mapped native currencies have an independent public price and artwork fallback, using explicit coin IDs without wallet addresses. This does not expand ERC20 discovery.
 Testnets, pool TVL and shared curve backing are excluded from wallet USD totals.
 Spot value is distinct from an executable redemption estimate.
 

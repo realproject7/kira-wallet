@@ -14,7 +14,7 @@ Open [Wallets](http://127.0.0.1:8765). The launcher keeps the server running in 
 
 Home is the first sidebar item and the default view. It shows the estimated total value, registered wallet count, networks with holdings, position count, wallet shares, network allocations, and the five largest holdings. Click a wallet card or sidebar item to open its holdings. The selected view and value filter stay in the browser.
 
-Click a token name or a largest-holding card to open its token overview. It sums the recorded balance and known value for that exact chain ID and contract, then shows every registered wallet, recorded prices, analysis times, market links, curve backing and recorded burn refunds where available. An absent holding remains a missing record rather than a fabricated zero. The price range can reflect different observation times. Shared curve backing is never added once per wallet.
+Click a token name or a Top tokens row to open its token overview. It sums the recorded balance and known value for that exact chain ID and contract, then shows every registered wallet, recorded prices, analysis times, market links, curve backing and recorded burn refunds where available. An absent holding remains a missing record rather than a fabricated zero. The price range can reflect different observation times. Shared curve backing is never added once per wallet.
 
 Click a network name in Home or a wallet's chain heading to open its network overview. It shows aggregate known value, unique assets, positions, holding wallets, each wallet's coverage and allocation, and the combined token list. Search tokens by name, symbol or contract. The dollar filters apply to the combined token value across wallets; summary totals remain unfiltered. The network selector includes all configured mainnets and testnets, including networks without recorded holdings.
 
@@ -26,7 +26,7 @@ One compact breadcrumb in the topbar provides `Home / wallet`, `Home / network`,
 
 Mint Club's current network selector uses static artwork under `https://mint.club/assets/networks/`, not a chain-logo API. Base uses `base.svg`; other visible mainnets use PNG files such as `ethereum@2x.png`. The mapping in `chain_images.py` was checked against the live selector and public frontend bundles on 2026-10-03. All 16 visible mainnet files return image content. Testnets inherit parent artwork, matching Mint Club's Sepolia treatment. Ham and Over files referenced by an internal bundle currently return HTML, so they retain the letter fallback. Image failures preserve the fallback without affecting research data. Images use the existing approved Mint Club origin.
 
-Holdings are grouped by chain and sorted by estimated USD value. Use All, ≥ $5, or ≥ $10 to filter by the value of the whole held position. The default is ≥ $10. Unpriced positions appear in All and do not qualify for dollar filters.
+Holdings are grouped by chain and sorted by estimated USD value. Use All, ≥ $5, or ≥ $10 to filter by the value of the whole held position. The default is All. Saved dollar-filter choices are preserved. Unpriced positions do not qualify for dollar filters; a notice explains the hidden holdings and offers Show all holdings. An entirely unpriced wallet or network shows unknown value, not zero.
 
 Home sums direct mainnet positions across wallets. A position is one asset in one wallet. Unique assets use chain ID and contract address, so the same asset held by two wallets counts once as a unique asset and twice as positions. Unknown network values show a dash. Testnets, curve backing, and pool TVL are excluded from the total. Allocation percentages refer to priced value, and the footer shows the range of recorded price update times.
 
@@ -44,13 +44,13 @@ The agent can refresh market prices for existing analysed holdings:
 python3 viewer/refresh_prices.py --wallet '<registered address or tag>'
 ```
 
-Omit `--wallet` to refresh all analysed wallets. This reads public DEX prices and current Mint Club curve prices through RPC, then atomically writes `market-prices.json` next to each snapshot. The viewer updates automatically. This command refreshes prices only. A full holdings refresh requires a new wallet analysis. The analysis date and price date are shown separately.
+Omit `--wallet` to refresh all analysed wallets. This reads public DEX prices, explicit native-coin market metadata and current Mint Club curve prices through RPC, then atomically writes `market-prices.json` next to each snapshot. The viewer updates automatically. This command refreshes prices only. A full holdings refresh requires a new wallet analysis. The analysis date and price date are shown separately.
 
 The browser never contacts an RPC or price provider and never reads RPC credentials. Token image requests use the approved Mint Club and Hunt image endpoints and image origins returned by Mint Club. Research processes use the configured RPC references. The server exposes allowlisted static assets, derived data and registered reports. With local controls enabled, protected job endpoints accept explicit same-origin actions.
 
 ## Token images
 
-Mint Club holdings use `/api/tokens/logo?chainId=...&address=...`. Reserve assets use the image catalog collected from `/api/reserve-tokens/list`, `/api/reserve-tokens/stats`, `/api/reserve-tokens/popular`, and the `reserveToken` metadata in `/api/tokens/details/{chainId}/{address}`. Legacy 1inch URLs currently return HTTP 403 and are resolved through the Hunt token-image endpoint for the same chain and contract. Native assets retain their own symbol icons rather than adopting a wrapped token's logo.
+Mint Club holdings use `/api/tokens/logo?chainId=...&address=...`. Reserve assets use the image catalog collected from `/api/reserve-tokens/list`, `/api/reserve-tokens/stats`, `/api/reserve-tokens/popular`, and the `reserveToken` metadata in `/api/tokens/details/{chainId}/{address}`. Legacy 1inch URLs currently return HTTP 403 and are resolved through the Hunt token-image endpoint for the same chain and contract. Native coins use explicit chain-and-currency identities for CoinGecko artwork. ETH on an L2 uses ETH artwork. Known network artwork is a fallback when metadata is unavailable; wrapped-token logos are never reused for a native coin. Unknown native identities retain their symbol fallback.
 
 The wallet analysis pipeline collects image metadata automatically and reuses successful metadata for 24 hours. The agent can refresh it independently:
 
@@ -63,6 +63,8 @@ Add `--wallet <registered address or exact tag>` to collect details for one wall
 ## Valuation rules
 
 Use a valid DEX market price when available. Mint Club positions without a DEX price use the current curve spot price multiplied by the reserve asset's USD price. Nested CHICKEN curves resolve through the price of CHICKEN. The resulting value is a spot estimate, not a full sell or burn quote. Curve reserves are never added to the wallet's position values.
+
+Initial native prices retain Alchemy references when available. Explicit CoinGecko coin IDs fill missing mainnet references for ETH, APE, BNB and other mapped native currencies. Price refresh retains the established Base WETH DEX reference ahead of the ETH fallback. A public batch uses coin IDs only, without wallet addresses or credentials. Invalid, missing, stale or future quotes remain unknown. A failed or partial refresh preserves usable previous prices and their timestamps. Retained token quotes show a Previous label; fresh unfunded or unreliable evidence invalidates an older estimate. Unsupported native identities remain unpriced. These are spot estimates, not executable sale proceeds.
 
 Unknown prices and unfunded curves remain unpriced. A source-reported pool whose own token accounts for more than 98 percent of its reported TVL is excluded as a USD price reference because the quote side provides little support for that price. This is a conservative valuation rule, not a determination about the token. Testnet positions are excluded from dollar totals. Missing chain coverage remains incomplete rather than becoming a zero balance.
 

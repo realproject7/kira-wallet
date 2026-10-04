@@ -17,11 +17,15 @@ def resolve(graph, prices):
         if key in seen:return None
         existing=known.get(key)
         node=nodes.get(key)
-        if existing and existing.get('usd') is not None and existing.get('quality')!='unreliable':
+        unfunded=node and not node.get('error') and node.get('is_curve') and node.get('funded') is False
+        if existing and existing.get('usd') is not None and existing.get('quality') not in ('unfunded','unreliable') and (existing.get('basis')!='Curve spot' or not unfunded):
             cache[key]=existing;return existing
         if not node or node.get('error') or not node.get('is_curve'):return None
         if not node['funded']:
-            return {'chain_id':key[0],'address':node['address'],'usd':None,'basis':'Curve spot','quality':'unfunded'}
+            record={'chain_id':key[0],'address':node['address'],'usd':None,'basis':'Curve spot','quality':'unfunded',
+                    'curve_reserve':node.get('curve_reserve'),'source':node.get('source'),
+                    'observed_at':node.get('observed_at'),'block_number':node.get('block_number')}
+            cache[key]=record;return record
         parent=visit((key[0],node['reserve_token'].lower()),seen|{key})
         if not parent or parent.get('usd') is None:return None
         usd=float(node['price_in_reserve'])*parent['usd']

@@ -85,5 +85,34 @@ class WalletPipelineTests(unittest.TestCase):
         from model import dex_price
         self.assertIsNone(dex_price({**token,'dex_pools':[],'indexer_price_references':[]},row.get('observed_at')))
 
+    def test_public_analysis_has_independent_native_price_and_image_evidence(self):
+        import sys
+        sys.path.insert(0,str(wallet.ASSETS/'viewer'))
+        wallet.atomic(self.folder/'onchain-summary.json',{'chains':[{'chain_id':8453,'tokens':[],
+            'native_balance':'1','observed_at':'2026-10-04T12:00:00Z','rpc_status':'available','registry_scan':{'complete':True,'checked':0,'registry_count':0}}]})
+        metadata={'prices':{'ETH_USD':{'value':2000,'observed_at':'2026-10-04T12:00:00Z','source':'https://api.coingecko.com','asset_id':'ethereum'}},
+            'images':{'ethereum':{'image_url':'https://coin-images.coingecko.com/eth.png'}},'evidence':{'source':'https://api.coingecko.com','response':[]}}
+        def node(command,input_path,output_path):wallet.atomic(output_path,{'tokens':[]})
+        with patch.object(wallet,'run_node',side_effect=node),patch.object(wallet,'event'),\
+             patch('native_assets.market_metadata',return_value=metadata) as native,\
+             patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder:market),\
+             patch('token_images.refresh_catalog',return_value={}) as images:
+            result=wallet.finish({'address':self.address,'tags':['Fixture']},self.folder,[{**self.network,'name':'Base','mintclub_network':'base'}],
+                [{'chain_id':8453,'complete':False,'source':None,'pages':[],'native':[]}])
+        self.assertEqual(result['price_references']['ETH_USD']['value'],2000)
+        self.assertEqual(json.loads((self.folder/'market-prices.json').read_text())['native_usd']['ETH']['asset_id'],'ethereum')
+        self.assertEqual(images.call_args.kwargs['native_images'],metadata['images'])
+        self.assertTrue((self.folder/'native-market.json').is_file())
+        native.assert_called_once()
+        with patch.object(wallet,'run_node',side_effect=node),patch.object(wallet,'event'),\
+             patch('native_assets.market_metadata',return_value=metadata),\
+             patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder:market),\
+             patch('token_images.refresh_catalog',return_value={}):
+            result=wallet.finish({'address':self.address,'tags':['Fixture']},self.folder,[{**self.network,'name':'Base','mintclub_network':'base'}],
+                [{'chain_id':8453,'complete':True,'source':None,'pages':[],'native':[
+                    {'tokenPrices':[{'currency':'usd','value':'2100','lastUpdatedAt':'2026-10-04T12:00:00Z'}]}]}])
+        self.assertEqual(result['price_references']['ETH_USD']['value'],'2100')
+        self.assertEqual(result['price_references']['ETH_USD']['source'],'Alchemy Portfolio Tokens By Wallet')
+
 
 if __name__=='__main__':unittest.main()
