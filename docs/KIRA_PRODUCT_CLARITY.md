@@ -101,6 +101,20 @@ whitespace corrections were completed before the commit.
 - [App mobile](screenshots/kira-app-clarity-mobile.png)
 - [Connected chat, no wallet context](screenshots/kira-chat-clarity-desktop.png)
 
+## Applied result
+
+The reviewed design is live at [kirawallet.app](https://kirawallet.app).
+Reviewed design deployment: `dpl_EDxXu898KrcLXvnUrS8M2QwEhaaF`.
+The site setup guide is pinned to the updated public source so it remains
+accurate while [PR #10](https://github.com/realproject7/kira-wallet/pull/10)
+awaits source integration. The guide-link correction is deployed separately.
+
+The existing local viewer was restarted with the reviewed source at port 8765.
+All 1,029 guarded runtime files were byte-identical. Existing model settings
+remained identical, with context scope none and Kira history off. Only lifecycle
+metadata and the private viewer log changed. No active chat or research job was
+interrupted. Temporary onboarding/demo viewers were stopped after verification.
+
 ## Rollback
 
 The local tag `kira-design-before-20261004` preserves `cfa9165` before editing.
