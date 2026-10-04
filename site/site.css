@@ -2,3 +2,23 @@
 @media(max-width:1100px){.wrap{padding-left:32px;padding-right:32px}.hero h1{font-size:60px}.hero-kira{width:270px;height:360px;right:0}.preview{width:calc(100% - 210px);top:214px}.preview-total{padding:18px}.preview-total strong{font-size:32px}.preview-total strong span{font-size:23px}.preview-tabs{gap:14px;font-size:9px;padding:0 18px}.mini-chat{width:190px;right:0;bottom:10px}.privacy{grid-template-columns:160px 1fr;gap:40px}.privacy-mark{width:150px;height:180px}.install{gap:35px}.hero-visual{height:560px}}
 @media(max-width:900px){.nav{padding:16px 20px;gap:12px}.nav nav{gap:12px}.nav-cta{gap:10px;padding:0 12px;font-size:12px}.brand img{width:32px;height:32px}.nav nav>a:not(.nav-cta){display:none}.brand>span{font-size:24px}.wrap{padding-left:24px;padding-right:24px}.hero{grid-template-columns:1fr;padding-top:50px;padding-bottom:45px;gap:18px}.hero h1{font-size:clamp(42px,11vw,58px);line-height:1.09;letter-spacing:-.04em}.lead{font-size:16px;line-height:1.7}.hero-visual{height:720px;max-width:430px;width:100%;margin:0 auto}.hero-kira{right:0;top:0;width:265px;height:337px}.preview{width:calc(100% - 26px);left:0;top:210px}.preview-total{padding:20px}.preview-total strong{font-size:38px}.preview-total strong span{font-size:27px}.preview-tabs{gap:20px;font-size:10px;padding:0 20px}.mini-chat{right:0;bottom:0;width:265px;max-width:100%}.principles{gap:18px;padding-top:22px;padding-bottom:22px;grid-template-columns:1fr}.principles p{font-size:14px}.principles p+p{padding-left:0;padding-top:16px;border-left:0;border-top:1px solid var(--line)}.how{padding-top:65px;padding-bottom:65px}.section-intro h2,.privacy h2,.install h2{font-size:32px}.steps{grid-template-columns:1fr;gap:30px;margin-top:34px}.steps article{position:relative;padding-left:50px}.step-number{position:absolute;left:0;top:0;font-size:23px}.steps h3{font-size:17px}.privacy{margin:0 16px;padding:32px 24px;grid-template-columns:1fr;border-radius:18px;gap:0}.privacy-mark{display:none}.privacy-details{grid-template-columns:1fr;gap:24px}.install{grid-template-columns:1fr;gap:28px;padding-top:65px;padding-bottom:65px}.terminal{padding:22px}.terminal pre{font-size:11px}.footer{gap:16px;flex-wrap:wrap;padding-top:22px;padding-bottom:25px}.footer p{order:3;width:100%}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+.cases { padding-top: 88px; padding-bottom: 70px; }
+.wallet-case { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; padding: 64px 0; border-bottom: 1px solid var(--line); }
+.wallet-case:last-child { border-bottom: 0; padding-bottom: 0; }
+.case-number { font-size: 13px; color: var(--secondary); font-variant-numeric: tabular-nums; }
+.case-copy h3 { font-size: 34px; line-height: 1.2; letter-spacing: -.03em; font-weight: 600; margin: 18px 0; }
+.case-copy > p { font-size: 16px; line-height: 1.75; color: var(--secondary); max-width: 440px; }
+.case-copy .case-detail { font-size: 12px; line-height: 1.7; margin: 22px 0 8px; }
+.case-report { background: #fcfbfd; border: 1px solid var(--line); border-radius: 16px; padding: 28px; box-shadow: 0 8px 28px #34294308; }
+.case-token { display: flex; gap: 12px; align-items: center; padding-bottom: 22px; }
+.case-token strong { font-size: 19px; font-weight: 600; }
+.case-token small { display: block; margin-top: 3px; color: var(--secondary); font-size: 12px; }
+.case-report dl { margin: 0; }
+.case-report dl > div { display: flex; justify-content: space-between; gap: 20px; padding: 17px 0; border-top: 1px solid var(--line); }
+.case-report dt { color: var(--secondary); font-size: 12px; max-width: 50%; }
+.case-report dd { font-size: 15px; font-weight: 500; margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.case-report .case-output dd { color: #624277; font-weight: 600; }
+.case-report > p { color: var(--secondary); font-size: 12px; line-height: 1.7; margin: 18px 0 0; }
+.case-question { padding: 16px; margin-top: 12px; background: #f0ebf5; border-radius: 10px; color: #5b406b; font-size: 14px; line-height: 1.65; }
+@media (max-width: 900px) { .cases { padding-top: 56px; padding-bottom: 56px; } .wallet-case { grid-template-columns: 1fr; gap: 24px; padding: 42px 0; } .case-copy h3 { font-size: 29px; } .case-copy > p { font-size: 15px; } .case-report { padding: 22px; } }

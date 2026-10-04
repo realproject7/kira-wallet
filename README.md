@@ -105,7 +105,7 @@ state, elapsed time, last progress and recovery controls. Missing progress does
 not silently turn a running job into a completed or failed job.
 
 Run `kira setup` to connect your installed Codex or Claude Code CLI account.
-Choose no wallet context, one registered wallet or the whole portfolio. A real
+Choose one registered wallet or the whole portfolio, and allow wallet research tools. Kira can read saved analyses, compare history and queue holdings or price updates. You can also keep wallet access off for general chat. A real
 response check verifies the selected model before permissions are saved. Drafts
 stay in memory. Kira-local conversation retention is opt-in; provider and native
 CLI policies remain separate. Context or model changes start a fresh conversation.
@@ -118,3 +118,13 @@ For a contribution, use synthetic data and run `python3 scripts/check-public.py`
 before a push. Never attach a personal portfolio screenshot, registry, snapshot,
 job, credential, local path or log to an issue or PR. Repository history uses a
 public noreply identity. The `kira-workspace-v1` tag preserves the prior UI.
+
+The top-bar **Connect wallet** opens browser-wallet connection and local OWS
+onboarding. MetaMask account approval remains a device action. OWS creation
+requires a human-entered encryption passphrase; keys stay in the local OWS
+vault. Kira connects only public EVM accounts. See [wallet onboarding](docs/CLI.md#browser-and-local-ows-wallets).
+
+New RPC configurations use public fallback automatically. Failing custom reads
+switch to a chain-verified public endpoint while retaining the selected block.
+Explicit custom-only preferences are preserved. Broader ERC20 discovery still
+requires an indexer.

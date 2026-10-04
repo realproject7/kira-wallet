@@ -11,21 +11,22 @@ const questionStarters = {
 const agentPost = (path, body) => localAPI(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
 function currentSetup() {
   return {provider: agentProvider, model: $('agent-model').value.trim(), scope: document.querySelector('[name="agent-scope"]:checked').value,
-    wallet: $('agent-wallet').value || null, retain_history: $('agent-retain').checked, trust_native_cli: $('agent-trust').checked};
+    wallet: $('agent-wallet').value || null, retain_history: $('agent-retain').checked, trust_native_cli: $('agent-trust').checked, wallet_tools: $('agent-tools').checked};
 }
 function invalidateSetup() { setupRevision++; agentVerified = false; $('agent-save').disabled = true; $('agent-test-status').textContent = ''; }
 function scopeLabel(config) {
-  if (!config) return 'No wallet context shared';
+  if (!config) return 'Wallet access is off';
   if (config.scope === 'wallet') return 'Context: ' + (state?.wallets.find(w => w.key === config.wallet)?.name || 'approved wallet');
-  return config.scope === 'portfolio' ? 'Context: whole portfolio' : 'No wallet context shared';
+  return config.scope === 'portfolio' ? 'Connected to your portfolio' : 'Wallet access is off';
 }
 function renderAgent() {
   const config = agentState?.config;
   $('chat-model-label').textContent = config ? (config.provider === 'codex' ? 'Codex' : 'Claude') + ' · ' + (config.model || 'CLI default') : 'Connect a model';
   $('chat-setup').classList.toggle('connected', Boolean(config));
   $('chat-context').textContent = scopeLabel(config);
-  $('chat-choose-context').hidden = !config || config.scope !== 'none' || !state?.wallets.length || !localSession?.controls;
-  $('chat-status').textContent = chatTurn ? 'Kira is thinking…' : config ? (config.retain_history ? 'History saved locally' : 'History in memory') : 'Connect your account';
+  $('chat-choose-context').hidden = !config || !state?.wallets.length || !localSession?.controls;
+  $('chat-form').dataset.working = String(Boolean(chatTurn));
+  $('chat-status').textContent = chatTurn ? (agentState?.tool_status || 'Kira is working…') : config ? (config.retain_history ? 'History saved locally' : 'History in memory') : 'Connect your account';
   $('chat-send').hidden = Boolean(chatTurn); $('chat-stop').hidden = !chatTurn;
   $('chat-send').disabled = !config || !localSession?.controls || !$('kira-draft').value.trim() || Boolean(chatRequest);
   $('chat-suggestions').hidden = Boolean($('kira-draft').value.trim());
@@ -71,6 +72,7 @@ async function loadAgent(recheck = false) {
   const status = await localAPI('/api/agent' + (recheck ? '?recheck=1' : ''));
   if (epoch !== chatEpoch) return;
   agentState = status; renderAgent();
+  if (typeof loadOws === 'function' && !owsState) loadOws().catch(() => {});
   if (agentState.active_turn && !chatTurn && !chatRequest && !setupTesting) {
     const id = agentState.active_turn;
     // Keep Stop available even when the first recovery lookup loses its response.
@@ -98,9 +100,9 @@ async function openAgent() {
     const config = agentState.config;
     agentProvider = config?.provider || agentState.providers.find(p => p.installed && p.supported && p.logged_in)?.id || 'codex';
     $('agent-model').value = config?.model || '';
-    document.querySelector('[name="agent-scope"][value="' + (config?.scope || 'none') + '"]').checked = true;
+    document.querySelector('[name="agent-scope"][value="' + (config?.scope || 'portfolio') + '"]').checked = true;
     $('agent-wallet').innerHTML = '<option value="">Choose a wallet</option>' + (state?.wallets || []).map(w => `<option value="${escapeHTML(w.key)}">${escapeHTML(w.name)}</option>`).join('');
-    $('agent-wallet').value = config?.wallet || ''; $('agent-retain').checked = config?.retain_history || false; $('agent-trust').checked = config?.trust_native_cli || false;
+    $('agent-wallet').value = config?.wallet || ''; $('agent-retain').checked = config?.retain_history || false; $('agent-trust').checked = config?.trust_native_cli || false; $('agent-tools').checked = config ? config.wallet_tools === true : true;
     renderProviders();
   } catch (error) { $('agent-error').textContent = error.message; }
 }
@@ -115,7 +117,7 @@ $('agent-cli-help').addEventListener('click', async event => {
   const button = event.target.closest('[data-copy-cli]'); if (!button) return;
   try { await navigator.clipboard.writeText(button.dataset.copyCli); button.textContent = 'Copied'; } catch { toast('Select and copy the command in your terminal.'); }
 });
-for (const id of ['agent-model', 'agent-wallet', 'agent-retain', 'agent-trust']) $(id).addEventListener('input', () => { invalidateSetup(); updateStep(); });
+for (const id of ['agent-model', 'agent-wallet', 'agent-retain', 'agent-trust', 'agent-tools']) $(id).addEventListener('input', () => { invalidateSetup(); updateStep(); });
 document.querySelectorAll('[name="agent-scope"]').forEach(input => input.addEventListener('change', () => { invalidateSetup(); updateStep(); }));
 $('agent-next').addEventListener('click', () => { if (!$('agent-next').disabled) { agentStep++; updateStep(); $('agent-dialog').scrollTop = 0; } });
 $('agent-back').addEventListener('click', () => { agentStep--; updateStep(); });
@@ -192,7 +194,7 @@ async function recoverResponse(id, epoch) {
     if (epoch !== chatEpoch || !result) return;
     if (result.state !== 'succeeded') {
       if (!$('kira-draft').value && !result.test && draftRevision === chatDraftRevision) $('kira-draft').value = chatRequest?.message || result.message || '';
-      $('chat-error').textContent = result.error?.message || 'Response stopped. You can edit and resend your message.';
+      $('chat-error').textContent = result.error?.message || 'Response stopped. Research already queued stays in Activity, where you can stop it. You can edit and resend your message.';
     } else $('chat-error').textContent = '';
     const status = await localAPI('/api/agent');
     if (epoch !== chatEpoch || chatTurn !== id) return;
@@ -204,7 +206,7 @@ $('chat-form').addEventListener('submit', sendChat);
 $('chat-stop').addEventListener('click', async () => {
   const id = chatTurn; if (!id) return;
   $('chat-stop').disabled = true;
-  try { const result = await agentPost('/api/chat/cancel', {id}); chatEpoch++; chatTurn = null; if (result.state !== 'succeeded' && chatRequest && !$('kira-draft').value) $('kira-draft').value = chatRequest.message; chatRequest = null; chatRetry = null; await loadAgent(); $('chat-error').textContent = result.state === 'succeeded' ? '' : 'Response stopped. You can edit and resend your message.'; }
+  try { const result = await agentPost('/api/chat/cancel', {id}); chatEpoch++; chatTurn = null; if (result.state !== 'succeeded' && chatRequest && !$('kira-draft').value) $('kira-draft').value = chatRequest.message; chatRequest = null; chatRetry = null; await loadAgent(); $('chat-error').textContent = result.state === 'succeeded' ? '' : 'Response stopped. Research already queued stays in Activity, where you can stop it. You can edit and resend your message.'; }
   catch (error) { $('chat-error').textContent = error.message; }
   finally { $('chat-stop').disabled = false; renderAgent(); }
 });

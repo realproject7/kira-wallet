@@ -16,7 +16,7 @@ def config_path():
     return Path(os.environ.get('KIRA_CONFIG', data_root()/'.kira.local.json')).expanduser()
 
 def default_config():
-    return {'schema_version':1,'rpc':{'mode':'public','allow_public_fallback':False,'chains':{}},
+    return {'schema_version':1,'rpc':{'mode':'public','allow_public_fallback':True,'chains':{}},
             'discovery':{'provider':'none','key_env':'ALCHEMY_API_KEY','explorers':False}}
 
 def load_config():
@@ -72,23 +72,27 @@ def endpoints(network,cfg=None):
     if rpc['mode']=='custom':
         row=rpc['chains'].get(str(network['chain_id']))
         if row:
-            url=secret_values(cfg).get(row['url_env'])
+            try: url=secret_values(cfg).get(row['url_env'])
+            except ValueError: url=None
             if url:
                 if row.get('alchemy_network'):
                     if not isinstance(row['alchemy_network'],str) or not re.fullmatch(r'[a-z0-9-]+',row['alchemy_network']):raise ValueError('Invalid Alchemy network reference.')
                     url=f"https://{row['alchemy_network']}.g.alchemy.com/v2/{url}"
                 try:u=urlparse(url);valid=u.scheme in ('https','http') and bool(u.hostname) and (u.scheme=='https' or u.hostname in ('localhost','127.0.0.1','::1'))
                 except ValueError:valid=False
-                if not valid:raise ValueError('Custom RPC must use HTTPS or loopback HTTP.')
-                urls.append(url)
+                if valid:urls.append(url)
+        # New setups default to automatic fallback. Preserve an explicit existing
+        # opt-out for operators who require custom providers only.
         if not rpc['allow_public_fallback']:return urls
     urls.extend(network.get('public_rpc') or [])
     return list(dict.fromkeys(urls))
 
 def runtime():
     cfg=load_config();networks=json.loads((ASSETS/'sources/rpc-candidates.json').read_text())
+    try: values=secret_values(cfg)
+    except ValueError: values={}
     return {'endpoints':{str(n['chain_id']):endpoints(n,cfg) for n in networks},
-            'secrets':list(secret_values(cfg).values()),'data_root':str(data_root())}
+            'secrets':list(values.values()),'data_root':str(data_root())}
 
 if __name__=='__main__':
     # Internal child-process channel only. The user CLI never emits this payload.

@@ -13,3 +13,9 @@ license does not relicense them.
   artwork is referenced from its provider; the app does not claim ownership.
 - Native coin prices and artwork reference [CoinGecko market metadata](https://docs.coingecko.com/reference/coins-markets).
   Provider availability and rate limits apply. Artwork belongs to the respective projects.
+
+Open Wallet Standard Node SDK (`@open-wallet-standard/core` 1.4.3) and its
+optional platform bindings are distributed under MIT by their upstream owner.
+The SDK is an optional dependency used for human-submitted encrypted wallet
+creation and public account listing. See
+[Open Wallet Standard](https://github.com/open-wallet-standard/core).

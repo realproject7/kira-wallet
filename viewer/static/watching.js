@@ -68,6 +68,9 @@ function renderWatching() {
   for (const id of ['new-wallet-address','new-wallet-tag']) $(id).disabled = watchingSubmitting || browser && !current.selected;
   if (browser) $('new-wallet-address').value = current.selected || '';
   const selectedProvider = current.providers.find(p => p.id === current.providerId);
+  $('open-connection').textContent = current.accounts.length ? shortAddress(current.accounts[0]) : current.status === 'requesting' ? 'Connecting…' : 'Connect wallet';
+  $('open-connection').disabled = !localSession?.controls || state?.demo === true;
+  $('open-connection').title = current.accounts.length ? (selectedProvider?.name || 'Wallet') + ' · View connection and disconnect' : 'Connect a browser wallet or a local OWS wallet';
   $('wallet-providers-title').textContent = current.accounts.length ? 'Connected with '+selectedProvider.name : 'Choose a browser wallet';
   $('wallet-providers').hidden = current.accounts.length > 0;
   $('wallet-provider-note').hidden = current.accounts.length > 0;
@@ -96,6 +99,7 @@ function renderWatching() {
   $('wallet-connection-status').textContent = current.message;
   $('wallet-chain-context').hidden = !current.chainId;
   $('wallet-chain-context').textContent = 'Wallet network: '+(current.chainId || '')+'. Research uses the saved network coverage.';
+  if (typeof renderOws === 'function' && typeof owsState !== 'undefined' && owsState) renderOws();
   $('wallet-disconnect').hidden = !current.providerId;
   $('wallet-disconnect').textContent = current.status === 'requesting' ? 'Cancel request' : 'Disconnect from Kira';
   $('wallet-disconnect').disabled = watchingSubmitting;
@@ -165,3 +169,10 @@ for (const id of ['new-wallet-address','new-wallet-tag']) $(id).addEventListener
 $('wallet-dialog').addEventListener('close', () => watchingConnection.clearSelection());
 $('wallet-existing-link').addEventListener('click', () => $('wallet-dialog').close());
 renderWatching();
+
+$('open-connection').addEventListener('click', () => {
+  if (!watchingCanAct()) return;
+  if (typeof owsState !== 'undefined' && owsState?.connection && !watchingConnection.snapshot().accounts.length) { openOws(); return; }
+  if (!watchingSubmission) setWatchingMode('browser');
+  renderWatching(); $('wallet-dialog').showModal();
+});

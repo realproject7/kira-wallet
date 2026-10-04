@@ -35,7 +35,7 @@ function harness() {
   const context=vm.createContext({KiraWatching, window:new EventTarget(), document, $:element,
     state:{demo:false,wallets:[]}, selectedWallet:null, selectedView:'home',
     currentWallet:()=>null, setInterval:()=>0, AbortSignal,
-    crypto:{randomUUID:()=>ID},
+    crypto:{randomUUID:()=>ID}, shortAddress:address=>address.slice(0,6)+"…"+address.slice(-4),
     sessionStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},
     toast:message=>notices.push(message), navigate:route=>notices.push(route),
     fetch:(path,options)=>{
@@ -110,4 +110,14 @@ test('manual submission also keeps captured address and name available in Activi
   h.element('wallet-submission-activity').listeners.click();assert.ok(h.notices.includes('#/activity'));
   h.element('open-wallet').listeners.click();assertCaptured(h);
   h.respond(500);await done;assertCaptured(h);
+});
+
+test('the top-bar chooser exposes the missing-wallet help without an extension request',()=>{
+  const h=harness();h.element('open-connection').listeners.click();
+  assert.equal(h.element('wallet-dialog').open,true);assert.equal(h.element('wallet-no-providers').hidden,false);
+  assert.equal(h.element('open-connection').textContent,'Connect wallet');assert.equal(h.posts.length,0);
+});
+test('a connected browser wallet is visible from the top bar and explicit disconnect retains saved data',async()=>{
+  const h=harness();await h.choose();assert.match(h.element('open-connection').textContent,/0x2222/);
+  h.element('wallet-disconnect').listeners.click();assert.equal(h.element('open-connection').textContent,'Connect wallet');assert.equal(h.posts.length,0);
 });

@@ -24,7 +24,7 @@ const poolAbi = v.parseAbi([
 const deployments = JSON.parse(fs.readFileSync(path.join(h.assets, 'sources/uniswap-deployments.json'))).records;
 const stamp = () => new Date().toISOString();
 const endpointIdentity = new WeakMap();
-const emitChain = row => console.log(JSON.stringify({stage:'chain',chain_id:row.chain_id,status:row.status,endpoint_index:row.endpoint_index,
+const emitChain = row => console.log(JSON.stringify({stage:'chain',chain_id:row.chain_id,status:row.status,endpoint_index:row.endpoint_index,rpc_endpoint_indices:row.rpc_endpoint_indices,
   block_number:row.block_number==null?null:row.block_number.toString(),registry:row.registry_scan?.registry_count,
   checked:row.registry_scan?.checked,held:row.tokens.length,cache_reused:row.registry_scan?.cache_reused}));
 const write = (file, data) => {
@@ -107,9 +107,10 @@ async function scanChain(input, n, output) {
     if (previous.wallet.toLowerCase()===input.wallet.toLowerCase() && previous.status==='complete') {emitChain(previous);return previous;}
   }
   const row = {wallet:input.wallet,chain_id:n.chain_id,network:n.network,observed_at:stamp(),status:'unavailable',tokens:[],native_balance:null};
+  let rpcClient;
   try {
-    const c = await connect(n), block = await c.getBlockNumber();
-    row.endpoint_index=endpointIdentity.get(c);
+    const c = await connect(n), block = await c.getBlockNumber();rpcClient=c;
+    row.preferred_endpoint_index=endpointIdentity.get(c);
     row.block_number = block;
     row.native_balance = v.formatUnits(await c.getBalance({address:input.wallet,blockNumber:block}),18);
     row.rpc_status = 'available';
@@ -164,6 +165,8 @@ async function scanChain(input, n, output) {
     row.status = row.registry_scan.complete && errors.length===0?'complete':'partial';
     row.observed_at=stamp();
   } catch(e) {row.error=h.safeError(e);}
+  row.rpc_endpoint_indices=h.rpcEndpointsUsed(rpcClient);
+  row.endpoint_index=row.rpc_endpoint_indices.length===1?row.rpc_endpoint_indices[0]:null;
   write(file,row);
   emitChain(row);
   return row;

@@ -37,3 +37,6 @@ viewer.log
 
 /conversations/
 site/.vercel/
+
+/.kira-ows-requests/
+/.ows/

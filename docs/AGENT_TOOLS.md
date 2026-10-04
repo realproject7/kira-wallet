@@ -24,30 +24,31 @@ args = ["--data-dir", "<private-portfolio>", "tools"]
 Replace the placeholder locally. Do not commit portfolio paths or credentials.
 Kira does not edit the operator's Codex configuration automatically.
 
-## Account connection gate
+## Connected Kira chat
 
-The browser's Kira notes remain deterministic. Connected chat, OAuth handling
-and conversation reconnect are not delivered by this adapter.
+The in-app conversation uses a supported installed Codex or Claude CLI account.
+A generic response check is required before saving a selected provider, model,
+wallet scope and research permission. It sends no wallet facts. Authentication
+stays with the installed CLI. No desktop tokens or authentication files are copied.
 
-Before connecting a Kira-owned model session, the operator must select the
-account/authentication route and approve which portfolio facts may reach the
-model. The current official ChatGPT-plan app-server guide describes an app-owned
-OAuth access token, Responses provider configuration and token renewal. It does
-not establish this account's eligibility. Client registration, consent and
-login are operator actions. Do not copy desktop authentication files or use the
-internal-only external ChatGPT-token schema variant. No billing claim follows
-from a tool handshake or model catalog.
+With research enabled, a bounded host-mediated loop provides portfolio_read,
+wallet_read, token_read, snapshots_list, snapshot_read, snapshots_compare,
+job_list, job_read, holdings_refresh and prices_refresh. Every operation is
+scoped to registered wallets allowed by the conversation. Historical reads use
+normalized financial projections. Unknown values and historical quote times
+remain explicit. Native shell, file, browser and MCP execution stay disabled.
 
-After the gate, implement the selected auth route and app-server session driver
-with saved thread IDs, terminal turn states, reconnect and interruption. Keep
-those states distinct from engine jobs. Pin the installed protocol again and
-independently review permissions before connecting real private data.
+Refresh tools admit typed durable engine jobs. Current scope and cancellation
+are checked immediately before admission. Queued work is visible in Activity;
+chat cancellation does not cancel engine work already accepted. Duplicate
+refresh requests within one turn reuse the same job. At most eight tool calls,
+420 seconds and bounded context are permitted per turn. Existing configurations
+keep their research permission off until explicitly enabled.
 
-Sources checked on 2026-10-03:
+OWS create/list and browser wallet connection are human interfaces, not model
+tools. The agent never receives passphrases, mnemonics, private keys or provider
+credentials. Messages and approved wallet facts reach the selected model service
+through the user's CLI; local storage does not imply an offline model.
 
-- [Official Codex app-server guidance](https://developers.openai.com/siwc/token-sharing-open-source/codex-app-server)
-- [Official Codex MCP guidance](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
-- [MCP stdio transport contract](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)
-
-Local verification uses synthetic portfolios and a stdin transcript only.
-It does not verify a live Codex/MCP client connection or model access.
+See [the conversation contract](ONBOARDING_CHAT_CONTRACT.md).
+The standalone stdio MCP adapter above remains read-only and separate.
