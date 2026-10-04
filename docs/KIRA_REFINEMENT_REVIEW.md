@@ -93,4 +93,10 @@ The worker restart case waits for the asserted chain event to be durable before
 killing the process. These checks no longer depend on private runtime data or
 on the engine-start marker arriving before the event. `npm test` passed all
 66 Python cases plus the existing Node and syntax checks after these changes.
-A final independent check of the corrected commit is pending.
+The independent re-review of `35ec936` found no remaining actionable findings.
+It verified reachable composer controls at 1280×600 and 1280×500, sticky behavior
+at 1280×720, mobile routing at 375×812 and both corrected tests. Verification used
+a separate temporary synthetic server; no operator runtime was read. This is a
+local independent review, not a GitHub approval or merge authorization.
+
+![Short desktop with the composer reachable](screenshots/kira-short-desktop-reviewed.jpg)
