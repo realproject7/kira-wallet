@@ -29,3 +29,8 @@ also completed a separate generic response check without wallet context.
 - [Conversation mobile](screenshots/kira-chat-mobile.png)
 - [Account setup](screenshots/kira-onboarding-account.png)
 - [Permissions](screenshots/kira-onboarding-permissions.png)
+
+Private live read-only acceptance completed with recorded coverage gaps. Same-address
+aliases retain one canonical wallet and one published research run. Repeating the
+original request reuses its job. Portfolio identifiers and raw acceptance evidence
+stay outside Git and are not included in public reports.

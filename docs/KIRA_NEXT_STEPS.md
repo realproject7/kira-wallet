@@ -9,8 +9,8 @@ authority.
 | --- | --- | --- |
 | Workspace redesign, PR #2 | Independently reviewed, fixed and merged. | None for source. |
 | Watching connection, PR #3 | Independently reviewed, fixed and merged. | Native extension approval/locking/account-change acceptance remains a device check. |
-| Native model onboarding and chat | Codex and Claude Code adapters implemented. Both generic live response checks passed with native subscription accounts. Permissions and Kira-local retention are explicit. | Final independent review and packaged release verification. |
-| Private live wallet research | Operator-supplied identifiers stay outside Git. A reserve-price observation error was fixed and saved evidence resumed. | Complete aggregate acceptance without publishing portfolio data. |
+| Native model onboarding and chat | Codex and Claude Code adapters implemented. Both generic live response checks passed with native subscription accounts. Permissions and Kira-local retention are explicit. | Two independent reviews and package verification passed. |
+| Private live wallet research | Private read-only acceptance passed with recorded coverage gaps. Same-address aliases and duplicate-request reuse were verified. | No private identifiers or portfolio evidence published. |
 | Public installation site | Static introduction deployed on Vercel. HTTPS apex connected through the operator's browser. www permanently redirects to apex. | Deploy the final reviewed installation links. |
 | npm release | Public 0.1.0 package and preparation script are ready. No registry publication performed. | Final operator publication of the verified tarball. |
 

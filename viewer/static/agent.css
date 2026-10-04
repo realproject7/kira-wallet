@@ -44,6 +44,7 @@
 .agent-dialog .dialog-heading { margin-bottom: 22px; align-items: flex-start; }
 .agent-dialog h2 { font-size: 27px; line-height: 1.25; letter-spacing: -.03em; font-weight: 600; }
 .agent-dialog .eyebrow { font-size: 10px; letter-spacing: .08em; color: #785e85; }
+.agent-dialog .dialog-heading { justify-content: space-between; }
 .agent-dialog h3 { font-size: 19px; line-height: 1.4; letter-spacing: -.02em; font-weight: 600; margin: 6px 0 10px; }
 .setup-progress { list-style: none; padding: 0; display: flex; justify-content: space-between; gap: 12px; margin: 0 0 24px; }
 .setup-progress li { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #715c7d; }
