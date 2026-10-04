@@ -114,6 +114,8 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         seen.add(k)
         override=prices.get(k)
         mint=t.get('mintclub')
+        if override and override.get('quality') in ('unfunded','unreliable'):
+            cache[k]={**override,'usd':None};return cache[k]
         if override and (override.get('basis')!='Curve spot' or override.get('retained_from_previous')):
             cache[k]=override;return override
         if mint:

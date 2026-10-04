@@ -155,5 +155,24 @@ class NativeMarketTests(unittest.TestCase):
                 self.assertEqual(market['retained_price_records'],0)
 
 
+    def test_actual_zero_reserve_rpc_shape_invalidates_old_curve_price(self):
+        address='0x'+'2'*40
+        token={'chain_id':8453,'token_address':address,'dex_pools':[],
+               'mintclub':{'reserve_token':'0x4200000000000000000000000000000000000006','reserve_symbol':'WETH'}}
+        old={'tokens':[{'chain_id':8453,'address':address,'usd':100,'quality':'estimated','basis':'Curve spot'}]}
+        rpc={'chain_id':8453,'address':address,'basis':'Curve spot','curve_reserve':'0',
+             'curve_price_in_reserve':'0.2','reserve_symbol':'WETH','block_number':'123','observed_at':'2026-10-04T12:00:00Z'}
+        dex=[{'chainId':'base','baseToken':{'address':address},'quoteToken':{'address':'0x'+'3'*40},
+              'priceUsd':'3','liquidity':{'usd':1000,'base':100},'url':'https://dexscreener.com/base/fixture'}]
+        for pairs in ([],dex):
+            with self.subTest(dex_available=bool(pairs)):
+                market,_,_,error=self.run_price_job(self.fresh_rows(),previous=old,tokens=[token],rpc_tokens=[rpc],dex=pairs)
+                self.assertIsNone(error)
+                price=next(p for p in market['tokens'] if p['address']==address)
+                self.assertEqual(market['retained_price_records'],0)
+                if pairs:self.assertEqual(price['usd'],3);self.assertEqual(price['basis'],'DEX market')
+                else:self.assertIsNone(price['usd']);self.assertEqual(price['quality'],'unfunded')
+
+
 
 if __name__=='__main__':unittest.main()

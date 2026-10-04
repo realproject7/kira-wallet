@@ -210,6 +210,18 @@ class ViewerTests(unittest.TestCase):
         asset=next(a for a in wallet['assets'] if a['address']==token['token_address'])
         self.assertEqual(asset['price'],old)
 
+    def test_fresh_negative_price_evidence_overrides_old_funded_snapshot(self):
+        token=next(t for t in self.snapshot['tokens'] if t.get('mintclub'))
+        self.assertTrue(token['mintclub']['funded'])
+        for quality in ('unfunded','unreliable'):
+            with self.subTest(quality=quality):
+                current={'chain_id':token['chain_id'],'address':token['token_address'],'usd':None,
+                         'basis':'Curve spot','quality':quality,'observed_at':'2026-10-04T12:00:00Z'}
+                (self.directory/'market-prices.json').write_text(json.dumps({'tokens':[current]}))
+                wallet=model.project_wallet(self.entry,self.snapshot,self.root)
+                asset=next(a for a in wallet['assets'] if a['address']==token['token_address'])
+                self.assertIsNone(asset['value_usd']);self.assertEqual(asset['price'],current)
+
     def test_failed_image_metadata_refresh_preserves_existing_catalog(self):
         address='0x0000000000000000000000000000000000000001'
         url='https://coin-images.coingecko.com/fixture.png'

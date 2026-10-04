@@ -84,7 +84,9 @@ for w in selected:
   # Keep a valid DEX quote as the market price; retain current curve spot metadata.
   if key in by_address and by_address[key].get('usd') is not None and p['basis']=='Curve spot':
    by_address[key].update({k:v for k,v in p.items() if k.startswith('curve_') or k in ['reserve_symbol','block_number']})
-  else:by_address[key]=p
+  else:
+   if p['basis']=='Curve spot' and number(p.get('curve_reserve'))==0:p={**p,'usd':None,'quality':'unfunded'}
+   by_address[key]=p
  native_prices={k.removesuffix('_USD'):{'usd':float(p['value']),'observed_at':p.get('observed_at'),'source':p.get('source'),'basis':p.get('basis','Market index')} for k,p in snapshot.get('price_references',{}).items() if p.get('value') is not None}
  previous=folder/'market-prices.json'
  previous_market=json.loads(previous.read_text()) if previous.exists() else {}

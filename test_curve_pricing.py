@@ -6,7 +6,7 @@ from curve_pricing import resolve
 class CurvePricingTests(unittest.TestCase):
     def curve(self,address,parent,chain=8453,price='0.5',funded=True):
         return {'chain_id':chain,'address':address,'is_curve':True,'reserve_token':parent,'reserve_symbol':'Reserve',
-                'price_in_reserve':price,'curve_reserve':'100','funded':funded,'source':'https://mint.club/token/base/'+address,
+                'price_in_reserve':price,'curve_reserve':'100' if funded else '0','funded':funded,'source':'https://mint.club/token/base/'+address,
                 'observed_at':'2026-10-03T06:00:00Z','block_number':'123'}
 
     def test_external_reserve_curve_is_priced_without_wallet_holding(self):
@@ -28,7 +28,18 @@ class CurvePricingTests(unittest.TestCase):
                 {'chain_id':8453,'address':'reserve','usd':2,'basis':'Market index','quality':'estimated'}]
         result={r['address']:r for r in resolve(graph,prices)}
         self.assertEqual(result['market']['usd'],3)
-        self.assertNotIn('empty',result)
+        self.assertIsNone(result['empty']['usd'])
+        self.assertEqual(result['empty']['quality'],'unfunded')
+
+    def test_fresh_unfunded_graph_invalidates_curve_quote_but_keeps_dex_quote(self):
+        graph=[self.curve('asset','reserve',funded=False)]
+        for basis in ('Curve spot','DEX market'):
+            with self.subTest(basis=basis):
+                result=resolve(graph,[{'chain_id':8453,'address':'asset','usd':100,'basis':basis,'quality':'estimated'}])[0]
+                if basis=='DEX market':self.assertEqual(result['usd'],100)
+                else:
+                    self.assertIsNone(result['usd']);self.assertEqual(result['quality'],'unfunded')
+                    self.assertEqual(result['observed_at'],graph[0]['observed_at'])
 
 
 if __name__=='__main__':unittest.main()

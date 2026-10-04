@@ -31,7 +31,10 @@ never contribute USD totals. Price refresh preserves the established Base WETH D
 priority for ETH. Failed providers preserve prior prices and their original times. Partial provider
 success also retains older valid token quotes after fresh reserve derivation, with
 a Previous label and partial job status. Fresh unfunded or unreliable evidence
-invalidates an old estimate. Malformed provider IDs are skipped independently.
+invalidates an old estimate, including the actual zero-reserve RPC shape without
+a quality field. Unfunded graph observations reach the published projection. A
+valid DEX quote can still value an asset with an empty curve reserve. Malformed
+provider IDs are skipped independently.
 Native USD projection rejects unsupported or mismatched chain/currency identities.
 
 Native artwork uses the same explicit currency identities. Existing ERC20/Mint Club
