@@ -41,12 +41,14 @@ Reference evidence: [Coinbase portfolio and Copilot question starters](https://w
 
 - `npm test`: 91 Python tests, 34 Watching/chat cases, RPC, 5,002-token catalog,
   safe Markdown and readiness recovery pass.
+- A preloaded read-only state renders its home tokens immediately, without a
+  privileged readiness request.
 - Clean synthetic package installation and lifecycle pass with 62 archive members.
 - Browser checks compare the five home rows to the first five of seven All tokens
   rows. A large testnet holding is excluded; an unpriced token remains unknown.
 - A real question-button click at 390 pixels fills the draft, leaves zero messages,
   keeps no wallet context, and leaves the composer fully inside its panel.
-- Desktop and 390-pixel mobile layout, sidebar scrolling, card overlap and the
+- Desktop, 901–950-pixel tablet and 390-pixel mobile layout, sidebar scrolling, card overlap and the
   retired proposal redirect are checked with CUA.
 
 Screenshots in `docs/screenshots/kira-ui-*.png` contain synthetic portfolios only.

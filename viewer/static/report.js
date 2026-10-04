@@ -30,5 +30,6 @@ async function loadSetupReadiness(){
 }
 window.addEventListener('hashchange',()=>{if(selectedView==='home')renderHomeTokens();});
 const setupStartup=setInterval(async()=>{if(state&&localSession?.controls&&!setupReadiness&&Date.now()>=setupRetryAfter){await loadSetupReadiness();renderHomeTokens();}},1000);
+renderHomeTokens();
 
 document.addEventListener('visibilitychange',()=>document.body.classList.toggle('page-hidden',document.hidden));

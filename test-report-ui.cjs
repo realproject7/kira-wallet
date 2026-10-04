@@ -23,4 +23,12 @@ const KiraView=require('./viewer/static/workspace-model.js');
   failNext=true;await context.loadSetupReadiness();assert.match(nodes.get('setup-path').innerHTML,/Retrying/);
   now=18000;await interval();assert.equal(calls,4);assert.match(nodes.get('setup-path').innerHTML,/Indexer key detected/);
   console.log('Wallet setup recovers from transient readiness failure without inventing an unconfigured state.');
+  // State may arrive before this final deferred script in a read-only session.
+  nodes.clear();context.localSession={controls:false};context.state.details.tokens=[{id:'1:sample',environment:'mainnet',value_usd:10}];
+  const readOnly={...context};vm.createContext(readOnly);vm.runInContext(fs.readFileSync('viewer/static/report.js','utf8'),readOnly);
+  assert.equal(nodes.get('home-token-body').innerHTML,'<tr>1:sample</tr>');
+  assert.equal(nodes.get('home-token-count').textContent,'1 of 1');
+  assert.equal(nodes.get('setup-path').hidden,true);
+  const previousCalls=calls;await interval();assert.equal(calls,previousCalls);
+  console.log('Preloaded read-only state renders immediately without a privileged readiness request.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
