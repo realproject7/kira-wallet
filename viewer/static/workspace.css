@@ -137,6 +137,7 @@ main { margin-left: 232px; width: calc(100% - 232px); }
 .symbol { font-size: 14px; font-weight: 500; line-height: 1.4; color: #45354f; }
 .token-description { font-size: 12px; line-height: 1.5; color: var(--secondary); }
 .home-holding .token-description { font-size: 12px; color: var(--secondary); }
+.empty p { font-size: 14px; color: var(--secondary); }
 .page-footer { font-size: 12px; color: var(--secondary); flex-wrap: wrap; line-height: 1.6; margin-top: 24px; gap: 8px; }
 
 /* Kira keeps a visible composer while her recorded notes scroll. */

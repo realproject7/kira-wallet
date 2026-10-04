@@ -100,3 +100,6 @@ a separate temporary synthetic server; no operator runtime was read. This is a
 local independent review, not a GitHub approval or merge authorization.
 
 ![Short desktop with the composer reachable](screenshots/kira-short-desktop-reviewed.jpg)
+
+The final empty-Activity audit found inherited 13px text at 2.59:1 contrast.
+Its description now uses the shared 14px body size and secondary text color.
