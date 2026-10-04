@@ -6,7 +6,7 @@ Missing coverage and prices stay unknown.
 
 Original code and character assets are open source under MIT. Third-party
 references retain their own terms; see [notices](THIRD_PARTY_NOTICES.md). The npm
-package remains a private development build. No signing, transfers or trades
+first npm publication is prepared for the operator. No signing, transfers or trades
 are implemented.
 
 ## Local installation
@@ -18,7 +18,7 @@ Analysis and daemon lifecycle currently require POSIX process and file-lock APIs
 npm install --ignore-scripts
 node bin/kira.cjs init
 node bin/kira.cjs doctor
-node bin/kira.cjs start
+node bin/kira.cjs setup
 ```
 
 The viewer starts at http://127.0.0.1:8787. Data defaults to
@@ -89,8 +89,8 @@ model connection. See [CLI usage](docs/CLI.md), [job contract](docs/JOB_CONTRACT
 
 ## Kira research workspace
 
-The workspace places Kira's local briefing and a browser-only conversation
-draft beside the evidence. The brand link returns Home. Overview, All tokens
+The workspace places Kira's local briefing and connected conversation
+beside the evidence. The brand link returns Home. Overview, All tokens
 and Activity have distinct tabs; wallet controls stay together. On small
 screens, switch directly between Portfolio and Kira.
 
@@ -100,8 +100,13 @@ providers. Activity separates active work from persisted job history and shows
 state, elapsed time, last progress and recovery controls. Missing progress does
 not silently turn a running job into a completed or failed job.
 
-Connected chat still needs an account route and an approved portfolio disclosure
-boundary. Drafts stay in browser storage and sending is disabled. See the
+Run `kira setup` to connect your installed Codex or Claude Code CLI account.
+Choose no wallet context, one registered wallet or the whole portfolio. A real
+response check verifies the selected model before permissions are saved. Drafts
+stay in memory. Kira-local conversation retention is opt-in; provider and native
+CLI policies remain separate. Context or model changes start a fresh conversation.
+Chat does not sign, trade or automatically start research. See the
+[onboarding and conversation contract](docs/ONBOARDING_CHAT_CONTRACT.md), the
 [redesign report](docs/KIRA_REDESIGN_REPORT.md) and
 [agreed wallet capability direction](docs/WALLET_CAPABILITIES.md).
 

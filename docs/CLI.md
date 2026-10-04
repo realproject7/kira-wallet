@@ -2,9 +2,9 @@
 
 The npm package carries the Python engine, browser assets and declared viem
 dependency. It needs no Python packages and no sibling project. The package
-file list excludes wallets, snapshots, caches, logs and private settings.
-`private: true` prevents accidental registry publication. License selection
-and registry publication remain operator decisions.
+file list excludes wallets, snapshots, conversations, caches, logs and private settings.
+The first release is prepared as a tarball. Registry publication remains an
+operator action. The code and original character assets use the MIT license.
 
 ## Lifecycle
 
@@ -12,6 +12,37 @@ and registry publication remain operator decisions.
 starts a loopback-only read-only viewer. `kira status` identifies the managed
 instance. `kira stop` checks its live instance ID and OS process identity.
 Another portfolio never silently reuses that server.
+
+`kira setup` starts the loopback viewer with local controls and opens its setup
+screen. Use `--no-open` to print its URL instead. If a read-only viewer is already
+running, stop it explicitly before setup. The normal `kira start` remains read-only.
+
+## Your model account
+
+Install and sign in to the official Codex CLI or Claude Code CLI first. Kira
+detects the installed binary and native subscription login without copying its
+authentication. Verified adapter versions are Codex 0.158.x and Claude Code
+2.1.259 through 2.1.x. Other versions are blocked until their restrictions are
+verified. This is a native CLI connection, with no Kira account, API-key proxy or
+hosted portfolio backend.
+
+In setup, choose the CLI account and an optional model ID. The blank model field
+uses the CLI default. Choose no automatic wallet context, one registered wallet,
+or the whole recorded portfolio. A generic response check sends no wallet data
+and must pass before these settings are saved.
+
+Your entered message and approved context go through the CLI to its model
+service. Context includes recorded balances, wallet names and addresses, chain
+and contract identities, timestamps, unknown prices and coverage. Credentials,
+RPC endpoints, raw provider errors and local paths are excluded. Changing the
+provider, model, context or selected wallet creates a new conversation.
+
+Kira-local history is opt-in and uses private `conversations/` files. With history
+off, conversations and drafts stay in memory. A new server process starts a fresh
+conversation; saved files remain available locally and are not automatically
+replayed. Native CLI, administrator policy and provider data policies remain a
+separate trust boundary. Chat cannot sign, trade or automatically start research.
+See [the conversation contract](ONBOARDING_CHAT_CONTRACT.md).
 
 Global `--data-dir` precedes the command. `KIRA_DATA_DIR` provides the same
 override. `KIRA_PYTHON` selects Python. Direct historical scripts keep their

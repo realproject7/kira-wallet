@@ -7,9 +7,11 @@ import os
 import threading
 import secrets
 import sys
+import signal
 from urllib.parse import urlparse, parse_qs
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from kira_jobs import JobStore, JobError
+from kira_agent import AgentStore
 from model import ROOT, load_state, within
 from token_images import IMAGE_HOSTS
 
@@ -39,13 +41,27 @@ class Handler(BaseHTTPRequestHandler):
         expected='http://127.0.0.1:'+str(self.server.server_port)
         if self.headers.get('Origin')!=expected:self.send_error(403,'Same origin required.');return
         if self.headers.get('Content-Type')!='application/json':self.send_error(415);return
-        if urlparse(self.path).path!='/api/operations':self.send_error(404);return
+        path=urlparse(self.path).path
+        if path not in ('/api/operations','/api/agent/test','/api/agent/settings','/api/chat/send','/api/chat/reset','/api/chat/cancel'):self.send_error(404);return
         try:
             self.connection.settimeout(5)
             length=int(self.headers.get('Content-Length','0'))
             if not 0<length<=65536:self.send_error(413);return
             request=json.loads(self.rfile.read(length),parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
             if not isinstance(request,dict):raise ValueError()
+            if path!='/api/operations':
+                if path in ('/api/agent/test','/api/chat/send') and json.loads((ROOT/'wallets.json').read_text()).get('demo'):
+                    raise JobError('demo_read_only','The synthetic demo does not contact model services. Run kira setup with your personal data directory.')
+                if path=='/api/agent/test':result=self.server.agent.start(request,test=True)
+                elif path=='/api/agent/settings':result=self.server.agent.configure(request)
+                elif path=='/api/chat/send':result=self.server.agent.start(request)
+                elif path=='/api/chat/reset':
+                    if request:raise ValueError()
+                    result=self.server.agent.reset()
+                else:
+                    if set(request)!={'id'}:raise ValueError()
+                    result=self.server.agent.cancel(request['id'])
+                self.json(result,202 if path in ('/api/agent/test','/api/chat/send') else 200);return
             if json.loads((ROOT/'wallets.json').read_text()).get('demo'):
                 operation=request.get('operation')
                 if operation=='job.resume' and isinstance(request.get('input'),dict):
@@ -68,10 +84,15 @@ class Handler(BaseHTTPRequestHandler):
                 self.json({'instance':os.environ.get('KIRA_INSTANCE_ID'),'read_only':not getattr(self.server,'controls',False),'controls':getattr(self.server,'controls',False)});return
             if path=='/api/session':
                 self.json({'controls':getattr(self.server,'controls',False),'token':self.server.session_token if getattr(self.server,'controls',False) else None});return
-            if path.startswith('/api/jobs') or path in ('/api/snapshots','/api/snapshot','/api/compare','/api/settings'):
+            if path.startswith('/api/jobs') or path.startswith('/api/chat/turn/') or path in ('/api/agent','/api/chat','/api/snapshots','/api/snapshot','/api/compare','/api/settings'):
                 if not self.authenticated():return
                 query=parse_qs(urlparse(self.path).query)
-                if path=='/api/jobs':self.json(self.server.jobs.list())
+                if path in ('/api/agent','/api/chat'):
+                    if json.loads((ROOT/'wallets.json').read_text()).get('demo'):
+                        self.json({'config':None,'providers':[],'conversation_id':None,'messages':[],'active_turn':None})
+                    else:self.json(self.server.agent.status(query.get('recheck')==['1']))
+                elif path.startswith('/api/chat/turn/'):self.json(self.server.agent.read(path.removeprefix('/api/chat/turn/')))
+                elif path=='/api/jobs':self.json(self.server.jobs.list())
                 elif path.startswith('/api/jobs/'):self.json(self.server.jobs.get(path.removeprefix('/api/jobs/')))
                 elif path=='/api/snapshots':self.json(self.server.jobs.snapshots(query.get('wallet',[''])[0]))
                 elif path=='/api/snapshot':self.json(self.server.jobs.snapshot(query.get('id',[''])[0]))
@@ -98,7 +119,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not entry or not entry.get('latest_snapshot',{}).get('report'):self.send_error(404);return
                 body=within(ROOT,entry['latest_snapshot']['report']).read_bytes()
                 self.respond(body,'text/plain; charset=utf-8');return
-            files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/jobs.js':'jobs.js','/workspace.js':'workspace.js','/workspace-model.js':'workspace-model.js','/workspace.css':'workspace.css','/watching.js':'watching.js','/watching-model.js':'watching-model.js','/style.css':'style.css','/favicon.svg':'favicon.svg','/kira.png':'kira.png','/kira-logo.png':'kira-logo.png',**{f'/kira-{pose}.png':f'kira-{pose}.png' for pose in ('research','explain','review','attention')}}
+            files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/jobs.js':'jobs.js','/workspace.js':'workspace.js','/workspace-model.js':'workspace-model.js','/workspace.css':'workspace.css','/agent.js':'agent.js','/agent.css':'agent.css','/watching.js':'watching.js','/watching-model.js':'watching-model.js','/style.css':'style.css','/favicon.svg':'favicon.svg','/kira.png':'kira.png','/kira-logo.png':'kira-logo.png',**{f'/kira-{pose}.png':f'kira-{pose}.png' for pose in ('research','explain','review','attention')}}
             if path not in files:self.send_error(404);return
             file=STATIC/files[path]
             content={'html':'text/html; charset=utf-8','js':'text/javascript; charset=utf-8','css':'text/css; charset=utf-8','svg':'image/svg+xml','png':'image/png'}[file.suffix[1:]]
@@ -121,7 +142,12 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=8765);parser.add_argument('--controls',action='store_true');args=parser.parse_args()
     server=ThreadingHTTPServer(('127.0.0.1',args.port),Handler)
     server.controls=args.controls;server.session_token=secrets.token_urlsafe(32)
-    if args.controls:server.jobs=JobStore(ROOT)
+    if args.controls:server.jobs=JobStore(ROOT);server.agent=AgentStore(ROOT)
+    def stop_viewer(*_):raise KeyboardInterrupt()
+    signal.signal(signal.SIGTERM,stop_viewer)
     print(f'Wallet viewer: http://127.0.0.1:{args.port}',flush=True)
     try:server.serve_forever()
-    except KeyboardInterrupt:server.server_close()
+    except KeyboardInterrupt:pass
+    finally:
+        if args.controls:server.agent.shutdown()
+        server.server_close()

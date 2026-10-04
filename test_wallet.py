@@ -75,5 +75,15 @@ class WalletPipelineTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'scope changed'):
                 wallet.source_check([{'chain_id':8453,'mintclub_bond_address':'0xc5a076cad94176c2996B32d8466Be1cE757FAa27'}],self.folder)
 
+    def test_outside_dex_scope_reserve_preserves_unknown_observation(self):
+        token={'chain_id':54176,'token_address':'0x'+'3'*40,'token_type':'ERC20'}
+        with patch.object(wallet,'fetch') as fetch:
+            row=wallet.dex_fetch(token,self.folder)
+        fetch.assert_not_called();self.assertEqual(row['response'],[]);self.assertIsNone(row['observed_at'])
+        import sys
+        sys.path.insert(0,str(wallet.ASSETS/'viewer'))
+        from model import dex_price
+        self.assertIsNone(dex_price({**token,'dex_pools':[],'indexer_price_references':[]},row.get('observed_at')))
+
 
 if __name__=='__main__':unittest.main()

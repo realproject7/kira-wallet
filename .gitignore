@@ -34,3 +34,6 @@ jobs-worker.log
 .viewer.lock
 viewer-process.json
 viewer.log
+
+/conversations/
+site/.vercel/

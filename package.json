@@ -1,9 +1,9 @@
 {
   "name": "kira-wallet",
-  "version": "0.1.0-dev.3",
+  "version": "0.1.0",
   "description": "A local watch-only EVM wallet research workspace with durable jobs",
   "license": "MIT",
-  "private": true,
+  "private": false,
   "bin": {
     "kira": "bin/kira.cjs"
   },
@@ -46,12 +46,33 @@
     "THIRD_PARTY_NOTICES.md",
     "docs/KIRA_REDESIGN_REPORT.md",
     "docs/WALLET_CAPABILITIES.md",
-    "docs/character/workspace-generation.json"
+    "docs/character/workspace-generation.json",
+    "kira_agent.py",
+    "docs/ONBOARDING_CHAT_CONTRACT.md",
+    "docs/RELEASE.md"
   ],
   "scripts": {
-    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js && node test-watching.cjs && node test-watching-ui.cjs && node --check viewer/static/watching.js && node --check viewer/static/watching-model.js"
+    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js && node test-watching.cjs && node test-watching-ui.cjs && node --check viewer/static/watching.js && node --check viewer/static/watching-model.js && node --check viewer/static/agent.js && node test-agent-ui.cjs"
   },
   "dependencies": {
     "viem": "2.57.2"
-  }
+  },
+  "homepage": "https://kirawallet.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/realproject7/kira-wallet.git"
+  },
+  "bugs": {
+    "url": "https://github.com/realproject7/kira-wallet/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "wallet",
+    "research",
+    "evm",
+    "local",
+    "watch-only"
+  ]
 }

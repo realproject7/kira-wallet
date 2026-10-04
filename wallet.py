@@ -172,7 +172,7 @@ def source_check(networks, folder):
 def dex_fetch(t, folder):
     chain=DEX.get(t['chain_id'])
     if not chain or t.get('token_type')=='ERC1155':
-        return {'chain_id':t['chain_id'],'token_address':t['token_address'],'response':[], 'status':'outside_dex_indexer_scope'}
+        return {'chain_id':t['chain_id'],'token_address':t['token_address'],'response':[], 'observed_at':None, 'status':'outside_dex_indexer_scope'}
     name=f"dex-{t['chain_id']}-{t['token_address'].lower()}.json"
     if (folder/name).exists():
         old=read(folder/name)
@@ -249,8 +249,9 @@ def finish(wallet, folder, networks, discovered):
     reserve_prices=[]
     for t,r in zip(reserve_candidates.values(),reserve_rows):
         if not isinstance(r['response'],list):continue
-        shadow={**t,'dex_pools':[pool_row(p,r['observed_at']) for p in r['response'] if p.get('chainId')==DEX.get(t['chain_id'])],'indexer_price_references':[]}
-        price=dex_price(shadow,r['observed_at'])
+        observed=r.get('observed_at')
+        shadow={**t,'dex_pools':[pool_row(p,observed) for p in r['response'] if p.get('chainId')==DEX.get(t['chain_id'])],'indexer_price_references':[]}
+        price=dex_price(shadow,observed)
         if price and price.get('usd') is not None:reserve_prices.append({'chain_id':t['chain_id'],'address':t['token_address'],**price})
     counts={'mainnets_in_scope':sum(n['environment']=='mainnet' for n in networks),'testnets_in_scope':sum(n['environment']=='testnet' for n in networks),
             'mainnets_with_general_indexer':sum(c['environment']=='mainnet' and c['general_erc20_discovery']=='indexer_checked' for c in coverage),

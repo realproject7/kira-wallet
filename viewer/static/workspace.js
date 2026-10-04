@@ -98,13 +98,5 @@ document.querySelectorAll('[data-brief]').forEach(button => button.addEventListe
   if (button.dataset.brief !== 'coverage') document.querySelector('.mobile-pane-control [data-pane="portfolio"]').click();
 }));
 window.addEventListener('hashchange', () => { briefingMode = 'view'; setWorkspacePane('portfolio'); renderWorkspace(); });
-try { $('kira-draft').value = localStorage.getItem('kira-draft') || ''; } catch { /* Browser storage can be unavailable. */ }
-$('kira-draft').addEventListener('input', () => {
-  try { localStorage.setItem('kira-draft', $('kira-draft').value); $('draft-status').textContent = 'Draft saved in this browser.'; }
-  catch { $('draft-status').textContent = 'Draft cannot be saved in this browser.'; }
-});
-$('chat-setup').addEventListener('click', () => {
-  if (localSession?.controls) $('open-settings').click();
-  else toast('Choose an account and portfolio disclosure scope before connected chat.');
-});
+try { localStorage.removeItem('kira-draft'); } catch { /* Drafts are now memory-only. */ }
 renderWorkspace();
