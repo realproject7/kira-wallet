@@ -9,7 +9,7 @@
       && (filters.pricing !== 'unpriced' || t.value_usd == null || t.unpriced_count > 0)
       && (!search || [t.symbol, t.name, t.address || 'native'].some(v => String(v || '').toLowerCase().includes(search))));
     const order = filters.sort || 'value';
-    rows.sort((a, b) => (order === 'name' ? String(a.symbol).localeCompare(String(b.symbol))
+    rows.sort((a, b) => (order === 'name' ? String(a.name || a.symbol).localeCompare(String(b.name || b.symbol))
       : order === 'wallets' ? b.wallet_count - a.wallet_count
       : (b.value_usd ?? -Infinity) - (a.value_usd ?? -Infinity)) || String(a.id).localeCompare(String(b.id)));
     const pages = Math.max(1, Math.ceil(rows.length / pageSize));

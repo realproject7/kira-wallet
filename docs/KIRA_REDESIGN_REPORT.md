@@ -118,5 +118,8 @@ Transfers, swaps and OWS Managed wallets require separate design and verificatio
 see [wallet capability direction](WALLET_CAPABILITIES.md). No connection, signing,
 wallet creation or trading capability ships in this change.
 
+The follow-up [review and visual refinement](KIRA_REFINEMENT_REVIEW.md) records
+the inherited-head review, corrections and updated synthetic browser evidence.
+
 This build needs independent review before merge or release. No production
 deployment, registry publication or npm publication is part of this work.

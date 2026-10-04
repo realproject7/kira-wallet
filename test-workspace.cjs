@@ -19,6 +19,10 @@ const partial = { ...tokens[1], id: '1:partial', value_usd: 20, unpriced_count: 
 assert.equal(catalog([partial], { pricing: 'unpriced' }).count, 1);
 assert.equal(catalog([partial], { pricing: 'priced' }).count, 0);
 assert.equal(tokens[0].id, '8453:0'); // Sorting must not reorder the shared evidence.
+const named = [{ ...tokens[1], id: '1:alpha', symbol: 'ZZZ', name: 'Alpha' },
+  { ...tokens[1], id: '1:beta', symbol: 'AAA', name: 'Beta' },
+  { ...tokens[1], id: '1:gamma', symbol: 'Gamma', name: '' }];
+assert.deepEqual(catalog(named, { sort: 'name' }).rows.map(t => t.id), ['1:alpha', '1:beta', '1:gamma']);
 const time = Date.parse('2026-10-04T00:05:00Z');
 const job = { state: 'running', created_at: '2026-10-04T00:00:00Z', updated_at: '2026-10-04T00:01:00Z', events: [] };
 assert.equal(jobPresentation(job, time).elapsed, 300);

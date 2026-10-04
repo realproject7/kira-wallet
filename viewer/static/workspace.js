@@ -77,17 +77,27 @@ for (const id of ['all-token-network', 'all-token-pricing', 'all-token-sort', 'a
 $('all-token-search').addEventListener('input', () => { clearTimeout(catalogTimer); catalogTimer = setTimeout(() => { catalogPage = 1; renderCatalog(); }, 120); });
 $('tokens-prev').addEventListener('click', () => { catalogPage--; renderCatalog(); });
 $('tokens-next').addEventListener('click', () => { catalogPage++; renderCatalog(); });
+function setWorkspacePane(pane) {
+  document.querySelector('.workspace').dataset.pane = pane;
+  document.querySelectorAll('.mobile-pane-control [data-pane]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.pane === pane)));
+}
 document.querySelectorAll('.mobile-pane-control [data-pane]').forEach(button => button.addEventListener('click', () => {
-  document.querySelector('.workspace').dataset.pane = button.dataset.pane;
-  document.querySelectorAll('.mobile-pane-control [data-pane]').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
+  setWorkspacePane(button.dataset.pane);
+  if (button.dataset.pane === 'kira' && matchMedia('(max-width: 980px)').matches) {
+    document.querySelector('.workspace').scrollIntoView({ block: 'start', behavior: 'instant' });
+  }
 }));
+// Explicit navigation must reveal the selected evidence, including same-route clicks.
+document.addEventListener('click', event => {
+  if (event.target.closest('a[href^="#/"]')) setWorkspacePane('portfolio');
+});
 document.querySelectorAll('[data-brief]').forEach(button => button.addEventListener('click', () => {
   if (button.dataset.brief === 'coverage') { briefingMode = 'coverage'; renderBriefing(); }
   else if (button.dataset.brief === 'unpriced') { briefingMode = 'view'; $('all-token-pricing').value = 'unpriced'; catalogPage = 1; navigate('#/tokens'); renderCatalog(); }
   else { briefingMode = 'view'; navigate('#/activity'); }
   if (button.dataset.brief !== 'coverage') document.querySelector('.mobile-pane-control [data-pane="portfolio"]').click();
 }));
-window.addEventListener('hashchange', () => { briefingMode = 'view'; renderWorkspace(); });
+window.addEventListener('hashchange', () => { briefingMode = 'view'; setWorkspacePane('portfolio'); renderWorkspace(); });
 try { $('kira-draft').value = localStorage.getItem('kira-draft') || ''; } catch { /* Browser storage can be unavailable. */ }
 $('kira-draft').addEventListener('input', () => {
   try { localStorage.setItem('kira-draft', $('kira-draft').value); $('draft-status').textContent = 'Draft saved in this browser.'; }
