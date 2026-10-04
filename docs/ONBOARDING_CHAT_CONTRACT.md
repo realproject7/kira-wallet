@@ -42,3 +42,26 @@ original request reuses its job. Portfolio identifiers and raw acceptance eviden
 stay outside Git and are not included in public reports.
 
 Current candidate verification and operator gates are in [the completion report](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_COMPANION_COMPLETION.md).
+
+## Chat workspace and sessions
+
+Every desktop route shares a fixed right chat dock and bottom floating input.
+The compact header opens new chats, history and a full-screen conversation.
+Mobile switches between the portfolio and a full-height conversation.
+Kira appears in working messages and above answers. Job stages remain recorded
+in Activity and also appear in the chat tray. Unanalysed wallets show a sidebar
+spinner and open Activity while their first holdings job is active.
+
+History is capped at 100 memory sessions and reads up to 200 validated local
+files. Saving remains opt-in. Memory sessions disappear when the process stops.
+A previous session can continue only with exactly the same model and context
+configuration. Reading history does not expand model access. Old saved files
+remain readable. No missing memory-only conversations are reconstructed.
+
+A guarded upgrade can import the current volatile conversation once through a
+private, bounded receipt. Its permissions must equal the existing configuration.
+The receipt is consumed only on success. This does not enable history retention.
+
+The Kira system voice is concise, composed and practical. It leads with findings
+and preserves evidence, unknown values and signing boundaries. Personality is
+prompt guidance; response quality still depends on the selected model.

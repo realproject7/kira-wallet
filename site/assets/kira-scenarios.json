@@ -1,0 +1,75 @@
+{
+  "kind": "reconstructed_concept_demo",
+  "seconds": 42,
+  "fps": 24,
+  "cases": [
+    {
+      "label": "Find overlooked tokens",
+      "question": "Which networks or tokens might be missing from my recorded holdings?",
+      "working": "Checking network coverage and token records\u2026",
+      "answer": "Three places worth a closer look. Small tokens are easy to miss when an indexer skips a network.",
+      "tokens": [
+        [
+          "APE",
+          "Ethereum",
+          "ape"
+        ],
+        [
+          "CASHCAT",
+          "Robinhood \u00b7 example",
+          "cashcat"
+        ],
+        [
+          "SIGNET",
+          "Base",
+          "signet"
+        ]
+      ],
+      "next": "Next: refresh the gaps. Keep unverified balances unknown."
+    },
+    {
+      "label": "Check a whole network",
+      "question": "Which tokens do I have on Blast across all my wallets?",
+      "working": "Reading Blast holdings across your wallets\u2026",
+      "answer": "Here is your Blast exposure, together. Keep enough ETH for fees before moving anything.",
+      "tokens": [
+        [
+          "ETH",
+          "Blast \u00b7 gas token",
+          "eth"
+        ],
+        [
+          "USDB",
+          "Blast \u00b7 stablecoin",
+          "usdb"
+        ],
+        [
+          "BLAST",
+          "Blast \u00b7 governance token",
+          "blast"
+        ]
+      ],
+      "next": "Next: check live routes and costs for the tokens you want to move."
+    },
+    {
+      "label": "Remember forgotten LPs",
+      "question": "Do I have a liquidity pool position on Aerodrome or Uniswap?",
+      "working": "Inspecting pool positions and their networks\u2026",
+      "answer": "Two positions surfaced in this example. Check the underlying tokens and fees before deciding your next move.",
+      "tokens": [
+        [
+          "WETH / USDC",
+          "Base \u00b7 Aerodrome",
+          "lp"
+        ],
+        [
+          "ETH / USDC",
+          "Ethereum \u00b7 Uniswap",
+          "lp"
+        ]
+      ],
+      "next": "LP discovery preview. Current release tracks direct token holdings."
+    }
+  ],
+  "notes": "All answers and findings are illustrative. CASHCAT/Robinhood and LP rows are concept scenarios, not measured holdings. CC, USDB and BLAST use illustrative monogram icons. LP rows use paired ETH and USDC artwork."
+}

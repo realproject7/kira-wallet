@@ -23,7 +23,7 @@ assert.match(node('holdings-filter-note').innerHTML,/3 unpriced holdings are hid
 assert.match(node('empty-h3').textContent,/hidden by the value filter/);
 assert.match(node('coverage-note').textContent,/checked for ERC20 tokens/);
 click({target:{closest:()=>({hasAttribute:()=>true})}});
-assert.equal(saved.get('wallet-minimum'),'0');assert.equal(node('visible-count').textContent,3);
+assert.equal(saved.size,0,'View filters stay temporary.');assert.equal(node('visible-count').textContent,3);
 assert.equal(node('holdings-filter-note').hidden,true);assert.equal(node('empty').hidden,true);
 assert.match(node('asset-groups').innerHTML,/ETH/);assert.match(node('asset-groups').innerHTML,/APE/);assert.match(node('asset-groups').innerHTML,/BNB/);
 console.log('Unknown wallet value and explicit filter recovery preserve all recorded holdings.');
@@ -33,3 +33,14 @@ const historic=context.assetRow({id:'fixture',symbol:'Fixture',name:'Fixture',ba
   price:{usd:100,basis:'Curve spot',retained_from_previous:true,observed_at:'2026-10-01T00:00:00Z'}});
 assert.match(historic,/Previous Curve spot/);assert.match(historic,/title="2026-10-01T00:00:00Z"/);
 console.log('Retained price labels preserve the original observation time.');
+
+const workspaceSource=fs.readFileSync('viewer/static/workspace.js','utf8');
+for(const id of ['all-token-network','all-token-pricing','all-token-sort','all-token-search','job-filter'])node(id).value='previous';
+node('all-token-testnets').checked=true;context.catalogPage=8;context.jobsPage=9;
+vm.runInContext(workspaceSource.slice(workspaceSource.indexOf('function resetRouteFilters()'),workspaceSource.indexOf('\n}',workspaceSource.indexOf('function resetRouteFilters()'))+2),context);
+context.resetRouteFilters();
+assert.equal(node('all-token-network').value,'all');assert.equal(node('all-token-pricing').value,'all');
+assert.equal(node('all-token-sort').value,'value');assert.equal(node('all-token-search').value,'');
+assert.equal(node('all-token-testnets').checked,false);assert.equal(node('job-filter').value,'all');
+assert.equal(context.catalogPage,1);assert.equal(context.jobsPage,1);
+console.log('Returning to a route starts with default view filters.');

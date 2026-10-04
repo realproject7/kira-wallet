@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let state = null, selectedWallet = localStorage.getItem('wallet-selection'), selectedView = localStorage.getItem('wallet-view') === 'wallet' ? 'wallet' : 'home', selectedChain = 'all', minimum = Number(localStorage.getItem('wallet-minimum') ?? 0), etag = null, currentSignature = null, busy = false;
+let state = null, selectedWallet = localStorage.getItem('wallet-selection'), selectedView = localStorage.getItem('wallet-view') === 'wallet' ? 'wallet' : 'home', selectedChain = 'all', minimum = 0, etag = null, currentSignature = null, busy = false;
 let selectedToken = null, selectedNetwork = null, tokenSearch = '';
 if (![0,5,10].includes(minimum)) minimum=0;
 const money = value => value == null ? '—' : value > 0 && value < .01 ? '< $0.01' : new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(value);
@@ -21,7 +21,10 @@ function currentWallet(){return state?.wallets.find(w=>w.key===selectedWallet);}
 const tokenHref = id => '#/token/'+id.split(':').map(encodeURIComponent).join('/');
 const networkHref = id => '#/network/'+id;
 function navigate(hash){if(typeof setWorkspacePane==='function')setWorkspacePane('portfolio');if(location.hash===hash)readRoute();else location.hash=hash;}
+let routeIdentity=null;
 function readRoute(){
+  const identity=location.hash||'#/home';
+  if(identity!==routeIdentity){selectedChain='all';minimum=0;tokenSearch='';if(typeof resetRouteFilters==='function')resetRouteFilters();routeIdentity=identity;}
   let parts=[];try{parts=location.hash.replace(/^#\/?/,'').split('/').map(decodeURIComponent);}catch{}
   if(parts[0]==='wallet'&&/^0x[0-9a-f]{40}$/i.test(parts[1]||'')){selectedWallet=parts[1].toLowerCase();selectedView='wallet';selectedChain='all';}
   else if(parts[0]==='network'&&/^\d+$/.test(parts[1]||'')){selectedNetwork=Number(parts[1]);selectedView='network';tokenSearch='';}
@@ -33,7 +36,8 @@ function readRoute(){
 }
 function selectWallet(key){
   if(!state?.wallets.some(w=>w.key===key))return;
-  navigate('#/wallet/'+key);
+  const wallet=state.wallets.find(w=>w.key===key);
+  navigate(!wallet.analysed_at&&typeof pendingWalletJob==='function'&&pendingWalletJob(wallet)?'#/activity':'#/wallet/'+key);
 }
 function goHome(){
   navigate('#/home');
@@ -45,10 +49,12 @@ function renderWallets(){
   $('wallet-count').textContent=state.wallets.length;
   $('wallet-list').innerHTML=state.wallets.map(w=>{
     const active=selectedView==='wallet'&&w.key===selectedWallet;
-    return `<button class="wallet-button ${active?'active':''}" data-wallet="${escapeHTML(w.key)}" aria-label="Select ${escapeHTML(w.name)}" ${active?'aria-current="page"':''}><span class="wallet-glyph">${walletGlyph}</span><span class="wallet-nav-name">${escapeHTML(w.name)}<span class="wallet-nav-address">${escapeHTML(shortAddress(w.address))}</span></span><span class="wallet-arrow" aria-hidden="true">›</span></button>`;
+    const pending=typeof pendingWalletJob==='function'&&pendingWalletJob(w);
+    return `<button class="wallet-button ${active?'active':''}" data-wallet="${escapeHTML(w.key)}" aria-label="Select ${escapeHTML(w.name)}" ${active?'aria-current="page"':''}><span class="wallet-glyph">${walletGlyph}</span><span class="wallet-nav-name">${escapeHTML(w.name)}<span class="wallet-nav-address">${pending?'<span class="spinner" aria-hidden="true"></span> Analysing…':escapeHTML(shortAddress(w.address))}</span></span><span class="wallet-arrow" aria-hidden="true">›</span></button>`;
   }).join('');
 }
 function renderView(){
+  if(selectedView==='wallet'){const w=currentWallet();if(w&&!w.analysed_at&&typeof pendingWalletJob==='function'&&pendingWalletJob(w)){navigate('#/activity');return;}}
   renderWallets();
   $('home-view').hidden=selectedView!=='home';$('wallet-view').hidden=selectedView!=='wallet';
   $('detail-view').hidden=!['token','network'].includes(selectedView);
@@ -57,6 +63,7 @@ function renderView(){
   else if(['token','network'].includes(selectedView))renderDetail();
   renderKiraNote();
   if(typeof renderWorkspace==='function')renderWorkspace();
+  if(typeof KiraSelect!=='undefined')KiraSelect.refresh();
 }
 function renderKiraNote(){
   let text='I keep unknown prices and incomplete coverage visible. These are recorded estimates.';
@@ -252,7 +259,7 @@ document.querySelector('.skip-link').addEventListener('click',e=>{e.preventDefau
 $('brand-home').addEventListener('click',e=>{e.preventDefault();goHome();});
 for(const id of ['wallet-list','wallet-cards'])$(id).addEventListener('click',e=>{const b=e.target.closest('[data-wallet]');if(b)selectWallet(b.dataset.wallet);});
 $('chain-filter').addEventListener('change',e=>{selectedChain=e.target.value;renderHoldings();});
-document.addEventListener('click',e=>{const b=e.target.closest('[data-min],[data-clear-value-filter]');if(b){minimum=b.hasAttribute('data-clear-value-filter')?0:Number(b.dataset.min);localStorage.setItem('wallet-minimum',String(minimum));if(selectedView==='network')renderDetail();else renderHoldings();}});
+document.addEventListener('click',e=>{const b=e.target.closest('[data-min],[data-clear-value-filter]');if(b){minimum=b.hasAttribute('data-clear-value-filter')?0:Number(b.dataset.min);if(selectedView==='network')renderDetail();else renderHoldings();}});
 $('copy-address').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(currentWallet().address);toast('Address copied');}catch{toast('Select the address to copy it');}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll();});
 window.addEventListener('hashchange',readRoute);

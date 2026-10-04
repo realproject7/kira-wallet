@@ -16,7 +16,7 @@ function renderOws() {
   $('ows-connection').hidden = !owsState?.connection;
   $('ows-connected-name').textContent = owsState?.connection?.name || '';
   $('ows-connected-address').textContent = owsState?.connection?.address || '';
-  $('ows-create-section').hidden = !available;
+  $('ows-create-section').hidden = false;
   $('ows-pending').hidden = !owsRequest;
   $('ows-connect-form').hidden = !owsSelected;
   if (owsSelected) { $('ows-selected-name').textContent = owsSelected.name; $('ows-selected-address').textContent = owsSelected.accounts[0].address; }
@@ -87,3 +87,5 @@ $('ows-forget-request').addEventListener('click', async () => {
   await loadOws(); owsRequest = null; saveOwsRequest(); renderOws();
 });
 // The existing connection chooser stays useful with or without the optional SDK.
+
+$('open-create-wallet').addEventListener('click', async () => { await openOws(); $('ows-create-section').open = true; if(owsState?.available)$('ows-create-name').focus(); });

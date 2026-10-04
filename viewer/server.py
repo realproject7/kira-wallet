@@ -11,7 +11,7 @@ import signal
 from urllib.parse import urlparse, parse_qs
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from kira_jobs import JobStore, JobError
-from kira_agent import AgentStore
+from kira_agent import AgentStore, read_history_file
 from kira_ows import OwsStore
 from model import ROOT, load_state, within
 from token_images import IMAGE_HOSTS
@@ -43,7 +43,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get('Origin')!=expected:self.send_error(403,'Same origin required.');return
         if self.headers.get('Content-Type')!='application/json':self.send_error(415);return
         path=urlparse(self.path).path
-        if path not in ('/api/operations','/api/agent/test','/api/agent/settings','/api/chat/send','/api/chat/reset','/api/chat/cancel','/api/ows/connect','/api/ows/create','/api/ows/disconnect'):self.send_error(404);return
+        if path not in ('/api/operations','/api/agent/test','/api/agent/settings','/api/chat/send','/api/chat/reset','/api/chat/cancel','/api/chat/open','/api/ows/connect','/api/ows/create','/api/ows/disconnect'):self.send_error(404);return
         try:
             self.connection.settimeout(5)
             length=int(self.headers.get('Content-Length','0'))
@@ -63,6 +63,9 @@ class Handler(BaseHTTPRequestHandler):
                 if path=='/api/agent/test':result=self.server.agent.start(request,test=True)
                 elif path=='/api/agent/settings':result=self.server.agent.configure(request)
                 elif path=='/api/chat/send':result=self.server.agent.start(request)
+                elif path=='/api/chat/open':
+                    if set(request)!={'id'}:raise ValueError()
+                    result=self.server.agent.open_history(request['id'])
                 elif path=='/api/chat/reset':
                     if request:raise ValueError()
                     result=self.server.agent.reset()
@@ -92,7 +95,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.json({'instance':os.environ.get('KIRA_INSTANCE_ID'),'read_only':not getattr(self.server,'controls',False),'controls':getattr(self.server,'controls',False)});return
             if path=='/api/session':
                 self.json({'controls':getattr(self.server,'controls',False),'token':self.server.session_token if getattr(self.server,'controls',False) else None});return
-            if path.startswith('/api/jobs') or path.startswith('/api/chat/turn/') or path in ('/api/agent','/api/chat','/api/onboarding','/api/snapshots','/api/snapshot','/api/compare','/api/settings','/api/ows'):
+            if path.startswith('/api/jobs') or path.startswith('/api/chat/turn/') or path in ('/api/agent','/api/chat','/api/chat/history','/api/onboarding','/api/snapshots','/api/snapshot','/api/compare','/api/settings','/api/ows'):
                 if not self.authenticated():return
                 query=parse_qs(urlparse(self.path).query)
                 if path in ('/api/agent','/api/chat'):
@@ -100,6 +103,7 @@ class Handler(BaseHTTPRequestHandler):
                         self.json({'config':None,'providers':[],'conversation_id':None,'messages':[],'active_turn':None})
                     else:self.json(self.server.agent.status(query.get('recheck')==['1']))
                 elif path.startswith('/api/chat/turn/'):self.json(self.server.agent.read(path.removeprefix('/api/chat/turn/')))
+                elif path=='/api/chat/history':self.json(self.server.agent.history(query.get('id',[None])[0]))
                 elif path=='/api/jobs':self.json(self.server.jobs.list())
                 elif path.startswith('/api/jobs/'):self.json(self.server.jobs.get(path.removeprefix('/api/jobs/')))
                 elif path=='/api/snapshots':self.json(self.server.jobs.snapshots(query.get('wallet',[''])[0]))
@@ -132,7 +136,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not entry or not entry.get('latest_snapshot',{}).get('report'):self.send_error(404);return
                 body=within(ROOT,entry['latest_snapshot']['report']).read_bytes()
                 self.respond(body,'text/plain; charset=utf-8');return
-            files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/jobs.js':'jobs.js','/workspace.js':'workspace.js','/workspace-model.js':'workspace-model.js','/workspace.css':'workspace.css','/agent.js':'agent.js','/ows.js':'ows.js','/agent.css':'agent.css','/markdown.js':'markdown.js','/report.js':'report.js','/report.css':'report.css','/watching.js':'watching.js','/watching-model.js':'watching-model.js','/style.css':'style.css','/favicon.svg':'favicon.svg','/kira.png':'kira.png','/kira-logo.png':'kira-logo.png',**{f'/kira-{pose}.png':f'kira-{pose}.png' for pose in ('research','explain','review','attention')}}
+            files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/jobs.js':'jobs.js','/workspace.js':'workspace.js','/workspace-model.js':'workspace-model.js','/workspace.css':'workspace.css','/agent.js':'agent.js','/ows.js':'ows.js','/agent.css':'agent.css','/chat-workspace.css':'chat-workspace.css','/chat-workspace.js':'chat-workspace.js','/selects.js':'selects.js','/markdown.js':'markdown.js','/report.js':'report.js','/report.css':'report.css','/watching.js':'watching.js','/watching-model.js':'watching-model.js','/style.css':'style.css','/favicon.svg':'favicon.svg','/kira.png':'kira.png','/kira-logo.png':'kira-logo.png',**{f'/kira-{pose}.png':f'kira-{pose}.png' for pose in ('research','explain','review','attention')}}
             if path not in files:self.send_error(404);return
             file=STATIC/files[path]
             content={'html':'text/html; charset=utf-8','js':'text/javascript; charset=utf-8','css':'text/css; charset=utf-8','svg':'image/svg+xml','png':'image/png'}[file.suffix[1:]]
@@ -151,11 +155,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self,*args): pass
 
+def restore_upgrade_chat(agent,root):
+    """Consume a private one-use upgrade receipt only after validating exact permissions."""
+    resume=Path(root)/'.kira-agent-resume.json'
+    agent.restore_runtime(read_history_file(resume,private=True))
+    resume.unlink()
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=8765);parser.add_argument('--controls',action='store_true');args=parser.parse_args()
     server=ThreadingHTTPServer(('127.0.0.1',args.port),Handler)
     server.controls=args.controls;server.session_token=secrets.token_urlsafe(32)
     if args.controls:server.jobs=JobStore(ROOT);server.agent=AgentStore(ROOT);server.ows=OwsStore(ROOT)
+    if args.controls and os.environ.get('KIRA_CHAT_RESUME')=='1':restore_upgrade_chat(server.agent,ROOT)
     def stop_viewer(*_):raise KeyboardInterrupt()
     signal.signal(signal.SIGTERM,stop_viewer)
     print(f'Wallet viewer: http://127.0.0.1:{args.port}',flush=True)

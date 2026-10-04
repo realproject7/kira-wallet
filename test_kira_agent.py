@@ -78,6 +78,69 @@ class AgentTest(unittest.TestCase):
         self.configure(settings(retain_history=True));self.done(self.store,self.send('Saved synthetic.'))
         files=list((self.root/'conversations').glob('*.json'));self.assertEqual(len(files),1);self.assertEqual(files[0].stat().st_mode & 0o777,0o600)
         self.assertEqual(AgentStore(self.root,detector=ready).messages,[])
+    def test_memory_history_survives_new_chat_without_persistence(self):
+        self.configure();self.done(self.store,self.send('First synthetic conversation.'))
+        old=self.store.conversation;self.store.reset()
+        rows=self.store.history();self.assertEqual(rows[0]['id'],old)
+        self.assertFalse(rows[0]['saved']);self.assertFalse((self.root/'conversations').exists())
+        self.store.open_history(old);self.assertEqual(len(self.store.messages),2)
+        self.done(self.store,self.send('Continue this conversation.'))
+        self.assertIn('First synthetic conversation.',self.prompts[-1])
+        self.assertEqual(AgentStore(self.root,detector=ready).history(),[])
+
+    def test_saved_history_legacy_validation_and_exact_permissions(self):
+        self.configure(settings(retain_history=True));self.done(self.store,self.send('Saved synthetic.'))
+        old=self.store.conversation;self.store.reset()
+        restarted=AgentStore(self.root,detector=ready)
+        self.assertEqual(len(restarted.history()),1);restarted.open_history(old)
+        self.assertEqual(restarted.messages[0]['text'],'Saved synthetic.')
+        self.configure(settings(provider='claude',retain_history=True))
+        self.assertFalse(self.store.history(old)['can_continue'])
+        with self.assertRaisesRegex(JobError,'different model'):self.store.open_history(old)
+        self.assertEqual(self.store.messages,[])
+        folder=self.root/'conversations';bad=str(uuid.uuid4())
+        atomic(folder/(bad+'.json'),{'schema_version':1,'config':settings(), 'messages':[{'role':'system','text':'Untrusted'}]})
+        (folder/(str(uuid.uuid4())+'.json')).symlink_to(folder/(old+'.json'))
+        legacy=str(uuid.uuid4());atomic(folder/(legacy+'.json'),{'schema_version':1,'config':settings(retain_history=True),'messages':[{'role':'user','text':'Legacy saved conversation.'}]})
+        self.assertEqual({r['id'] for r in restarted.history()},{old,legacy})
+        with self.assertRaises(JobError):restarted.history('../../outside')
+
+    def test_bad_config_deep_json_and_fifo_do_not_hide_valid_history(self):
+        self.configure(settings(retain_history=True));self.done(self.store,self.send('Valid synthetic conversation.'))
+        valid=self.store.conversation;self.store.reset();folder=self.root/'conversations'
+        bad=str(uuid.uuid4());atomic(folder/(bad+'.json'),{'schema_version':1,'config':settings(provider=[]),'messages':[]})
+        (folder/(str(uuid.uuid4())+'.json')).write_text('['*2000+'0'+']'*2000)
+        os.mkfifo(folder/(str(uuid.uuid4())+'.json'))
+        self.assertEqual({r['id'] for r in self.store.history()},{valid})
+        self.store.open_history(valid);self.assertEqual(self.store.messages[0]['text'],'Valid synthetic conversation.')
+        self.store.reset();self.assertEqual(self.store.messages,[])
+
+    def test_history_cannot_switch_during_response_or_replay_different_scope(self):
+        self.configure(settings(scope='portfolio'));self.done(self.store,self.send('Portfolio synthetic.'))
+        old=self.store.conversation;self.store.reset()
+        release=threading.Event();original=self.store.runner
+        def held(*args):release.wait(2);return 'Held response.'
+        self.store.runner=held
+        turn=self.send('Wait for this response.')
+        try:
+            with self.assertRaisesRegex(JobError,'Finish or stop'):self.store.open_history(old)
+        finally:release.set();self.done(self.store,turn);self.store.runner=original
+        self.configure(settings(scope='none'))
+        self.assertFalse(self.store.history(old)['can_continue'])
+        with self.assertRaises(JobError):self.store.open_history(old)
+
+    def test_upgrade_restores_memory_only_with_exact_permissions(self):
+        self.configure();self.done(self.store,self.send('Keep this private conversation.'))
+        receipt=self.store._session();restarted=AgentStore(self.root,detector=ready)
+        restarted.restore_runtime(receipt)
+        self.assertEqual(restarted.status()['messages'],self.store.messages)
+        self.assertEqual(restarted.conversation,self.store.conversation)
+        self.assertFalse((self.root/'conversations').exists())
+        with self.assertRaises(ValueError):restarted.restore_runtime(receipt)
+        other=AgentStore(self.root,detector=ready);other.config=settings(scope='portfolio')
+        with self.assertRaisesRegex(ValueError,'permissions changed'):other.restore_runtime(receipt)
+        self.assertEqual(other.messages,[])
+
     def test_duplicate_send_and_conflict_are_safe(self):
         self.configure();key=str(uuid.uuid4());turn=self.send(idempotency_key=key);self.done(self.store,turn)
         again=self.send(idempotency_key=key);self.assertEqual(turn['id'],again['id']);self.assertEqual(len(self.store.messages),2)

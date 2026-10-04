@@ -22,3 +22,14 @@
 .case-report > p { color: var(--secondary); font-size: 12px; line-height: 1.7; margin: 18px 0 0; }
 .case-question { padding: 16px; margin-top: 12px; background: #f0ebf5; border-radius: 10px; color: #5b406b; font-size: 14px; line-height: 1.65; }
 @media (max-width: 900px) { .cases { padding-top: 56px; padding-bottom: 56px; } .wallet-case { grid-template-columns: 1fr; gap: 24px; padding: 42px 0; } .case-copy h3 { font-size: 29px; } .case-copy > p { font-size: 15px; } .case-report { padding: 22px; } }
+/* A continuous explanatory demo, with pause and a readable transcript. */
+.hero-motion { width:min(100%,520px); justify-self:end; padding:0; }
+.motion-frame { border-radius:22px; overflow:hidden; border:1px solid #dfd4e7; box-shadow:0 18px 70px #4f346719; background:#fcfafc; }
+.motion-frame video { display:block; width:100%; height:auto; }
+.motion-controls { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:14px; }
+.motion-controls p,.motion-note { color:var(--secondary); font-size:11px; line-height:1.6; margin:0; }
+.motion-controls button { background:transparent; border:1px solid #d9cee3; border-radius:8px; padding:8px 11px; min-height:38px; color:#624677; font:inherit; font-size:11px; cursor:pointer; white-space:nowrap; }
+.motion-controls button:focus-visible { outline:3px solid #a88bbc; outline-offset:3px; }
+.motion-note { margin-top:7px; }
+.motion-transcript { margin-top:10px; color:var(--secondary); font-size:11px; line-height:1.7; }.motion-transcript summary { cursor:pointer; }.motion-transcript h3 { color:var(--ink); font-size:14px; margin:16px 0 5px; }.motion-transcript p { margin:5px 0; }
+@media (max-width:900px) { .hero-motion { width:min(100%,480px); justify-self:center; }.hero { gap:40px; } }
