@@ -3,7 +3,7 @@
 The published npm package is 0.1.0. The next source candidate is 0.1.1, with
 wallet-first setup, safe Markdown answers, a five-token home preview and editable
 question starters, native price/artwork fallback and clearer unknown-value filters.
-The operator removed the recovery-home report.
+The operator removed the recovery-home report. The candidate also adds automatic RPC fallback, visible chain filtering, a separate animated chat composer, browser-wallet connection controls, encrypted OWS onboarding and scoped agent research tools.
 Registry publication remains operator-only. The coding agent never publishes.
 
 Required preparation from a clean, reviewed source checkout:
@@ -54,6 +54,6 @@ portfolio root. Preserve the restored design when refining typography and spacin
 Native extension approval, lock and account-change behavior remain a device
 acceptance check. Synthetic providers and supplied public addresses do not
 establish that native extension acceptance passed. Those actions still require
-the operator's device handoff. No signing, trading or custody capability was added.
+the operator's device handoff. Signing and trading remain outside Kira. Human-submitted OWS creation stores an encrypted wallet in the separate local OWS vault.
 
 See [current UI evidence](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_UI_REFINEMENT.md).

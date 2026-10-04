@@ -9,7 +9,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 function harness(api) {
   const elements = new Map();
   function el(id) {
-    if (!elements.has(id)) elements.set(id,{id,value:'',checked:false,hidden:false,disabled:false,textContent:'',html:'',writes:0,listeners:{},classList:{toggle(){}},
+    if (!elements.has(id)) elements.set(id,{id,value:'',checked:false,hidden:false,disabled:false,textContent:'',html:'',writes:0,dataset:{},listeners:{},classList:{toggle(){}},
       set innerHTML(value){this.html=value;this.writes++;},get innerHTML(){return this.html;},
       addEventListener(type,listener){this.listeners[type]=listener;},setAttribute(){},removeAttribute(){},focus(){},showModal(){},close(){this.listeners.close?.();}});
     return elements.get(id);
@@ -74,7 +74,7 @@ test('ambiguous send retry uses the same key for the same message',async()=>{
 test('reconnect exposes Stop and resumes the backend active turn',async()=>{
   const result=deferred();const h=harness(async path=>path==='/api/agent'?{...status(),active_turn:'active'}:path==='/api/chat/turn/active'?result.promise:status());
   const loading=h.run('loadAgent()');result.resolve({id:'active',state:'running',test:false,message:'Earlier message',conversation_id:'conversation'});
-  await loading;assert.equal(h.el('chat-stop').hidden,false);assert.equal(h.el('chat-status').textContent,'Kira is thinking…');
+  await loading;assert.equal(h.el('chat-stop').hidden,false);assert.equal(h.el('chat-status').textContent,'Kira is working…');
   h.run('chatEpoch++');
 });
 test('draft input does not rebuild the live conversation log and IME Enter does not send',()=>{
@@ -125,7 +125,7 @@ test('no-context wallet chat offers settings without changing disclosure', () =>
   assert.equal(h.el('chat-choose-context').hidden, false);
   assert.equal(h.run('agentState.config.scope'), 'none');
   h.run("agentState.config.scope='portfolio';renderAgent()");
-  assert.equal(h.el('chat-choose-context').hidden, true);
+  assert.equal(h.el('chat-choose-context').hidden, false);
   h.run("agentState.config.scope='none';state.wallets=[];renderAgent()");
   assert.equal(h.el('chat-choose-context').hidden, true);
 });

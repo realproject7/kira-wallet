@@ -8,7 +8,7 @@ function catalogFilters() {
 }
 function catalogRow(a) {
   const network = state.details.networks.find(n => n.id === a.chain_id);
-  return `<tr><td><a class="token-name token-link" href="${tokenHref(a.id)}">${coinIcon(a)}<div class="coin-title"><div class="symbol">${escapeHTML(a.symbol)}</div><div class="token-description">${escapeHTML(network?.name || 'Chain ' + a.chain_id)}${a.environment === 'testnet' ? ' · Testnet' : ''}</div></div></a></td><td><span class="mobile-label">Total balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span></td><td><span class="mobile-label">Wallets</span>${a.wallet_count}</td><td><span class="token-value">${a.environment === 'testnet' ? 'Testnet' : money(a.value_usd)}</span>${a.unpriced_count ? '<div class="price-basis">' + a.unpriced_count + ' unpriced</div>' : ''}</td></tr>`;
+  return `<tr><td><a class="token-name token-link" href="${tokenHref(a.id)}">${coinIcon(a)}<div class="coin-title"><div class="symbol">${escapeHTML(a.symbol)}</div><div class="token-description">${escapeHTML(a.is_native ? 'Native asset' : a.name)}</div></div></a></td><td class="catalog-chain"><span class="mobile-label">Chain</span><a class="chain-link" href="${networkHref(a.chain_id)}">${escapeHTML(network?.name || 'Chain ' + a.chain_id)}</a>${a.environment === 'testnet' ? '<small>Testnet</small>' : ''}</td><td><span class="mobile-label">Total balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span></td><td><span class="mobile-label">Wallets</span>${a.wallet_count}</td><td><span class="token-value">${a.environment === 'testnet' ? 'Testnet' : money(a.value_usd)}</span>${a.unpriced_count ? '<div class="price-basis">' + a.unpriced_count + ' unpriced</div>' : ''}</td></tr>`;
 }
 function renderCatalog() {
   if (!state) return;
@@ -37,7 +37,7 @@ function renderWorkspace() {
     document.title = 'All tokens · Kira Wallet';
     const network = $('all-token-network').value;
     const recordedChains = new Set(state.details.tokens.map(t => t.chain_id));
-    $('all-token-network').innerHTML = '<option value="all">All networks</option>' + state.details.networks.filter(n => recordedChains.has(n.id)).map(n => `<option value="${n.id}">${escapeHTML(n.name)}${n.environment === 'testnet' ? ' · Testnet' : ''}</option>`).join('');
+    $('all-token-network').innerHTML = '<option value="all">All chains</option>' + state.details.networks.filter(n => recordedChains.has(n.id)).map(n => `<option value="${n.id}">${escapeHTML(n.name)}${n.environment === 'testnet' ? ' · Testnet' : ''}</option>`).join('');
     $('all-token-network').value = [...$('all-token-network').options].some(o => o.value === network) ? network : 'all';
     $('sync-label').textContent = 'Latest recorded holdings'; renderCatalog();
   } else if (selectedView === 'activity') {
@@ -58,8 +58,10 @@ function renderBriefing() {
   const thinking = typeof chatTurn !== 'undefined' && Boolean(chatTurn);
   if (thinking) { art = 'research'; caption = 'Preparing your answer'; }
   else if (config && !active) { art = 'explain'; caption = 'Ask Kira about your wallets'; }
-  if (config && (thinking || !active)) note = config.scope === 'none' ? 'General chat · No wallet context shared' : config.scope === 'wallet' ? 'Chat uses one approved wallet' : 'Chat uses your approved portfolio';
-  $('kira-panel').dataset.speaking = String(thinking);
+  if (config && (thinking || !active)) note = config.scope === 'none' ? 'Wallet access is off' : config.scope === 'wallet' ? (config.wallet_tools ? 'Wallet research is connected' : 'Reading your saved wallet context') : (config.wallet_tools ? 'Your portfolio research is connected' : 'Reading your saved portfolio context');
+  const researching = typeof jobList !== 'undefined' && jobList.some(job => job.state === 'running');
+  $('kira-panel').dataset.speaking = String(thinking || researching);
+  $('chat-form').dataset.working = String(thinking || researching);
   const src = art === 'welcome' ? '/kira.png' : '/kira-' + art + '.png';
   if ($('kira-scene-art').getAttribute('src') !== src) $('kira-scene-art').src = src;
   $('kira-scene-art').alt = { welcome: 'Kira holding her research notebook', research: 'Kira writing while researching', explain: 'Kira explaining a finding', review: 'Kira reviewing saved notes', attention: 'Kira carefully checking incomplete evidence' }[art];

@@ -31,7 +31,10 @@ def main():
         run(['npm','install','--global','--ignore-scripts','--prefix',str(temp/'installation'),str(package)])
         cli=str(temp/'installation/bin/kira');data=str(temp/'portfolio')
         doctor=json.loads(run([cli,'--data-dir',data,'doctor']))
-        assert doctor['rpc_mode']=='public' and doctor['discovery']=='none' and not doctor['discovery_key_available']
+        assert doctor['public_fallback'] is True and doctor['rpc_mode']=='public' and doctor['discovery']=='none' and not doctor['discovery_key_available']
+        installed=temp/'installation/lib/node_modules/kira-wallet'
+        ows=json.loads(run(['node',str(installed/'ows_bridge.cjs')],input=json.dumps({'action':'create','vault':str(temp/'disposable-ows'),'name':'Install-check-wallet','passphrase':'synthetic-disposable-check'})))
+        assert ows['wallet']['accounts'] and not ows['recovered'] and 'mnemonic' not in ows['wallet']
         with socket.socket() as reserve:reserve.bind(('127.0.0.1',0));port=reserve.getsockname()[1]
         try:
             run([cli,'--data-dir',data,'demo','--port',str(port)])
@@ -47,7 +50,7 @@ def main():
                 else:raise AssertionError('Private file was exposed.')
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/kira.png') as response:assert response.headers['Content-Type']=='image/png'
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/kira-logo.png') as response:assert response.headers['Content-Type']=='image/png'
-            for asset in ['agent.js','agent.css','watching.js','watching-model.js','workspace.js','workspace-model.js','workspace.css','kira-research.png','kira-explain.png','kira-review.png','kira-attention.png']:
+            for asset in ['agent.js','ows.js','agent.css','watching.js','watching-model.js','workspace.js','workspace-model.js','workspace.css','kira-research.png','kira-explain.png','kira-review.png','kira-attention.png']:
                 with urllib.request.urlopen(f'http://127.0.0.1:{port}/'+asset) as response:assert response.status==200 and len(response.read())>100
             transcript='\n'.join(json.dumps(item) for item in [
                 {'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-06-18'}},

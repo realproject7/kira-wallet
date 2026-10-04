@@ -34,7 +34,7 @@ def private_values(extra_roots=()):
 def check(path, body, identifiers, secrets):
     reasons = []
     name = Path(path).name
-    if path in ('wallets.json', 'session.json') or path.startswith(('snapshots/', 'conversations/', 'cache/', 'jobs/', '.agent-history/', 'site/.vercel/')) or path.endswith(('.env', '.log', '.tgz')) or name.startswith(('.env', '.kira.')) or (name.startswith('.kira') and name.endswith('.json')):
+    if path in ('wallets.json', 'session.json') or path.startswith(('snapshots/', 'conversations/', 'cache/', 'jobs/', '.agent-history/', 'site/.vercel/', '.kira-ows-requests/', '.ows/')) or path.endswith(('.env', '.log', '.tgz')) or name.startswith(('.env', '.kira.')) or (name.startswith('.kira') and name.endswith('.json')):
         reasons.append('private runtime file')
     if b'\x00' in body:
         return reasons  # Images need a separate visual review.

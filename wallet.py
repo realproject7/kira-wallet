@@ -225,6 +225,7 @@ def finish(wallet, folder, networks, discovered):
         row={**{k:v for k,v in n.items() if k not in ('public_rpc','explorer')},'rpc_status':c.get('rpc_status','unavailable'),
              'native_symbol':NATIVE.get(n['chain_id'],'ETH'),'native_balance':c['native_balance'],
              'native_observed_at':c['observed_at'],'native_block_number':c.get('block_number'),
+             'rpc_endpoint_indices':c.get('rpc_endpoint_indices',[]),
              'general_erc20_discovery':'indexer_checked' if d['complete'] else 'incomplete',
              'indexer_source':d['source'],'indexer_pages':len(d['pages']),'indexer_complete':d['complete'],
              'positive_erc20_count_discovered':sum(t['chain_id']==n['chain_id'] and t['token_type']=='ERC20' for t in tokens),

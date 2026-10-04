@@ -58,7 +58,7 @@ Kira-local history is opt-in and uses private `conversations/` files. With histo
 off, conversations and drafts stay in memory. A new server process starts a fresh
 conversation; saved files remain available locally and are not automatically
 replayed. Native CLI, administrator policy and provider data policies remain a
-separate trust boundary. Chat cannot sign, trade or automatically start research.
+separate trust boundary. With wallet research enabled, Kira can read saved analyses, compare history and queue holdings or price updates. Jobs appear in Activity and continue independently of chat. Signing and trading stay outside the agent.
 See [the conversation contract](ONBOARDING_CHAT_CONTRACT.md).
 
 Global `--data-dir` precedes the command. `KIRA_DATA_DIR` provides the same
@@ -97,10 +97,7 @@ kira discovery alchemy --key-env ALCHEMY_API_KEY --explorers
 kira config show
 ```
 
-Custom mode disables public fallback by default. Add `--public-fallback` to
-explicitly enable it. That preference applies to all custom-mode chains.
-Chains without a configured endpoint remain unavailable while fallback is
-disabled. Plain HTTP is accepted only for loopback endpoints.
+Public fallback is automatic for new configurations. A missing or failing custom endpoint uses verified public endpoints, including failures after the initial connection. Reads keep the selected block. `--custom-only` explicitly disables fallback; an existing opt-out is preserved. `--public-fallback` restores it. Plain HTTP is accepted only for loopback endpoints. Public RPC does not provide complete ERC20 discovery.
 
 Discovery is independent. Without an indexer, native and reachable Mint Club
 reads still run and general discovery stays incomplete. Configuring an RPC
@@ -159,3 +156,27 @@ Use `kira --data-dir <private-portfolio> tools` for the read-only stdio adapter.
 See [the tool guide](AGENT_TOOLS.md) and [job contract](JOB_CONTRACT.md).
 Connected chat uses the native CLI account and approved context from setup.
 The published package and original Kira assets are MIT licensed.
+
+## Browser and local OWS wallets
+
+Use **Connect wallet** to choose an EIP-6963 browser wallet such as MetaMask.
+The app shows the provider and public accounts, lets you review the account
+before registering it, and provides **Disconnect from Kira**. Disconnecting does
+not remove recorded wallets or revoke extension permissions. Without a browser
+wallet, the chooser explains how to open this same local URL in a compatible
+browser. A phone cannot reach another computer's loopback URL.
+
+**Local OWS wallet** lists public EVM descriptors from Open Wallet Standard.
+The optional pinned SDK is `@open-wallet-standard/core` 1.4.3. The vault defaults
+to `~/.ows`; `KIRA_OWS_VAULT` selects another local vault. Creating a new wallet
+requires a human-entered encryption passphrase and uses OWS's encrypted local
+storage. Kira never returns the mnemonic or private key. Back up and recover
+with OWS owner tools. Existing keys and tags are preserved.
+
+A private owner receipt serializes creation across apps using the same vault.
+Retrying an interrupted creation recovers its request identity instead of
+creating a second wallet. The browser keeps only the public request identity
+in session storage. It clears password fields immediately. Recovery keeps the
+original encryption passphrase. No signing, key export or account deletion
+endpoint is exposed. OWS absence does not block ordinary address or browser
+wallet onboarding.

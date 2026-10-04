@@ -14,6 +14,7 @@ import urllib.request
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from kira_jobs import JobStore, atomic
 from kira_agent import AgentStore
+from kira_ows import OwsStore
 import server
 ADDRESS='0x'+'1'*40
 
@@ -24,6 +25,7 @@ class JobsHTTPTest(unittest.TestCase):
         self.root_patch=patch.object(server,'ROOT',self.root);self.root_patch.start()
         self.http=ThreadingHTTPServer(('127.0.0.1',0),server.Handler);self.http.controls=True;self.http.session_token=secrets.token_urlsafe(32);self.http.jobs=JobStore(self.root)
         self.http.agent=AgentStore(self.root,detector=lambda:[])
+        self.http.ows=OwsStore(self.root,vault=self.root/"synthetic-vault",runner=lambda request:{"wallets":[]})
         self.launch_patch=patch.object(self.http.jobs,'launch');self.launch_patch.start()
         self.thread=threading.Thread(target=self.http.serve_forever,daemon=True);self.thread.start();self.url='http://127.0.0.1:'+str(self.http.server_port)
     def tearDown(self):
@@ -36,6 +38,17 @@ class JobsHTTPTest(unittest.TestCase):
             with urllib.request.urlopen(request,timeout=5) as response:return response.status,json.loads(response.read())
         except urllib.error.HTTPError as error:
             with error:return error.code,error.read().decode()
+    def test_ows_asset_and_local_only_endpoints(self):
+        with urllib.request.urlopen(self.url+'/ows.js') as response:
+            self.assertEqual(response.status,200);self.assertIn(b'function submitOws',response.read())
+        self.assertEqual(self.request('/api/ows',method='GET')[0],200)
+        self.assertEqual(self.request('/api/ows',headers={'X-Kira-Session':''},method='GET')[0],403)
+        for path in ('/api/ows/create','/api/ows/connect','/api/ows/disconnect'):
+            self.assertEqual(self.request(path,body=b'{}',headers={'Origin':'https://foreign.test'})[0],403)
+            self.assertEqual(self.request(path,body=b'{}',headers={'X-Kira-Session':''})[0],403)
+        registry=json.loads((self.root/'wallets.json').read_text());registry['demo']=True;atomic(self.root/'wallets.json',registry)
+        self.assertEqual(self.request('/api/ows/create',body=b'{}')[0],400)
+
     def test_valid_submission_duplicate_and_private_state(self):
         code,first=self.request();self.assertEqual(code,202);_,duplicate=self.request();self.assertEqual(first['job_id'],duplicate['job_id'])
         self.assertEqual(self.request('/api/jobs',method='GET')[0],200)
