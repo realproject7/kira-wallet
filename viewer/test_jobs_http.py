@@ -60,7 +60,7 @@ class JobsHTTPTest(unittest.TestCase):
         self.http.controls=True
         receipt=self.root/'.kira-agent-resume.json';target=self.root/'outside.json';target.write_text('{}')
         receipt.symlink_to(target)
-        with self.assertRaises(ValueError):server.restore_upgrade_chat(self.http.agent,self.root)
+        with self.assertRaises((ValueError,OSError)):server.restore_upgrade_chat(self.http.agent,self.root)
         self.assertTrue(target.exists());receipt.unlink()
         receipt.write_text('{}');receipt.chmod(0o644)
         with self.assertRaises(ValueError):server.restore_upgrade_chat(self.http.agent,self.root)

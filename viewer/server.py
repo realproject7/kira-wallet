@@ -11,7 +11,7 @@ import signal
 from urllib.parse import urlparse, parse_qs
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from kira_jobs import JobStore, JobError
-from kira_agent import AgentStore
+from kira_agent import AgentStore, read_history_file
 from kira_ows import OwsStore
 from model import ROOT, load_state, within
 from token_images import IMAGE_HOSTS
@@ -158,9 +158,7 @@ class Handler(BaseHTTPRequestHandler):
 def restore_upgrade_chat(agent,root):
     """Consume a private one-use upgrade receipt only after validating exact permissions."""
     resume=Path(root)/'.kira-agent-resume.json'
-    if resume.is_symlink() or not resume.is_file() or resume.stat().st_size>500000 or resume.stat().st_mode & 0o077:
-        raise ValueError('Invalid private upgrade conversation receipt.')
-    agent.restore_runtime(json.loads(resume.read_text()))
+    agent.restore_runtime(read_history_file(resume,private=True))
     resume.unlink()
 
 if __name__=='__main__':

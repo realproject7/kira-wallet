@@ -105,6 +105,16 @@ class AgentTest(unittest.TestCase):
         self.assertEqual({r['id'] for r in restarted.history()},{old,legacy})
         with self.assertRaises(JobError):restarted.history('../../outside')
 
+    def test_bad_config_deep_json_and_fifo_do_not_hide_valid_history(self):
+        self.configure(settings(retain_history=True));self.done(self.store,self.send('Valid synthetic conversation.'))
+        valid=self.store.conversation;self.store.reset();folder=self.root/'conversations'
+        bad=str(uuid.uuid4());atomic(folder/(bad+'.json'),{'schema_version':1,'config':settings(provider=[]),'messages':[]})
+        (folder/(str(uuid.uuid4())+'.json')).write_text('['*2000+'0'+']'*2000)
+        os.mkfifo(folder/(str(uuid.uuid4())+'.json'))
+        self.assertEqual({r['id'] for r in self.store.history()},{valid})
+        self.store.open_history(valid);self.assertEqual(self.store.messages[0]['text'],'Valid synthetic conversation.')
+        self.store.reset();self.assertEqual(self.store.messages,[])
+
     def test_history_cannot_switch_during_response_or_replay_different_scope(self):
         self.configure(settings(scope='portfolio'));self.done(self.store,self.send('Portfolio synthetic.'))
         old=self.store.conversation;self.store.reset()

@@ -9,6 +9,7 @@ import re
 import selectors
 import shutil
 import signal
+import stat
 import subprocess
 import tempfile
 import threading
@@ -72,7 +73,7 @@ def config_input(value, root):
     if not isinstance(value,dict):raise JobError('invalid_agent_settings','Expected model settings.')
     fields({k:v for k,v in value.items() if k!='wallet_tools'}, ['provider','model','scope','wallet','retain_history','trust_native_cli'])
     if 'wallet_tools' in value and type(value['wallet_tools']) is not bool:raise JobError('invalid_agent_settings','Choose whether Kira can use wallet research tools.')
-    if value['provider'] not in PROVIDERS or value['scope'] not in ('none','wallet','portfolio') or type(value['retain_history']) is not bool or value['trust_native_cli'] is not True:
+    if not isinstance(value['provider'],str) or not isinstance(value['scope'],str) or value['provider'] not in PROVIDERS or value['scope'] not in ('none','wallet','portfolio') or type(value['retain_history']) is not bool or value['trust_native_cli'] is not True:
         raise JobError('invalid_agent_settings','Choose an account, context scope and native CLI acknowledgement.')
     if not isinstance(value['model'],str) or len(value['model']) > 100 or not re.fullmatch(r'[a-zA-Z0-9._:/-]*',value['model']):
         raise JobError('invalid_model','Use a model ID supported by your CLI, or leave the default selected.')
@@ -191,6 +192,18 @@ def run_native(config, prompt, cancel, *, timeout=180):
                     try: stream.close()
                     except (OSError,ValueError): pass
 
+def read_history_file(path,private=False):
+    """Read a bounded regular file without following a substituted link or blocking on a pipe."""
+    descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    with os.fdopen(descriptor,'rb') as stream:
+        info=os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size>500000 or (private and info.st_mode & 0o077):
+            raise ValueError('Invalid local conversation file.')
+        body=stream.read(500001)
+        if len(body)>500000:raise ValueError('Local conversation file exceeds the limit.')
+    try:return json.loads(body)
+    except (TypeError,RecursionError) as error:raise ValueError('Invalid local conversation data.') from error
+
 class AgentStore:
     def __init__(self,root,runner=run_native,detector=capabilities):
         self.root = Path(root);self.path = self.root/'.kira-agent.json';self.runner=runner;self.detector=detector
@@ -238,13 +251,13 @@ class AgentStore:
             candidates=[]
             for path in folder.glob('*.json'):
                 try:
-                    if not path.is_symlink():candidates.append((path.stat().st_mtime,path))
+                    info=path.lstat()
+                    if stat.S_ISREG(info.st_mode):candidates.append((info.st_mtime,path))
                 except OSError:continue
             for _,path in sorted(candidates,reverse=True)[:200]:
                 try:
-                    if path.is_symlink() or path.stat().st_size>500000:continue
-                    rows[path.stem]=self._validated_session(json.loads(path.read_text()),path.stem)
-                except (ValueError,OSError,KeyError,JobError):continue
+                    rows[path.stem]=self._validated_session(read_history_file(path),path.stem)
+                except (ValueError,OSError,KeyError,TypeError,RecursionError,JobError):continue
         rows.update(self.sessions)
         if self.config is not None:rows[self.conversation]=self._session()
         return rows
