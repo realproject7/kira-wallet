@@ -43,6 +43,55 @@ class ViewerTests(unittest.TestCase):
         self.assertAlmostEqual(leg['price']['usd'],float(token['mintclub']['price_for_next_mint_in_reserve_token'])*chicken['price']['usd'])
         self.assertAlmostEqual(w['known_value_usd'],sum(t['value_usd'] or 0 for t in w['assets']))
 
+    def quoted_token(self):
+        token=next(t for t in self.snapshot['tokens'] if t['symbol']=='CHICKEN')
+        token['balance_block_number']=123
+        token['mintclub'].update({'block_number':123,'wallet_full_burn':{'net_refund':'0.02','gas_included':False}})
+        return token
+
+    def test_exit_proceeds_use_full_burn_not_spot_price(self):
+        self.quoted_token()
+        asset=next(t for t in model.project_wallet(self.entry,self.snapshot,self.root)['assets'] if t['symbol']=='CHICKEN')
+        self.assertEqual(asset['value_usd'],2000)
+        self.assertEqual(asset['exit_quote']['output_amount'],'0.02')
+        self.assertEqual(asset['exit_quote']['output_address'],'0x4200000000000000000000000000000000000006')
+        self.assertEqual(asset['exit_quote']['input_amount'],'1')
+        self.assertTrue(asset['exit_quote']['royalty_included'])
+        self.assertFalse(asset['exit_quote']['gas_included'])
+
+    def test_exit_quote_requires_matching_balance_block_and_backing(self):
+        token=self.quoted_token()
+        token['balance_block_number']=124
+        self.assertIsNone(model.exit_quote(token))
+        token['balance_block_number']=123
+        token['mintclub']['wallet_full_burn']['net_refund']='11'
+        self.assertIsNone(model.exit_quote(token))
+        token['mintclub']['wallet_full_burn']['net_refund']='NaN'
+        self.assertIsNone(model.exit_quote(token))
+
+    def test_exit_quote_keeps_zero_and_contract_identity(self):
+        token=self.quoted_token()
+        token['mintclub']['wallet_full_burn']['net_refund']='0'
+        token['mintclub']['reserve_symbol']='USDC'
+        token['mintclub']['reserve_token']='0x'+'9'*40
+        quote=model.exit_quote(token)
+        self.assertEqual(quote['output_amount'],'0')
+        self.assertEqual(quote['output_address'],'0x'+'9'*40)
+        self.assertNotIn('usd',quote)
+        token['mintclub']['block_number']='123'
+        token['balance_block_number']='123'
+        self.assertEqual(model.exit_quote(token)['block_number'],'123')
+        token['mintclub']['wallet_full_burn']['net_refund']='1e999999999'
+        self.assertIsNone(model.exit_quote(token))
+
+    def test_price_refresh_does_not_refresh_exit_quote(self):
+        self.quoted_token()
+        before=next(t for t in model.project_wallet(self.entry,self.snapshot,self.root)['assets'] if t['symbol']=='CHICKEN')
+        (self.directory/'market-prices.json').write_text(json.dumps({'observed_at':'2026-10-04T06:00:00Z','tokens':[{'chain_id':8453,'address':before['address'],'usd':999,'basis':'Market index'}]}))
+        after=next(t for t in model.project_wallet(self.entry,self.snapshot,self.root)['assets'] if t['symbol']=='CHICKEN')
+        self.assertNotEqual(before['value_usd'],after['value_usd'])
+        self.assertEqual(before['exit_quote'],after['exit_quote'])
+
     def test_testnet_balances_do_not_inflate_the_total(self):
         before=model.project_wallet(self.entry,self.snapshot,self.root)['known_value_usd']
         self.snapshot['coverage'].append({'chain_id':999,'name':'Fixture testnet','environment':'testnet','native_symbol':'ETH','native_balance':'1000','general_erc20_discovery':'indexer_checked','rpc_status':'available'})

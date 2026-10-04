@@ -1,5 +1,10 @@
 # Kira product clarity and onboarding audit
 
+Historical audit. The operator rejected the visual design described here.
+It was restored to the original appearance at `7ffe358`. Current functional
+work and the separate companion prototype are recorded in
+[KIRA_COMPANION_COMPLETION.md](KIRA_COMPANION_COMPLETION.md).
+
 2026-10-04. Baseline source: `cfa9165`. Registry release: `kira-wallet@0.1.0`.
 
 ## Product copy

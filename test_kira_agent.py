@@ -51,6 +51,22 @@ class AgentTest(unittest.TestCase):
         self.assertNotIn('report_url',json.dumps(one));self.assertNotIn('image_url',json.dumps(one));self.assertNotIn('source',json.dumps(one))
         all_=projection(self.root,settings(scope='portfolio'));self.assertIsNone(all_['wallets'][1]['known_value_usd'])
         self.assertEqual(projection(self.root,settings())['scope'],'none')
+
+    def test_exit_quotes_only_reach_explicitly_approved_context(self):
+        registry=json.loads((self.root/'wallets.json').read_text())
+        entry=registry['wallets'][0];path=self.root/entry['latest_snapshot']['result']
+        snapshot=json.loads(path.read_text());token=snapshot['tokens'][0]
+        token['balance_block_number']=123
+        token['mintclub']={'reserve_token':'0x'+'9'*40,'reserve_symbol':'SAMPLE','reserve_balance':'100',
+            'funded':True,'price_for_next_mint_in_reserve_token':'1','source_url':'https://example.com/fixture',
+            'observed_at':'2026-10-04T00:00:00Z','block_number':123,'wallet_full_burn':{'net_refund':'12','gas_included':False}}
+        atomic(path,snapshot)
+        self.assertNotIn('12',json.dumps(projection(self.root,settings())))
+        scoped=projection(self.root,settings(scope='wallet',wallet=entry['address_key']))
+        quote=scoped['wallets'][0]['assets'][0]['exit_quote']
+        self.assertEqual(quote['output_amount'],'12')
+        self.assertFalse(quote['gas_included'])
+        self.assertNotIn('source_url',json.dumps(scoped))
     def test_scope_provider_and_wallet_changes_do_not_replay_history(self):
         self.configure(settings(scope='portfolio'));self.done(self.store,self.send('Earlier portfolio discussion.'))
         self.configure(settings(provider='claude',scope='none'))

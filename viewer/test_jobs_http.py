@@ -54,6 +54,14 @@ class JobsHTTPTest(unittest.TestCase):
                         {'Host':'foreign.test:'+str(self.http.server_port)},{'Sec-Fetch-Site':'cross-site'},{'Origin':''}]:
             self.assertEqual(self.request(headers=headers)[0],403)
         self.assertEqual(len(self.http.jobs.list()),0)
+    def test_setup_readiness_requires_controls_session_and_local_origin(self):
+        expected={'rpc_mode':'public','discovery_provider':'none','discovery_configured':False,'discovery_key_available':False}
+        with patch('onboarding.readiness',return_value=expected):
+            self.assertEqual(self.request('/api/onboarding',method='GET'),(200,expected))
+            for headers in [{'X-Kira-Session':''},{'Origin':'https://foreign.test'},{'Sec-Fetch-Site':'cross-site'}]:
+                self.assertEqual(self.request('/api/onboarding',headers=headers,method='GET')[0],403)
+            self.http.controls=False
+            self.assertEqual(self.request('/api/onboarding',method='GET')[0],403)
     def test_json_shape_size_content_type_and_version(self):
         self.assertEqual(self.request(headers={'Content-Type':'text/plain'})[0],415)
         for body in [b'not json',b'[]',b'{"schema_version":NaN}',b'{"schema_version":2}']:

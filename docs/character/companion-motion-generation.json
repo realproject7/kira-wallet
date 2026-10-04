@@ -1,0 +1,12 @@
+{
+  "date": "2026-10-04",
+  "tool": "Built-in ImageGen",
+  "reference": "viewer/static/kira-explain.png",
+  "assets": [
+    {"path": "site/assets/kira-standing.png", "purpose": "Full-body explaining pose, 1024x1536 RGBA"},
+    {"path": "site/assets/kira-standing-research.png", "purpose": "Matching full-body notebook research pose, 1024x1536 RGBA"}
+  ],
+  "direction": "Same adult Kira identity, charcoal tailoring, white shirt and lavender notebook. Watercolor anime illustration, complete head-to-shoes framing and preserved generated transparency.",
+  "motion": "Original CSS breath and speaking gesture; state-driven crossfade between poses. No audio, live model simulation or copied third-party artwork.",
+  "deployment": "Companion proposal is a separate preview. The public landing page uses the restored design."
+}

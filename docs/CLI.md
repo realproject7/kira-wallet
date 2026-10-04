@@ -17,6 +17,23 @@ Another portfolio never silently reuses that server.
 screen. Use `--no-open` to print its URL instead. If a read-only viewer is already
 running, stop it explicitly before setup. The normal `kira start` remains read-only.
 
+The 0.1.1 source candidate starts with a wallet checklist. Add a public EVM
+address or use the browser wallet picker. Registration starts one explicit
+research job; follow it in Activity and read the saved portfolio report.
+No signature, seed phrase or private key is needed.
+
+Public RPC checks known assets and Mint Club. For broader ERC20 discovery,
+open Research connections, select Alchemy and name the private environment
+variable holding its key. Never paste the key into the browser. `kira doctor`
+checks whether the configured key is available. Configuration alone does not
+prove complete coverage; inspect the recorded results and gaps.
+
+Connecting Codex or Claude is optional. Use Connect your AI when ready, verify
+a generic response and explicitly choose context permissions. Assistant answers
+render a safe Markdown subset; raw HTML, images and links remain inert text.
+These changes require the next operator-published package. Registry 0.1.0
+continues to use the earlier account-first setup.
+
 ## Your model account
 
 Install and sign in to the official Codex CLI or Claude Code CLI first. Kira

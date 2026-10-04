@@ -94,9 +94,11 @@ def projection(root, config):
         for asset in wallet['assets']:
             item = pick(asset,('id','chain_id','address','symbol','name','environment','balance','is_native','value_usd','balance_observed_at'))
             item['price'] = pick(asset['price'],('usd','basis','quality','observed_at')) if asset.get('price') else None
+            item['exit_quote'] = asset.get('exit_quote')
+            item['exit_route'] = asset.get('exit_route')
             row['assets'].append(item)
         rows.append(row)
-    result = {'scope':config['scope'],'wallets':rows,'note':'Recorded direct holdings. Missing data is unknown. Mainnet priced totals exclude unpriced amounts and testnets.'}
+    result = {'scope':config['scope'],'wallets':rows,'note':'Recorded direct holdings. Missing data is unknown. Mainnet priced totals exclude unpriced amounts and testnets. Exit quotes are independent historical full-balance burn outputs after royalty, before gas. Do not sum them, infer live execution, or convert output tokens at spot prices into cash-out value.'}
     if len(json.dumps(result,ensure_ascii=False).encode()) > 240_000:
         raise JobError('context_too_large','This portfolio exceeds the context limit. Choose one wallet or no automatic context.')
     return result

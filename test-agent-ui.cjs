@@ -15,7 +15,7 @@ function harness(api) {
     return elements.get(id);
   }
   const scope = el('scope');scope.value='none';
-  const context = vm.createContext({$:el,localSession:{controls:false},state:{wallets:[]},localAPI:api,toast(){},escapeHTML:s=>String(s).replaceAll('<','&lt;'),
+  const context = vm.createContext({KiraMarkdown:require('./viewer/static/markdown.js'),$:el,localSession:{controls:false},state:{wallets:[]},localAPI:api,toast(){},escapeHTML:s=>String(s).replaceAll('<','&lt;'),
     document:{querySelector:selector=>selector.includes('agent-scope')?scope:el(selector),querySelectorAll:()=>[]},
     navigator:{clipboard:{writeText:async()=>{}}},location:{hash:'#/home',search:''},history:{replaceState(){}},URLSearchParams,crypto:require('node:crypto').webcrypto,
     setInterval:()=>1,clearInterval(){},setTimeout});

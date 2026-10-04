@@ -1,6 +1,6 @@
 {
   "name": "kira-wallet",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Track tokens across EVM chains with your own AI. A local, read-only wallet app with no hosted portfolio server.",
   "license": "MIT",
   "private": false,
@@ -49,10 +49,11 @@
     "docs/character/workspace-generation.json",
     "kira_agent.py",
     "docs/ONBOARDING_CHAT_CONTRACT.md",
-    "docs/RELEASE.md"
+    "docs/RELEASE.md",
+    "viewer/onboarding.py"
   ],
   "scripts": {
-    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js && node test-watching.cjs && node test-watching-ui.cjs && node --check viewer/static/watching.js && node --check viewer/static/watching-model.js && node --check viewer/static/agent.js && node test-agent-ui.cjs"
+    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js && node test-watching.cjs && node test-watching-ui.cjs && node --check viewer/static/watching.js && node --check viewer/static/watching-model.js && node --check viewer/static/agent.js && node test-agent-ui.cjs && node test-markdown.cjs && node test-report.cjs && node --check viewer/static/report.js"
   },
   "dependencies": {
     "viem": "2.57.2"

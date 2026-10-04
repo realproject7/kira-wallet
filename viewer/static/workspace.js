@@ -51,11 +51,17 @@ function renderBriefing() {
   renderKiraNote();
   const active = typeof jobList !== 'undefined' && jobList.some(KiraView.active);
   const gaps = state.wallets.reduce((sum, w) => sum + w.chains.filter(c => c.environment === 'mainnet' && (!c.complete || !c.rpc_available)).length, 0);
-  let art = 'welcome', caption = 'A little perspective.', note = 'Here to make sense of it.';
-  if (active) { art = 'research'; caption = 'Following the evidence.'; note = 'Research is in progress.'; }
-  else if (gaps && briefingMode === 'coverage') { art = 'attention'; caption = 'A closer look.'; note = 'Some facts are still missing.'; }
-  else if (selectedView === 'activity') { art = 'review'; caption = 'Every step, recorded.'; note = 'Good research leaves a trail.'; }
-  else if (['token', 'network', 'tokens', 'wallet'].includes(selectedView)) { art = 'explain'; caption = 'Let’s look a little closer.'; note = 'Context makes the difference.'; }
+  let art = 'welcome', caption = 'Your wallet assistant', note = 'Connect your AI to ask about your holdings.';
+  if (active) { art = 'research'; caption = 'Research in progress'; note = 'Follow the recorded stages in Activity.'; }
+  else if (gaps && briefingMode === 'coverage') { art = 'attention'; caption = 'Coverage needs attention'; note = 'Some holdings may still be missing.'; }
+  else if (selectedView === 'activity') { art = 'review'; caption = 'Research history'; note = 'Review saved results and unfinished work.'; }
+  else if (['token', 'network', 'tokens', 'wallet'].includes(selectedView)) { art = 'explain'; caption = 'Explore your holdings'; note = 'Balances, prices and coverage from saved research.'; }
+  const config = typeof agentState !== 'undefined' ? agentState?.config : null;
+  const thinking = typeof chatTurn !== 'undefined' && Boolean(chatTurn);
+  if (thinking) { art = 'research'; caption = 'Preparing your answer'; }
+  else if (config && !active && briefingMode !== 'coverage') { art = 'explain'; caption = 'Ask Kira about your wallets'; }
+  if (config && (thinking || !active && briefingMode !== 'coverage')) note = config.scope === 'none' ? 'General chat · No wallet context shared' : config.scope === 'wallet' ? 'Chat uses one approved wallet' : 'Chat uses your approved portfolio';
+  $('kira-panel').dataset.speaking = String(thinking);
   const src = art === 'welcome' ? '/kira.png' : '/kira-' + art + '.png';
   if ($('kira-scene-art').getAttribute('src') !== src) $('kira-scene-art').src = src;
   $('kira-scene-art').alt = { welcome: 'Kira holding her research notebook', research: 'Kira writing while researching', explain: 'Kira explaining a finding', review: 'Kira reviewing saved notes', attention: 'Kira carefully checking incomplete evidence' }[art];

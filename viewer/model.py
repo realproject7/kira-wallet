@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import os
+import re
 from token_images import image_for, read_catalog
 from chain_images import chain_image
 from details import project_details
@@ -35,6 +36,37 @@ def within(root, relative):
 
 def pool_has_liquidity(p):
     return (p.get('reported_liquidity') or {}).get('usd',0)>0 or (p.get('factory_measurement') or {}).get('active_liquidity_verified',False)
+
+def exit_quote(token):
+    """Project a saved full-balance burn quote, never a spot-price cash estimate."""
+    mint = token.get('mintclub') or {}
+    quote = mint.get('wallet_full_burn') or {}
+    block = str(mint.get('block_number'))
+    reserve = mint.get('reserve_token')
+    if (not quote or mint.get('wallet_full_burn_error') or
+            quote.get('gas_included') is not False or
+            not isinstance(reserve, str) or len(reserve) != 42 or
+            not reserve.startswith('0x') or
+            not all(c in '0123456789abcdefABCDEF' for c in reserve[2:]) or
+            not re.fullmatch(r'[1-9][0-9]{0,29}', block) or
+            str(token.get('balance_block_number')) != block or not mint.get('observed_at') or
+            not isinstance(mint.get('reserve_symbol'), str)):
+        return None
+    try:
+        amounts = [str(quote['net_refund']), str(mint['reserve_balance']), str(token['wallet_balance'])]
+        if any(len(value)>350 or not re.fullmatch(r'[0-9]+(?:\.[0-9]+)?',value) for value in amounts):
+            return None
+        refund, backing, balance = map(Decimal, amounts)
+        if not all(n.is_finite() for n in (refund, backing, balance)) or refund < 0 or refund > backing or balance <= 0:
+            return None
+    except (KeyError, InvalidOperation, ValueError):
+        return None
+    return {'kind': 'mintclub_burn', 'input_amount': token['wallet_balance'],
+            'output_amount': format(refund, 'f'),
+            'output_address': reserve.lower(), 'output_symbol': mint['reserve_symbol'],
+            'chain_id': token['chain_id'], 'block_number': block,
+            'observed_at': mint['observed_at'], 'royalty_included': True,
+            'gas_included': False}
 
 def dex_price(token, observed):
     """Reject an extreme one-sided TVL as a USD price reference. Keep its evidence."""
@@ -131,6 +163,8 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             'price':p,'value_usd':value,'is_native':False,'links':links,
             'balance_observed_at':t.get('balance_observed_at') or snapshot.get('compiled_at'),
             'burn_quote':(t.get('mintclub') or {}).get('wallet_full_burn'),
+            'exit_quote':exit_quote(t),
+            'exit_route': 'mintclub_burn' if t.get('mintclub') else 'dex_unquoted' if t.get('dex_liquidity_found') or any(pool_has_liquidity(pool) for pool in t.get('dex_pools',[])) else 'unverified',
             'image_url':image_for(images,t['chain_id'],t['token_address'],mint=bool(t.get('mintclub'))),
             'curve_reserve': {'amount':market_token.get('curve_reserve',t['mintclub']['reserve_balance']),'symbol':t['mintclub']['reserve_symbol']} if t.get('mintclub') else None})
     coverage=snapshot.get('coverage',[])

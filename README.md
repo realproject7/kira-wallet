@@ -22,8 +22,10 @@ kira setup
 The viewer starts at http://127.0.0.1:8787. Data defaults to
 `~/.local/share/kira-wallet`, separate from the installed package. Use
 `--data-dir /absolute/private/directory` before the command for another portfolio.
-Close model setup to add a wallet first. Broad ERC20 discovery needs an indexer
-connection in Workspace settings. Public RPC alone provides limited discovery.
+Published 0.1.0 opens model setup; close it to add a wallet first. The 0.1.1 source
+candidate guides wallet setup first and makes AI connection optional. Broad ERC20
+discovery needs an indexer connection in Workspace settings. Public RPC alone
+provides limited discovery. The next registry release remains operator-only.
 For source development, run `npm install --ignore-scripts` and use
 `node bin/kira.cjs` in place of `kira`.
 
