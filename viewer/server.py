@@ -119,7 +119,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not entry or not entry.get('latest_snapshot',{}).get('report'):self.send_error(404);return
                 body=within(ROOT,entry['latest_snapshot']['report']).read_bytes()
                 self.respond(body,'text/plain; charset=utf-8');return
-            files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/jobs.js':'jobs.js','/workspace.js':'workspace.js','/workspace-model.js':'workspace-model.js','/workspace.css':'workspace.css','/agent.js':'agent.js','/agent.css':'agent.css','/watching.js':'watching.js','/watching-model.js':'watching-model.js','/style.css':'style.css','/favicon.svg':'favicon.svg','/kira.png':'kira.png','/kira-logo.png':'kira-logo.png',**{f'/kira-{pose}.png':f'kira-{pose}.png' for pose in ('research','explain','review','attention')}}
+            files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/jobs.js':'jobs.js','/workspace.js':'workspace.js','/workspace-model.js':'workspace-model.js','/workspace.css':'workspace.css','/agent.js':'agent.js','/agent.css':'agent.css','/clarity.css':'clarity.css','/watching.js':'watching.js','/watching-model.js':'watching-model.js','/style.css':'style.css','/favicon.svg':'favicon.svg','/kira.png':'kira.png','/kira-logo.png':'kira-logo.png',**{f'/kira-{pose}.png':f'kira-{pose}.png' for pose in ('research','explain','review','attention')}}
             if path not in files:self.send_error(404);return
             file=STATIC/files[path]
             content={'html':'text/html; charset=utf-8','js':'text/javascript; charset=utf-8','css':'text/css; charset=utf-8','svg':'image/svg+xml','png':'image/png'}[file.suffix[1:]]

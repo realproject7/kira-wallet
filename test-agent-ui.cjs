@@ -97,3 +97,14 @@ test('an old reconnect lookup cannot clear a new conversation turn',async()=>{
   const loading=h.run('loadAgent()');await tick();h.run("chatEpoch++;chatTurn='new';chatRequest={message:'New question'};renderAgent()");
   old.resolve({id:'old',state:'succeeded'});await loading;assert.equal(h.run('chatTurn'),'new');assert.equal(h.el('chat-stop').hidden,false);
 });
+
+test('no-context wallet chat offers settings without changing disclosure', () => {
+  const h = harness(async () => status());
+  h.run("state.wallets=[{key:'sample',name:'Sample wallet'}];renderAgent()");
+  assert.equal(h.el('chat-choose-context').hidden, false);
+  assert.equal(h.run('agentState.config.scope'), 'none');
+  h.run("agentState.config.scope='portfolio';renderAgent()");
+  assert.equal(h.el('chat-choose-context').hidden, true);
+  h.run("agentState.config.scope='none';state.wallets=[];renderAgent()");
+  assert.equal(h.el('chat-choose-context').hidden, true);
+});

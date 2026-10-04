@@ -22,9 +22,13 @@ npm publish ./dist/kira-wallet-0.1.0.tgz --access public
 ```
 
 Use the operator's npm account and complete any npm authentication or OTP prompt.
-After registry publication, installation is `npm install -g kira-wallet`, then
-`kira setup`. Until publication, the public installation page uses the GitHub
-source route. It does not claim a published registry release.
+Version 0.1.0 was published by the operator and verified on 2026-10-04.
+The downloaded registry archive has 58 members and SHA-256
+`45c33d4e37bd45145c53afd05a234caa746146a47e2f729fec1087d841506858`,
+matching the prepared release at `cfa9165`. Installation is
+`npm install -g kira-wallet`, then `kira setup`. The public installation page
+now uses the registry route. Changes after that commit require a new operator
+release to reach npm users.
 
 ## Public website
 

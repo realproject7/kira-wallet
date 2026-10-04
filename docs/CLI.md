@@ -3,8 +3,8 @@
 The npm package carries the Python engine, browser assets and declared viem
 dependency. It needs no Python packages and no sibling project. The package
 file list excludes wallets, snapshots, conversations, caches, logs and private settings.
-The first release is prepared as a tarball. Registry publication remains an
-operator action. The code and original character assets use the MIT license.
+Version 0.1.0 is published on npm. Install with `npm install -g kira-wallet`,
+then run `kira setup`. Future registry publication remains an operator action. The code and original character assets use the MIT license.
 
 ## Lifecycle
 
@@ -140,5 +140,5 @@ secrets and URLs remain outside the browser.
 
 Use `kira --data-dir <private-portfolio> tools` for the read-only stdio adapter.
 See [the tool guide](AGENT_TOOLS.md) and [job contract](JOB_CONTRACT.md).
-Connected chat still requires the operator's account setup and a later session
-integration. The local development package remains private and unlicensed.
+Connected chat uses the native CLI account and approved context from setup.
+The published package and original Kira assets are MIT licensed.
