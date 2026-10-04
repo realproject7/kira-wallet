@@ -19,7 +19,7 @@
       ]
     },
     {
-      "source": "/((?!proposal(?:\\.html)?/?$).*)",
+      "source": "/((?!proposal(?:\\.html)?$).*)",
       "headers": [
         {
           "key": "Content-Security-Policy",
