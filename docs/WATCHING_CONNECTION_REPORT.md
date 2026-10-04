@@ -1,6 +1,7 @@
 # Watching connection implementation
 
-Status: builder verification complete. Independent review and operator extension
+Status: [draft PR #3](https://github.com/realproject7/kira-wallet/pull/3), builder
+verification complete. Independent review and operator extension
 acceptance remain pending. This change is stacked on workspace PR #2 at
 `b95d4707be5b7dd3c061a86b4a2ca3c47625a307`. It has no merge or release approval.
 
@@ -54,6 +55,8 @@ by this isolated implementation.
   address-preview horizontal overflow. Controls are at least 44 px, chooser
   glyphs are 18 px and narrow-screen inputs are 16 px. Escape returns focus to
   Add wallet; reopening the session does not request accounts again.
+- DOM text-contrast audit of the chooser and review found no low-contrast
+  ordinary text. Disabled, hidden and decorative elements were excluded.
 
 Two inherited test-fixture issues surfaced in the fresh worktree. The HTTP test
 now uses its temporary portfolio instead of relying on an ignored local registry.
