@@ -1,7 +1,8 @@
 # Release preparation
 
 The published npm package is 0.1.0. The next source candidate is 0.1.1, with
-wallet-first setup, safe Markdown answers and the recorded exit-proceeds report.
+wallet-first setup, safe Markdown answers, a five-token home preview and editable
+question starters. The operator removed the recovery-home report.
 Registry publication remains operator-only. The coding agent never publishes.
 
 Required preparation from a clean, reviewed source checkout:
@@ -39,20 +40,19 @@ reach npm users.
 ## Public website
 
 Only `site/` is deployed to Vercel's `kira-wallet` project. It contains the
-restored static landing page, synthetic product illustrations, character assets,
-installation instructions and a separate companion proposal. No wallet input,
-portfolio API, chat API or analytics service is hosted. The proposal's local
-script updates sample scenes; the landing page blocks scripts. Both block
-network requests and forms. The local viewer remains loopback-only.
+restored static landing page, synthetic product illustrations, character assets
+and installation instructions. The companion proposal is retired; its URLs redirect
+to the landing page. No wallet input, portfolio API, chat API or analytics service
+is hosted. The site blocks scripts, network requests and forms. The local viewer
+remains loopback-only.
 
 `kirawallet.app` uses Vercel nameservers and managed HTTPS. Keep `.vercel/`
 metadata out of Git. Site deployments use `--cwd site`, never the private
-portfolio root. A new companion proposal is reviewed on its preview URL before
-changing the public landing page's design.
+portfolio root. Preserve the restored design when refining typography and spacing.
 
 Native extension approval, lock and account-change behavior remain a device
 acceptance check. Synthetic providers and supplied public addresses do not
 establish that native extension acceptance passed. Those actions still require
 the operator's device handoff. No signing, trading or custody capability was added.
 
-See [completion evidence and limits](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_COMPANION_COMPLETION.md).
+See [current UI evidence](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_UI_REFINEMENT.md).

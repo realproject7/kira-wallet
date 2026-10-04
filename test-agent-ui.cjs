@@ -24,6 +24,27 @@ function harness(api) {
   return {el,run:code=>vm.runInContext(code,context),context};
 }
 const status = () => ({config:{provider:'codex',model:'',scope:'none',retain_history:false},providers:[],conversation_id:'conversation',messages:[],active_turn:null});
+test('question starters fill an editable draft without a model call or permission change',()=>{
+  let calls=0;const h=harness(async()=>{calls++;return status();});
+  let submits=0;h.el('chat-form').requestSubmit=()=>submits++;
+  h.el('chat-suggestions').listeners.click({target:{closest:()=>({dataset:{prompt:'liquidity'}})}});
+  assert.match(h.el('kira-draft').value,/at least \$100/);
+  assert.equal(h.el('chat-suggestions').hidden,true);
+  assert.equal(h.run('agentState.config.scope'),'none');
+  assert.equal(h.run('draftRevision'),1);assert.equal(calls,0);assert.equal(submits,0);
+  const draft=h.el('kira-draft').value;
+  h.el('chat-suggestions').listeners.click({target:{closest:()=>({dataset:{prompt:'coverage'}})}});
+  assert.equal(h.el('kira-draft').value,draft); // Existing work is never overwritten.
+});
+test('a starter drafted during a pending send survives its successful receipt',async()=>{
+  const receipt=deferred();const h=harness(async path=>path==='/api/chat/send'?receipt.promise:path.startsWith('/api/chat/turn/')?{state:'succeeded'}:status());
+  h.el('kira-draft').value='Earlier question';h.el('kira-draft').listeners.input();
+  const pending=h.run('sendChat({preventDefault(){}})');
+  h.el('kira-draft').value='';h.el('kira-draft').listeners.input();
+  h.el('chat-suggestions').listeners.click({target:{closest:()=>({dataset:{prompt:'prices'}})}});
+  const draft=h.el('kira-draft').value;receipt.resolve({id:'turn'});await pending;
+  assert.equal(h.el('kira-draft').value,draft);assert.match(draft,/unreliable prices/);
+});
 test('a next draft typed before the send receipt survives successful completion', async () => {
   const receipt=deferred();
   const h=harness(async (path)=>path==='/api/chat/send'?receipt.promise:path.startsWith('/api/chat/turn/')?{state:'succeeded'}:status());

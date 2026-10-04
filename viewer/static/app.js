@@ -107,7 +107,7 @@ function renderHome(){
     return `<button class="wallet-card" data-wallet="${escapeHTML(w.key)}" aria-label="Open ${escapeHTML(w.name)} holdings"><span class="wallet-card-heading"><span class="card-wallet-icon">${walletGlyph}</span><span class="wallet-card-identity"><strong>${escapeHTML(w.name)}</strong><span>${escapeHTML(shortAddress(w.address))}</span></span><span class="card-arrow" aria-hidden="true">${arrowGlyph}</span></span><span class="wallet-card-value">${money(value)}</span><span class="wallet-card-meta"><span>${w.analysed_at?assets.length+(assets.length===1?' position · ':' positions · ')+unpriced+' unpriced':'Awaiting analysis'}</span><span>${value!=null?share(value,s.known_value_usd)+' of priced value':''}</span></span>${progress(value,s.known_value_usd,w.name+' share of priced value')}</button>`;
   }).join('');
   $('network-allocation').innerHTML=s.networks.map(c=>`<a class="network-row" href="${networkHref(c.id)}" aria-label="Open ${escapeHTML(c.name)} network overview"><div class="network-row-heading"><span class="network-label">${chainIcon(c.name)}${escapeHTML(c.name)}<span class="detail-arrow" aria-hidden="true">${arrowGlyph}</span></span><span class="network-value">${money(c.value_usd)}</span></div><div class="network-row-meta"><span>${c.position_count} ${c.position_count===1?'position':'positions'}${c.value_usd==null?' · Unpriced':''}</span><span>${share(c.value_usd,s.known_value_usd)}</span></div>${progress(c.value_usd,s.known_value_usd,c.name+' share of priced value')}</a>`).join('')||'<p class="panel-empty">Networks appear after analysis.</p>';
-  if(typeof renderReport==='function')renderReport();
+  if(typeof renderHomeTokens==='function')renderHomeTokens();
   bindImages();
 }
 function renderWallet(){

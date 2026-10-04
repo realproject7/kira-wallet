@@ -1,5 +1,9 @@
 # Kira completion and companion proposal
 
+Historical record. The operator subsequently removed the home exit report and
+retired the companion proposal. See [the current UI refinement](KIRA_UI_REFINEMENT.md)
+for the delivered token preview, question starters and restored showcase.
+
 The operator rejected the first product redesign. The site and app visual base
 were restored in `7ffe358`. The `kira-restored-20261004` tag preserves that point;
 `kira-design-before-20261004` preserves the earlier release baseline at `cfa9165`.

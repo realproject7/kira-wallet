@@ -3,6 +3,11 @@ let agentState = null, agentProvider = 'codex', agentStep = 1, setupRevision = 0
 let chatTurn = null, chatEpoch = 0, chatRequest = null, chatRetry = null, agentLoading = false, setupTesting = false, setupTurn = null, draftRevision = 0;
 let chatSignature = '', agentReady = false, chatDraftRevision = 0;
 const scopeNames = {none: 'No wallet context', wallet: 'One approved wallet', portfolio: 'Whole portfolio'};
+const questionStarters = {
+  liquidity: 'Which of my tokens can I swap for at least $100 through a liquidity pool? Check my full holding, price impact and costs. Flag missing or stale quotes instead of assuming a token can be sold.',
+  prices: 'Which of my tokens have missing or unreliable prices? Explain what evidence is missing and how I can check it.',
+  coverage: 'Which networks or tokens might be missing from my recorded holdings? Explain the coverage gaps and what I should check next.'
+};
 const agentPost = (path, body) => localAPI(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
 function currentSetup() {
   return {provider: agentProvider, model: $('agent-model').value.trim(), scope: document.querySelector('[name="agent-scope"]:checked').value,
@@ -23,6 +28,7 @@ function renderAgent() {
   $('chat-status').textContent = chatTurn ? 'Kira is thinking…' : config ? (config.retain_history ? 'History saved locally' : 'History in memory') : 'Connect your account';
   $('chat-send').hidden = Boolean(chatTurn); $('chat-stop').hidden = !chatTurn;
   $('chat-send').disabled = !config || !localSession?.controls || !$('kira-draft').value.trim() || Boolean(chatRequest);
+  $('chat-suggestions').hidden = Boolean($('kira-draft').value.trim());
   if(typeof renderSetupPath==='function')renderSetupPath();
   if(typeof renderBriefing==='function')renderBriefing();
   const messages = agentState?.messages || [];
@@ -151,6 +157,15 @@ $('agent-save').addEventListener('click', async () => {
   } catch (error) { $('agent-error').textContent = error.message; $('agent-save').disabled = false; }
 });
 $('kira-draft').addEventListener('input', () => { draftRevision++; $('draft-status').textContent = 'Draft stays in memory until sent.'; renderAgent(); });
+$('chat-suggestions').addEventListener('click', event => {
+  const key = event.target.closest('[data-prompt]')?.dataset.prompt;
+  if (!Object.hasOwn(questionStarters, key) || $('kira-draft').value.trim()) return;
+  $('kira-draft').value = questionStarters[key];
+  draftRevision++;
+  $('draft-status').textContent = 'Question added. Edit it before sending.';
+  renderAgent();
+  $('kira-draft').focus();
+});
 $('kira-draft').addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); if (!$('chat-send').disabled) $('chat-form').requestSubmit(); }
 });
