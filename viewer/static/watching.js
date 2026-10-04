@@ -1,6 +1,7 @@
 'use strict';
 // Extension state is memory only. Registration still uses the protected local job API in jobs.js.
 let watchingMode = 'manual', watchingSubmitting = false, watchingLastStatus = 'idle';
+let watchingSubmission = null;
 const watchingConnection = KiraWatching.create(renderWatching);
 KiraWatching.discover(window, watchingConnection);
 
@@ -8,6 +9,7 @@ function watchingCanAct() {
   return localSession?.controls === true && !!state && state.demo !== true;
 }
 function setWatchingMode(mode) {
+  if (watchingSubmission) return;
   watchingMode = mode;
   watchingConnection.clearSelection();
   $('new-wallet-address').value = '';
@@ -40,17 +42,27 @@ function replaceWatchingChoices(list, choices) {
 function renderWatching() {
   const current = watchingConnection.snapshot(), browser = watchingMode === 'browser';
   const permitted = watchingCanAct();
+  const submission = watchingSubmission;
+  $('wallet-entry-modes').hidden = !!submission;
+  $('wallet-submission').hidden = !submission;
+  if (submission) {
+    $('wallet-submission-title').textContent = watchingSubmitting ? 'Saving this Watching wallet' : 'We could not confirm this request';
+    $('wallet-submission-address').textContent = submission.address;
+    $('wallet-submission-name').textContent = submission.tag;
+    $('wallet-submission-note').textContent = watchingSubmitting ? 'You can close this window. The submitted address and name stay here while the request finishes.' : 'Check Activity before choosing a wallet again. A connection error can occur after a request is accepted.';
+  }
+  $('wallet-choose-again').disabled = watchingSubmitting;
   $('wallet-manual-mode').setAttribute('aria-pressed', String(!browser));
   $('wallet-browser-mode').setAttribute('aria-pressed', String(browser));
-  $('wallet-browser-panel').hidden = !browser;
-  $('wallet-dialog-title').textContent = browser && current.selected ? 'Review your Watching wallet' : 'Add a Watching wallet';
-  $('wallet-dialog').classList.toggle('is-review', browser && !!current.selected);
-  $('wallet-intro').hidden = browser && !!current.selected;
+  $('wallet-browser-panel').hidden = !!submission || !browser;
+  $('wallet-dialog-title').textContent = submission ? 'Watching wallet request' : browser && current.selected ? 'Review your Watching wallet' : 'Add a Watching wallet';
+  $('wallet-dialog').classList.toggle('is-review', !!submission || browser && !!current.selected);
+  $('wallet-intro').hidden = !!submission || browser && !!current.selected;
   $('wallet-address-field').hidden = browser;
   $('wallet-session-note').hidden = !!current.selected;
   $('wallet-connection-status').hidden = !!current.selected;
   $('wallet-demo-note').hidden = state?.demo !== true;
-  $('wallet-registration-fields').hidden = browser && !current.selected;
+  $('wallet-registration-fields').hidden = !!submission || browser && !current.selected;
   $('new-wallet-address').readOnly = browser;
   for (const id of ['wallet-manual-mode','wallet-browser-mode']) $(id).disabled = watchingSubmitting;
   for (const id of ['new-wallet-address','new-wallet-tag']) $(id).disabled = watchingSubmitting || browser && !current.selected;
@@ -64,8 +76,8 @@ function renderWatching() {
   $('wallet-change-account').hidden = !current.selected;
   $('wallet-change-account').disabled = watchingSubmitting;
   const sessionButton = $('wallet-session');
-  $('wallet-session-panel').hidden = !selectedProvider;
-  sessionButton.textContent = current.status === 'requesting' ? 'Wallet request pending' : 'Browser wallet session';
+  $('wallet-session-panel').hidden = !submission && !selectedProvider;
+  sessionButton.textContent = submission ? watchingSubmitting ? 'Wallet registration pending' : 'Wallet request details' : current.status === 'requesting' ? 'Wallet request pending' : 'Browser wallet session';
   $('wallet-session-name').textContent = selectedProvider?.name || '';
   // Do not rebuild focusable lists on every poll or name input.
   const providerSignature = JSON.stringify([current.providers, current.providerId, current.status === 'requesting', permitted, watchingSubmitting]);
@@ -108,7 +120,7 @@ function renderWatching() {
   const existing = state?.wallets.find(wallet => wallet.key === address.toLowerCase());
   $('wallet-existing').hidden = !valid || !existing;
   $('wallet-existing-link').href = '#/wallet/'+address.toLowerCase();
-  $('wallet-register').disabled = watchingSubmitting || !permitted || !valid || !!existing;
+  $('wallet-register').disabled = !!submission || !permitted || !valid || !!existing;
   $('wallet-register').textContent = watchingSubmitting ? 'Saving wallet…' : 'Add and research';
   if (browser && $('wallet-dialog').open && watchingLastStatus === 'requesting' && current.status === 'accounts')
     $('wallet-accounts').querySelector('button')?.focus();
@@ -136,7 +148,18 @@ $('wallet-change-account').addEventListener('click', () => {
 });
 $('wallet-session').addEventListener('click', () => {
   if (!localSession?.controls) return;
-  setWatchingMode('browser'); $('wallet-dialog').showModal();
+  if (!watchingSubmission) setWatchingMode('browser');
+  renderWatching(); $('wallet-dialog').showModal();
+});
+$('wallet-submission-activity').addEventListener('click', () => {
+  $('wallet-dialog').close(); navigate('#/activity');
+});
+$('wallet-choose-again').addEventListener('click', () => {
+  if (watchingSubmitting) return;
+  watchingSubmission = null; $('wallet-form-error').textContent = '';
+  watchingConnection.clearSelection(); renderWatching();
+  if (watchingMode === 'browser') $('wallet-accounts').querySelector('button')?.focus();
+  else $('new-wallet-address').focus();
 });
 for (const id of ['new-wallet-address','new-wallet-tag']) $(id).addEventListener('input', renderWatching);
 $('wallet-dialog').addEventListener('close', () => watchingConnection.clearSelection());

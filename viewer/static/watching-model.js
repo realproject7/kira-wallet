@@ -5,6 +5,7 @@
   else root.KiraWatching = api;
 })(typeof window === 'undefined' ? globalThis : window, function() {
   const addressPattern = /^0x[0-9a-fA-F]{40}$/;
+  const invalidAccountsMessage = 'The wallet did not return valid EVM accounts. Try again or enter an address.';
   const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   function safeIcon(value) {
     // No remote images or inline SVG. The browser renders data icons in img.
@@ -17,7 +18,7 @@
   }
   function accounts(value) {
     if (!Array.isArray(value) || value.length > 100 || value.some(a => typeof a !== 'string' || !addressPattern.test(a)))
-      throw new Error('The wallet did not return valid EVM accounts. Try again or enter an address.');
+      throw new Error(invalidAccountsMessage);
     const seen = new Set();
     return value.filter(a => { const key = a.toLowerCase(); if (seen.has(key)) return false; seen.add(key); return true; });
   }
@@ -79,7 +80,7 @@
             state.accounts = accounts(value);
             if (!state.accounts.length) { disconnect('No accounts are shared. Open your wallet or enter a public address.'); return; }
             state.status = 'accounts'; state.message = 'Shared accounts changed. Choose an account again before adding it.';
-          } catch (error) { state.accounts = []; state.status = 'error'; state.message = error.message; }
+          } catch { state.accounts = []; state.status = 'error'; state.message = invalidAccountsMessage; }
           publish();
         });
         listen('chainChanged', value => {

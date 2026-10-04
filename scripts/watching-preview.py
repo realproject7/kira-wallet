@@ -7,6 +7,7 @@ import secrets
 import shutil
 import sys
 import tempfile
+import threading
 
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT))
@@ -16,6 +17,23 @@ import server
 from model import load_state
 
 class FixtureHandler(server.Handler):
+    def do_POST(self):
+        if not self.local_request(): return
+        if self.path == '/__fixture/transport':
+            command=self.rfile.read(int(self.headers.get('Content-Length','0'))).decode()
+            if command == 'hold':
+                self.server.transport_result=None; self.server.transport_gate.clear()
+            elif command in ('accept','reject'):
+                self.server.transport_result=command; self.server.transport_gate.set()
+            else:
+                self.json({'error':{'message':'Invalid synthetic transport command'}},400); return
+            self.json({'mode':command}); return
+        if self.path == '/api/operations' and not self.server.transport_gate.is_set():
+            self.server.transport_gate.wait(20)
+            if self.server.transport_result != 'accept':
+                self.json({'error':{'message':'Synthetic registration response failed.'}},500); return
+        super().do_POST()
+
     def do_GET(self):
         if not self.local_request(): return
         if self.path == '/__fixture.js':
@@ -41,6 +59,7 @@ def main():
         atomic(root/'wallets.json',registry)
         http=ThreadingHTTPServer(('127.0.0.1',args.port),FixtureHandler)
         http.controls=True;http.session_token=secrets.token_urlsafe(32);http.jobs=JobStore(root)
+        http.transport_gate=threading.Event();http.transport_gate.set();http.transport_result=None
         http.jobs.launch=lambda:None  # Never start a provider-consuming research process.
         print(f'Synthetic Watching preview: http://127.0.0.1:{args.port}',flush=True)
         try:http.serve_forever()

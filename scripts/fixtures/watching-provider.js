@@ -28,9 +28,16 @@
   const tools=document.createElement('div');tools.id='fixture-tools';
   tools.style.cssText='border-bottom:1px dashed #b6a0cb;padding:10px 0;margin-bottom:20px;font-size:12px';
   const label=document.createElement('strong');label.textContent='Synthetic fixture. No extension or RPC.';
-  const metrics=document.createElement('p');metrics.innerHTML='<span id="fixture-requests">Account requests: 0</span> · <span id="fixture-jobs">Jobs: 0</span>';
+  const metrics=document.createElement('p');metrics.innerHTML='<span id="fixture-requests">Account requests: 0</span> · <span id="fixture-jobs">Jobs: 0</span> · <span id="fixture-transport">Registration: normal</span>';
   tools.append(label,metrics);
+  async function transport(command) {
+    await fetch('/__fixture/transport',{method:'POST',body:command});
+    document.getElementById('fixture-transport').textContent='Registration: '+command;
+  }
   const controls=[['Normal access',()=>{mode='normal';}],['Decline access',()=>{mode='reject';}],['Delay response',()=>{mode='pending';}],
+    ['Delay registration',()=>transport('hold')],
+    ['Accept registration',()=>transport('accept')],
+    ['Fail registration',()=>transport('reject')],
     ['Resolve response',()=>{deferred?.();deferred=null;}],['Change accounts',()=>first.emit('accountsChanged',[C])],
     ['Clear accounts',()=>first.emit('accountsChanged',[])],['Change network',()=>first.emit('chainChanged','0x2105')],
     ['Provider disconnect',()=>first.emit('disconnect',{code:4900})],['Announce again',announce],

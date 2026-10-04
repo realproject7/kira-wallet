@@ -303,7 +303,9 @@ main { margin-left: 232px; width: calc(100% - 232px); }
 .wallet-preview dl { margin: 12px 0 0; }
 .wallet-preview dt { color: var(--secondary); font-size: 12px; line-height: 1.5; margin-top: 12px; }
 .wallet-preview dd { margin: 4px 0 0; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
-#wallet-preview-address { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+#wallet-preview-address, #wallet-submission-address { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.wallet-submission-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.wallet-submission-actions .quiet-button { min-height: 44px; padding: 10px 12px; }
 .wallet-preview p { margin-bottom: 0; }
 .wallet-demo-note, .wallet-unavailable { padding: 14px 16px; background: #f2edf6; border-radius: 10px; }
 .wallet-existing a { color: #684484; text-underline-offset: 3px; }

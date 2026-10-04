@@ -143,3 +143,17 @@ test('malformed accounts, locked wallets and partial event subscription cannot c
   provider.on = function(event, listener) { EventEmitter.prototype.on.call(this,event,listener); if (event === 'chainChanged') throw Error('subscription failed'); return this; };
   await connection.connect(ID); assert.deepEqual(provider.calls, []); assertReleased(provider);
 });
+test('hostile account-event getters cannot leak errors or throw out of the event listener', async () => {
+  for (const error of [Error('private synthetic provider details'), null, 'private synthetic text', {get message() { throw null; }}]) {
+    const {connection, provider} = setup(); await connection.connect(ID); connection.select(A);
+    const payload = []; Object.defineProperty(payload, 0, {get() {throw error;}});
+    assert.doesNotThrow(() => provider.emit('accountsChanged', payload));
+    const current = connection.snapshot();
+    assert.equal(current.status, 'error'); assert.equal(current.selected, null);
+    assert.deepEqual(current.accounts, []);
+    assert.equal(current.message, 'The wallet did not return valid EVM accounts. Try again or enter an address.');
+    assert.throws(() => connection.registration('Synthetic'));
+    provider.emit('accountsChanged', [B]); assert.equal(connection.snapshot().selected, null);
+    assert.equal(connection.select(B), true); assert.equal(connection.registration('Synthetic').address, B);
+  }
+});

@@ -79,7 +79,7 @@ async function pollJobs(){
   finally{localPolling=false;}
 }
 for(const button of document.querySelectorAll('[data-close-dialog]'))button.addEventListener('click',()=>button.closest('dialog').close());
-function openAdd(){if(!localSession?.controls)return;$('wallet-form-error').textContent='';if(typeof renderWatching==='function')renderWatching();$('wallet-dialog').showModal();}
+function openAdd(){if(!localSession?.controls)return;if(!watchingSubmission)$('wallet-form-error').textContent='';if(typeof renderWatching==='function')renderWatching();$('wallet-dialog').showModal();}
 $('open-wallet').addEventListener('click',openAdd);$('empty-add-wallet').addEventListener('click',openAdd);
 function formAction(form,error,action){
   form.addEventListener('submit',async e=>{e.preventDefault();error.textContent='';const buttons=[...form.querySelectorAll('button[type="submit"]')];if(buttons.some(b=>b.disabled))return;buttons.forEach(b=>b.disabled=true);
@@ -90,8 +90,9 @@ $('wallet-form').addEventListener('submit',async event=>{
   event.preventDefault();if(watchingSubmitting||$('wallet-register').disabled)return;
   $('wallet-form-error').textContent='';
   try{
-    const input=watchingRegistrationInput();watchingSubmitting=true;renderWatching();
+    const input=Object.freeze({...watchingRegistrationInput()});watchingSubmission=input;watchingSubmitting=true;renderWatching();
     await submitOperation('wallet.add',input);
+    watchingSubmission=null;
     $('wallet-dialog').close();$('wallet-form').reset();watchingConnection.clearSelection();
     navigate('#/activity');
   }catch(error){$('wallet-form-error').textContent=error.message;}

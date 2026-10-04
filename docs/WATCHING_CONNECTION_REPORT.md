@@ -86,3 +86,36 @@ real extension in a supported browser, including its native approval, multiple
 accounts, locking and disconnect behavior. Synthetic verification does not
 establish that live acceptance passed. Model account connection and portfolio
 disclosure remain separate gates. See [the remaining stages](KIRA_NEXT_STEPS.md).
+
+## Independent review corrections
+
+A separate read-only reviewer inspected `e56548f` and found two actionable P2
+issues. Account-event validation now uses a fixed public message even if an
+untrusted getter throws null, a non-Error value or an exception with arbitrary
+contents. The selection is invalidated and a later valid event requires another
+explicit choice.
+
+Registration now freezes the explicitly submitted address and exact name in a
+separate in-memory review card. Closing and reopening the dialog, account events
+and disconnect cannot overwrite that review while the local POST is pending.
+Failure keeps the review and visible error until the operator chooses a wallet
+again. Activity is available to check whether an uncertain request was accepted.
+Success clears the review and opens Activity. The existing idempotency mechanism
+is unchanged. Nothing is automatically retried or registered from an event.
+
+Validation after the correction: all 67 Python tests, 16 lifecycle cases, four
+real-controller submission race cases, existing Node checks and source syntax
+passed. The clean package lifecycle still passed with 53 members. Synthetic
+HTTP/browser checks held a POST, changed accounts, closed/reopened the dialog and
+failed the response: the exact captured address/name and error stayed visible,
+with zero jobs created. A second held POST changed accounts and disconnected
+before success: one queued job appeared with the original captured input. The
+fixture launches no worker and makes no real provider or extension request.
+
+The request card has no horizontal overflow at 375×812 or 320×700 and both action
+buttons measure 44px. A final independent review of the corrected stacked head
+is pending.
+
+![Failed synthetic registration preserves its review](screenshots/kira-watching-failed-request.jpg)
+
+[Mobile request review](screenshots/kira-watching-request-mobile.jpg).

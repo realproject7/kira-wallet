@@ -90,7 +90,7 @@
     <form id="wallet-form">
       <div class="dialog-heading"><img src="/kira-logo.png" width="42" height="42" alt=""><h2 id="wallet-dialog-title">Add a Watching wallet</h2><button type="button" data-close-dialog aria-label="Close dialog"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div>
       <p id="wallet-intro">Follow a public address. Your keys stay in your wallet.</p>
-      <div class="wallet-entry-modes" role="group" aria-label="Choose address source"><button type="button" id="wallet-manual-mode" aria-pressed="true">Enter address</button><button type="button" id="wallet-browser-mode" aria-pressed="false">Browser wallet</button></div>
+      <div id="wallet-entry-modes" class="wallet-entry-modes" role="group" aria-label="Choose address source"><button type="button" id="wallet-manual-mode" aria-pressed="true">Enter address</button><button type="button" id="wallet-browser-mode" aria-pressed="false">Browser wallet</button></div>
       <p id="wallet-demo-note" class="wallet-demo-note" hidden>Sample mode: explore this form with a public address. Connecting and research are available in a personal workspace.</p>
       <section id="wallet-browser-panel" class="wallet-browser-panel" aria-label="Browser wallet connection" hidden>
         <h3 id="wallet-providers-title">Choose a browser wallet</h3>
@@ -111,9 +111,10 @@
       <section id="wallet-preview" class="wallet-preview" aria-label="Wallet registration preview" hidden><h3>Ready to watch</h3><dl><dt>Public address</dt><dd id="wallet-preview-address"></dd><dt>Exact wallet name</dt><dd id="wallet-preview-name"></dd></dl></section>
       <p id="wallet-existing" class="wallet-existing" hidden>This Watching wallet is already saved. <a id="wallet-existing-link">Open the saved wallet</a> to keep its current names.</p>
       <p class="form-note">Public RPC checks known assets and Mint Club. Broader token discovery may be incomplete. Research can consume provider allowance.</p>
-      <p id="wallet-form-error" class="form-error" role="alert"></p>
       <button id="wallet-register" class="primary-button" type="submit" disabled>Add and research</button>
       </div>
+      <section id="wallet-submission" class="wallet-preview" aria-label="Submitted wallet request" hidden><h3 id="wallet-submission-title" role="status"></h3><dl><dt>Submitted public address</dt><dd id="wallet-submission-address"></dd><dt>Exact submitted name</dt><dd id="wallet-submission-name"></dd></dl><p id="wallet-submission-note" class="form-note"></p><div class="wallet-submission-actions"><button type="button" id="wallet-submission-activity" class="quiet-button">View Activity</button><button type="button" id="wallet-choose-again" class="quiet-button" disabled>Choose wallet again</button></div></section>
+      <p id="wallet-form-error" class="form-error" role="alert"></p>
     </form>
   </dialog>
   <dialog id="tags-dialog" class="research-dialog" aria-labelledby="tags-title"><form id="tags-form"><div class="dialog-heading"><h2 id="tags-title">Wallet names</h2><button type="button" data-close-dialog aria-label="Close dialog"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div><label>One exact name per line<textarea id="tag-values" required rows="4"></textarea></label><p class="form-note">The first name is shown in navigation. Saved analyses retain their original names.</p><p id="tags-error" class="form-error" role="alert"></p><button class="primary-button" type="submit">Save names</button></form></dialog>
