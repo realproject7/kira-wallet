@@ -49,7 +49,7 @@
     "docs/character/workspace-generation.json"
   ],
   "scripts": {
-    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js"
+    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js && node test-watching.cjs && node --check viewer/static/watching.js && node --check viewer/static/watching-model.js"
   },
   "dependencies": {
     "viem": "2.57.2"

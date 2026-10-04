@@ -1,6 +1,9 @@
 # Watching connection implementation ticket
 
-Status: scoped for review. No provider adapter ships in workspace PR #2.
+Status: implemented on `codex/kira-watching-connection`, stacked on workspace PR #2.
+Synthetic verification passed. Independent review and live extension acceptance
+remain pending. See [the implementation report](WATCHING_CONNECTION_REPORT.md)
+and [remaining stages](KIRA_NEXT_STEPS.md).
 
 ## Outcome
 

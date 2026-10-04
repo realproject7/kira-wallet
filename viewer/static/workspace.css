@@ -275,6 +275,44 @@ main { margin-left: 232px; width: calc(100% - 232px); }
 .history-row { font-size: 14px; line-height: 1.6; }
 .history-row small, .comparison-result small { font-size: 12px; }
 
+/* Watching connection keeps selection, session and saved addresses distinct. */
+.watching-dialog { width: min(520px, calc(100% - 32px)); }
+.watching-dialog [hidden], #wallet-session-panel[hidden] { display: none; }
+.watching-dialog .text-button { min-height: 44px; padding: 10px 2px; margin-right: 12px; }
+.wallet-entry-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: #eee9f3; padding: 4px; border-radius: 12px; margin: 22px 0; }
+.wallet-entry-modes button { min-height: 44px; padding: 9px 8px; border: 0; background: transparent; color: var(--secondary); border-radius: 9px; font: inherit; font-weight: 500; cursor: pointer; }
+.wallet-entry-modes button[aria-pressed=true] { color: var(--ink); background: #fff; box-shadow: 0 1px 4px #30213e12; }
+.watching-dialog.is-review .wallet-entry-modes { margin: 16px 0; }
+.watching-dialog.is-review .wallet-preview { padding: 16px; }
+.watching-dialog h3 { font-size: 14px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 8px; }
+.wallet-choices { display: grid; gap: 8px; margin: 16px 0; }
+.wallet-choice { display: flex; align-items: center; gap: 12px; padding: 14px; width: 100%; min-height: 64px; text-align: left; color: var(--ink); background: #fff; border: 1px solid #ded6e6; border-radius: 12px; font: inherit; cursor: pointer; }
+.wallet-choice:hover, .wallet-choice[aria-pressed=true] { border-color: #9475aa; background: #f6f1fa; }
+.wallet-choice img { width: 32px; height: 32px; border-radius: 8px; object-fit: contain; flex: none; }
+.wallet-choice > span:not(.wallet-choice-arrow) { flex: 1; min-width: 0; }
+.wallet-choice strong, .wallet-choice small { display: block; overflow-wrap: anywhere; }
+.wallet-choice strong { font-size: 14px; font-weight: 500; line-height: 1.45; }
+.wallet-choice small { color: var(--secondary); font-size: 12px; line-height: 1.5; margin-top: 3px; }
+.wallet-choice-arrow { display: flex; flex: none; color: #76578e; }
+.wallet-account img { display: none; }
+.wallet-account small { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.7; }
+.wallet-accounts-section { border-top: 1px solid #e2dce8; padding-top: 20px; margin-top: 20px; }
+.research-dialog .wallet-connection-status { font-size: 13px; color: #5f4474; }
+.wallet-connection-status:empty { display: none; }
+.wallet-preview { background: #f0edf5; border: 1px solid #ddd2e6; border-radius: 12px; padding: 18px; margin: 18px 0; }
+.wallet-preview dl { margin: 12px 0 0; }
+.wallet-preview dt { color: var(--secondary); font-size: 12px; line-height: 1.5; margin-top: 12px; }
+.wallet-preview dd { margin: 4px 0 0; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
+#wallet-preview-address { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.wallet-preview p { margin-bottom: 0; }
+.wallet-demo-note, .wallet-unavailable { padding: 14px 16px; background: #f2edf6; border-radius: 10px; }
+.wallet-existing a { color: #684484; text-underline-offset: 3px; }
+#wallet-register { width: 100%; }
+.wallet-session-panel { border-top: 1px solid #4b4058; padding-top: 8px; margin-bottom: 14px; }
+#wallet-session { justify-content: flex-start; text-align: left; color: #d8cce4; font-size: 12px; min-height: 44px; }
+#wallet-session-name { display: block; font-size: 12px; color: #c2b5cc; overflow-wrap: anywhere; }
+#wallet-session-name:empty { display: none; }
+
 /* Compact panes use the same card layout on every viewport. */
 @media (max-width: 1400px) {
   .wallet-cards { grid-template-columns: 1fr; }
@@ -342,6 +380,9 @@ main { margin-left: 232px; width: calc(100% - 232px); }
   .user-controls .primary-button { min-height: 44px; padding: 11px 12px; white-space: nowrap; }
   .settings-button { min-height: 44px; min-width: 44px; width: 44px; padding: 0; justify-content: center; }
   .settings-label, .user-controls p { display: none; }
+  .wallet-session-panel { order: 4; width: 100%; display: flex; align-items: center; gap: 12px; margin: 0; padding: 0; }
+  #wallet-session { flex: none; }
+  #wallet-session-name { min-width: 0; }
   .app { display: block; }
   main { width: 100%; margin: 0; }
   .topbar { height: 44px; padding: 0 20px; }

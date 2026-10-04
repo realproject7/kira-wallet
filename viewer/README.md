@@ -1,6 +1,6 @@
 # Wallet research viewer
 
-A read-only local browser view of the registered wallets and their latest analysis. The Kira interface uses warm ivory surfaces, ink text, a restrained violet accent, native system fonts and an adult webtoon research companion. Home introduces Kira; each view includes a factual note computed from the saved research, with an expandable explanation of valuation limits. The character does not imply a connected model chat. It has no wallet connection, edit action, or trading action.
+A local browser view of registered wallets and their latest analysis. The default server is read-only. Opt-in local controls enable explicit research, exact names and Watching connections. The Kira interface uses warm ivory surfaces, ink text, a restrained violet accent, native system fonts and an adult webtoon research companion. Each view includes a factual note computed from saved research, with an explanation of valuation limits. Model chat remains awaiting account setup. Signing and trading are not exposed.
 
 ## Open the viewer
 
@@ -46,7 +46,7 @@ python3 viewer/refresh_prices.py --wallet '<registered address or tag>'
 
 Omit `--wallet` to refresh all analysed wallets. This reads public DEX prices and current Mint Club curve prices through RPC, then atomically writes `market-prices.json` next to each snapshot. The viewer updates automatically. This command refreshes prices only. A full holdings refresh requires a new wallet analysis. The analysis date and price date are shown separately.
 
-The browser never contacts an RPC or price provider and never reads the RPC credentials. Token image requests use the approved Mint Club and Hunt image endpoints and image origins returned by Mint Club. Only the agent's refresh process uses the existing authorized RPC configuration. The viewer server exposes only its three static assets, favicon, derived data, and registered reports. It has no write endpoint.
+The browser never contacts an RPC or price provider and never reads RPC credentials. Token image requests use the approved Mint Club and Hunt image endpoints and image origins returned by Mint Club. Research processes use the configured RPC references. The server exposes allowlisted static assets, derived data and registered reports. With local controls enabled, protected job endpoints accept explicit same-origin actions.
 
 ## Token images
 
@@ -87,7 +87,7 @@ Detail checks also cover exact decimal balance aggregation, shared curve backing
 
 ## Planned Kira Wallet product
 
-The [product specification](../docs/KIRA_PRODUCT_SPEC.md) and [implementation plan](../docs/KIRA_IMPLEMENTATION_PLAN.md) describe portable public/custom RPC configuration, Kira's identity and original character, the future workspace redesign, direct job controls and optional agent chat. These are planned milestones beyond the current read-only viewer.
+The [product specification](../docs/KIRA_PRODUCT_SPEC.md) and [implementation plan](../docs/KIRA_IMPLEMENTATION_PLAN.md) describe portable RPC configuration, Kira's identity, the workspace, direct jobs and optional agent chat. Connected chat remains a separate outcome awaiting account and disclosure choices.
 
 ## Opt-in local controls
 
@@ -98,3 +98,22 @@ and saved analysis comparison. No signing or trading is exposed. Jobs continue
 independently of the viewer and a disconnected model. The synthetic demo blocks
 provider research. See [the job contract](../docs/JOB_CONTRACT.md) and
 [continuation report](../docs/KIRA_JOBS_BUILD_REPORT.md).
+
+## Watching connections
+
+With local controls enabled, Add wallet offers manual entry or Browser wallet.
+Choose an EIP-6963-compatible browser wallet, then explicitly select a shared
+public account. Check the complete address and exact name before Add and
+research. Activity shows the accepted local job. Existing Watching addresses
+offer an open-wallet link to preserve their names.
+
+The extension session is memory only. Discovery, reload and reopening a completed
+session do not request accounts automatically. Account changes invalidate the
+preview; network changes only update session context. Disconnecting from Kira
+does not delete saved wallets or revoke extension permissions. Manage those
+permissions in the extension. No signature or transaction is requested.
+
+A browser without a compatible extension still supports manual entry. Sample
+mode permits form exploration but blocks account requests and provider research.
+The EIP contracts are [provider discovery](https://eips.ethereum.org/EIPS/eip-6963)
+and [provider events](https://eips.ethereum.org/EIPS/eip-1193).

@@ -57,6 +57,9 @@ class JobsHTTPTest(unittest.TestCase):
         registry=json.loads((self.root/'wallets.json').read_text());registry['demo']=True;atomic(self.root/'wallets.json',registry)
         body=json.dumps({'schema_version':1,'operation':'wallet.refresh','input':{'wallet':ADDRESS},'idempotency_key':'demo-request'}).encode()
         self.assertEqual(self.request(body=body)[0],400);self.assertEqual(len(self.http.jobs.list()),0)
+        body=json.dumps({'schema_version':1,'operation':'wallet.add','input':{'address':'0x'+'2'*40,'tag':'Synthetic new wallet'},'idempotency_key':'demo-add'}).encode()
+        self.assertEqual(self.request(body=body)[0],400);self.assertEqual(len(self.http.jobs.list()),0)
+        self.http.jobs.launch.assert_not_called()
         for path in ['/wallets.json','/.kira.local.json','/jobs/private.json','/snapshots/private/results.json']:
             self.assertEqual(self.request(path,method='GET')[0],404)
     def test_demo_cannot_resume_a_provider_job(self):
@@ -69,5 +72,16 @@ class JobsHTTPTest(unittest.TestCase):
         self.http.jobs.launch.assert_not_called()
     def test_origin_cannot_read_session(self):
         self.assertEqual(self.request('/api/session',headers={'Origin':'https://foreign.test'},method='GET')[0],403)
+    def test_watching_registration_keeps_origin_session_and_idempotency_boundary(self):
+        before=(self.root/'wallets.json').read_bytes()
+        body=json.dumps({'schema_version':1,'operation':'wallet.add','input':{'address':'0x'+'2'*40,'tag':'  Synthetic exact name  '},'idempotency_key':'watching-add'}).encode()
+        for headers in [{'X-Kira-Session':'expired'},{'Origin':'https://foreign.test'}]:
+            self.assertEqual(self.request(headers=headers,body=body)[0],403)
+        self.assertEqual(self.http.jobs.list(),[])
+        code,first=self.request(body=body);self.assertEqual(code,202)
+        _,retry=self.request(body=body);self.assertEqual(first['job_id'],retry['job_id'])
+        self.assertEqual(len(self.http.jobs.list()),1)
+        self.assertEqual(first['input']['tag'],'  Synthetic exact name  ')
+        self.assertEqual((self.root/'wallets.json').read_bytes(),before)
 
 if __name__=='__main__':unittest.main()

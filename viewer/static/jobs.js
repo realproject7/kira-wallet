@@ -25,9 +25,10 @@ function refreshControlState(){
   const sample=state?.demo===true;
   for(const id of ['open-wallet','empty-add-wallet','refresh-wallet','refresh-prices']){
     const active=id.startsWith('refresh')&&jobList.some(j=>['queued','running'].includes(j.state)&&j.input.wallet===selectedWallet);
-    $(id).disabled=sample||active||(id==='refresh-prices'&&!currentWallet()?.analysed_at);
+    $(id).disabled=(sample&&id.startsWith('refresh'))||active||(id==='refresh-prices'&&!currentWallet()?.analysed_at);
     $(id).title=sample?'Sample research cannot contact providers.':active?'A research job is already active for this wallet.':'';
   }
+  if(typeof renderWatching==='function')renderWatching();
 }
 let jobsPage=1, jobsConnected=true, lastJobsPoll=null;
 function renderJobs(){
@@ -46,7 +47,7 @@ function renderJobs(){
     const evidence=[...Object.entries(counts).filter(([name])=>name!=='block_number').map(([name,count])=>`${name.replaceAll('_',' ')} ${count}`),...(context?.block_number?['block '+context.block_number]:[])].join(' · ');
     const controls=KiraView.active(j)?`<button class="quiet-button" data-job-action="cancel" data-job-id="${escapeHTML(j.job_id)}" ${j.cancel_requested?'disabled':''}>${j.cancel_requested?'Stopping…':'Stop'}</button>`:['interrupted','failed','cancelled'].includes(j.state)?`<button class="quiet-button" data-job-action="resume" data-job-id="${escapeHTML(j.job_id)}">Resume saved work</button>`:'';
     const link=j.input.wallet||j.input.address;
-    const name=state?.wallets.find(w=>w.key===link?.toLowerCase())?.name;
+    const name=state?.wallets.find(w=>w.key===link?.toLowerCase())?.name||(j.operation==='wallet.add'?j.input.tag:null);
     const recorded=(j.events||[]).map(event=>{const context=event.context;const detail=Object.entries(event.counts||{}).filter(([name])=>name!=='block_number').map(([name,value])=>name.replaceAll('_',' ')+': '+value).join(' · ');return `<li><strong>${escapeHTML(stageLabels[event.stage]||event.stage)}</strong><span>${stamp(event.observed_at)} · ${escapeHTML(detail)}${context?.block_number?' · block '+escapeHTML(context.block_number):''}</span></li>`;}).join('');
     const stages=recorded?`<details class="job-stages"><summary>Recorded stages · ${j.events.length}</summary><ol>${recorded}</ol></details>`:'';
     return `<article class="job-row"><div class="job-identity"><span class="job-state ${escapeHTML(j.state)}">${presentation.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(presentation.label)}</span><strong>${escapeHTML(jobLabels[j.operation]||j.operation)}</strong>${link?`<a href="#/wallet/${escapeHTML(link.toLowerCase())}">${escapeHTML(name||shortAddress(link))}</a>`:''}<p>${escapeHTML(stageLabels[j.stage]||j.stage)}${j.state==='partial'?' · coverage gaps remain':''}</p><p class="job-timer" data-job-timer="${escapeHTML(j.job_id)}">${presentation.timerLabel} ${KiraView.duration(presentation.elapsed)}</p>${evidence?`<p class="job-evidence">${escapeHTML(evidence)}</p>`:''}${presentation.freshness?`<p class="job-freshness">${escapeHTML(presentation.freshness)}</p>`:''}${j.errors?.length?`<p class="job-error">${escapeHTML(j.errors[0].message)}</p>`:''}${stages}<small>Last update ${stamp(j.updated_at)} · attempt ${j.attempt} · ${escapeHTML(j.job_id.slice(0,8))}</small></div><div class="job-actions">${controls}</div></article>`;
@@ -78,14 +79,24 @@ async function pollJobs(){
   finally{localPolling=false;}
 }
 for(const button of document.querySelectorAll('[data-close-dialog]'))button.addEventListener('click',()=>button.closest('dialog').close());
-function openAdd(){if(!localSession?.controls)return;$('wallet-form-error').textContent='';$('wallet-dialog').showModal();}
+function openAdd(){if(!localSession?.controls)return;$('wallet-form-error').textContent='';if(typeof renderWatching==='function')renderWatching();$('wallet-dialog').showModal();}
 $('open-wallet').addEventListener('click',openAdd);$('empty-add-wallet').addEventListener('click',openAdd);
 function formAction(form,error,action){
   form.addEventListener('submit',async e=>{e.preventDefault();error.textContent='';const buttons=[...form.querySelectorAll('button[type="submit"]')];if(buttons.some(b=>b.disabled))return;buttons.forEach(b=>b.disabled=true);
     try{await action();}catch(failure){error.textContent=failure.message;}finally{buttons.forEach(b=>b.disabled=false);}
   });
 }
-formAction($('wallet-form'),$('wallet-form-error'),async()=>{const result=await submitOperation('wallet.add',{address:$('new-wallet-address').value,tag:$('new-wallet-tag').value});$('wallet-dialog').close();$('wallet-form').reset();navigate('#/wallet/'+result.input.address.toLowerCase());});
+$('wallet-form').addEventListener('submit',async event=>{
+  event.preventDefault();if(watchingSubmitting||$('wallet-register').disabled)return;
+  $('wallet-form-error').textContent='';
+  try{
+    const input=watchingRegistrationInput();watchingSubmitting=true;renderWatching();
+    await submitOperation('wallet.add',input);
+    $('wallet-dialog').close();$('wallet-form').reset();watchingConnection.clearSelection();
+    navigate('#/activity');
+  }catch(error){$('wallet-form-error').textContent=error.message;}
+  finally{watchingSubmitting=false;renderWatching();}
+});
 $('refresh-wallet').addEventListener('click',async()=>{try{await submitOperation('wallet.refresh',{wallet:selectedWallet});}catch(error){toast(error.message);}});
 $('refresh-prices').addEventListener('click',async()=>{try{await submitOperation('prices.refresh',{wallet:selectedWallet});}catch(error){toast(error.message);}});
 $('edit-tags').addEventListener('click',()=>{if(!currentWallet())return;$('tags-dialog').dataset.wallet=selectedWallet;$('tag-values').value=currentWallet().tags.join('\n');$('tags-error').textContent='';$('tags-dialog').showModal();});
