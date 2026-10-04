@@ -34,6 +34,7 @@ function expandChat(expand,animate=true) {
 }
 $('chat-expand').addEventListener('click',event=>expandChat(!chatExpanded,event.detail!==0));
 $('chat-backdrop').addEventListener('click',()=>expandChat(false));
+document.querySelector('.kira-dock').addEventListener('click',event=>{if(chatExpanded&&event.target.closest('a[href^="#/"]'))expandChat(false,false);});
 document.addEventListener('keydown',event=>{
   if(!chatExpanded||document.querySelector('dialog[open]'))return;
   if(event.key==='Escape'){event.preventDefault();expandChat(false,false);return;}
