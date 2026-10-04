@@ -49,31 +49,13 @@ function renderWorkspace() {
 function renderBriefing() {
   if (!state) return;
   renderKiraNote();
-  const active = typeof jobList !== 'undefined' && jobList.some(KiraView.active);
-  let art = 'welcome', caption = 'Your wallet assistant', note = 'Connect your AI to ask about your holdings.';
-  if (active) { art = 'research'; caption = 'Research in progress'; note = 'Follow the recorded stages in Activity.'; }
-  else if (selectedView === 'activity') { art = 'review'; caption = 'Research history'; note = 'Review saved results and unfinished work.'; }
-  else if (['token', 'network', 'tokens', 'wallet'].includes(selectedView)) { art = 'explain'; caption = 'Explore your holdings'; note = 'Balances, prices and coverage from saved research.'; }
-  const config = typeof agentState !== 'undefined' ? agentState?.config : null;
-  const thinking = typeof chatTurn !== 'undefined' && Boolean(chatTurn);
-  if (thinking) { art = 'research'; caption = 'Preparing your answer'; }
-  else if (config && !active) { art = 'explain'; caption = 'Ask Kira about your wallets'; }
-  if (config && (thinking || !active)) note = config.scope === 'none' ? 'Wallet access is off' : config.scope === 'wallet' ? (config.wallet_tools ? 'Wallet research is connected' : 'Reading your saved wallet context') : (config.wallet_tools ? 'Your portfolio research is connected' : 'Reading your saved portfolio context');
-  const researching = typeof jobList !== 'undefined' && jobList.some(job => job.state === 'running');
-  $('kira-panel').dataset.speaking = String(thinking || researching);
-  $('chat-form').dataset.working = String(thinking || researching);
-  const src = art === 'welcome' ? '/kira.png' : '/kira-' + art + '.png';
-  if ($('kira-scene-art').getAttribute('src') !== src) $('kira-scene-art').src = src;
-  $('kira-scene-art').alt = { welcome: 'Kira holding her research notebook', research: 'Kira writing while researching', explain: 'Kira explaining a finding', review: 'Kira reviewing saved notes', attention: 'Kira carefully checking incomplete evidence' }[art];
-  $('kira-mood').textContent = caption; $('kira-scene-note').textContent = note;
-  $('kira-context').textContent = selectedView === 'wallet' ? currentWallet()?.name || 'Wallet' : selectedView === 'token' ? state.details.tokens.find(t => t.id === selectedToken)?.symbol || 'Token' : selectedView === 'network' ? state.details.networks.find(n => n.id === selectedNetwork)?.name || 'Network' : { home: 'Portfolio overview', tokens: 'All tokens', activity: 'Research activity' }[selectedView];
-  if (selectedView === 'tokens') {
-    const tokens = state.details.tokens.filter(t => t.environment !== 'testnet');
-    $('kira-note-text').textContent = `There are ${tokens.length} recorded mainnet tokens. ${tokens.filter(t => t.value_usd == null || t.unpriced_count > 0).length} have unpriced amounts. I keep tokens on different networks separate, even when their symbols match.`;
-  } else if (selectedView === 'activity') {
-    const running = typeof jobList === 'undefined' ? 0 : jobList.filter(KiraView.active).length;
-    $('kira-note-text').textContent = running ? `${running} local research ${running === 1 ? 'job is' : 'jobs are'} in progress. The timeline shows the last recorded stage, elapsed time and freshness. A quiet stage is not proof that a worker stopped.` : 'There is no recorded job in progress. Completed work stays in the timeline, along with partial results, interruptions and failed attempts.';
-  }
+  if (typeof renderResearchChat === 'function') renderResearchChat();
+}
+function resetRouteFilters() {
+  for (const [id,value] of Object.entries({'all-token-network':'all','all-token-pricing':'all','all-token-sort':'value','all-token-search':'','job-filter':'all'})) $(id).value=value;
+  $('all-token-testnets').checked=false;catalogPage=1;
+  if(typeof jobsPage!=='undefined')jobsPage=1;
+  if(typeof KiraSelect!=='undefined')KiraSelect.refresh();
 }
 for (const id of ['all-token-network', 'all-token-pricing', 'all-token-sort', 'all-token-testnets']) $(id).addEventListener('change', () => { catalogPage = 1; renderCatalog(); });
 $('all-token-search').addEventListener('input', () => { clearTimeout(catalogTimer); catalogTimer = setTimeout(() => { catalogPage = 1; renderCatalog(); }, 120); });
@@ -89,6 +71,7 @@ $('home-view-all').addEventListener('click', () => {
 });
 function setWorkspacePane(pane) {
   document.querySelector('.workspace').dataset.pane = pane;
+  document.body.classList.toggle('chat-pane',pane==='kira');
   document.querySelectorAll('.mobile-pane-control [data-pane]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.pane === pane)));
 }
 document.querySelectorAll('.mobile-pane-control [data-pane]').forEach(button => button.addEventListener('click', () => {

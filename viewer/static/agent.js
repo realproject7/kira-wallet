@@ -30,14 +30,18 @@ function renderAgent() {
   $('chat-send').hidden = Boolean(chatTurn); $('chat-stop').hidden = !chatTurn;
   $('chat-send').disabled = !config || !localSession?.controls || !$('kira-draft').value.trim() || Boolean(chatRequest);
   $('chat-suggestions').hidden = Boolean($('kira-draft').value.trim());
+  if($('chat-welcome'))$('chat-welcome').hidden=Boolean((agentState?.messages||[]).length||chatTurn);
   if(typeof renderSetupPath==='function')renderSetupPath();
   if(typeof renderBriefing==='function')renderBriefing();
   const messages = agentState?.messages || [];
   $('kira-panel').classList.toggle('chatting', Boolean(messages.length || chatTurn));
-  const signature = JSON.stringify([messages, chatTurn, chatRequest?.message]);
+  const signature = JSON.stringify([messages, chatTurn, chatRequest?.message, agentState?.tool_status]);
   if (signature !== chatSignature) {
+    const scroller=$('conversation-scroll'), previousTop=scroller.scrollTop;
+    const follow=scroller.scrollHeight-scroller.clientHeight-previousTop<80;
     chatSignature = signature;
-    $('chat-messages').innerHTML = messages.map(message => `<article class="chat-message ${message.role === 'user' ? 'user' : 'assistant'}"><strong>${message.role === 'user' ? 'YOU' : 'KIRA'}</strong>${message.role === 'user' ? '<p>' + escapeHTML(message.text) + '</p>' : '<div class="markdown-body">' + KiraMarkdown.render(message.text) + '</div>'}</article>`).join('') + (chatTurn && chatRequest?.message ? `<article class="chat-message user"><strong>YOU</strong><p>${escapeHTML(chatRequest.message)}</p></article>` : '') + (chatTurn ? '<div class="chat-message pending"><span class="spinner" aria-hidden="true"></span> Preparing your answer…</div>' : '');
+    $('chat-messages').innerHTML = messages.map(message => `<article class="chat-message ${message.role === 'user' ? 'user' : 'assistant'}"><strong>${message.role === 'user' ? 'YOU' : 'KIRA'}</strong>${message.role === 'user' ? '<p>' + escapeHTML(message.text) + '</p>' : '<div class="kira-reply-identity"><img src="/kira-explain.png" width="48" height="60" alt=""><span>Kira</span></div><div class="markdown-body">' + KiraMarkdown.render(message.text) + '</div>'}</article>`).join('') + (chatTurn && chatRequest?.message ? `<article class="chat-message user"><strong>YOU</strong><p>${escapeHTML(chatRequest.message)}</p></article>` : '') + (chatTurn ? '<div class="chat-message pending"><img src="/kira-research.png" width="72" height="90" alt="Kira analysing your question"><div><strong>Kira</strong><p>' + escapeHTML(agentState?.tool_status || 'Let me take a look…') + '</p><span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span></div></div>' : '');
+    scroller.scrollTop=follow?scroller.scrollHeight:previousTop;
   }
 }
 function renderProviders() {
@@ -130,6 +134,7 @@ async function waitTurn(id, valid) {
   while (valid()) {
     const turn = await localAPI('/api/chat/turn/' + encodeURIComponent(id));
     if (turn.state !== 'running') return turn;
+    if(chatTurn===id&&agentState){agentState.tool_status=turn.tool_status||null;renderAgent();}
     await new Promise(resolve => setTimeout(resolve, 700));
   }
   return null;
@@ -180,11 +185,11 @@ async function sendChat(event) {
   try {
     const turn = await agentPost('/api/chat/send', chatRequest);
     if (epoch !== chatEpoch) return;
-    chatTurn = turn.id; if (draftRevision === draftAtSend) $('kira-draft').value = ''; renderAgent();
+    chatTurn = turn.id; if (draftRevision === draftAtSend) $('kira-draft').value = ''; renderAgent(); $('conversation-scroll').scrollTop=$('conversation-scroll').scrollHeight;
     const result = await waitTurn(turn.id, () => epoch === chatEpoch);
     if (!result || epoch !== chatEpoch) return;
     if (result.state !== 'succeeded') { if (!$('kira-draft').value && draftRevision === draftAtSend) $('kira-draft').value = message; chatRetry = null; throw new Error(result.error?.message || 'Response stopped. You can edit and send your message again.'); }
-    await loadAgent(); chatRetry = null; $('conversation-scroll').scrollTop = $('conversation-scroll').scrollHeight;
+    await loadAgent(); chatRetry = null;
   } catch (error) { if (epoch === chatEpoch) { $('chat-error').textContent = error.message; if (chatTurn && chatRetry) { recoverResponse(chatTurn, epoch); return; } } }
   finally { if (epoch === chatEpoch && !(chatTurn && chatRetry)) { chatTurn = null; chatRequest = null; renderAgent(); if (chatRetry) loadAgent().catch(() => {}); } }
 }

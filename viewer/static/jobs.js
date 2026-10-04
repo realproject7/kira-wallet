@@ -58,6 +58,7 @@ function renderJobs(){
     return `<div><a href="#/activity"><strong>${p.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(p.label)} · ${escapeHTML(jobLabels[j.operation]||j.operation)}</strong><small data-job-timer="${escapeHTML(j.job_id)}">${p.timerLabel} ${KiraView.duration(p.elapsed)}</small></a><p>${escapeHTML(stageLabels[j.stage]||j.stage)}${p.freshness?' · '+escapeHTML(p.freshness):''}</p></div>`;
   }).join('')+(active.length>2?'<small>'+ (active.length-2)+' more jobs in Activity</small>':'');
   if(typeof renderBriefing==='function')renderBriefing();
+  if(typeof renderWallets==='function'&&state)renderWallets();
 }
 function tickJobTimers(){
   if(document.hidden)return;

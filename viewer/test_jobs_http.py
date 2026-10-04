@@ -49,15 +49,38 @@ class JobsHTTPTest(unittest.TestCase):
         registry=json.loads((self.root/'wallets.json').read_text());registry['demo']=True;atomic(self.root/'wallets.json',registry)
         self.assertEqual(self.request('/api/ows/create',body=b'{}')[0],400)
 
+    def test_chat_history_assets_and_upgrade_receipt_boundaries(self):
+        for asset in ('chat-workspace.css','chat-workspace.js','selects.js'):
+            with urllib.request.urlopen(self.url+'/'+asset) as response:self.assertEqual(response.status,200)
+        self.assertEqual(self.request('/api/chat/history',method='GET'),(200,[]))
+        self.assertEqual(self.request('/api/chat/history?id=bad',method='GET')[0],400)
+        self.assertEqual(self.request('/api/chat/open',body=b'{"id":"bad"}')[0],400)
+        self.http.controls=False
+        self.assertEqual(self.request('/api/chat/history',method='GET')[0],403)
+        self.http.controls=True
+        receipt=self.root/'.kira-agent-resume.json';target=self.root/'outside.json';target.write_text('{}')
+        receipt.symlink_to(target)
+        with self.assertRaises(ValueError):server.restore_upgrade_chat(self.http.agent,self.root)
+        self.assertTrue(target.exists());receipt.unlink()
+        receipt.write_text('{}');receipt.chmod(0o644)
+        with self.assertRaises(ValueError):server.restore_upgrade_chat(self.http.agent,self.root)
+        receipt.chmod(0o600)
+        with patch.object(self.http.agent,'restore_runtime',side_effect=ValueError('Mismatch')):
+            with self.assertRaises(ValueError):server.restore_upgrade_chat(self.http.agent,self.root)
+        self.assertTrue(receipt.exists())
+        with patch.object(self.http.agent,'restore_runtime') as restore:
+            server.restore_upgrade_chat(self.http.agent,self.root);restore.assert_called_once_with({})
+        self.assertFalse(receipt.exists())
+
     def test_valid_submission_duplicate_and_private_state(self):
         code,first=self.request();self.assertEqual(code,202);_,duplicate=self.request();self.assertEqual(first['job_id'],duplicate['job_id'])
         self.assertEqual(self.request('/api/jobs',method='GET')[0],200)
         self.assertEqual(self.request('/api/jobs',headers={'X-Kira-Session':''},method='GET')[0],403)
     def test_agent_endpoints_require_local_session_and_exact_origin(self):
         self.assertEqual(self.request('/api/agent',method='GET')[0],200)
-        for path in ('/api/agent','/api/chat'):
+        for path in ('/api/agent','/api/chat','/api/chat/history'):
             self.assertEqual(self.request(path,method='GET',headers={'X-Kira-Session':''})[0],403)
-        for path in ('/api/agent/test','/api/agent/settings','/api/chat/send','/api/chat/reset','/api/chat/cancel'):
+        for path in ('/api/agent/test','/api/agent/settings','/api/chat/send','/api/chat/reset','/api/chat/cancel','/api/chat/open'):
             self.assertEqual(self.request(path,body=b'{}',headers={'Origin':'https://foreign.test'})[0],403)
             self.assertEqual(self.request(path,body=b'{}',headers={'X-Kira-Session':''})[0],403)
         self.assertEqual(self.request('/api/chat/reset',body=b'{}')[0],200)

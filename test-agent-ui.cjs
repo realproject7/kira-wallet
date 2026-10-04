@@ -129,3 +129,12 @@ test('no-context wallet chat offers settings without changing disclosure', () =>
   h.run("agentState.config.scope='none';state.wallets=[];renderAgent()");
   assert.equal(h.el('chat-choose-context').hidden, true);
 });
+test('working status updates preserve a reader position and follow the bottom when pinned',()=>{
+  const h=harness(async()=>status()),scroll=h.el('conversation-scroll');
+  scroll.scrollHeight=1200;scroll.clientHeight=400;scroll.scrollTop=150;
+  h.run("chatTurn='active';chatRequest={message:'Synthetic question'};agentState.tool_status='Checking token records';renderAgent();");
+  assert.equal(scroll.scrollTop,150);
+  scroll.scrollTop=795;h.run("agentState.tool_status='Analysing the results';renderAgent();");
+  assert.equal(scroll.scrollTop,1200);
+  assert.match(h.el('chat-messages').innerHTML,/kira-research/);
+});

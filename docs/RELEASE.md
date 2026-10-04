@@ -3,7 +3,7 @@
 The published npm package is 0.1.0. The next source candidate is 0.1.1, with
 wallet-first setup, safe Markdown answers, a five-token home preview and editable
 question starters, native price/artwork fallback and clearer unknown-value filters.
-The operator removed the recovery-home report. The candidate also adds automatic RPC fallback, visible chain filtering, a separate animated chat composer, browser-wallet connection controls, encrypted OWS onboarding and scoped agent research tools.
+The operator removed the recovery-home report. The candidate also adds automatic RPC fallback, visible chain filtering, a separate animated chat composer, browser-wallet connection controls, encrypted OWS onboarding and scoped agent research tools. It now includes a full-height chat dock, session history, expandable chat and a visible research tray.
 Registry publication remains operator-only. The coding agent never publishes.
 
 Required preparation from a clean, reviewed source checkout:
@@ -44,7 +44,7 @@ Only `site/` is deployed to Vercel's `kira-wallet` project. It contains the
 restored static landing page, synthetic product illustrations, character assets
 and installation instructions. The companion proposal is retired; its URLs redirect
 to the landing page. No wallet input, portfolio API, chat API or analytics service
-is hosted. The site blocks scripts, network requests and forms. The local viewer
+is hosted. The site permits only its own small video controller and local media. External network requests and forms stay blocked. The local viewer
 remains loopback-only.
 
 `kirawallet.app` uses Vercel nameservers and managed HTTPS. Keep `.vercel/`
