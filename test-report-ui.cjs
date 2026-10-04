@@ -5,9 +5,9 @@ const vm=require('node:vm');
 const KiraView=require('./viewer/static/workspace-model.js');
 (async()=>{
   const nodes=new Map();let interval,cleared=false,calls=0,now=0,failNext=false;
-  const context={state:{wallets:[],details:{networks:[]},dashboard:{analysed_wallet_count:0}},localSession:{controls:true},agentState:null,KiraView,
+  const context={state:{wallets:[],details:{networks:[],tokens:[]},dashboard:{analysed_wallet_count:0}},localSession:{controls:true},agentState:null,KiraView,
     $:id=>{if(!nodes.has(id))nodes.set(id,{hidden:false,innerHTML:'',addEventListener(){}});return nodes.get(id);},
-    escapeHTML:String,openAdd(){},openAgent(){},
+    escapeHTML:String,openAdd(){},openAgent(){},catalogRow:t=>'<tr>'+t.id+'</tr>',bindImages(){},
     localAPI:async()=>{++calls;if(calls===1||failNext){failNext=false;throw new Error('Transient local session failure');}return {discovery_configured:true,discovery_key_available:true};},
     Date:{now:()=>now},document:{addEventListener(){},querySelector(){return null;}},window:{addEventListener(){}},
     setInterval:callback=>{interval=callback;return 7;},clearInterval:id=>{assert.equal(id,7);cleared=true;}};

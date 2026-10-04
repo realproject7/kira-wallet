@@ -1,11 +1,14 @@
 'use strict';
 let catalogPage = 1;
-let briefingMode = 'view';
 let catalogTimer;
 function catalogFilters() {
   return { search: $('all-token-search').value, network: $('all-token-network').value,
     pricing: $('all-token-pricing').value, sort: $('all-token-sort').value,
     testnets: $('all-token-testnets').checked, page: catalogPage };
+}
+function catalogRow(a) {
+  const network = state.details.networks.find(n => n.id === a.chain_id);
+  return `<tr><td><a class="token-name token-link" href="${tokenHref(a.id)}">${coinIcon(a)}<div class="coin-title"><div class="symbol">${escapeHTML(a.symbol)}</div><div class="token-description">${escapeHTML(network?.name || 'Chain ' + a.chain_id)}${a.environment === 'testnet' ? ' · Testnet' : ''}</div></div></a></td><td><span class="mobile-label">Total balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span></td><td><span class="mobile-label">Wallets</span>${a.wallet_count}</td><td><span class="token-value">${a.environment === 'testnet' ? 'Testnet' : money(a.value_usd)}</span>${a.unpriced_count ? '<div class="price-basis">' + a.unpriced_count + ' unpriced</div>' : ''}</td></tr>`;
 }
 function renderCatalog() {
   if (!state) return;
@@ -16,10 +19,7 @@ function renderCatalog() {
   $('tokens-prev').disabled = result.page === 1;
   $('tokens-next').disabled = result.page === result.pages;
   $('all-token-empty').hidden = result.count > 0;
-  $('all-token-body').innerHTML = result.rows.map(a => {
-    const network = state.details.networks.find(n => n.id === a.chain_id);
-    return `<tr><td><a class="token-name token-link" href="${tokenHref(a.id)}">${coinIcon(a)}<div class="coin-title"><div class="symbol">${escapeHTML(a.symbol)}</div><div class="token-description">${escapeHTML(network?.name || 'Chain ' + a.chain_id)}${a.environment === 'testnet' ? ' · Testnet' : ''}</div></div></a></td><td><span class="mobile-label">Total balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span></td><td><span class="mobile-label">Wallets</span>${a.wallet_count}</td><td><span class="token-value">${a.environment === 'testnet' ? 'Testnet' : money(a.value_usd)}</span>${a.unpriced_count ? '<div class="price-basis">' + a.unpriced_count + ' unpriced</div>' : ''}</td></tr>`;
-  }).join('');
+  $('all-token-body').innerHTML = result.rows.map(catalogRow).join('');
   bindImages();
 }
 function renderWorkspace() {
@@ -50,32 +50,22 @@ function renderBriefing() {
   if (!state) return;
   renderKiraNote();
   const active = typeof jobList !== 'undefined' && jobList.some(KiraView.active);
-  const gaps = state.wallets.reduce((sum, w) => sum + w.chains.filter(c => c.environment === 'mainnet' && (!c.complete || !c.rpc_available)).length, 0);
   let art = 'welcome', caption = 'Your wallet assistant', note = 'Connect your AI to ask about your holdings.';
   if (active) { art = 'research'; caption = 'Research in progress'; note = 'Follow the recorded stages in Activity.'; }
-  else if (gaps && briefingMode === 'coverage') { art = 'attention'; caption = 'Coverage needs attention'; note = 'Some holdings may still be missing.'; }
   else if (selectedView === 'activity') { art = 'review'; caption = 'Research history'; note = 'Review saved results and unfinished work.'; }
   else if (['token', 'network', 'tokens', 'wallet'].includes(selectedView)) { art = 'explain'; caption = 'Explore your holdings'; note = 'Balances, prices and coverage from saved research.'; }
   const config = typeof agentState !== 'undefined' ? agentState?.config : null;
   const thinking = typeof chatTurn !== 'undefined' && Boolean(chatTurn);
   if (thinking) { art = 'research'; caption = 'Preparing your answer'; }
-  else if (config && !active && briefingMode !== 'coverage') { art = 'explain'; caption = 'Ask Kira about your wallets'; }
-  if (config && (thinking || !active && briefingMode !== 'coverage')) note = config.scope === 'none' ? 'General chat · No wallet context shared' : config.scope === 'wallet' ? 'Chat uses one approved wallet' : 'Chat uses your approved portfolio';
+  else if (config && !active) { art = 'explain'; caption = 'Ask Kira about your wallets'; }
+  if (config && (thinking || !active)) note = config.scope === 'none' ? 'General chat · No wallet context shared' : config.scope === 'wallet' ? 'Chat uses one approved wallet' : 'Chat uses your approved portfolio';
   $('kira-panel').dataset.speaking = String(thinking);
   const src = art === 'welcome' ? '/kira.png' : '/kira-' + art + '.png';
   if ($('kira-scene-art').getAttribute('src') !== src) $('kira-scene-art').src = src;
   $('kira-scene-art').alt = { welcome: 'Kira holding her research notebook', research: 'Kira writing while researching', explain: 'Kira explaining a finding', review: 'Kira reviewing saved notes', attention: 'Kira carefully checking incomplete evidence' }[art];
   $('kira-mood').textContent = caption; $('kira-scene-note').textContent = note;
   $('kira-context').textContent = selectedView === 'wallet' ? currentWallet()?.name || 'Wallet' : selectedView === 'token' ? state.details.tokens.find(t => t.id === selectedToken)?.symbol || 'Token' : selectedView === 'network' ? state.details.networks.find(n => n.id === selectedNetwork)?.name || 'Network' : { home: 'Portfolio overview', tokens: 'All tokens', activity: 'Research activity' }[selectedView];
-  if (briefingMode === 'coverage') {
-    const selected = selectedView === 'wallet' ? [currentWallet()].filter(Boolean) : state.wallets;
-    const missing = selected.flatMap(w => w.chains.filter(c => c.environment === 'mainnet' && (!c.complete || !c.rpc_available)).map(c => w.name + ' · ' + c.name + (!c.rpc_available ? ': RPC unavailable' : ': incomplete discovery')));
-    $('kira-note-text').textContent = missing.length ? 'These recorded coverage gaps need a closer look: ' + missing.slice(0, 6).join('; ') + (missing.length > 6 ? '; and ' + (missing.length - 6) + ' more.' : '.') + ' Missing data does not mean zero holdings.' : 'No mainnet coverage gaps are flagged in this recorded view. This does not prove that every possible token has been discovered.';
-  } else if (selectedView === 'home' && state.wallets.length) {
-    const exits = KiraView.report(state);
-    const returns = exits.positive.slice(0, 3).map(p => p.asset.symbol + ' → ' + p.asset.exit_quote.output_amount + ' ' + p.asset.exit_quote.output_symbol);
-    $('kira-note-text').textContent = (returns.length ? 'Recorded full-balance outputs: ' + returns.join('; ') + '. ' : 'No full-balance positive exit quotes are recorded yet. ') + exits.unquoted.length + ' positions still need exit quotes. These are independent saved outputs before gas, not a current cash total.';
-  } else if (selectedView === 'tokens') {
+  if (selectedView === 'tokens') {
     const tokens = state.details.tokens.filter(t => t.environment !== 'testnet');
     $('kira-note-text').textContent = `There are ${tokens.length} recorded mainnet tokens. ${tokens.filter(t => t.value_usd == null || t.unpriced_count > 0).length} have unpriced amounts. I keep tokens on different networks separate, even when their symbols match.`;
   } else if (selectedView === 'activity') {
@@ -87,6 +77,14 @@ for (const id of ['all-token-network', 'all-token-pricing', 'all-token-sort', 'a
 $('all-token-search').addEventListener('input', () => { clearTimeout(catalogTimer); catalogTimer = setTimeout(() => { catalogPage = 1; renderCatalog(); }, 120); });
 $('tokens-prev').addEventListener('click', () => { catalogPage--; renderCatalog(); });
 $('tokens-next').addEventListener('click', () => { catalogPage++; renderCatalog(); });
+$('home-view-all').addEventListener('click', () => {
+  $('all-token-search').value = '';
+  $('all-token-network').value = 'all';
+  $('all-token-pricing').value = 'all';
+  $('all-token-sort').value = 'value';
+  $('all-token-testnets').checked = false;
+  catalogPage = 1;
+});
 function setWorkspacePane(pane) {
   document.querySelector('.workspace').dataset.pane = pane;
   document.querySelectorAll('.mobile-pane-control [data-pane]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.pane === pane)));
@@ -101,12 +99,6 @@ document.querySelectorAll('.mobile-pane-control [data-pane]').forEach(button => 
 document.addEventListener('click', event => {
   if (event.target.closest('a[href^="#/"]')) setWorkspacePane('portfolio');
 });
-document.querySelectorAll('[data-brief]').forEach(button => button.addEventListener('click', () => {
-  if (button.dataset.brief === 'coverage') { briefingMode = 'coverage'; renderBriefing(); }
-  else if (button.dataset.brief === 'unpriced') { briefingMode = 'view'; $('all-token-pricing').value = 'unpriced'; catalogPage = 1; navigate('#/tokens'); renderCatalog(); }
-  else { briefingMode = 'view'; navigate('#/activity'); }
-  if (button.dataset.brief !== 'coverage') document.querySelector('.mobile-pane-control [data-pane="portfolio"]').click();
-}));
-window.addEventListener('hashchange', () => { briefingMode = 'view'; setWorkspacePane('portfolio'); renderWorkspace(); });
+window.addEventListener('hashchange', () => { setWorkspacePane('portfolio'); renderWorkspace(); });
 try { localStorage.removeItem('kira-draft'); } catch { /* Drafts are now memory-only. */ }
 renderWorkspace();

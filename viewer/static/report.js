@@ -1,22 +1,14 @@
 'use strict';
-let setupReadiness=null,setupLoading=false,setupUnavailable=false,setupRetryAfter=0,reportLimit=6;
-function exitRow(position){
-  const a=position.asset,w=position.wallet,q=a.exit_quote;
-  const network=state.details.networks.find(n=>n.id===a.chain_id)?.name||'Chain '+a.chain_id;
-  const receive=q?'<strong title="'+escapeHTML(q.output_amount)+'">'+escapeHTML(q.output_amount)+' '+escapeHTML(q.output_symbol)+'</strong><small>Net of royalty · gas not included</small>':'<strong>Not quoted</strong><small>'+escapeHTML(a.is_native?'Native asset; conversion not quoted.':a.exit_route==='dex_unquoted'?'Pool found; full-balance sell quote needed.':a.exit_route==='mintclub_burn'?'Full-balance burn quote unavailable.':'No verified exit route in saved research.')+'</small>';
-  return '<article class="exit-row"><div><a href="'+tokenHref(a.id)+'" class="exit-token">'+escapeHTML(a.symbol)+'</a><small>'+escapeHTML(w.name)+' · '+escapeHTML(network)+'</small><span>Full balance: '+quantity(a.balance)+' '+escapeHTML(a.symbol)+'</span></div><div class="exit-receive">'+receive+(q?'<small title="'+escapeHTML(q.observed_at)+'">Quoted '+stamp(q.observed_at)+' · block '+q.block_number+'</small><small class="exit-address" title="'+escapeHTML(q.output_address)+'">Receive contract: '+escapeHTML(shortAddress(q.output_address))+'</small>':'')+'</div><a class="exit-details" href="'+tokenHref(a.id)+'">Inspect <span aria-hidden="true">↗</span></a></article>';
-}
-function renderReport(){
+let setupReadiness=null,setupLoading=false,setupUnavailable=false,setupRetryAfter=0;
+function renderHomeTokens(){
   if(!state)return;
-  const r=KiraView.report(state);
-  const rows=[...r.positive,...r.zero,...r.unquoted].slice(0,reportLimit);
-  const line=r.positive.length?'I found '+r.positive.length+' full-balance quote'+(r.positive.length===1?'':'s')+' with a positive token return. They are saved observations; I still need fresh routes and gas costs to establish what you can recover now.':'I can show your balances, but I cannot yet establish how much you could recover. Spot prices and pool liquidity do not answer that question.';
-  $('home-report').innerHTML='<div class="section-heading"><div><h2>What could you recover?</h2><p class="section-note">Full-balance exit proceeds, separate from displayed portfolio value.</p></div><button id="report-explain" class="quiet-button" type="button">Talk through the exits</button></div><div class="exit-kira"><img src="/kira-explain.png" width="52" height="72" alt=""><p><strong>Kira</strong>'+escapeHTML(line)+'</p></div><div class="exit-summary">'+r.positive.length+' positive return quote'+(r.positive.length===1?'':'s')+(r.zero.length?' · '+r.zero.length+' zero return quotes':'')+' · '+r.unquoted.length+' positions still need exit quotes</div><div class="exit-columns" aria-hidden="true"><span>Held asset</span><span>Receive after royalty, before gas</span><span></span></div><div class="exit-rows">'+(rows.map(exitRow).join('')||'<p class="panel-empty">Add a wallet and run holdings research to inspect recorded exit routes.</p>')+'</div>'+(r.positions.length>reportLimit?'<button id="report-more" class="quiet-button" type="button">Show more exit routes ('+(r.positions.length-reportLimit)+' remaining)</button>':'')+'<p class="report-note">These Mint Club burn quotes return the specified reserve token at the recorded block. A further swap may be needed. Outputs are independent, can share curve backing, and are not summed into a cash total. Current execution, token restrictions, approvals and gas are not verified. Refresh holdings from a wallet to update recorded quotes.</p>';
-  $('report-explain').addEventListener('click',async()=>{if(!agentState?.config){await openAgent();return;}selectKiraPane();$('kira-draft').value='Which recorded holdings have full-balance exit quotes? Explain the exact output token amounts, missing routes and costs. Do not treat spot value as recoverable cash or sum independent curve quotes.';$('kira-draft').dispatchEvent(new Event('input'));$('kira-draft').focus();});
-  $('report-more')?.addEventListener('click',()=>{reportLimit+=20;renderReport();});
+  const result=KiraView.catalog(state.details.tokens,{sort:'value'}),rows=result.rows.slice(0,5);
+  $('home-token-body').innerHTML=rows.map(catalogRow).join('');
+  $('home-token-count').textContent=rows.length+' of '+result.count;
+  $('home-tokens-empty').hidden=result.count>0;
+  bindImages();
   renderSetupPath();
 }
-function selectKiraPane(){document.querySelector('[data-pane="kira"]')?.click();$('kira-panel').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'});}
 function renderSetupPath() {
   if(!state)return;
   const wallet=state.wallets.length>0,analysed=state.dashboard.analysed_wallet_count>0;
@@ -36,7 +28,7 @@ async function loadSetupReadiness(){
   if(setupLoading||!localSession?.controls)return false;setupLoading=true;
   try{setupReadiness=await localAPI('/api/onboarding');setupUnavailable=false;setupRetryAfter=0;renderSetupPath();return true;}catch{setupReadiness=null;setupUnavailable=true;setupRetryAfter=Date.now()+5000;renderSetupPath();return false;}finally{setupLoading=false;}
 }
-window.addEventListener('hashchange',()=>{if(selectedView==='home')renderReport();});
-const setupStartup=setInterval(async()=>{if(state&&localSession?.controls&&!setupReadiness&&Date.now()>=setupRetryAfter){await loadSetupReadiness();renderReport();}},1000);
+window.addEventListener('hashchange',()=>{if(selectedView==='home')renderHomeTokens();});
+const setupStartup=setInterval(async()=>{if(state&&localSession?.controls&&!setupReadiness&&Date.now()>=setupRetryAfter){await loadSetupReadiness();renderHomeTokens();}},1000);
 
 document.addEventListener('visibilitychange',()=>document.body.classList.toggle('page-hidden',document.hidden));
