@@ -1,8 +1,8 @@
 # Watching connection implementation ticket
 
 Status: implemented on `codex/kira-watching-connection`, stacked on workspace PR #2.
-Synthetic verification passed. Independent review and live extension acceptance
-remain pending. See [the implementation report](WATCHING_CONNECTION_REPORT.md)
+Synthetic verification and independent review passed at source head `9f3229f`.
+Live extension acceptance remains an operator gate. See [the implementation report](WATCHING_CONNECTION_REPORT.md)
 and [remaining stages](KIRA_NEXT_STEPS.md).
 
 ## Outcome
@@ -30,6 +30,10 @@ The extension session and the saved watching address have separate lifecycles.
 - Submit registration only after explicit confirmation through the same-origin
   protected local job API. Preserve its idempotency and writer-lock contract.
   Demo sessions continue to reject provider-consuming registration/research.
+- Freeze the submitted public address and exact name while registration is pending.
+  Keep that review and any transport error visible through account events and
+  dialog close/reopen. Clear it on success or explicit failure acknowledgement.
+  Offer Activity for uncertain responses; never retry automatically.
 - Keep connection state in browser memory. Reload and reconnect must not request
   accounts automatically. Disconnect releases Kira's listeners/session and
   invalidates pending responses; it does not remove a saved watching address
@@ -66,6 +70,8 @@ extension offers manual entry and a clear unavailable state.
 | Late response after cancellation/provider change | Response is ignored and cannot restore an old preview. |
 | Chain change | No network switch or automatic research; current preview/session context stays coherent. |
 | Duplicate registered account | No silent rename or replacement; existing wallet can be opened. |
+| Account change, disconnect or dialog close during POST | Original submitted input and visible review remain intact. |
+| Uncertain transport response | Review and error survive reopening; check Activity before another explicit choice. |
 | Double confirmation/retry | One durable job through the existing idempotency mechanism. |
 | Demo, foreign origin or expired local session | Existing server protections reject registration. |
 | Keyboard and narrow screen | Chooser, account selection, preview and cancellation remain operable. |

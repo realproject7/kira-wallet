@@ -1,9 +1,10 @@
 # Watching connection implementation
 
-Status: [draft PR #3](https://github.com/realproject7/kira-wallet/pull/3), builder
-verification complete. Independent review and operator extension
-acceptance remain pending. This change is stacked on workspace PR #2 at
-`b95d4707be5b7dd3c061a86b4a2ca3c47625a307`. It has no merge or release approval.
+Status: [draft PR #3](https://github.com/realproject7/kira-wallet/pull/3). Builder
+verification and independent source/synthetic review are complete. Final reviewed
+source head: `9f3229f`, based on the reviewed workspace PR #2 at `e0a802a`.
+Operator extension acceptance remains pending. No GitHub approval, merge or
+release authority is conferred by the local independent review.
 
 ## Result
 
@@ -41,7 +42,7 @@ by this isolated implementation.
 
 ## Verification
 
-- `npm test`: 41 engine tests, 26 viewer tests, 15 Watching lifecycle tests,
+- `npm test`: 41 engine tests, 26 viewer tests, 16 Watching lifecycle tests and four submission-controller tests,
   existing RPC/cache tests, the 5,002-token workspace fixture and syntax checks.
 - `python3 scripts/check-install.py`: fresh packed install and lifecycle using
   synthetic data. Both Watching assets are packaged and served.
@@ -58,8 +59,8 @@ by this isolated implementation.
 - DOM text-contrast audit of the chooser and review found no low-contrast
   ordinary text. Disabled, hidden and decorative elements were excluded.
 
-Two inherited test-fixture issues surfaced in the fresh worktree. The HTTP test
-now uses its temporary portfolio instead of relying on an ignored local registry.
+Two inherited test-fixture issues surfaced in the fresh worktree and were
+corrected in PR #2. The HTTP test now uses its temporary portfolio instead of relying on an ignored local registry.
 The supervisor-restart test now waits for its asserted chain event to be durable
 before killing the supervisor. No runtime engine or recovery logic was changed.
 
@@ -80,7 +81,7 @@ existing system font, spacing, 44 px controls and 18 px glyph system are retaine
 The provider contracts follow [EIP-6963](https://eips.ethereum.org/EIPS/eip-6963)
 and [EIP-1193](https://eips.ethereum.org/EIPS/eip-1193).
 
-Independent review must inspect the generation guard, event subscriptions,
+Independent review inspected the generation guard, event subscriptions,
 untrusted metadata and final registration boundary. The operator must check a
 real extension in a supported browser, including its native approval, multiple
 accounts, locking and disconnect behavior. Synthetic verification does not
@@ -113,8 +114,10 @@ before success: one queued job appeared with the original captured input. The
 fixture launches no worker and makes no real provider or extension request.
 
 The request card has no horizontal overflow at 375×812 or 320×700 and both action
-buttons measure 44px. A final independent review of the corrected stacked head
-is pending.
+buttons measure 44px. The final independent review of corrected stacked source head `9f3229f` found
+no remaining actionable findings. The reviewer independently ran all 20
+lifecycle/controller cases. This is source and synthetic verification; real
+extension acceptance remains unverified.
 
 ![Failed synthetic registration preserves its review](screenshots/kira-watching-failed-request.jpg)
 
