@@ -51,11 +51,17 @@ function renderBriefing() {
   renderKiraNote();
   const active = typeof jobList !== 'undefined' && jobList.some(KiraView.active);
   const gaps = state.wallets.reduce((sum, w) => sum + w.chains.filter(c => c.environment === 'mainnet' && (!c.complete || !c.rpc_available)).length, 0);
-  let art = 'welcome', caption = 'A little perspective.', note = 'Here to make sense of it.';
-  if (active) { art = 'research'; caption = 'Following the evidence.'; note = 'Research is in progress.'; }
-  else if (gaps && briefingMode === 'coverage') { art = 'attention'; caption = 'A closer look.'; note = 'Some facts are still missing.'; }
-  else if (selectedView === 'activity') { art = 'review'; caption = 'Every step, recorded.'; note = 'Good research leaves a trail.'; }
-  else if (['token', 'network', 'tokens', 'wallet'].includes(selectedView)) { art = 'explain'; caption = 'Let’s look a little closer.'; note = 'Context makes the difference.'; }
+  let art = 'welcome', caption = 'Your wallet assistant', note = 'Connect your AI to ask about your holdings.';
+  if (active) { art = 'research'; caption = 'Research in progress'; note = 'Follow the recorded stages in Activity.'; }
+  else if (gaps && briefingMode === 'coverage') { art = 'attention'; caption = 'Coverage needs attention'; note = 'Some holdings may still be missing.'; }
+  else if (selectedView === 'activity') { art = 'review'; caption = 'Research history'; note = 'Review saved results and unfinished work.'; }
+  else if (['token', 'network', 'tokens', 'wallet'].includes(selectedView)) { art = 'explain'; caption = 'Explore your holdings'; note = 'Balances, prices and coverage from saved research.'; }
+  const config = typeof agentState !== 'undefined' ? agentState?.config : null;
+  const thinking = typeof chatTurn !== 'undefined' && Boolean(chatTurn);
+  if (thinking) { art = 'research'; caption = 'Preparing your answer'; }
+  else if (config && !active && briefingMode !== 'coverage') { art = 'explain'; caption = 'Ask Kira about your wallets'; }
+  if (config && (thinking || !active && briefingMode !== 'coverage')) note = config.scope === 'none' ? 'General chat · No wallet context shared' : config.scope === 'wallet' ? 'Chat uses one approved wallet' : 'Chat uses your approved portfolio';
+  $('kira-panel').dataset.speaking = String(thinking);
   const src = art === 'welcome' ? '/kira.png' : '/kira-' + art + '.png';
   if ($('kira-scene-art').getAttribute('src') !== src) $('kira-scene-art').src = src;
   $('kira-scene-art').alt = { welcome: 'Kira holding her research notebook', research: 'Kira writing while researching', explain: 'Kira explaining a finding', review: 'Kira reviewing saved notes', attention: 'Kira carefully checking incomplete evidence' }[art];
@@ -65,6 +71,10 @@ function renderBriefing() {
     const selected = selectedView === 'wallet' ? [currentWallet()].filter(Boolean) : state.wallets;
     const missing = selected.flatMap(w => w.chains.filter(c => c.environment === 'mainnet' && (!c.complete || !c.rpc_available)).map(c => w.name + ' · ' + c.name + (!c.rpc_available ? ': RPC unavailable' : ': incomplete discovery')));
     $('kira-note-text').textContent = missing.length ? 'These recorded coverage gaps need a closer look: ' + missing.slice(0, 6).join('; ') + (missing.length > 6 ? '; and ' + (missing.length - 6) + ' more.' : '.') + ' Missing data does not mean zero holdings.' : 'No mainnet coverage gaps are flagged in this recorded view. This does not prove that every possible token has been discovered.';
+  } else if (selectedView === 'home' && state.wallets.length) {
+    const exits = KiraView.report(state);
+    const returns = exits.positive.slice(0, 3).map(p => p.asset.symbol + ' → ' + p.asset.exit_quote.output_amount + ' ' + p.asset.exit_quote.output_symbol);
+    $('kira-note-text').textContent = (returns.length ? 'Recorded full-balance outputs: ' + returns.join('; ') + '. ' : 'No full-balance positive exit quotes are recorded yet. ') + exits.unquoted.length + ' positions still need exit quotes. These are independent saved outputs before gas, not a current cash total.';
   } else if (selectedView === 'tokens') {
     const tokens = state.details.tokens.filter(t => t.environment !== 'testnet');
     $('kira-note-text').textContent = `There are ${tokens.length} recorded mainnet tokens. ${tokens.filter(t => t.value_usd == null || t.unpriced_count > 0).length} have unpriced amounts. I keep tokens on different networks separate, even when their symbols match.`;

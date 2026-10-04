@@ -37,7 +37,15 @@
     const h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = seconds % 60;
     return (h ? h + 'h ' : '') + m + 'm ' + s + 's';
   }
-  const api = { catalog, pageSize, active, jobPresentation, duration };
+  function report(state) {
+    const positions=state.wallets.flatMap(w=>w.assets.filter(a=>a.environment==='mainnet').map(asset=>({asset,wallet:w})));
+    const quoted=positions.filter(p=>p.asset.exit_quote);
+    const positive=quoted.filter(p=>/[1-9]/.test(p.asset.exit_quote.output_amount));
+    const zero=quoted.filter(p=>!/[1-9]/.test(p.asset.exit_quote.output_amount));
+    const unquoted=positions.filter(p=>!p.asset.exit_quote);
+    return {positions,quoted,positive,zero,unquoted};
+  }
+  const api = { catalog, pageSize, active, jobPresentation, duration, report };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KiraView = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -4,13 +4,13 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light"><meta name="description" content="A personal research workspace for your wallets, with Kira.">
   <title>Kira Wallet</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/kira-logo.png" type="image/png" sizes="1254x1254"><link rel="apple-touch-icon" href="/kira-logo.png">
-  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script src="/workspace-model.js" defer></script><script src="/app.js" defer></script><script src="/jobs.js" defer></script><script src="/watching-model.js" defer></script><script src="/watching.js" defer></script><script src="/workspace.js" defer></script><link rel="stylesheet" href="/agent.css"><script src="/agent.js" defer></script>
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script src="/workspace-model.js" defer></script><script src="/app.js" defer></script><script src="/jobs.js" defer></script><script src="/watching-model.js" defer></script><script src="/watching.js" defer></script><script src="/workspace.js" defer></script><link rel="stylesheet" href="/agent.css"><script src="/markdown.js" defer></script><script src="/agent.js" defer></script><link rel="stylesheet" href="/report.css"><script src="/report.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
   <div class="app">
     <aside class="sidebar" aria-label="Wallet navigation">
-      <a id="brand-home" class="brand" href="#/home" aria-label="Kira Wallet home"><img class="brand-logo" src="/kira-logo.png" width="42" height="42" alt=""><span>Kira<span class="brand-caption">WALLET RESEARCH</span></span></a>
+      <a id="brand-home" class="brand" href="#/home" aria-label="Kira Wallet home"><img class="brand-logo" src="/kira-logo.png" width="42" height="42" alt=""><span class="brand-wordmark">Kira Wallet</span></a>
       <div class="workspace-label">PERSONAL WORKSPACE</div>
       <div class="sidebar-intro"><span class="sidebar-line"></span><p>A little clarity.<br>A better perspective.</p></div>
       <div class="sidebar-label">WATCHING WALLETS <span id="wallet-count"></span></div>
@@ -27,7 +27,7 @@
         <div class="evidence-pane">
         <section id="active-work" class="active-work" hidden aria-label="Current research"></section>
         <div id="home-view">
-          <section class="home-heading"><div><div class="eyebrow">THE BIG PICTURE</div><h1>Your wallets.<br>A sharper perspective.</h1><p>One workspace for the assets you follow.</p></div><span class="edition-mark" aria-hidden="true">K / 01</span></section>
+          <section class="home-heading"><div><h1>Your portfolio.</h1><p>Balances, coverage and Kira’s analysis in one place.</p></div></section>
           <section class="home-summary" aria-label="All wallets summary">
             <div class="valuation"><div class="summary-label">Estimated total value</div><div id="home-total" class="total-value">—</div><div id="home-valuation-note" class="valuation-note"></div></div>
             <div class="home-stats">
@@ -36,13 +36,14 @@
               <div class="summary-stat"><span class="summary-label">Positions</span><strong id="home-position-count">—</strong><span id="home-position-note" class="stat-note"></span></div>
             </div>
           </section>
+          <section id="setup-path" class="setup-path" aria-label="Wallet setup checklist" hidden></section>
           <div id="home-empty" class="empty" hidden><img src="/kira-logo.png" width="64" height="64" alt=""><h3>Your notebook starts with a wallet.</h3><p>Use a public EVM address and a name you recognise. You keep your keys.</p><button id="empty-add-wallet" class="primary-button" hidden>Add your first wallet</button></div>
           <div id="home-details">
+            <section id="home-report" class="analysis-report" aria-label="Recorded portfolio analysis"></section>
             <div class="dashboard-grid">
               <section class="dashboard-panel" aria-labelledby="home-wallets-title"><div class="section-heading"><h2 id="home-wallets-title">Your wallets</h2><span class="section-note">Explore holdings <span aria-hidden="true">↗</span></span></div><div id="wallet-cards" class="wallet-cards"></div></section>
               <section class="dashboard-panel" aria-labelledby="home-networks-title"><div class="section-heading"><h2 id="home-networks-title">By network</h2><span class="section-note">Priced value</span></div><div id="network-allocation" class="network-allocation"></div></section>
             </div>
-            <section class="largest-holdings" aria-labelledby="home-holdings-title"><div class="section-heading"><h2 id="home-holdings-title">Largest holdings</h2><span class="section-note">Across all wallets</span></div><div id="home-holdings" class="home-holdings"></div></section>
           </div>
           <footer class="page-footer home-footer"><span id="home-coverage-note"></span><span id="home-price-time"></span></footer>
         </div>
@@ -84,7 +85,7 @@
             <div class="composer-box"><textarea id="kira-draft" rows="3" placeholder="What would you like to understand?" maxlength="8000" aria-describedby="chat-context chat-hint"></textarea>
               <div class="composer-footer"><button id="chat-setup" class="model-button" type="button" aria-label="Model connection and permissions"><span class="model-dot" aria-hidden="true"></span><span id="chat-model-label">Connect a model</span><svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></button><button id="chat-send" class="send-button" type="submit" disabled aria-label="Send message"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 10 6-6 6 6M12 4v16"/></svg></button><button id="chat-stop" class="send-button stop-button" type="button" hidden aria-label="Stop response"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button></div>
             </div>
-            <div class="composer-context"><span id="chat-context">No wallet context shared</span><span id="chat-hint">Enter to send · Shift+Enter for a new line</span></div><p id="chat-error" class="form-error" role="alert"></p><span id="draft-status" class="sr-only" role="status"></span>
+            <div class="composer-context"><span id="chat-context">No wallet context shared</span><button id="chat-choose-context" class="text-button" type="button" hidden>Choose wallet context</button><span id="chat-hint">Enter to send · Shift+Enter for a new line</span></div><p id="chat-error" class="form-error" role="alert"></p><span id="draft-status" class="sr-only" role="status"></span>
           </form>
         </aside>
         </div>

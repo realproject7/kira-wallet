@@ -15,7 +15,7 @@ function harness(api) {
     return elements.get(id);
   }
   const scope = el('scope');scope.value='none';
-  const context = vm.createContext({$:el,localSession:{controls:false},state:{wallets:[]},localAPI:api,toast(){},escapeHTML:s=>String(s).replaceAll('<','&lt;'),
+  const context = vm.createContext({KiraMarkdown:require('./viewer/static/markdown.js'),$:el,localSession:{controls:false},state:{wallets:[]},localAPI:api,toast(){},escapeHTML:s=>String(s).replaceAll('<','&lt;'),
     document:{querySelector:selector=>selector.includes('agent-scope')?scope:el(selector),querySelectorAll:()=>[]},
     navigator:{clipboard:{writeText:async()=>{}}},location:{hash:'#/home',search:''},history:{replaceState(){}},URLSearchParams,crypto:require('node:crypto').webcrypto,
     setInterval:()=>1,clearInterval(){},setTimeout});
@@ -96,4 +96,15 @@ test('an old reconnect lookup cannot clear a new conversation turn',async()=>{
   const old=deferred();const h=harness(async path=>path==='/api/agent'?{...status(),active_turn:'old'}:old.promise);
   const loading=h.run('loadAgent()');await tick();h.run("chatEpoch++;chatTurn='new';chatRequest={message:'New question'};renderAgent()");
   old.resolve({id:'old',state:'succeeded'});await loading;assert.equal(h.run('chatTurn'),'new');assert.equal(h.el('chat-stop').hidden,false);
+});
+
+test('no-context wallet chat offers settings without changing disclosure', () => {
+  const h = harness(async () => status());
+  h.run("state.wallets=[{key:'sample',name:'Sample wallet'}];renderAgent()");
+  assert.equal(h.el('chat-choose-context').hidden, false);
+  assert.equal(h.run('agentState.config.scope'), 'none');
+  h.run("agentState.config.scope='portfolio';renderAgent()");
+  assert.equal(h.el('chat-choose-context').hidden, true);
+  h.run("agentState.config.scope='none';state.wallets=[];renderAgent()");
+  assert.equal(h.el('chat-choose-context').hidden, true);
 });

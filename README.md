@@ -1,13 +1,13 @@
 # Kira Wallet
 
-A local EVM wallet research workspace with Kira and durable research jobs.
-It records direct holdings, Mint Club bonding curves and DEX liquidity evidence.
-Missing coverage and prices stay unknown.
+Track your wallets across chains. Understand your holdings with your own AI.
+Kira is a local, read-only wallet app with no hosted portfolio server. It finds
+and records assets on supported EVM networks, with indexed token discovery when
+configured. Missing coverage and prices stay unknown.
 
 Original code and character assets are open source under MIT. Third-party
 references retain their own terms; see [notices](THIRD_PARTY_NOTICES.md). The npm
-first npm publication is prepared for the operator. No signing, transfers or trades
-are implemented.
+package is available as `kira-wallet`. No signing, transfers or trades are implemented.
 
 ## Local installation
 
@@ -15,16 +15,19 @@ Requirements: Node.js 22 or newer and Python 3.11 or newer. macOS is verified.
 Analysis and daemon lifecycle currently require POSIX process and file-lock APIs.
 
 ```sh
-npm install --ignore-scripts
-node bin/kira.cjs init
-node bin/kira.cjs doctor
-node bin/kira.cjs setup
+npm install -g kira-wallet
+kira setup
 ```
 
 The viewer starts at http://127.0.0.1:8787. Data defaults to
 `~/.local/share/kira-wallet`, separate from the installed package. Use
 `--data-dir /absolute/private/directory` before the command for another portfolio.
-The existing workspace viewer can still run at port 8765.
+Published 0.1.0 opens model setup; close it to add a wallet first. The 0.1.1 source
+candidate guides wallet setup first and makes AI connection optional. Broad ERC20
+discovery needs an indexer connection in Workspace settings. Public RPC alone
+provides limited discovery. The next registry release remains operator-only.
+For source development, run `npm install --ignore-scripts` and use
+`node bin/kira.cjs` in place of `kira`.
 
 For an isolated sample with synthetic data:
 

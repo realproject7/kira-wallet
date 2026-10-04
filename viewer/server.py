@@ -84,7 +84,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.json({'instance':os.environ.get('KIRA_INSTANCE_ID'),'read_only':not getattr(self.server,'controls',False),'controls':getattr(self.server,'controls',False)});return
             if path=='/api/session':
                 self.json({'controls':getattr(self.server,'controls',False),'token':self.server.session_token if getattr(self.server,'controls',False) else None});return
-            if path.startswith('/api/jobs') or path.startswith('/api/chat/turn/') or path in ('/api/agent','/api/chat','/api/snapshots','/api/snapshot','/api/compare','/api/settings'):
+            if path.startswith('/api/jobs') or path.startswith('/api/chat/turn/') or path in ('/api/agent','/api/chat','/api/onboarding','/api/snapshots','/api/snapshot','/api/compare','/api/settings'):
                 if not self.authenticated():return
                 query=parse_qs(urlparse(self.path).query)
                 if path in ('/api/agent','/api/chat'):
@@ -97,6 +97,9 @@ class Handler(BaseHTTPRequestHandler):
                 elif path=='/api/snapshots':self.json(self.server.jobs.snapshots(query.get('wallet',[''])[0]))
                 elif path=='/api/snapshot':self.json(self.server.jobs.snapshot(query.get('id',[''])[0]))
                 elif path=='/api/compare':self.json(self.server.jobs.compare(query.get('before',[''])[0],query.get('after',[''])[0]))
+                elif path=='/api/onboarding':
+                    from onboarding import readiness
+                    self.json(readiness())
                 elif path=='/api/settings':
                     from kira_config import load_config
                     config=load_config();self.json({key:config[key] for key in ('schema_version','rpc','discovery')})
@@ -119,7 +122,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not entry or not entry.get('latest_snapshot',{}).get('report'):self.send_error(404);return
                 body=within(ROOT,entry['latest_snapshot']['report']).read_bytes()
                 self.respond(body,'text/plain; charset=utf-8');return
-            files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/jobs.js':'jobs.js','/workspace.js':'workspace.js','/workspace-model.js':'workspace-model.js','/workspace.css':'workspace.css','/agent.js':'agent.js','/agent.css':'agent.css','/watching.js':'watching.js','/watching-model.js':'watching-model.js','/style.css':'style.css','/favicon.svg':'favicon.svg','/kira.png':'kira.png','/kira-logo.png':'kira-logo.png',**{f'/kira-{pose}.png':f'kira-{pose}.png' for pose in ('research','explain','review','attention')}}
+            files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/jobs.js':'jobs.js','/workspace.js':'workspace.js','/workspace-model.js':'workspace-model.js','/workspace.css':'workspace.css','/agent.js':'agent.js','/agent.css':'agent.css','/markdown.js':'markdown.js','/report.js':'report.js','/report.css':'report.css','/watching.js':'watching.js','/watching-model.js':'watching-model.js','/style.css':'style.css','/favicon.svg':'favicon.svg','/kira.png':'kira.png','/kira-logo.png':'kira-logo.png',**{f'/kira-{pose}.png':f'kira-{pose}.png' for pose in ('research','explain','review','attention')}}
             if path not in files:self.send_error(404);return
             file=STATIC/files[path]
             content={'html':'text/html; charset=utf-8','js':'text/javascript; charset=utf-8','css':'text/css; charset=utf-8','svg':'image/svg+xml','png':'image/png'}[file.suffix[1:]]
