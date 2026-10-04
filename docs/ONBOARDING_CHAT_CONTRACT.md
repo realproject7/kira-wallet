@@ -41,4 +41,4 @@ aliases retain one canonical wallet and one published research run. Repeating th
 original request reuses its job. Portfolio identifiers and raw acceptance evidence
 stay outside Git and are not included in public reports.
 
-Current candidate verification and operator gates are in [the completion report](KIRA_COMPANION_COMPLETION.md).
+Current candidate verification and operator gates are in [the completion report](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_COMPANION_COMPLETION.md).

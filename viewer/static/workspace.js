@@ -71,6 +71,10 @@ function renderBriefing() {
     const selected = selectedView === 'wallet' ? [currentWallet()].filter(Boolean) : state.wallets;
     const missing = selected.flatMap(w => w.chains.filter(c => c.environment === 'mainnet' && (!c.complete || !c.rpc_available)).map(c => w.name + ' · ' + c.name + (!c.rpc_available ? ': RPC unavailable' : ': incomplete discovery')));
     $('kira-note-text').textContent = missing.length ? 'These recorded coverage gaps need a closer look: ' + missing.slice(0, 6).join('; ') + (missing.length > 6 ? '; and ' + (missing.length - 6) + ' more.' : '.') + ' Missing data does not mean zero holdings.' : 'No mainnet coverage gaps are flagged in this recorded view. This does not prove that every possible token has been discovered.';
+  } else if (selectedView === 'home' && state.wallets.length) {
+    const exits = KiraView.report(state);
+    const returns = exits.positive.slice(0, 3).map(p => p.asset.symbol + ' → ' + p.asset.exit_quote.output_amount + ' ' + p.asset.exit_quote.output_symbol);
+    $('kira-note-text').textContent = (returns.length ? 'Recorded full-balance outputs: ' + returns.join('; ') + '. ' : 'No full-balance positive exit quotes are recorded yet. ') + exits.unquoted.length + ' positions still need exit quotes. These are independent saved outputs before gas, not a current cash total.';
   } else if (selectedView === 'tokens') {
     const tokens = state.details.tokens.filter(t => t.environment !== 'testnet');
     $('kira-note-text').textContent = `There are ${tokens.length} recorded mainnet tokens. ${tokens.filter(t => t.value_usd == null || t.unpriced_count > 0).length} have unpriced amounts. I keep tokens on different networks separate, even when their symbols match.`;

@@ -55,4 +55,4 @@ acceptance check. Synthetic providers and supplied public addresses do not
 establish that native extension acceptance passed. Those actions still require
 the operator's device handoff. No signing, trading or custody capability was added.
 
-See [completion evidence and limits](KIRA_COMPANION_COMPLETION.md).
+See [completion evidence and limits](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_COMPANION_COMPLETION.md).

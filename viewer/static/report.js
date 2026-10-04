@@ -1,5 +1,5 @@
 'use strict';
-let setupReadiness=null,setupLoading=false,reportLimit=6;
+let setupReadiness=null,setupLoading=false,setupUnavailable=false,setupRetryAfter=0,reportLimit=6;
 function exitRow(position){
   const a=position.asset,w=position.wallet,q=a.exit_quote;
   const network=state.details.networks.find(n=>n.id===a.chain_id)?.name||'Chain '+a.chain_id;
@@ -25,7 +25,7 @@ function renderSetupPath() {
   $('home-empty').hidden=wallet||!$('setup-path').hidden;
   $('setup-path').innerHTML='<details '+(!wallet?'open':'')+'><summary>'+ (wallet?'Finish your setup':'Set up your first wallet')+'</summary><div class="section-heading"><h2>'+ (wallet?'Finish your setup':'Start with one wallet')+'</h2><span class="section-note">Your keys stay yours</span></div><ol class="setup-checklist">'+
     '<li><span class="setup-check">'+(wallet?'✓':'1')+'</span><div><strong>Add a public wallet</strong><p>'+(wallet?'Saved locally.':'Paste an EVM address or choose a browser wallet. No signature or seed phrase.')+'</p></div><button class="quiet-button" id="setup-wallet" type="button">'+(wallet?'Add another':'Add wallet')+'</button></li>'+
-    '<li><span class="setup-check">'+(discovery?'✓':'2')+'</span><div><strong>Connect token discovery</strong><p>'+(discovery?'Indexer key detected. Actual chain coverage is confirmed by research results.':configured?'Indexer selected, but its key is unavailable. Use a private environment reference.':'Public RPC checks known assets. Connect an indexer for broader ERC20 discovery, or continue with limited coverage.')+'</p></div><button class="quiet-button" id="setup-discovery" type="button">Review connection</button></li>'+
+    '<li><span class="setup-check">'+(discovery?'✓':'2')+'</span><div><strong>Connect token discovery</strong><p>'+(!setupReadiness?(setupUnavailable?'Could not check the connection. Retrying…':'Checking the discovery connection…'):discovery?'Indexer key detected. Actual chain coverage is confirmed by research results.':configured?'Indexer selected, but its key is unavailable. Use a private environment reference.':'Public RPC checks known assets. Connect an indexer for broader ERC20 discovery, or continue with limited coverage.')+'</p></div><button class="quiet-button" id="setup-discovery" type="button">Review connection</button></li>'+
     '<li><span class="setup-check">'+(analysed?'✓':'3')+'</span><div><strong>Read your first report</strong><p>'+(analysed?'Saved balances, prices and coverage are ready.':'Adding a wallet starts one explicit research job. Follow its progress in Activity; gaps are shown in the report.')+'</p></div><a class="quiet-button" href="#/activity">View Activity</a></li>'+
     '<li><span class="setup-check">'+(ai?'✓':'4')+'</span><div><strong>Connect your AI <small>optional</small></strong><p>'+(ai?'Connected. Wallet context still follows your explicit permissions.':'Use your installed Codex or Claude account when you are ready. Tracking works without it.')+'</p></div><button class="quiet-button" id="setup-ai" type="button">'+(ai?'Permissions':'Connect AI')+'</button></li></ol></details>';
   $('setup-wallet').addEventListener('click',openAdd);
@@ -33,10 +33,10 @@ function renderSetupPath() {
   $('setup-ai').addEventListener('click',openAgent);
 }
 async function loadSetupReadiness(){
-  if(setupLoading||!localSession?.controls)return;setupLoading=true;
-  try{setupReadiness=await localAPI('/api/onboarding');renderSetupPath();}catch{/* Existing reconnect handling owns session recovery. */}finally{setupLoading=false;}
+  if(setupLoading||!localSession?.controls)return false;setupLoading=true;
+  try{setupReadiness=await localAPI('/api/onboarding');setupUnavailable=false;setupRetryAfter=0;renderSetupPath();return true;}catch{setupReadiness=null;setupUnavailable=true;setupRetryAfter=Date.now()+5000;renderSetupPath();return false;}finally{setupLoading=false;}
 }
 window.addEventListener('hashchange',()=>{if(selectedView==='home')renderReport();});
-const setupStartup=setInterval(()=>{if(state&&localSession?.controls){loadSetupReadiness();renderReport();clearInterval(setupStartup);}},1000);
+const setupStartup=setInterval(async()=>{if(state&&localSession?.controls&&!setupReadiness&&Date.now()>=setupRetryAfter){await loadSetupReadiness();renderReport();}},1000);
 
 document.addEventListener('visibilitychange',()=>document.body.classList.toggle('page-hidden',document.hidden));

@@ -63,7 +63,7 @@ is in `docs/character/companion-motion-generation.json`. Motion pauses through a
 user control, reduced-motion preference and hidden-page handling. This is a
 sample interaction with synthetic data, not a live AI service or audio avatar.
 
-Preview: https://kira-wallet-3ia9hqew4-project7s-projects.vercel.app/proposal
+Preview: https://kira-wallet-ccma9rk07-project7s-projects.vercel.app/proposal
 The public landing page keeps the restored design. The proposal is a separate
 route and preview, so rejecting it does not require another app redesign rollback.
 Its local script is permitted only on the proposal document. The landing page
@@ -78,6 +78,9 @@ Clean package installation passes with 62 archive members. The public-history
 scan and exact reviewed source are recorded before integration and packing. Browser checks cover first
 wallet actions, genuine Markdown output, exit-report links,
 one-line branding, desktop/mobile layout and companion scene/motion controls.
+A 313-character exact positive output was checked at 390 pixels without horizontal
+overflow. Readiness retries transient failures and shows unavailable state separately
+from an unconfigured indexer. Token details use the same validated quote as home.
 Public screenshots contain synthetic portfolios or generic no-context text.
 
 The actual MetaMask address-sharing request is prepared in Chrome on the isolated

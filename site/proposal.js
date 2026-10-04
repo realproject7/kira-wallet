@@ -1,7 +1,7 @@
 'use strict';
 const scenes=[
  {title:'A return, not a sticker price.',detail:'The full-balance burn quote returns USDC. Another token still needs a sell route.',line:'The recorded quote returns 110 USDC before gas. That is different from a token’s displayed market value.',context:'Sample: full-balance burn quote'},
- {title:'A price is not an exit.',detail:'The displayed price does not tell us what a full sale returns. This token still needs an exact sell quote and gas estimate.',line:'This token has a market price, but I cannot confirm its recoverable value. I’ll keep that difference visible.',context:'Sample: unquoted exit'},
+ {title:'LOOK has a price, not a quote.',detail:'The other holding, LOOK, still needs a full-balance sell route and gas estimate. Its displayed price is not recoverable value.',line:'KIRA has a saved return quote. LOOK does not. I’ll keep that difference visible while we check its exit route.',context:'Sample: unquoted LOOK position'},
  {title:'Your account. Your context.',detail:'Connect your own Codex or Claude CLI. Choose which wallet facts may reach its model service.',line:'Connect your own AI account when you’re ready. You choose what I can see. Your keys stay with you.',context:'Sample: explicit permissions'}
 ];
 let current=0,speechTimer;
