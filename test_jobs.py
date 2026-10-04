@@ -131,7 +131,9 @@ class WorkerProcessTest(JobFixtures, unittest.TestCase):
     def test_supervisor_restart_waits_for_engine_lease(self):
         job=self.store.submit(self.request());first=self.worker_process('publish');second=None
         try:
-            self.wait_for(lambda:(self.root/'invocations').exists());first.kill();first.wait()
+            # Kill after the event being asserted is durable, not merely after the engine starts.
+            self.wait_for(lambda:(self.root/'invocations').exists() and self.store.get(job['job_id'])['chains'].get('1',{}).get('block_number')=='123')
+            first.kill();first.wait()
             second=self.worker_process('publish');second.wait(timeout=8)
             saved=self.store.get(job['job_id']);self.assertEqual(saved['state'],'partial');self.assertEqual(saved['attempt'],1)
             self.assertEqual((self.root/'invocations').read_text().splitlines(),['engine'])

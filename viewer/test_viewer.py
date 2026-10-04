@@ -7,6 +7,7 @@ import json
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 import urllib.request
 import urllib.error
 import model
@@ -153,25 +154,27 @@ class ViewerTests(unittest.TestCase):
         self.assertEqual(next(t for t in w['assets'] if t['symbol']=='HEX')['value_usd'],7)
 
     def test_http_etag_and_private_files(self):
-        app=ThreadingHTTPServer(('127.0.0.1',0),server.Handler)
-        thread=threading.Thread(target=app.serve_forever,daemon=True);thread.start()
-        base=f'http://127.0.0.1:{app.server_port}'
-        try:
-            with urllib.request.urlopen(base+'/api/state') as r:
-                self.assertEqual(r.status,200);etag=r.headers['ETag'];self.assertIn('wallets',json.load(r))
-                self.assertIn('https://mint.club',r.headers['Content-Security-Policy'])
-                self.assertIn("connect-src 'self'",r.headers['Content-Security-Policy'])
-            with self.assertRaises(urllib.error.HTTPError) as e:urllib.request.urlopen(urllib.request.Request(base+'/api/state',headers={'If-None-Match':etag}))
-            self.assertEqual(e.exception.code,304)
-            e.exception.close()
-            for path in ['/.rpc.env','/../.rpc.env','/wallets.json','/api/report/unknown']:
-                with self.assertRaises(urllib.error.HTTPError) as e:urllib.request.urlopen(base+path)
-                self.assertEqual(e.exception.code,404)
+        with patch.object(server,'ROOT',self.root), patch.object(server,'load_state',lambda:model.load_state(self.root)), patch.object(server,'last_good',None):
+            app=ThreadingHTTPServer(('127.0.0.1',0),server.Handler)
+            thread=threading.Thread(target=app.serve_forever,daemon=True);thread.start()
+            base=f'http://127.0.0.1:{app.server_port}'
+            try:
+                with urllib.request.urlopen(base+'/api/state') as r:
+                    self.assertEqual(r.status,200);etag=r.headers['ETag'];self.assertIn('wallets',json.load(r))
+                    self.assertIn('https://mint.club',r.headers['Content-Security-Policy'])
+                    self.assertIn("connect-src 'self'",r.headers['Content-Security-Policy'])
+                    self.assertIn("script-src 'self';",r.headers['Content-Security-Policy'])
+                with self.assertRaises(urllib.error.HTTPError) as e:urllib.request.urlopen(urllib.request.Request(base+'/api/state',headers={'If-None-Match':etag}))
+                self.assertEqual(e.exception.code,304)
                 e.exception.close()
-            with self.assertRaises(urllib.error.HTTPError) as e:urllib.request.urlopen(urllib.request.Request(base+'/api/state',data=b'{}'))
-            self.assertEqual(e.exception.code,501)
-            e.exception.close()
-        finally:app.shutdown();app.server_close();thread.join()
+                for path in ['/.rpc.env','/../.rpc.env','/wallets.json','/api/report/unknown']:
+                    with self.assertRaises(urllib.error.HTTPError) as e:urllib.request.urlopen(base+path)
+                    self.assertEqual(e.exception.code,404)
+                    e.exception.close()
+                with self.assertRaises(urllib.error.HTTPError) as e:urllib.request.urlopen(urllib.request.Request(base+'/api/state',data=b'{}'))
+                self.assertEqual(e.exception.code,501)
+                e.exception.close()
+            finally:app.shutdown();app.server_close();thread.join()
 
 def fixture_snapshot():
     """Synthetic positions. Never load the operator portfolio into release tests."""

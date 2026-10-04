@@ -78,3 +78,19 @@ Public-history results are recorded with the PR.
 Account/session selection and portfolio disclosure still require
 operator decisions. The next scoped outcome is the
 [Watching connection ticket](WATCHING_CONNECTION_TICKET.md).
+
+## Independent review follow-up
+
+A separate read-only reviewer inspected `b95d470` against the public foundation
+base. It found one actionable P2: at 1280×600, the fixed-height Kira panel clipped
+the composer and View setup control. Desktop windows at or below 650px height
+now place the full panel in normal document flow. The page can scroll to every
+control. Normal desktop and narrow layouts retain their existing behavior.
+
+The reviewer also identified two inherited verification weaknesses. The HTTP
+viewer case now pins its state and root to its temporary synthetic fixture.
+The worker restart case waits for the asserted chain event to be durable before
+killing the process. These checks no longer depend on private runtime data or
+on the engine-start marker arriving before the event. `npm test` passed all
+66 Python cases plus the existing Node and syntax checks after these changes.
+A final independent check of the corrected commit is pending.
