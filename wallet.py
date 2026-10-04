@@ -241,6 +241,10 @@ def finish(wallet, folder, networks, discovered):
         for t in d['native']:
             price=next((p for p in t.get('tokenPrices',[]) if p.get('currency')=='usd' and p.get('value') is not None),None)
             if price:refs[symbol+'_USD']={'value':price['value'],'observed_at':price.get('lastUpdatedAt'),'source':'Alchemy Portfolio Tokens By Wallet'}
+    from native_assets import market_metadata
+    native_market=market_metadata(coverage)
+    if native_market['evidence']:atomic(folder/'native-market.json',native_market['evidence'])
+    for key,price in native_market['prices'].items():refs.setdefault(key,price)
     # Obtain prices of reserve assets separately, including tokens not held by the wallet.
     reserve_candidates={(t['chain_id'],t['mintclub']['reserve_token'].lower()):{'chain_id':t['chain_id'],'token_address':t['mintclub']['reserve_token'],'token_type':'ERC20'} for t in minted}
     reserve_rows=list(ThreadPoolExecutor(max_workers=5).map(lambda t:dex_fetch(t,folder),reserve_candidates.values()))
@@ -278,12 +282,13 @@ def finish(wallet, folder, networks, discovered):
         p=dex_price(t,result['compiled_at'])
         if p:prices.append({'chain_id':t['chain_id'],'address':t['token_address'],**p})
     atomic(folder/'market-prices.json',{'observed_at':result['compiled_at'],'wallet_address':wallet['address'],'balance_refresh':True,
-        'native_usd':{k.removesuffix('_USD'):{'usd':float(p['value']),'observed_at':p.get('observed_at')} for k,p in refs.items()},
+        'native_usd':{k.removesuffix('_USD'):{'usd':float(p['value']),'observed_at':p.get('observed_at'),
+            'source':p.get('source'),'asset_id':p.get('asset_id'),'basis':p.get('basis','Market index')} for k,p in refs.items()},
         'tokens':prices+reserve_prices,'note':'DEX and reserve prices observed during this run. Curve spot prices use recorded on-chain state. Unknown prices remain null.'})
     from curve_pricing import enrich
     atomic(folder/'market-prices.json',enrich(result,read(folder/'market-prices.json'),folder))
     from token_images import refresh_catalog
-    try:event('token_images',**refresh_catalog([result],ROOT))
+    try:event('token_images',**refresh_catalog([result],ROOT,native_images=native_market['images']))
     except (OSError,ValueError):event('token_images',status='unavailable')
     result['evidence_files']=[f.name for f in sorted(folder.glob('*.json')) if f.name not in ('results.json','market-prices.json')]
     atomic(folder/'results.json',result)

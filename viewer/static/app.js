@@ -1,9 +1,9 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let state = null, selectedWallet = localStorage.getItem('wallet-selection'), selectedView = localStorage.getItem('wallet-view') === 'wallet' ? 'wallet' : 'home', selectedChain = 'all', minimum = Number(localStorage.getItem('wallet-minimum') ?? 10), etag = null, currentSignature = null, busy = false;
+let state = null, selectedWallet = localStorage.getItem('wallet-selection'), selectedView = localStorage.getItem('wallet-view') === 'wallet' ? 'wallet' : 'home', selectedChain = 'all', minimum = Number(localStorage.getItem('wallet-minimum') ?? 0), etag = null, currentSignature = null, busy = false;
 let selectedToken = null, selectedNetwork = null, tokenSearch = '';
-if (![0,5,10].includes(minimum)) minimum=10;
+if (![0,5,10].includes(minimum)) minimum=0;
 const money = value => value == null ? '—' : value > 0 && value < .01 ? '< $0.01' : new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(value);
 const unitPrice = value => value == null ? '—' : value === 0 ? '$0.00' : value < .000001 ? '$'+value.toExponential(3) : '$'+new Intl.NumberFormat('en-US',{maximumFractionDigits:value < .01 ? 8 : value < 1 ? 6 : 2}).format(value);
 const quantity = raw => raw==null ? '—' : Number(raw)>0&&Number(raw)<.000001 ? Number(raw).toExponential(3) : new Intl.NumberFormat('en-US',{maximumFractionDigits:Number(raw)<1 ? 6 : 3}).format(Number(raw));
@@ -116,12 +116,12 @@ function renderWallet(){
   $('wallet-tags').innerHTML=w.tags.slice(1).map(t=>`<span class="tag">${escapeHTML(t)}</span>`).join(' ');
   $('report-link').hidden=!w.report_url;if(w.report_url)$('report-link').href=safeURL(w.report_url);
   $('total-value').textContent=w.analysed_at?money(w.known_value_usd):'—';
-  $('valuation-note').textContent=w.analysed_at?'Market and curve spot estimates · excludes unpriced assets':'Analysis will appear here when it is ready.';
+  $('valuation-note').textContent=w.analysed_at?(w.known_value_usd==null?'Value is unknown because prices are unavailable.':'Market and curve spot estimates · excludes unpriced assets'):'Analysis will appear here when it is ready.';
   $('asset-count').textContent=w.assets.length;$('unpriced-count').textContent=w.unpriced_count+' unpriced';
   const mainnets=w.chains.filter(c=>c.environment==='mainnet');
   $('chain-count').textContent=mainnets.filter(c=>c.assets>0).length;
   const coverage=mainnets.filter(c=>c.complete).length;
-  $('coverage-note').textContent=coverage+' of '+mainnets.length+' researched';
+  $('coverage-note').textContent=coverage+' of '+mainnets.length+' checked for ERC20 tokens';
   $('coverage-note').title=w.chains.filter(c=>!c.complete).map(c=>c.name+(c.rpc_available?' · incomplete token discovery':' · unavailable')).join('\n');
   $('sync-label').textContent=w.analysed_at?'Analysis '+stamp(w.analysed_at):'Awaiting analysis';
   $('price-time').textContent=w.prices_at?'Prices '+stamp(w.prices_at):'';
@@ -161,7 +161,11 @@ function assetRow(a){
 function renderHoldings(){
   const w=currentWallet();if(!w)return;
   document.querySelectorAll('[data-min]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.min)===minimum)));
-  const visible=w.assets.filter(a=>(selectedChain==='all'?a.environment!=='testnet':String(a.chain_id)===selectedChain)&&(minimum===0||(a.value_usd!=null&&a.value_usd>=minimum)));
+  const scoped=w.assets.filter(a=>selectedChain==='all'?a.environment!=='testnet':String(a.chain_id)===selectedChain);
+  const visible=scoped.filter(a=>minimum===0||(a.value_usd!=null&&a.value_usd>=minimum));
+  const hiddenUnpriced=minimum>0?scoped.filter(a=>a.value_usd==null).length:0;
+  $('holdings-filter-note').hidden=hiddenUnpriced===0;
+  $('holdings-filter-note').innerHTML=hiddenUnpriced?`<span>${hiddenUnpriced} unpriced ${hiddenUnpriced===1?'holding is':'holdings are'} hidden by the ≥ $${minimum} filter.</span><button type="button" class="quiet-button" data-clear-value-filter>Show all holdings</button>`:'';
   $('visible-count').textContent=visible.length;
   const chains=w.chains.filter(c=>visible.some(a=>a.chain_id===c.id)).sort((a,b)=>(b.value_usd??0)-(a.value_usd??0));
   $('asset-groups').innerHTML=chains.map(c=>{
@@ -170,7 +174,10 @@ function renderHoldings(){
     return `<section class="chain-section" aria-label="${escapeHTML(c.name)} holdings"><div class="chain-heading"><h3 class="chain-name"><a class="network-label network-link" href="${networkHref(c.id)}" aria-label="Open ${escapeHTML(c.name)} network overview">${chainIcon(c)}${escapeHTML(c.name)}<span class="detail-arrow" aria-hidden="true">${arrowGlyph}</span></a><span class="chain-assets">${assets.length} assets${c.environment==='testnet'?' · Testnet':''}</span></h3><span class="chain-total">${c.environment==='testnet'?'Testnet':money(sum)}</span></div><div class="table-wrap"><table class="token-table"><colgroup><col><col><col><col><col></colgroup><thead><tr><th scope="col">Token</th><th scope="col">Balance</th><th scope="col">Price</th><th scope="col">Value</th><th scope="col">Markets</th></tr></thead><tbody>${assets.map(assetRow).join('')}</tbody></table></div></section>`;
   }).join('');
   $('empty').hidden=visible.length>0;
-  if(!visible.length&&selectedChain!=='all'){
+  if(!visible.length&&hiddenUnpriced){
+    $('empty').querySelector('h3').textContent='Holdings hidden by the value filter';
+    $('empty').querySelector('p').textContent='These holdings have no price yet. Show all holdings to see their balances.';
+  }else if(!visible.length&&selectedChain!=='all'){
     const c=w.chains.find(c=>String(c.id)===selectedChain);
     $('empty').querySelector('h3').textContent=c&&!c.complete?'Research is incomplete on '+c.name:'No assets in this view';
     $('empty').querySelector('p').textContent=c&&!c.complete?'This chain has not been fully checked. Missing data does not mean a zero balance.':'Choose another chain or lower the minimum value.';
@@ -245,7 +252,7 @@ document.querySelector('.skip-link').addEventListener('click',e=>{e.preventDefau
 $('brand-home').addEventListener('click',e=>{e.preventDefault();goHome();});
 for(const id of ['wallet-list','wallet-cards'])$(id).addEventListener('click',e=>{const b=e.target.closest('[data-wallet]');if(b)selectWallet(b.dataset.wallet);});
 $('chain-filter').addEventListener('change',e=>{selectedChain=e.target.value;renderHoldings();});
-document.addEventListener('click',e=>{const b=e.target.closest('[data-min]');if(b){minimum=Number(b.dataset.min);localStorage.setItem('wallet-minimum',String(minimum));if(selectedView==='network')renderDetail();else renderHoldings();}});
+document.addEventListener('click',e=>{const b=e.target.closest('[data-min],[data-clear-value-filter]');if(b){minimum=b.hasAttribute('data-clear-value-filter')?0:Number(b.dataset.min);localStorage.setItem('wallet-minimum',String(minimum));if(selectedView==='network')renderDetail();else renderHoldings();}});
 $('copy-address').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(currentWallet().address);toast('Address copied');}catch{toast('Select the address to copy it');}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll();});
 window.addEventListener('hashchange',readRoute);

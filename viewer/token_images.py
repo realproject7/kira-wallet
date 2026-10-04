@@ -9,6 +9,8 @@ import json
 import os
 import re
 import urllib.request
+from native_assets import NATIVE_ASSETS, native_identity
+from chain_images import chain_image
 
 ROOT = Path(os.environ.get('KIRA_DATA_DIR',Path(__file__).resolve().parents[1])).expanduser().resolve()
 API = 'https://mint.club/api'
@@ -48,8 +50,13 @@ def read_catalog(root=ROOT):
 
 
 def image_for(catalog, chain_id, address=None, *, mint=False, native_symbol=None):
-    # A wrapped token logo can explicitly say WETH. Do not mislabel native ETH.
-    if native_symbol: return None
+    if native_symbol:
+        asset = native_identity(chain_id, native_symbol)
+        if not asset: return None
+        image = safe_image(catalog.get('native', {}).get(asset, {}).get('image_url'))
+        if image: return image
+        # Artwork fallback is selected by the native currency, not the L2 logo.
+        return chain_image(1 if native_symbol == 'ETH' else chain_id)
     if mint: return mint_logo(chain_id, address)
     row = catalog.get('tokens', {}).get(identity(chain_id, address)) or {}
     image = safe_image(row.get('image_url'))
@@ -67,7 +74,7 @@ def fetch_metadata(url):
     except (OSError, ValueError): return None
 
 
-def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata):
+def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, native_images=None):
     """Share images by chain/address. Reuse successful metadata for 24 hours."""
     catalog = read_catalog(root)
     now = datetime.now(timezone.utc)
@@ -76,6 +83,10 @@ def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata):
         try: return 0 <= (now - datetime.fromisoformat(raw)).total_seconds() < 86400
         except (ValueError, TypeError): return False
     records = catalog.setdefault('tokens', {})
+    for asset,row in (native_images or {}).items():
+        image = safe_image(row.get('image_url'))
+        if image and asset in {value[1] for value in NATIVE_ASSETS.values()}:
+            catalog.setdefault('native', {})[asset] = {**row, 'image_url': image}
     errors = 0
     def add(token, source):
         if not isinstance(token, dict): return

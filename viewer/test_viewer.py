@@ -171,6 +171,24 @@ class ViewerTests(unittest.TestCase):
         (self.root/'cache/token-images.json').write_text(json.dumps(catalog))
         self.assertEqual(token_images.read_catalog(self.root),catalog)
 
+    def test_native_artwork_uses_currency_identity_without_network_calls(self):
+        catalog={'native':{'apecoin':{'image_url':'https://coin-images.coingecko.com/ape.png'}}}
+        with patch.object(token_images,'fetch_metadata') as fetch:
+            self.assertEqual(token_images.image_for(catalog,33139,native_symbol='APE'),'https://coin-images.coingecko.com/ape.png')
+            self.assertIn('ethereum@2x.png',token_images.image_for(catalog,8453,native_symbol='ETH'))
+            self.assertIn('bnb@2x.png',token_images.image_for(catalog,56,native_symbol='BNB'))
+            self.assertIsNone(token_images.image_for(catalog,1,native_symbol='APE'))
+            self.assertIsNone(token_images.image_for(catalog,33139,'0x'+'1'*40))
+        fetch.assert_not_called()
+
+    def test_unpriced_wallet_and_network_totals_are_unknown(self):
+        self.snapshot['tokens']=[];self.snapshot['price_references']={}
+        wallet=model.project_wallet(self.entry,self.snapshot,self.root)
+        self.assertTrue(wallet['assets'])
+        self.assertTrue(all(asset['value_usd'] is None for asset in wallet['assets']))
+        self.assertIsNone(wallet['known_value_usd'])
+        self.assertTrue(all(chain['value_usd'] is None for chain in wallet['chains']))
+
     def test_failed_image_metadata_refresh_preserves_existing_catalog(self):
         address='0x0000000000000000000000000000000000000001'
         url='https://coin-images.coingecko.com/fixture.png'
