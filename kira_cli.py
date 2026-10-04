@@ -144,6 +144,7 @@ def main():
     parser.add_argument('--data-dir',default=os.environ.get('KIRA_DATA_DIR',str(Path.home()/'.local/share/kira-wallet')))
     sub=parser.add_subparsers(dest='command',required=True)
     sub.add_parser('init');s=sub.add_parser('start');s.add_argument('--port',type=int,default=8787);s.add_argument('--controls',action='store_true')
+    setup=sub.add_parser('setup');setup.add_argument('--port',type=int,default=8787);setup.add_argument('--no-open',action='store_true')
     sub.add_parser('stop');sub.add_parser('status');sub.add_parser('wallets')
     sub.add_parser('tools')
     d=sub.add_parser('doctor');d.add_argument('--live',action='store_true');d.add_argument('--chains',default='1,8453,81457');d.add_argument('--budget',type=int,default=30)
@@ -177,7 +178,7 @@ def main():
         operation_lock=(root/'.analysis.lock').open('a')
         try:fcntl.flock(operation_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:raise ValueError('An analysis or configuration writer is active. Retry after it finishes.') from None
-    if args.command in ('start','stop','demo'):
+    if args.command in ('start','stop','demo','setup'):
         import fcntl
         viewer_lock=(root/'.viewer.lock').open('a')
         try:fcntl.flock(viewer_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -187,6 +188,14 @@ def main():
     try:
         if args.command=='init':print(json.dumps({'status':'initialized','rpc_mode':load_config()['rpc']['mode']}))
         elif args.command=='start':start(root,args.port,args.controls)
+        elif args.command=='setup':
+            start(root,args.port,True)
+            item=live_record(root)
+            url=f"http://127.0.0.1:{item['port']}/?setup=1"
+            if not args.no_open:
+                import webbrowser
+                webbrowser.open(url)
+            print(json.dumps({'setup_url':url,'note':'Choose your native CLI account and context permissions in the local setup screen.'}))
         elif args.command=='stop':stop(root)
         elif args.command=='status':
             item=live_record(root);print(json.dumps({'status':'running' if item else 'stopped','url':f"http://127.0.0.1:{item['port']}" if item else None}))

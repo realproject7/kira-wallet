@@ -1,35 +1,31 @@
-# Kira remaining stages
+# Kira release status
 
-Updated: 2026-10-04. The workspace and Watching connection are separate review
-outcomes. PR #2 is ready for maintainer review. PR #3 remains draft for live
-extension acceptance. Both local independent reviews are complete. No merge, deployment or registry publication
-is authorized by this status document.
+Updated: 2026-10-04. The operator authorized source completion, merges, native CLI
+onboarding, a private read-only wallet acceptance run and Vercel domain setup.
+Registry publication remains operator-only. This document records state, not new
+authority.
 
-| Order | Outcome | Current state | Next action or gate |
-| --- | --- | --- | --- |
-| 1 | Workspace redesign, PR #2 | Refinement, short-desktop composer correction and isolated fixture checks passed. Independent review of source head `e0a802a` found no remaining actionable findings. | Authorized maintainer review and merge. |
-| 2 | Watching connection, PR #3 | Implemented on the reviewed PR #2 base. Independent review of source head `9f3229f` found no remaining actionable findings. 67 Python, 20 lifecycle/controller tests, transport, install and browser checks passed. | Operator extension acceptance, then maintainer review and authorized merge. |
-| 3 | Browser extension acceptance | Synthetic providers only. Real extensions were not asked for accounts. | Operator opens the personal workspace in a supported browser, approves its chosen extension and verifies exposed accounts, locking, account changes and disconnect. Registration/research requires its explicit final action. |
-| 4 | Model account/session adapter | Not connected. Local Kira notes and browser draft continue to work. | Operator chooses an allowed account/session route and clears its authentication/device gate. Then implement and verify that selected adapter. |
-| 5 | Connected Kira chat | Send is unavailable. No portfolio is sent to a model. | Operator chooses the portfolio disclosure scope and destination. Implement explicit disclosure, context selection and conversation/activity persistence against the approved route. |
-| 6 | Review and release | Both implementation outcomes remain unmerged. | Authorized maintainer confirms GitHub review requirements and resolves the stacked dependency before merging #2, then #3. Registry publication remains operator-only. |
+| Outcome | State | Remaining action |
+| --- | --- | --- |
+| Workspace redesign, PR #2 | Independently reviewed, fixed and merged. | None for source. |
+| Watching connection, PR #3 | Independently reviewed, fixed and merged. | Native extension approval/locking/account-change acceptance remains a device check. |
+| Native model onboarding and chat | Codex and Claude Code adapters implemented. Both generic live response checks passed with native subscription accounts. Permissions and Kira-local retention are explicit. | Two independent reviews and package verification passed. |
+| Private live wallet research | Private read-only acceptance passed with recorded coverage gaps. Same-address aliases and duplicate-request reuse were verified. | No private identifiers or portfolio evidence published. |
+| Public installation site | Static introduction deployed on Vercel. HTTPS apex connected through the operator's browser. www permanently redirects to apex. | Deploy the final reviewed installation links. |
+| npm release | Public 0.1.0 package and preparation script are ready. No registry publication performed. | Final operator publication of the verified tarball. |
 
-Work completed without a device gate includes workspace typography/control polish,
-short-desktop access, deterministic test fixtures, independent reviews, Watching
-provider discovery, manual fallback, explicit account selection, full-address/name
-review, session invalidation and durable registration. Submitted request details
-remain visible during account changes, close/reopen and uncertain responses. Model-route
-choice, credential entry, extension approval and disclosure cannot be inferred
-from a handoff.
+The public release baseline is `origin/codex/kira-release`. It preserves the exact
+independently reviewed workspace and Watching source. GitHub's earlier server
+merge metadata used an account default author address. A clean branch/default
+recovery preserves source content without a force push. Historical PR merge
+records may remain; this is not a claim of erasure. Future GitHub merges explicitly
+set the public noreply author, and release checks validate author and committer.
 
-Keep the operator portfolio and viewer separate from synthetic verification.
-The next implementer should read the [Watching ticket](WATCHING_CONNECTION_TICKET.md)
-and [implementation report](WATCHING_CONNECTION_REPORT.md), then reconcile the
-current branches and PR reviews before changing either outcome. The public
-foundation base is `origin/codex/kira-foundation`; the old local branch with that
-name is not the public base.
+The public website contains no portfolio or model API. Personal research stays in
+a loopback viewer. RPC/indexer reads use configured providers. Chat text and the
+selected context go through the native CLI to its model service. No wallet
+context is the initial default. Model permissions do not authorize signing,
+trading, publication or automatic research.
 
-Workspace review: [PR #2](https://github.com/realproject7/kira-wallet/pull/2).
-Watching review: [PR #3](https://github.com/realproject7/kira-wallet/pull/3).
-This draft is stacked on `codex/kira-workspace-redesign`, so its diff
-contains only the next outcome.
+See [the conversation contract](ONBOARDING_CHAT_CONTRACT.md),
+[CLI setup](CLI.md), and [release preparation](RELEASE.md).

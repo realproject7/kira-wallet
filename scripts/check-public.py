@@ -13,10 +13,10 @@ def git(*args):
     return subprocess.check_output(['git', *args], cwd=ROOT)
 
 
-def private_values():
+def private_values(extra_roots=()):
     identifiers, secrets = set(), set()
-    registry = ROOT / 'wallets.json'
-    if registry.exists():
+    for registry in [ROOT/'wallets.json',*[Path(p).expanduser()/'wallets.json' for p in extra_roots]]:
+        if not registry.exists():continue
         for wallet in json.loads(registry.read_text()).get('wallets', []):
             for key in ('address', 'address_key'):
                 if isinstance(wallet.get(key), str):
@@ -33,7 +33,8 @@ def private_values():
 
 def check(path, body, identifiers, secrets):
     reasons = []
-    if path in ('wallets.json', 'session.json') or path.startswith(('snapshots/', 'cache/', 'jobs/', '.agent-history/')) or path.endswith(('.env', '.log', '.tgz')) or Path(path).name.startswith(('.env', '.kira.')):
+    name = Path(path).name
+    if path in ('wallets.json', 'session.json') or path.startswith(('snapshots/', 'conversations/', 'cache/', 'jobs/', '.agent-history/', 'site/.vercel/')) or path.endswith(('.env', '.log', '.tgz')) or name.startswith(('.env', '.kira.')) or (name.startswith('.kira') and name.endswith('.json')):
         reasons.append('private runtime file')
     if b'\x00' in body:
         return reasons  # Images need a separate visual review.
@@ -53,8 +54,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--history', action='store_true')
     parser.add_argument('--ref', default='HEAD', help='Only the reachable public history of this ref is checked.')
+    parser.add_argument('--private-data-dir',action='append',default=[],help='Also guard identifiers from a private test portfolio without printing them.')
     args = parser.parse_args()
-    identifiers, secrets = private_values()
+    identifiers, secrets = private_values(args.private_data_dir)
     findings, count = [], 0
     for raw in git('ls-files', '-z').split(b'\x00'):
         if not raw:
@@ -70,7 +72,8 @@ def main():
     if args.history:
         for commit in git('rev-list', args.ref).decode().splitlines():
             metadata = git('show', '-s', '--format=%ae%n%ce%n%B', commit).decode()
-            if any(not address.endswith('@users.noreply.github.com') for address in metadata.splitlines()[:2]):
+            author,committer=metadata.splitlines()[:2]
+            if not author.endswith('@users.noreply.github.com') or not (committer.endswith('@users.noreply.github.com') or committer=='noreply@github.com'):
                 findings.append({'commit': commit[:7], 'reasons': ['non-noreply commit identity']})
             reasons = check('commit message', metadata.encode(), identifiers, secrets)
             if reasons:

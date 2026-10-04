@@ -13,6 +13,7 @@ import urllib.request
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from kira_jobs import JobStore, atomic
+from kira_agent import AgentStore
 import server
 ADDRESS='0x'+'1'*40
 
@@ -22,6 +23,7 @@ class JobsHTTPTest(unittest.TestCase):
         atomic(self.root/'wallets.json',{'schema_version':1,'wallets':[{'address':ADDRESS,'address_key':ADDRESS,'tags':['Synthetic']}],'research_runs':[]})
         self.root_patch=patch.object(server,'ROOT',self.root);self.root_patch.start()
         self.http=ThreadingHTTPServer(('127.0.0.1',0),server.Handler);self.http.controls=True;self.http.session_token=secrets.token_urlsafe(32);self.http.jobs=JobStore(self.root)
+        self.http.agent=AgentStore(self.root,detector=lambda:[])
         self.launch_patch=patch.object(self.http.jobs,'launch');self.launch_patch.start()
         self.thread=threading.Thread(target=self.http.serve_forever,daemon=True);self.thread.start();self.url='http://127.0.0.1:'+str(self.http.server_port)
     def tearDown(self):
@@ -38,6 +40,15 @@ class JobsHTTPTest(unittest.TestCase):
         code,first=self.request();self.assertEqual(code,202);_,duplicate=self.request();self.assertEqual(first['job_id'],duplicate['job_id'])
         self.assertEqual(self.request('/api/jobs',method='GET')[0],200)
         self.assertEqual(self.request('/api/jobs',headers={'X-Kira-Session':''},method='GET')[0],403)
+    def test_agent_endpoints_require_local_session_and_exact_origin(self):
+        self.assertEqual(self.request('/api/agent',method='GET')[0],200)
+        for path in ('/api/agent','/api/chat'):
+            self.assertEqual(self.request(path,method='GET',headers={'X-Kira-Session':''})[0],403)
+        for path in ('/api/agent/test','/api/agent/settings','/api/chat/send','/api/chat/reset','/api/chat/cancel'):
+            self.assertEqual(self.request(path,body=b'{}',headers={'Origin':'https://foreign.test'})[0],403)
+            self.assertEqual(self.request(path,body=b'{}',headers={'X-Kira-Session':''})[0],403)
+        self.assertEqual(self.request('/api/chat/reset',body=b'{}')[0],200)
+        self.assertEqual(self.request('/api/chat/reset',body=b'{"unexpected":1}')[0],400)
     def test_session_origin_rebinding_and_cross_site_rejected(self):
         for headers in [{'X-Kira-Session':''},{'X-Kira-Session':'wrong-session'},{'Origin':'https://foreign.test'},
                         {'Host':'foreign.test:'+str(self.http.server_port)},{'Sec-Fetch-Site':'cross-site'},{'Origin':''}]:
@@ -60,6 +71,9 @@ class JobsHTTPTest(unittest.TestCase):
         body=json.dumps({'schema_version':1,'operation':'wallet.add','input':{'address':'0x'+'2'*40,'tag':'Synthetic new wallet'},'idempotency_key':'demo-add'}).encode()
         self.assertEqual(self.request(body=body)[0],400);self.assertEqual(len(self.http.jobs.list()),0)
         self.http.jobs.launch.assert_not_called()
+        for path in ('/api/agent/test','/api/chat/send'):
+            self.assertEqual(self.request(path,body=b'{}')[0],400)
+        self.assertEqual(self.request('/api/agent',method='GET')[1]['providers'],[])
         for path in ['/wallets.json','/.kira.local.json','/jobs/private.json','/snapshots/private/results.json']:
             self.assertEqual(self.request(path,method='GET')[0],404)
     def test_demo_cannot_resume_a_provider_job(self):
