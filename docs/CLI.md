@@ -3,10 +3,10 @@
 The package carries the Python engine, browser assets and declared viem
 dependency. It needs no Python packages and no sibling project. The package
 file list excludes wallets, snapshots, conversations, caches, logs and private settings.
-Install version 0.1.1 from its GitHub release, then run `kira setup`:
+Install version 0.1.2 from its GitHub release, then run `kira setup`:
 
 ```sh
-npm install -g https://github.com/realproject7/kira-wallet/releases/download/v0.1.1/kira-wallet-0.1.1.tgz
+npm install -g https://github.com/realproject7/kira-wallet/releases/download/v0.1.2/kira-wallet-0.1.2.tgz
 kira setup
 ```
 
@@ -24,7 +24,7 @@ Another portfolio never silently reuses that server.
 screen. Use `--no-open` to print its URL instead. If a read-only viewer is already
 running, stop it explicitly before setup. The normal `kira start` remains read-only.
 
-The 0.1.1 GitHub release starts with a wallet checklist. Add a public EVM
+The 0.1.2 GitHub release starts with a wallet checklist. Add a public EVM
 address or use the browser wallet picker. Registration starts one explicit
 research job; follow it in Activity and read the saved portfolio report.
 No signature, seed phrase or private key is needed.

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/realproject7/kira-wallet/v0.1.1/viewer/static/kira-explain.png" width="140" alt="Kira, your wallet research partner">
+  <img src="https://raw.githubusercontent.com/realproject7/kira-wallet/v0.1.2/viewer/static/kira-explain.png" width="140" alt="Kira, your wallet research partner">
 </p>
 
 <h1 align="center">Kira Wallet</h1>
@@ -25,15 +25,15 @@ background-process features require a POSIX environment.
 Install the latest GitHub release:
 
 ```sh
-npm install -g https://github.com/realproject7/kira-wallet/releases/download/v0.1.1/kira-wallet-0.1.1.tgz
+npm install -g https://github.com/realproject7/kira-wallet/releases/download/v0.1.2/kira-wallet-0.1.2.tgz
 kira setup
 ```
 
 Open the local app at [127.0.0.1:8787](http://127.0.0.1:8787).
 
 **npm status:** `npm install -g kira-wallet` currently installs **0.1.0**.
-The screenshots and features below show **0.1.1**, available from the GitHub
-release above. npm publication is pending.
+Use the GitHub release above for **0.1.2**, including the features shown below
+and fixes from local live testing. npm publication is pending.
 
 1. **Add a watching wallet.** Paste a public address and give it a name. Add more
    wallets whenever you need them.

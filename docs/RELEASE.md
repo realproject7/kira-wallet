@@ -3,9 +3,13 @@
 ## GitHub and npm distribution
 
 GitHub version releases and npm registry publication are separate. The GitHub
-0.1.1 release provides the reviewed `kira-wallet-0.1.1.tgz`, its SHA-256 file and
+0.1.2 release provides the reviewed `kira-wallet-0.1.2.tgz`, its SHA-256 file and
 release manifest. Its tag pins the source used to create those assets. Install
 that archive using the GitHub URL in README.md while npm still serves 0.1.0.
+Version 0.1.2 was published to GitHub on 2026-10-05 from
+`f994e99acb4e2d778fb4c95479f04355c88c00b3`. Its archive SHA-256 is
+`866b7f1ad543bff1ff59d3bf840eca6313eb6e206e78b8611186e5a971153f28`.
+The released archive and manifest stay immutable when installation guidance changes.
 The historical 0.1.0 GitHub release points to `cfa91659a92b14467c7458d27508157f5fd615a9`
 and preserves the exact already-published npm archive.
 
@@ -63,8 +67,8 @@ The operator published 0.1.0, verified on 2026-10-04. The registry archive has
 `45c33d4e37bd45145c53afd05a234caa746146a47e2f729fec1087d841506858`,
 matching the prepared release at `cfa9165`. Installation is
 `npm install -g kira-wallet`, then `kira setup`. The public installation page
-uses this registry route. Changes after that commit require a new release to
-reach npm users.
+now uses the GitHub 0.1.2 archive. Changes after the 0.1.0 commit require a new
+registry release to reach npm users.
 
 ## Public website
 
