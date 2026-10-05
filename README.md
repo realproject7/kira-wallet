@@ -31,6 +31,15 @@ kira setup
 
 Open the local app at [127.0.0.1:8787](http://127.0.0.1:8787).
 
+After your first setup, open Kira with:
+
+```sh
+kira start
+```
+
+It starts your local app and opens the browser. Use `kira stop` to stop it.
+For a viewer without wallet or research actions, use `kira start --read-only`.
+
 Prefer an archive? [GitHub releases](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2)
 include the same package and its checksum.
 

@@ -41,9 +41,10 @@ def main():
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/state') as response:state=json.load(response)
             assert state['demo'] is True and len(state['wallets'])==1 and state['dashboard']['known_value_usd']==125
             first=json.loads(run([cli,'--data-dir',data,'status']))
-            run([cli,'--data-dir',data,'start','--port',str(port)])
+            run([cli,'--data-dir',data,'start','--port',str(port),'--read-only','--no-open'])
             assert json.loads(run([cli,'--data-dir',data,'status']))==first
-            run([cli,'--data-dir',str(temp/'other-portfolio'),'start','--port',str(port)],expected=1)
+            run([cli,'--data-dir',data,'start','--port',str(port),'--no-open'],expected=1)
+            run([cli,'--data-dir',str(temp/'other-portfolio'),'start','--port',str(port),'--no-open'],expected=1)
             for path in ['/.kira.local.json','/wallets.json','/.rpc.env']:
                 try:urllib.request.urlopen(f'http://127.0.0.1:{port}'+path)
                 except urllib.error.HTTPError as error:assert error.code==404;error.close()
@@ -59,11 +60,15 @@ def main():
             tools=[json.loads(line) for line in run([cli,'--data-dir',data,'tools'],input=transcript).splitlines()]
             assert tools[1]['result']['structuredContent']['data']['dashboard']['known_value_usd']==125
             assert json.loads(run([cli,'--data-dir',data,'jobs','list']))==[]
-            run([cli,'--data-dir',data,'stop']);run([cli,'--data-dir',data,'start','--port',str(port),'--controls'])
+            run([cli,'--data-dir',data,'stop']);run([cli,'--data-dir',data,'start','--port',str(port),'--no-open'])
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/session') as response:session=json.load(response)
             assert session['controls'] is True
             headers={'Origin':f'http://127.0.0.1:{port}','Content-Type':'application/json','X-Kira-Session':session['token']}
             mutation={'schema_version':1,'operation':'wallet.setTags','input':{'wallet':'Demo wallet','tags':['Demo wallet','Install check']},'idempotency_key':'install-check-names'}
+            denied=urllib.request.Request(f'http://127.0.0.1:{port}/api/operations',data=json.dumps(mutation).encode(),headers={'Content-Type':'application/json'},method='POST')
+            try:urllib.request.urlopen(denied)
+            except urllib.error.HTTPError as error:assert error.code==403;error.close()
+            else:raise AssertionError('An unauthenticated browser action was accepted.')
             request=urllib.request.Request(f'http://127.0.0.1:{port}/api/operations',data=json.dumps(mutation).encode(),headers=headers,method='POST')
             with urllib.request.urlopen(request) as response:job=json.load(response)
             deadline=time.monotonic()+10
@@ -73,6 +78,9 @@ def main():
             else:raise AssertionError('Installed synthetic names job did not complete.')
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/state') as response:changed=json.load(response)
             assert 'Install check' in changed['wallets'][0]['tags'] and changed['dashboard']['known_value_usd']==125
+            run([cli,'--data-dir',data,'start','--read-only','--no-open'],expected=1)
+            run([cli,'--data-dir',data,'stop']);run([cli,'--data-dir',data,'start','--port',str(port),'--read-only','--no-open'])
+            with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/session') as response:assert json.load(response)['controls'] is False
             run([cli,'--data-dir',data,'stop']);assert json.loads(run([cli,'--data-dir',data,'status']))['status']=='stopped'
         finally:
             subprocess.run([cli,'--data-dir',data,'stop'],cwd=temp,env=env,capture_output=True,timeout=10)
