@@ -6,6 +6,7 @@ const reading = demo.querySelector('.demo-body');
 const composer = demo.querySelector('.demo-composer');
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const mobile = window.matchMedia('(max-width: 700px)');
+const compact = window.matchMedia('(max-width: 420px)');
 let visible = true;
 let ready = false;
 let failed = false;
@@ -56,7 +57,7 @@ function configureFilm() {
     showFilm(false);
     return;
   }
-  const profile = mobile.matches ? 'Mobile' : 'Desktop';
+  const profile = !mobile.matches ? 'Desktop' : compact.matches ? 'Compact' : 'Mobile';
   film.poster = film.dataset['poster' + profile];
   film.src = film.dataset[profile.toLowerCase()];
   film.load();
@@ -93,6 +94,7 @@ if ('IntersectionObserver' in window) {
 }
 reducedMotion.addEventListener('change', configureFilm);
 mobile.addEventListener('change', configureFilm);
+compact.addEventListener('change', configureFilm);
 configureFilm();
 
 const copy = document.getElementById('copy-install');

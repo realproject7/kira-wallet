@@ -20,9 +20,9 @@ CASES = [
         'answer': 'Start with these three. CASHCAT has a market to review; SIGNET still needs a price.',
         'summary': 'Recorded spot value', 'total': '$233.00', 'note': '+ 1 unpriced token',
         'tokens': [
-            {'symbol': 'CASHCAT', 'icon': 'cashcat', 'chain': 'Robinhood · Daily wallet', 'quantity': '1,200 tokens', 'price': '$0.1800 each', 'value': '$216.00', 'market': 'Uniswap v4 · CASHCAT / USDG'},
-            {'symbol': 'APE', 'icon': 'ape', 'chain': 'Ethereum · Daily wallet', 'quantity': '20 tokens', 'price': '$0.8500 each', 'value': '$17.00', 'market': 'Uniswap v3 · APE / WETH'},
-            {'symbol': 'SIGNET', 'icon': 'signet', 'chain': 'Base · Trading wallet', 'quantity': '650 tokens', 'price': 'Price unavailable', 'value': 'Unpriced', 'market': 'No funded market recorded'},
+            {'symbol': 'CASHCAT', 'icon': 'cashcat', 'chain': 'Robinhood · Daily wallet', 'quantity': '1,200 CASHCAT', 'price': '$0.1800 each', 'value': '$216.00', 'market': 'Uniswap v4 · CASHCAT / USDG'},
+            {'symbol': 'APE', 'icon': 'ape', 'chain': 'Ethereum · Daily wallet', 'quantity': '20 APE', 'price': '$0.8500 each', 'value': '$17.00', 'market': 'Uniswap v3 · APE / WETH'},
+            {'symbol': 'SIGNET', 'icon': 'signet', 'chain': 'Base · Trading wallet', 'quantity': '650 SIGNET', 'price': 'Price unavailable', 'value': 'Unpriced', 'market': 'No funded market recorded'},
         ],
     },
     {
@@ -33,8 +33,8 @@ CASES = [
         'summary': 'Recorded spot value', 'total': '$400.66', 'note': 'across 2 wallets',
         'tokens': [
             {'symbol': 'ETH', 'icon': 'eth', 'chain': 'Blast · Daily wallet', 'quantity': '0.050 ETH', 'price': '$2,700.00 each', 'value': '$135.00', 'market': 'Native gas asset'},
-            {'symbol': 'USDB', 'icon': 'usdb', 'chain': 'Blast · Daily wallet', 'quantity': '250 tokens', 'price': '$1.0000 each', 'value': '$250.00', 'market': 'Thruster v3 · USDB / WETH'},
-            {'symbol': 'BLAST', 'icon': 'blast', 'chain': 'Blast · Trading wallet', 'quantity': '100,000 tokens', 'price': '$0.0001566 each', 'value': '$15.66', 'market': 'Thruster v3 · BLAST / WETH'},
+            {'symbol': 'USDB', 'icon': 'usdb', 'chain': 'Blast · Daily wallet', 'quantity': '250 USDB', 'price': '$1.0000 each', 'value': '$250.00', 'market': 'Thruster v3 · USDB / WETH'},
+            {'symbol': 'BLAST', 'icon': 'blast', 'chain': 'Blast · Trading wallet', 'quantity': '100,000 BLAST', 'price': '$0.0001566 each', 'value': '$15.66', 'market': 'Thruster v3 · BLAST / WETH'},
         ],
     },
     {
@@ -44,15 +44,16 @@ CASES = [
         'answer': 'Your balances stayed the same. Prices moved, and a few coverage gaps were filled.',
         'summary': 'Change in priced value', 'total': '+$14.50', 'note': 'balances unchanged',
         'tokens': [
-            {'symbol': 'CASHCAT', 'icon': 'cashcat', 'chain': '1,200 tokens · unchanged', 'quantity': 'Price', 'price': '$0.1800 → $0.1900', 'value': '+$12.00', 'market': 'Robinhood · recorded spot value'},
-            {'symbol': 'ETH', 'icon': 'eth', 'chain': '0.050 ETH · unchanged', 'quantity': 'Price', 'price': '$2,700 → $2,750', 'value': '+$2.50', 'market': 'Blast · recorded spot value'},
+            {'symbol': 'CASHCAT', 'icon': 'cashcat', 'chain': '1,200 CASHCAT · unchanged', 'quantity': 'Price', 'previous_price': '$0.1800', 'price': '$0.1900', 'value': '+$12.00', 'market': 'Robinhood · recorded spot value'},
+            {'symbol': 'ETH', 'icon': 'eth', 'chain': '0.050 ETH · unchanged', 'quantity': 'Price', 'previous_price': '$2,700', 'price': '$2,750', 'value': '+$2.50', 'market': 'Blast · recorded spot value'},
             {'coverage': True, 'symbol': 'Two balances verified as zero', 'detail': 'Previously unknown. Now observed on-chain.'},
         ],
     },
 ]
 PROFILES = {
-    'desktop': {'width': 520, 'height': 570, 'body': 14, 'detail': 13, 'card': 112, 'composer': 100},
-    'mobile': {'width': 320, 'height': 600, 'body': 16, 'detail': 14, 'card': 118, 'composer': 118},
+    'desktop': {'width': 520, 'height': 570, 'body': 14, 'detail': 13, 'card': 128, 'composer': 100},
+    'mobile': {'width': 440, 'height': 520, 'body': 16, 'detail': 14, 'card': 128, 'composer': 108},
+    'compact': {'width': 360, 'height': 520, 'body': 16, 'detail': 14, 'card': 128, 'composer': 108},
 }
 ICONS = {name: Image.open(ASSETS / (name + '.png')).convert('RGBA') for name in ('cashcat', 'ape', 'signet', 'eth', 'usdb', 'blast')}
 ART = {name: Image.open(ASSETS / ('kira-' + name + '.png')).convert('RGBA') for name in ('explain', 'research')}
@@ -175,9 +176,15 @@ def conversation(case, time, profile, layout):
             color = '#35664d' if case['id'] == 'compare' else INK
             p.text(right, top + 14, token['value'], body, color, 600 if token['value'] != 'Unpriced' else 400, True)
             p.text(left + 42, top + 37, token['chain'], detail, '#74627f')
-            p.text(left, top + 64, token['quantity'], detail, MUTED)
-            p.text(right, top + 64, token['price'], detail, MUTED, right=True)
-            p.text(left, top + 88, token['market'], detail, '#765887')
+            comparison = case['id'] == 'compare'
+            p.text(left, top + 60, 'Previous price' if comparison else 'Balance', 12, MUTED)
+            p.text(right, top + 60, 'Current price' if comparison else 'Unit price', 12, MUTED, right=True)
+            quantity = token['previous_price'] if comparison else token['quantity']
+            price = token['price'].removesuffix(' each')
+            p.text(left, top + 78, quantity, detail, INK, 500)
+            p.text(right, top + 78, price, detail, INK, 500, right=True)
+            assert p.draw.textlength(quantity, font=font(detail, 500)) + p.draw.textlength(price, font=font(detail, 500)) + 12 * SCALE < (right - left) * SCALE, f'{case["id"]}/{w}: balance and unit price overlap'
+            p.text(left, top + 105, token['market'], detail, '#765887')
             assert p.draw.textlength(token['market'], font=font(detail)) < (right - left) * SCALE, f'{case["id"]}/{w}: market row overflow'
     if time >= 12.3:
         y = layout['summary_y']
@@ -262,7 +269,7 @@ def frame(time, profile, layouts, completed):
 
 
 def render(name, profile):
-    suffix = '' if name == 'desktop' else '-mobile'
+    suffix = '' if name == 'desktop' else '-' + name
     output = ASSETS / ('kira-scenarios' + suffix + '.mp4')
     layouts = [geometry(case, profile) for case in CASES]
     completed = [conversation(case, 14, profile, layout) for case, layout in zip(CASES, layouts)]
@@ -296,7 +303,7 @@ def main():
         'notes': 'Synthetic questions, balances and prices. Recorded spot values are not executable sale quotes. No private portfolio is read. Public token artwork provenance remains in token-artwork-sources.json.',
     }
     (ASSETS / 'kira-scenarios.json').write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + '\n')
-    print('Rendered both 48-second continuous films with typing, research, appended results and a loop.', flush=True)
+    print('Rendered three 48-second continuous films with typing, research, appended results and a loop.', flush=True)
 
 if __name__ == '__main__':
     main()

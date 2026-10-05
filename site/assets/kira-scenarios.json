@@ -11,16 +11,24 @@
       "height": 570,
       "body": 14,
       "detail": 13,
-      "card": 112,
+      "card": 128,
       "composer": 100
     },
     "mobile": {
-      "width": 320,
-      "height": 600,
+      "width": 440,
+      "height": 520,
       "body": 16,
       "detail": 14,
-      "card": 118,
-      "composer": 118
+      "card": 128,
+      "composer": 108
+    },
+    "compact": {
+      "width": 360,
+      "height": 520,
+      "body": 16,
+      "detail": 14,
+      "card": 128,
+      "composer": 108
     }
   },
   "cases": [
@@ -38,7 +46,7 @@
           "symbol": "CASHCAT",
           "icon": "cashcat",
           "chain": "Robinhood · Daily wallet",
-          "quantity": "1,200 tokens",
+          "quantity": "1,200 CASHCAT",
           "price": "$0.1800 each",
           "value": "$216.00",
           "market": "Uniswap v4 · CASHCAT / USDG"
@@ -47,7 +55,7 @@
           "symbol": "APE",
           "icon": "ape",
           "chain": "Ethereum · Daily wallet",
-          "quantity": "20 tokens",
+          "quantity": "20 APE",
           "price": "$0.8500 each",
           "value": "$17.00",
           "market": "Uniswap v3 · APE / WETH"
@@ -56,7 +64,7 @@
           "symbol": "SIGNET",
           "icon": "signet",
           "chain": "Base · Trading wallet",
-          "quantity": "650 tokens",
+          "quantity": "650 SIGNET",
           "price": "Price unavailable",
           "value": "Unpriced",
           "market": "No funded market recorded"
@@ -86,7 +94,7 @@
           "symbol": "USDB",
           "icon": "usdb",
           "chain": "Blast · Daily wallet",
-          "quantity": "250 tokens",
+          "quantity": "250 USDB",
           "price": "$1.0000 each",
           "value": "$250.00",
           "market": "Thruster v3 · USDB / WETH"
@@ -95,7 +103,7 @@
           "symbol": "BLAST",
           "icon": "blast",
           "chain": "Blast · Trading wallet",
-          "quantity": "100,000 tokens",
+          "quantity": "100,000 BLAST",
           "price": "$0.0001566 each",
           "value": "$15.66",
           "market": "Thruster v3 · BLAST / WETH"
@@ -115,9 +123,10 @@
         {
           "symbol": "CASHCAT",
           "icon": "cashcat",
-          "chain": "1,200 tokens · unchanged",
+          "chain": "1,200 CASHCAT · unchanged",
           "quantity": "Price",
-          "price": "$0.1800 → $0.1900",
+          "previous_price": "$0.1800",
+          "price": "$0.1900",
           "value": "+$12.00",
           "market": "Robinhood · recorded spot value"
         },
@@ -126,7 +135,8 @@
           "icon": "eth",
           "chain": "0.050 ETH · unchanged",
           "quantity": "Price",
-          "price": "$2,700 → $2,750",
+          "previous_price": "$2,700",
+          "price": "$2,750",
           "value": "+$2.50",
           "market": "Blast · recorded spot value"
         },
