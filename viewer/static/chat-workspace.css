@@ -83,3 +83,38 @@ body.page-hidden .composer::before,body.page-hidden .thinking-dots i { animation
 .market-links .market-link { gap:6px; width:fit-content; }.detail-markets { margin-top:16px; }.detail-markets .pool-link { padding:12px; }.detail-markets .pool-description strong { font-size:13px; }
 .chat-icon-button:focus-visible,.pool-link:focus-visible,.more-pools summary:focus-visible { outline:3px solid #a58abd; outline-offset:3px; }
 @media(max-width:600px) { .wallet-actions button { flex:1 1 auto; }.pool-metrics { max-width:90px; }.detail-facts .fact-panel { min-width:0; } }
+
+/* Wallet identity and position share one row; evidence stays close to its value. */
+.detail-accounts .account-grid { grid-template-columns:1fr; gap:10px; }
+.detail-accounts .account-card { min-width:0; padding:16px 18px; border-radius:12px; }
+.account-card-heading { display:flex; align-items:center; gap:11px; min-width:0; border-radius:6px; }
+.account-card-heading .card-wallet-icon { width:34px; height:34px; border-radius:10px; flex:none; }
+.account-card-heading .wallet-card-identity { flex:1; min-width:0; }
+.account-card-heading .wallet-card-identity strong { font-size:13px; overflow-wrap:anywhere; }
+.account-card-heading .wallet-card-identity > span { font-size:11px; }
+.account-position { display:grid; gap:3px; text-align:right; min-width:0; max-width:55%; }
+.account-position .account-value { margin:0; font-size:23px; line-height:1.15; letter-spacing:-.035em; font-variant-numeric:tabular-nums; }
+.account-position .account-meta { margin:0; font-size:11px; overflow-wrap:anywhere; }
+.account-card-heading .card-arrow { position:static; width:14px; flex:none; color:#8f789f; }
+.account-card-heading:focus-visible { outline:3px solid #a58abd; outline-offset:5px; }
+.account-card .account-facts { display:grid; grid-template-columns:1fr 1fr; gap:8px 20px; margin:14px 0 0; padding-top:12px; border-top:1px solid #eee8f2; }
+.account-card .account-facts > div { display:grid; gap:2px; }
+.account-card .account-facts dt { font-size:11px; }
+.account-card .account-facts dd { margin:0; font-size:12px; text-align:left; font-variant-numeric:tabular-nums; }
+.account-card .account-facts dd > span { display:inline; margin-left:5px; font-size:10px; }
+.account-card .account-quote { display:grid; gap:5px; margin-top:12px; padding:10px 12px; border-radius:8px; background:#f5f0f9; }
+.account-quote > div { display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:5px 12px; }
+.account-card .account-quote span { font-size:10px; color:#796587; }
+.account-card .account-quote strong { font-size:12px; font-weight:600; color:#5e486e; overflow-wrap:anywhere; }
+.account-card .account-quote small { font-size:10px; line-height:1.5; color:#796587; }
+.account-card .account-footnote { display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 14px; margin:12px 0 0; padding:0; border:0; font-size:10px; }
+.account-card .account-footnote > span:first-child { color:#6c547c; }
+@media(max-width:600px) {
+  .detail-accounts .account-card { padding:14px; }
+  .account-card-heading { flex-wrap:wrap; gap:9px; }
+  .account-card-heading .card-arrow { order:1; }
+  .account-position { order:2; flex:1 0 100%; max-width:100%; display:flex; align-items:baseline; justify-content:space-between; text-align:left; gap:8px; }
+  .account-position .account-value { font-size:22px; }
+  .account-position .account-meta { text-align:right; }
+  .account-card .account-facts { gap:8px 12px; }
+}

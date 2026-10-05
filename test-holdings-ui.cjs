@@ -51,6 +51,20 @@ const malformed=context.marketLinks([],{symbol:'Fixture',market_pools:[{...pools
 assert.match(malformed,/coin-fallback">\?<\/span>/);
 console.log('Malformed pool symbols cannot crash the real artwork renderer.');
 
+context.walletGlyph='';context.share=(value,total)=>value==null?'—':(value/total*100).toFixed(1)+'%';
+vm.runInContext(source.slice(source.indexOf('function accountCard('),source.indexOf('function aggregateRow(')),context);
+const account={name:'Synthetic wallet',key:'fixture',address:'0x'+'1'.repeat(40),status:'No holding recorded',coverage:'Researched',analysed_at:'2026-10-04T00:00:00Z'};
+const absent=context.accountCard(account,{symbol:'SAMPLE',value_usd:100,environment:'mainnet'});
+assert.match(absent,/account-position/);assert.match(absent,/No holding recorded/);assert.match(absent,/>—</);
+assert.doesNotMatch(absent,/account-facts|account-quote/);
+const recorded=context.accountCard({...account,asset:{balance:'1',value_usd:100,price:{usd:100,basis:'Curve spot',observed_at:'2026-10-01T00:00:00Z'},
+  exit_quote:{output_amount:'0.123',output_symbol:'ETH',observed_at:'2026-10-02T00:00:00Z',block_number:123}}},{symbol:'SAMPLE',value_usd:100,environment:'mainnet'});
+assert.match(recorded,/100.0%/);assert.match(recorded,/Curve spot/);assert.match(recorded,/0.123 ETH/);
+assert.match(recorded,/block 123 · net of royalty · excludes gas/);assert.match(recorded,/Price 2026-10-01/);
+const testnet=context.accountCard({...account,asset:{balance:'1',value_usd:null,price:{usd:999}}},{symbol:'SAMPLE',value_usd:null,environment:'testnet'});
+assert.match(testnet,/Testnet/);assert.doesNotMatch(testnet,/999/);
+console.log('Compact wallet rows retain unknown holdings, dated burn outputs and testnet price exclusion.');
+
 const workspaceSource=fs.readFileSync('viewer/static/workspace.js','utf8');
 for(const id of ['all-token-network','all-token-pricing','all-token-sort','all-token-search','job-filter'])node(id).value='previous';
 node('all-token-testnets').checked=true;context.catalogPage=8;context.jobsPage=9;
