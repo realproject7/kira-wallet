@@ -22,18 +22,17 @@ Codex or Claude Code account.
 **Requires Node.js 22+ and Python 3.11+. macOS is verified.** The research and
 background-process features require a POSIX environment.
 
-Install the latest GitHub release:
+Install Kira:
 
 ```sh
-npm install -g https://github.com/realproject7/kira-wallet/releases/download/v0.1.2/kira-wallet-0.1.2.tgz
+npm install -g kira-wallet
 kira setup
 ```
 
 Open the local app at [127.0.0.1:8787](http://127.0.0.1:8787).
 
-**npm status:** `npm install -g kira-wallet` currently installs **0.1.0**.
-Use the GitHub release above for **0.1.2**, including the features shown below
-and fixes from local live testing. npm publication is pending.
+Prefer an archive? [GitHub releases](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2)
+include the same package and its checksum.
 
 1. **Add a watching wallet.** Paste a public address and give it a name. Add more
    wallets whenever you need them.

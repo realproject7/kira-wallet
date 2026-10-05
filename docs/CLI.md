@@ -3,14 +3,15 @@
 The package carries the Python engine, browser assets and declared viem
 dependency. It needs no Python packages and no sibling project. The package
 file list excludes wallets, snapshots, conversations, caches, logs and private settings.
-Install version 0.1.2 from its GitHub release, then run `kira setup`:
+Install Kira from npm, then run `kira setup`:
 
 ```sh
-npm install -g https://github.com/realproject7/kira-wallet/releases/download/v0.1.2/kira-wallet-0.1.2.tgz
+npm install -g kira-wallet
 kira setup
 ```
 
-The npm registry currently offers version 0.1.0 through `npm install -g kira-wallet`.
+The npm registry currently offers version 0.1.2. The same archive and checksum
+are available from the [GitHub release](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2).
 Registry publication remains an operator action. The code and original character assets use the MIT license.
 
 ## Lifecycle
