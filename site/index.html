@@ -16,8 +16,8 @@
   <link rel="canonical" href="https://kirawallet.app">
   <link rel="icon" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/assets/kira-logo.png">
-  <link rel="stylesheet" href="/site.css?v=3a024ef0e8ac">
-  <script src="/demo.js?v=3a024ef0e8ac" defer></script>
+  <link rel="stylesheet" href="/site.css?v=88ddc35ce6ff">
+  <script src="/demo.js?v=88ddc35ce6ff" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -41,22 +41,22 @@
       </div>
       <p class="hero-meta"><span class="status-dot" aria-hidden="true"></span>Runs locally. Works with your AI account.</p>
     </div>
-    <div id="demo" class="demo" role="region" aria-label="Kira product examples" tabindex="0" aria-describedby="demo-reading-help">
-      <p id="demo-reading-help" class="sr-only">Automatic chat demonstration. Focus this area to read the conversation at your own pace. Move focus outside to resume playback.</p>
+    <div id="demo" class="demo" role="region" aria-label="Kira product examples">
       <div class="demo-header">
         <div class="demo-brand"><img src="/assets/kira-logo.png" width="30" height="30" alt=""><span>Kira Chat</span></div>
       </div>
-      <video id="demo-film" class="demo-film" autoplay muted loop playsinline preload="metadata" aria-hidden="true" hidden
-        data-desktop="/assets/kira-scenarios.mp4?v=3a024ef0e8ac" data-mobile="/assets/kira-scenarios-mobile.mp4?v=3a024ef0e8ac"
-        data-compact="/assets/kira-scenarios-compact.mp4?v=3a024ef0e8ac" data-poster-compact="/assets/kira-scenarios-compact-poster.png?v=3a024ef0e8ac"
-        data-poster-desktop="/assets/kira-scenarios-poster.png?v=3a024ef0e8ac" data-poster-mobile="/assets/kira-scenarios-mobile-poster.png?v=3a024ef0e8ac"
+      <video id="demo-film" class="demo-film" autoplay muted loop playsinline preload="metadata" aria-hidden="true" disablepictureinpicture disableremoteplayback hidden
+        data-desktop="/assets/kira-scenarios.mp4?v=88ddc35ce6ff" data-mobile="/assets/kira-scenarios-mobile.mp4?v=88ddc35ce6ff"
+        data-compact="/assets/kira-scenarios-compact.mp4?v=88ddc35ce6ff" data-poster-compact="/assets/kira-scenarios-compact-poster.png?v=88ddc35ce6ff"
+        data-poster-desktop="/assets/kira-scenarios-poster.png?v=88ddc35ce6ff" data-poster-mobile="/assets/kira-scenarios-mobile-poster.png?v=88ddc35ce6ff"
         ></video>
       <div class="demo-body" tabindex="0" role="region" aria-label="Demo conversation transcript">
         <section id="demo-tokens" class="demo-panel" aria-label="Token values">
           <p class="demo-question">What are my overlooked tokens worth? Show balances, prices and markets.</p>
           <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
-          <p class="demo-answer">Start with these three. CASHCAT has a market to review; SIGNET still needs a price.</p>
+          <p class="demo-answer">SIGNET uses a HUNT-backed Mint Club curve. CASHCAT and APE trade on DEX markets.</p>
           <div class="token-results">
+            <div class="results-header"><span>Holdings &amp; markets</span><span>Spot value</span></div>
             <article class="token-result">
               <div class="token-top"><img src="/assets/cashcat.png" width="36" height="36" alt=""><div class="token-identity"><strong>CASHCAT</strong><span>Robinhood · Daily wallet</span></div><strong class="token-value">$216.00</strong></div>
               <div class="token-facts"><span><small>Balance</small><strong>1,200 CASHCAT</strong></span><span><small>Unit price</small><strong>$0.1800</strong></span></div>
@@ -68,18 +68,19 @@
               <span class="token-market">Uniswap v3 · APE / WETH</span>
             </article>
             <article class="token-result">
-              <div class="token-top"><img src="/assets/signet.png" width="36" height="36" alt=""><div class="token-identity"><strong>SIGNET</strong><span>Base · Trading wallet</span></div><span class="token-value unknown">Unpriced</span></div>
-              <div class="token-facts"><span><small>Balance</small><strong>650 SIGNET</strong></span><span><small>Unit price</small><strong>Unavailable</strong></span></div>
-              <span class="token-market muted">No funded market recorded</span>
+              <div class="token-top"><img src="/assets/signet.png" width="36" height="36" alt=""><div class="token-identity"><strong>SIGNET</strong><span>Base · Trading wallet</span></div><strong class="token-value">$39.65</strong></div>
+              <div class="token-facts"><span><small>Balance</small><strong>650 SIGNET</strong></span><span><small>Unit price</small><strong>$0.0610</strong></span></div>
+              <a class="token-market" href="https://mint.club/token/base/SIGNET" target="_blank" rel="noreferrer">Mint Club · 0.613 HUNT / SIGNET <span aria-hidden="true">↗</span></a>
             </article>
+            <div class="demo-summary"><span>Recorded spot value</span><strong>$272.65 <small>Includes SIGNET’s curve value</small></strong></div>
           </div>
-          <div class="demo-summary"><span>Recorded spot value</span><strong>$233.00 <small>+ 1 unpriced token</small></strong></div>
         </section>
         <section id="demo-blast" class="demo-panel" aria-label="Blast holdings">
           <p class="demo-question">Review my Blast wallets. What do I hold, and where can these tokens trade?</p>
           <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
           <p class="demo-answer">Your Blast holdings, together. Keep some ETH for fees before moving funds.</p>
           <div class="token-results">
+            <div class="results-header"><span>Holdings &amp; markets</span><span>Spot value</span></div>
             <article class="token-result">
               <div class="token-top"><img src="/assets/eth.png" width="36" height="36" alt=""><div class="token-identity"><strong>ETH</strong><span>Blast · Daily wallet</span></div><strong class="token-value">$135.00</strong></div>
               <div class="token-facts"><span><small>Balance</small><strong>0.050 ETH</strong></span><span><small>Unit price</small><strong>$2,700.00</strong></span></div>
@@ -95,14 +96,15 @@
               <div class="token-facts"><span><small>Balance</small><strong>100,000 BLAST</strong></span><span><small>Unit price</small><strong>$0.0001566</strong></span></div>
               <a class="token-market" href="https://dexscreener.com/blast/0x9a0aa28d999a21d3cf6f2703cdbba9feaf4a32f7" target="_blank" rel="noreferrer">Thruster v3 · BLAST / WETH <span aria-hidden="true">↗</span></a>
             </article>
+            <div class="demo-summary"><span>Recorded spot value</span><strong>$400.66 <small>across 2 wallets</small></strong></div>
           </div>
-          <div class="demo-summary"><span>Recorded spot value</span><strong>$400.66 <small>across 2 wallets</small></strong></div>
         </section>
         <section id="demo-compare" class="demo-panel" aria-label="Saved analysis changes">
           <p class="demo-question">What changed since the last time you checked my wallet?</p>
           <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
           <p class="demo-answer">Your balances stayed the same. Prices moved, and a few coverage gaps were filled.</p>
           <div class="token-results">
+            <div class="results-header"><span>Price changes</span><span>Change</span></div>
             <article class="token-result">
               <div class="token-top"><img src="/assets/cashcat.png" width="36" height="36" alt=""><div class="token-identity"><strong>CASHCAT</strong><span>1,200 CASHCAT · unchanged</span></div><strong class="token-value change">+$12.00</strong></div>
               <div class="comparison-facts"><span>Price</span><strong>$0.1800 <span aria-hidden="true">→</span> $0.1900</strong></div>
@@ -114,8 +116,8 @@
               <span class="token-market">Blast · recorded spot value</span>
             </article>
             <article class="coverage-result"><span class="coverage-icon" aria-hidden="true">✓</span><div><strong>Two balances verified as zero</strong><p>Previously unknown. Now observed on-chain.</p></div></article>
+            <div class="demo-summary"><span>Change in priced value</span><strong class="change">+$14.50 <small>balances unchanged</small></strong></div>
           </div>
-          <div class="demo-summary"><span>Change in priced value</span><strong class="change">+$14.50 <small>balances unchanged</small></strong></div>
         </section>
       </div>
       <div class="demo-composer" aria-hidden="true"><span>Ask Kira about your wallets…</span><div><small><span class="status-dot"></span>Your AI account</small><span class="demo-send">↑</span></div></div>

@@ -17,12 +17,15 @@ CASES = [
         'id': 'tokens', 'label': 'Find value',
         'question': 'What are my overlooked tokens worth? Show balances, prices and markets.',
         'working': 'Reading your holdings and recorded markets…',
-        'answer': 'Start with these three. CASHCAT has a market to review; SIGNET still needs a price.',
-        'summary': 'Recorded spot value', 'total': '$233.00', 'note': '+ 1 unpriced token',
+        'answer': 'SIGNET uses a HUNT-backed Mint Club curve. CASHCAT and APE trade on DEX markets.',
+        'summary': 'Recorded spot value', 'total': '$272.65', 'note': 'Includes SIGNET’s curve value',
         'tokens': [
             {'symbol': 'CASHCAT', 'icon': 'cashcat', 'chain': 'Robinhood · Daily wallet', 'quantity': '1,200 CASHCAT', 'price': '$0.1800 each', 'value': '$216.00', 'market': 'Uniswap v4 · CASHCAT / USDG'},
             {'symbol': 'APE', 'icon': 'ape', 'chain': 'Ethereum · Daily wallet', 'quantity': '20 APE', 'price': '$0.8500 each', 'value': '$17.00', 'market': 'Uniswap v3 · APE / WETH'},
-            {'symbol': 'SIGNET', 'icon': 'signet', 'chain': 'Base · Trading wallet', 'quantity': '650 SIGNET', 'price': 'Price unavailable', 'value': 'Unpriced', 'market': 'No funded market recorded'},
+            {'symbol': 'SIGNET', 'icon': 'signet', 'chain': 'Base · Trading wallet', 'quantity': '650 SIGNET', 'price': '$0.0610 each', 'value': '$39.65', 'market': 'Mint Club · 0.613 HUNT / SIGNET',
+             'protocol': 'Mint Club', 'parent_symbol': 'HUNT', 'reference_price': '0.613 HUNT',
+             'pricing_source': 'https://mint.club/token/base/SIGNET',
+             'pricing_note': 'Official page observed 2026-10-05: 0.613 HUNT and approximately $0.061 per SIGNET. The demo uses that rounded USD reference with a fictional balance; spot value is not a burn quote.'},
         ],
     },
     {
@@ -51,9 +54,9 @@ CASES = [
     },
 ]
 PROFILES = {
-    'desktop': {'width': 520, 'height': 570, 'body': 14, 'detail': 13, 'card': 128, 'composer': 100},
-    'mobile': {'width': 440, 'height': 520, 'body': 16, 'detail': 14, 'card': 128, 'composer': 108},
-    'compact': {'width': 360, 'height': 520, 'body': 16, 'detail': 14, 'card': 128, 'composer': 108},
+    'desktop': {'width': 520, 'height': 570, 'body': 14, 'detail': 12, 'card': 100, 'composer': 92},
+    'mobile': {'width': 440, 'height': 520, 'body': 15, 'detail': 12, 'card': 100, 'composer': 92},
+    'compact': {'width': 360, 'height': 520, 'body': 15, 'detail': 12, 'card': 100, 'composer': 92},
 }
 ICONS = {name: Image.open(ASSETS / (name + '.png')).convert('RGBA') for name in ('cashcat', 'ape', 'signet', 'eth', 'usdb', 'blast')}
 ART = {name: Image.open(ASSETS / ('kira-' + name + '.png')).convert('RGBA') for name in ('explain', 'research')}
@@ -120,11 +123,12 @@ def geometry(case, profile):
     qbottom = 18 + 28 + len(question) * body * 1.55
     answer_y = qbottom + 66
     answer = p.wrapped(case['answer'], body, w - 2 * margin)
-    cards_y = answer_y + len(answer) * body * 1.55 + 20
-    bottom = cards_y + 3 * profile['card'] + 20
+    panel_y = answer_y + len(answer) * body * 1.55 + 24
+    cards_y = panel_y + 34
+    bottom = cards_y + 3 * profile['card']
     return {'margin': margin, 'question': question, 'qbottom': qbottom,
             'answer_y': answer_y, 'answer': answer, 'cards_y': cards_y,
-            'summary_y': bottom + 20, 'height': math.ceil(bottom + 75)}
+            'panel_y': panel_y, 'summary_y': bottom + 10, 'height': math.ceil(bottom + 54)}
 
 
 def conversation(case, time, profile, layout):
@@ -153,44 +157,53 @@ def conversation(case, time, profile, layout):
         return p.image
     visible = min(len(case['answer']), round(max(0, time - 4.8) / .5 * len(case['answer'])))
     p.lines(margin, y, p.wrapped(case['answer'][:visible], body, w - 2 * margin), body, '#5f5369')
+    shown_rows = min(len(case['tokens']), 1 + int(max(0, time - 5.4) // 2.35))
+    panel_top = layout['panel_y']
+    panel_bottom = layout['height'] - 2 if time >= 12.3 else layout['cards_y'] + shown_rows * profile['card'] + 8
+    if time >= 5.4:
+        p.rounded((margin, panel_top, w - margin, panel_bottom), 14, '#ffffff', LINE)
+        p.text(margin + 14, panel_top + 12, 'Price changes' if case['id'] == 'compare' else 'Holdings & markets', 11, MUTED, 500)
+        p.text(w - margin - 14, panel_top + 12, 'Change' if case['id'] == 'compare' else 'Spot value', 11, MUTED, right=True)
     for index, token in enumerate(case['tokens']):
-        top = layout['cards_y'] + index * (profile['card'] + 10)
+        top = layout['cards_y'] + index * profile['card']
         progress = max(0, min(1, (time - 5.4 - index * 2.35) / .4))
         if not progress:
             continue
-        top += 8 * (1 - progress) ** 2
         bottom = top + profile['card']
         coverage = token.get('coverage')
-        p.rounded((margin, top, w - margin, bottom), 12, '#f0f6f2' if coverage else CARD, '#dde8e2' if coverage else LINE)
         left, right = margin + 14, w - margin - 14
+        if index:
+            p.draw.line((left * SCALE, top * SCALE, right * SCALE, top * SCALE), fill=LINE, width=SCALE)
         if coverage:
-            p.rounded((left, top + 36, left + 30, top + 66), 15, '#e2eee7')
-            p.draw.line([((left + 9) * SCALE, (top + 50) * SCALE), ((left + 13) * SCALE, (top + 55) * SCALE), ((left + 22) * SCALE, (top + 44) * SCALE)], fill='#56705f', width=2 * SCALE)
+            p.rounded((left, top + 28, left + 30, top + 58), 15, '#e2eee7')
+            p.draw.line([((left + 9) * SCALE, (top + 42) * SCALE), ((left + 13) * SCALE, (top + 47) * SCALE), ((left + 22) * SCALE, (top + 36) * SCALE)], fill='#56705f', width=2 * SCALE)
             headings = p.wrapped(token['symbol'], body, right - left - 42, 550)
             yy = p.lines(left + 42, top + 18, headings, body, '#56705f', body * 1.3, 550)
             ending = p.lines(left + 42, yy + 9, p.wrapped(token['detail'], detail, right - left - 42), detail, '#56705f', detail * 1.4)
             assert ending < bottom - 8, f'{case["id"]}/{w}: coverage card overflow'
         else:
-            p.logo(ICONS[token['icon']], left, top + 14, 32)
-            p.text(left + 42, top + 14, token['symbol'], body, INK, 600)
+            p.logo(ICONS[token['icon']], left, top + 12, 30)
+            p.text(left + 40, top + 12, token['symbol'], body, INK, 600)
             color = '#35664d' if case['id'] == 'compare' else INK
-            p.text(right, top + 14, token['value'], body, color, 600 if token['value'] != 'Unpriced' else 400, True)
-            p.text(left + 42, top + 37, token['chain'], detail, '#74627f')
+            p.text(right, top + 12, token['value'], body, color, 600, True)
+            assert p.draw.textlength(token['symbol'], font=font(body, 600)) + p.draw.textlength(token['value'], font=font(body, 600)) + 52 * SCALE < (right - left) * SCALE, f'{case["id"]}/{w}: token and value overlap'
+            p.text(left + 40, top + 33, token['chain'], 11, MUTED)
             comparison = case['id'] == 'compare'
-            p.text(left, top + 60, 'Previous price' if comparison else 'Balance', 12, MUTED)
-            p.text(right, top + 60, 'Current price' if comparison else 'Unit price', 12, MUTED, right=True)
+            p.text(left, top + 51, 'Previous price' if comparison else 'Balance', 10, MUTED)
+            p.text(right, top + 51, 'Current price' if comparison else 'Unit price', 10, MUTED, right=True)
             quantity = token['previous_price'] if comparison else token['quantity']
             price = token['price'].removesuffix(' each')
-            p.text(left, top + 78, quantity, detail, INK, 500)
-            p.text(right, top + 78, price, detail, INK, 500, right=True)
+            p.text(left, top + 65, quantity, detail, INK, 500)
+            p.text(right, top + 65, price, detail, INK, 500, right=True)
             assert p.draw.textlength(quantity, font=font(detail, 500)) + p.draw.textlength(price, font=font(detail, 500)) + 12 * SCALE < (right - left) * SCALE, f'{case["id"]}/{w}: balance and unit price overlap'
-            p.text(left, top + 105, token['market'], detail, '#765887')
-            assert p.draw.textlength(token['market'], font=font(detail)) < (right - left) * SCALE, f'{case["id"]}/{w}: market row overflow'
+            p.text(left, top + 85, token['market'], 11, PLUM)
+            assert p.draw.textlength(token['market'], font=font(11)) < (right - left) * SCALE, f'{case["id"]}/{w}: market row overflow'
     if time >= 12.3:
         y = layout['summary_y']
-        p.text(margin, y, case['summary'], detail, MUTED)
-        p.text(w - margin, y, case['total'], body, '#35664d' if case['id'] == 'compare' else '#594064', 600, True)
-        p.text(w - margin, y + 23, case['note'], 12 if w > 400 else 13, '#786484', right=True)
+        p.draw.line(((margin + 14) * SCALE, (y - 10) * SCALE, (w - margin - 14) * SCALE, (y - 10) * SCALE), fill=LINE, width=SCALE)
+        p.text(margin + 14, y, case['summary'], 11, MUTED)
+        p.text(w - margin - 14, y, case['total'], body, '#35664d' if case['id'] == 'compare' else '#594064', 600, True)
+        p.text(margin + 14, y + 22, case['note'], 10, MUTED)
     return p.image
 
 
@@ -207,7 +220,8 @@ def frame(time, profile, layouts, completed):
     t = time - index * SECONDS
     case, layout = CASES[index], layouts[index]
     margin = layout['margin']
-    chat_h = h - profile['composer'] - 20
+    chat_h = h - profile['composer'] - 24
+    assert all(item['height'] - item['panel_y'] <= chat_h for item in layouts), 'Result panel must fit above the composer'
     offsets, position = [], 0
     for item in layouts:
         offsets.append(position)
@@ -216,9 +230,9 @@ def frame(time, profile, layouts, completed):
     scroll = max(0, current_top - 20 - chat_h) if index else 0
     targets = [(2.6, layout['answer_y'] + 140),
                (4.8, layout['cards_y']),
-               (5.4, layout['cards_y'] + profile['card'] + 18),
-               (7.75, layout['cards_y'] + 2 * profile['card'] + 28),
-               (10.1, layout['cards_y'] + 3 * profile['card'] + 38),
+               (5.4, layout['cards_y'] + profile['card'] + 8),
+               (7.75, layout['cards_y'] + 2 * profile['card'] + 8),
+               (10.1, layout['cards_y'] + 3 * profile['card'] + 8),
                (12.3, layout['height'])]
     for start, bottom in targets:
         target = max(scroll, current_top + bottom - chat_h)
@@ -251,16 +265,17 @@ def frame(time, profile, layouts, completed):
     sent = t >= 2.6
     typing = min(1, max(0, t / 2.3))
     shown = 'Ask Kira about your wallets…' if sent else case['question'][:round(len(case['question']) * typing)]
-    rows = p.wrapped(shown, body, w - margin * 2 - 42) or ['Ask Kira about your wallets…']
+    input_size = 14
+    rows = p.wrapped(shown, input_size, w - margin * 2 - 42) or ['Ask Kira about your wallets…']
     if len(rows) > 2:
         rows = rows[-2:]
     border = '#b998ca' if sent and t < 4.8 and math.sin(t * 4) > 0 else '#d4bfdf'
     p.rounded((margin - 8, top, w - margin + 8, h - 12), 14, '#ffffff', border)
-    p.lines(margin + 6, top + 15, rows, body, '#7d698a')
-    fy = h - 40
-    assert top + 15 + len(rows) * body * 1.55 < fy - 4, 'Composer typing overlaps its footer'
+    p.lines(margin + 6, top + 12, rows, input_size, '#7d698a', input_size * 1.45)
+    fy = h - 35
+    assert top + 12 + len(rows) * input_size * 1.45 < fy - 8, 'Composer typing overlaps its footer'
     p.draw.ellipse(((margin + 8) * SCALE, (fy + 5) * SCALE, (margin + 13) * SCALE, (fy + 10) * SCALE), fill='#739284')
-    p.text(margin + 20, fy + 2, 'Your AI account', 12 if w > 400 else 13, '#7d698a')
+    p.text(margin + 20, fy + 2, 'Your AI account', 11, MUTED)
     bx = w - margin - 24
     p.rounded((bx, fy - 6, bx + 28, fy + 22), 7, '#87659b')
     p.draw.line([((bx + 14) * SCALE, (fy + 15) * SCALE), ((bx + 14) * SCALE, (fy + 2) * SCALE)], fill='white', width=2 * SCALE)

@@ -10,25 +10,25 @@
       "width": 520,
       "height": 570,
       "body": 14,
-      "detail": 13,
-      "card": 128,
-      "composer": 100
+      "detail": 12,
+      "card": 100,
+      "composer": 92
     },
     "mobile": {
       "width": 440,
       "height": 520,
-      "body": 16,
-      "detail": 14,
-      "card": 128,
-      "composer": 108
+      "body": 15,
+      "detail": 12,
+      "card": 100,
+      "composer": 92
     },
     "compact": {
       "width": 360,
       "height": 520,
-      "body": 16,
-      "detail": 14,
-      "card": 128,
-      "composer": 108
+      "body": 15,
+      "detail": 12,
+      "card": 100,
+      "composer": 92
     }
   },
   "cases": [
@@ -37,10 +37,10 @@
       "label": "Find value",
       "question": "What are my overlooked tokens worth? Show balances, prices and markets.",
       "working": "Reading your holdings and recorded markets…",
-      "answer": "Start with these three. CASHCAT has a market to review; SIGNET still needs a price.",
+      "answer": "SIGNET uses a HUNT-backed Mint Club curve. CASHCAT and APE trade on DEX markets.",
       "summary": "Recorded spot value",
-      "total": "$233.00",
-      "note": "+ 1 unpriced token",
+      "total": "$272.65",
+      "note": "Includes SIGNET’s curve value",
       "tokens": [
         {
           "symbol": "CASHCAT",
@@ -65,9 +65,14 @@
           "icon": "signet",
           "chain": "Base · Trading wallet",
           "quantity": "650 SIGNET",
-          "price": "Price unavailable",
-          "value": "Unpriced",
-          "market": "No funded market recorded"
+          "price": "$0.0610 each",
+          "value": "$39.65",
+          "market": "Mint Club · 0.613 HUNT / SIGNET",
+          "protocol": "Mint Club",
+          "parent_symbol": "HUNT",
+          "reference_price": "0.613 HUNT",
+          "pricing_source": "https://mint.club/token/base/SIGNET",
+          "pricing_note": "Official page observed 2026-10-05: 0.613 HUNT and approximately $0.061 per SIGNET. The demo uses that rounded USD reference with a fictional balance; spot value is not a burn quote."
         }
       ]
     },

@@ -14,7 +14,7 @@ let revision = 0;
 let pendingSeek = 0;
 
 function readingHasFocus() {
-  return document.activeElement === demo || reading.contains(document.activeElement);
+  return reading.contains(document.activeElement);
 }
 
 function showFilm(show) {
@@ -75,12 +75,11 @@ film.addEventListener('error', () => {
   failed = true;
   showFilm(false);
 });
-demo.addEventListener('focusin', () => {
-  if (readingHasFocus()) showFilm(false);
-  updatePlayback();
-});
-demo.addEventListener('focusout', event => {
-  if (!demo.contains(event.relatedTarget)) {
+// Only a visible fallback transcript can hold focus. The movie has no controls,
+// pointer target or keyboard stop; clicking it must keep automatic playback.
+reading.addEventListener('focusin', updatePlayback);
+reading.addEventListener('focusout', event => {
+  if (!reading.contains(event.relatedTarget)) {
     if (ready && !failed && !reducedMotion.matches) showFilm(true);
     updatePlayback();
   }

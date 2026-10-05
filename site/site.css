@@ -5,7 +5,7 @@ html{scroll-behavior:smooth;scroll-padding-top:32px}
 body{margin:0}
 a{color:inherit;text-decoration:none}
 button{font:inherit;cursor:pointer}
-a:focus-visible,button:focus-visible,.demo:focus-visible{outline:3px solid #9876ac;outline-offset:5px}
+a:focus-visible,button:focus-visible{outline:3px solid #9876ac;outline-offset:5px}
 svg{width:22px;height:22px;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
 [hidden]{display:none!important}
 .wrap{width:100%;max-width:1320px;margin-inline:auto;padding-inline:48px}
@@ -36,7 +36,7 @@ h1 span+span{margin-top:6px}
 .status-dot{display:inline-block;width:6px;height:6px;background:#739284;border-radius:50%;flex:none}
 /* Readable header, continuous film and an equivalent HTML transcript. */
 .demo{width:100%;max-width:520px;justify-self:end;min-width:0;border:1px solid #ddd0e7;border-radius:23px;background:#fdfbff;box-shadow:0 12px 44px #4930560a,0 2px 8px #49305604;overflow:hidden}
-.demo-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 24px 17px;border-bottom:1px solid #eae2ef}
+.demo-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 24px 17px;border-bottom:1px solid #eae2ef;background:#fff}
 .demo-brand{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:600;color:#47374f}
 .demo-brand img{border-radius:8px}
 .demo-body{padding:22px 24px 0;max-height:570px;overflow-y:auto;overscroll-behavior:contain}.demo-panel+.demo-panel{margin-top:28px;padding-top:24px;border-top:1px solid #e8dff0}
@@ -74,6 +74,14 @@ a.token-market:hover{text-decoration:underline;text-underline-offset:3px}
 .coverage-result strong{font-size:13px;line-height:1.5;font-weight:500;color:#5c7668}
 .coverage-result p{font-size:11px;line-height:1.6;color:#7b9084;margin:6px 0 0}
 .token-facts>span{display:flex;flex-direction:column;gap:4px}.token-facts>span:last-child{text-align:right}.token-facts small{font-size:11px;color:#716078}.token-facts strong{font-weight:500;color:var(--ink)}
+/* One aligned result panel keeps the fallback equivalent to the film. */
+.token-results{gap:0;border:1px solid #e8dff0;border-radius:14px;background:#fff;overflow:hidden}
+.results-header{display:flex;justify-content:space-between;gap:12px;padding:12px 14px 4px;font-size:11px;color:#716078}
+.token-result{border:0;border-radius:0;background:transparent;padding:14px}
+.token-result+.token-result,.token-results>.coverage-result{border-top:1px solid #e8dff0}
+.token-results>.coverage-result{border-inline:0;border-bottom:0;border-radius:0;background:transparent;margin-inline:14px;padding-inline:0}
+.token-results>.demo-summary{border-top:1px solid #e8dff0;padding:13px 14px;margin:0}
+.demo-summary small{display:block;margin:4px 0 0;text-align:right}
 /* Character-led product story. */
 .meet{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:center;gap:100px;padding-block:50px 110px;border-top:1px solid var(--line)}
 .companion-visual{position:relative;min-height:558px;align-self:stretch;isolation:isolate;display:flex;align-items:flex-end;justify-content:center;padding:36px 28px 76px}
@@ -141,6 +149,6 @@ h2{font-size:44px;line-height:1.15;font-weight:500;letter-spacing:-.03em;margin:
 .change,.demo-summary>strong.change{color:#35664d}
 
 /* Fit the whole film and fixed composer, without clipping its lower edge. */
-.demo-film{display:block;width:100%;height:auto;aspect-ratio:520/570;background:#fdfbff;object-fit:contain}
+.demo-film{display:block;width:100%;height:auto;aspect-ratio:520/570;background:#fdfbff;object-fit:contain;pointer-events:none;user-select:none}
 @media(max-width:700px){.demo{max-width:min(440px,max(280px,calc((100svh - 100px)*440/520)));justify-self:center}.demo-film{aspect-ratio:440/520}.demo-body{max-height:520px}}
 @media(max-width:420px){.demo{max-width:min(360px,max(280px,calc((100svh - 100px)*360/520)))}.demo-film{aspect-ratio:360/520}}
