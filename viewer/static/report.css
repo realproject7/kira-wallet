@@ -105,6 +105,10 @@ body.page-hidden .kira-scene img{animation:none!important}
 #ows-dialog .wallet-choices { margin: 18px 0; }
 #ows-create-section { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 16px; }
 #ows-create-section summary { min-height: 44px; color: var(--accent); cursor: pointer; }
+#ows-list:empty { display: none; }
+#ows-dialog #ows-create-section { margin-top: 10px; padding-top: 10px; }
+#ows-create-form label { margin: 10px 0 8px; }
+#ows-create-form .form-note { margin: 8px 0; }
 #ows-connect-form { margin-top: 16px; }
 .wallet-unavailable { padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
 .wallet-unavailable h3 { margin: 0 0 8px; }

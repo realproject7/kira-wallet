@@ -51,6 +51,8 @@ def main():
                 else:raise AssertionError('Private file was exposed.')
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/kira.png') as response:assert response.headers['Content-Type']=='image/png'
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/kira-logo.png') as response:assert response.headers['Content-Type']=='image/png'
+            with urllib.request.urlopen(f'http://127.0.0.1:{port}/ows-logo.svg') as response:
+                assert response.headers['Content-Type']=='image/svg+xml' and b'<svg' in response.read()
             for asset in ['chat-workspace.js','chat-workspace.css','selects.js','agent.js','ows.js','agent.css','watching.js','watching-model.js','workspace.js','workspace-model.js','workspace.css','kira-research.png','kira-explain.png','kira-review.png','kira-attention.png']:
                 with urllib.request.urlopen(f'http://127.0.0.1:{port}/'+asset) as response:assert response.status==200 and len(response.read())>100
             transcript='\n'.join(json.dumps(item) for item in [

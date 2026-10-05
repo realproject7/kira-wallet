@@ -89,7 +89,8 @@ are excluded from your portfolio's USD value.
 
 - **Watch an existing wallet** using its public address. Watching does not grant
   Kira permission to spend.
-- **Create an encrypted local wallet** with **Create wallet** in the sidebar.
+- **Create an OWS wallet** with **Create wallet** in the sidebar, powered by
+  [Open Wallet Standard](https://openwallet.sh/).
   Enter the encryption passphrase in the local form. Kira connects the public
   EVM account; keys stay in the local OWS vault.
 - **Choose what AI can see.** Wallet access can be off, limited to one wallet,

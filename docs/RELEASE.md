@@ -25,7 +25,10 @@ The next candidate is **0.1.3**, which makes `kira start` open the full local
 app by default. `--read-only` preserves the viewer-only mode, `--no-open`
 supports terminal-only use, and `--controls` remains compatible with existing
 scripts. A running instance never changes modes silently. Local session,
-origin, AI-context and wallet-operation checks remain in place.
+origin, AI-context and wallet-operation checks remain in place. New-wallet
+creation now identifies Open Wallet Standard with its official locally served
+logo and explains encrypted local storage and public-account research. The
+OWS integration and wallet-operation permissions are unchanged.
 
 This candidate requires PR review and operator publication. It is not yet
 available from the registry. The showcase HTML animation is deployed separately

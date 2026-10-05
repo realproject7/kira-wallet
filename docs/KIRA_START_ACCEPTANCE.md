@@ -16,8 +16,8 @@ still checked before stopping it.
 
 Local controls do not grant signing, trading, AI context disclosure or native
 wallet access automatically. Existing local-session, same-origin, account
-selection and wallet-operation gates remain in the viewer. No viewer or
-provider implementation changed. CLI lifecycle locks now close in the command's
+selection and wallet-operation gates remain in the viewer. The startup change
+leaves viewer permissions and provider behavior unchanged. CLI lifecycle locks now close in the command's
 finally block, including early returns and initialization errors.
 
 ## Verification
@@ -28,7 +28,7 @@ finally block, including early returns and initialization errors.
   treated as an error.
 - `npm test` passed all 147 Python tests and the required Node checks.
 - `python3 scripts/check-install.py` packed and installed the candidate into
-  a fresh temporary prefix with a separate data directory. Its 71 archive
+  a fresh temporary prefix with a separate data directory. Its 72 archive
   members contained no private runtime data. Demo mode remained read-only;
   default start enabled local controls. Switching a live mode was refused in
   both directions, and explicit read-only startup worked after stopping.
@@ -47,5 +47,6 @@ wallet acceptance. PR review and operator registry publication remain pending.
 
 The source version is 0.1.3. Its prepared candidate is tied to the clean source
 commit by the ignored release manifest and SHA-256. Published 0.1.2 bytes and
-tags remain immutable. Registry publication is operator-only. The separately
+tags remain immutable. This candidate also includes the OWS attribution
+described in [OWS branding acceptance](KIRA_OWS_BRANDING.md). Registry publication is operator-only. The separately
 deployed HTML showcase needs no npm publication.
