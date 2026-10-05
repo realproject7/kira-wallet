@@ -21,6 +21,19 @@ their invented wallet addresses, balances and seeded chat are documented in
 
 ## npm publication preparation
 
+The next candidate is **0.1.3**, which makes `kira start` open the full local
+app by default. `--read-only` preserves the viewer-only mode, `--no-open`
+supports terminal-only use, and `--controls` remains compatible with existing
+scripts. A running instance never changes modes silently. Local session,
+origin, AI-context and wallet-operation checks remain in place. New-wallet
+creation now identifies Open Wallet Standard with its official locally served
+logo and explains encrypted local storage and public-account research. The
+OWS integration and wallet-operation permissions are unchanged.
+
+This candidate requires PR review and operator publication. It is not yet
+available from the registry. The showcase HTML animation is deployed separately
+and requires no npm release. Keep the published 0.1.2 archive and tag immutable.
+
 The operator published npm **0.1.2** on 2026-10-05. Its registry archive was
 downloaded and matched the reviewed GitHub archive above, including SHA-256,
 the registry SHA-1 and SHA-512 integrity value. A fresh registry installation
@@ -57,12 +70,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.2.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.3.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.2.tgz --access public
+npm publish ./dist/kira-wallet-0.1.3.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
@@ -82,10 +95,11 @@ require a new registry version to reach npm users.
 ## Public website
 
 Only `site/` is deployed to Vercel's `kira-wallet` project. It contains the
-restored static landing page, synthetic product illustrations, character assets
+landing page, native HTML conversation animation, character assets
 and installation instructions. The companion proposal is retired; its URLs redirect
 to the landing page. No wallet input, portfolio API, chat API or analytics service
-is hosted. The site permits only its own small video controller and local media. External network requests and forms stay blocked. The local viewer
+is hosted. The site permits only its own small animation controller and local
+artwork. External network requests and forms stay blocked. The local viewer
 remains loopback-only.
 
 `kirawallet.app` uses Vercel nameservers and managed HTTPS. Keep `.vercel/`

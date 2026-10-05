@@ -98,6 +98,9 @@ h2{font-size:44px;line-height:1.15;font-weight:500;letter-spacing:-.03em;margin:
 .capability-icon{display:grid;place-items:center;flex:none;width:40px;height:40px;border-radius:11px;background:#f0e9f5;color:#8d6ca0;margin-top:2px}
 .capabilities h3{font-size:17px;line-height:1.5;font-weight:500;letter-spacing:-.01em;margin:0 0 7px}
 .capabilities p{font-size:14px;line-height:1.8;color:#7a6a83;margin:0;max-width:375px}
+.ows-provider{display:inline-flex;align-items:center;gap:12px;min-height:44px;margin-top:12px;font-size:12px;color:#75647e}
+.ows-provider img{display:block;width:148px;height:31px;object-fit:contain;filter:brightness(0);opacity:.8}
+.ows-provider:hover{color:var(--ink)}.ows-provider:hover img{opacity:1}
 /* Precise ownership and context controls instead of broad safety claims. */
 .privacy{padding-block:54px 58px;background:#f2edf6;border:1px solid #e7deec;border-radius:24px}
 .privacy-heading{text-align:center;margin-bottom:42px}
