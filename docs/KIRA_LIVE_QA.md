@@ -31,6 +31,46 @@ exact cause of metadata differences as a possibility rather than using the
 comparison definition; its per-chain conclusion matched the records. Model
 answers remain interpretations of recorded evidence.
 
+## Second question round
+
+Ten additional Korean questions completed through the real native Claude CLI.
+All ten received answers without a transport or model-process failure. This
+does not mean every initial answer was factually correct. No new research job,
+wallet, signature or trade was requested by this round.
+
+| Case | Request | Observed result |
+| --- | --- | --- |
+| 1 | Mainnet totals, priced/unpriced counts and testnet exclusion | Counts and totals matched. Native observation times were missing from the supplied projection. |
+| 2 | Same-symbol LP tokens and recorded market routes | Kept distinct contracts and quantities separate. Did not infer LP ownership or redemption from a market link. |
+| 3 | Dormant tokens and full-balance disposal | Did not invent transfer history, inactivity or executable dollar proceeds. Preserved historical burn outputs. |
+| 4 | ETH, WETH, Blast mainnet and Blast Sepolia | Kept identities, quantities and valuation scope separate. Exposed the same missing native observations. |
+| 5 | Compare two saved analyses | Incorrectly described changes as timestamps only and treated an empty positive inventory as missing native evidence. |
+| 6 | Verify the comparison flags | Corrected the flag interpretation, but normalized reads still omitted native observations and underlying reference values. |
+| 7 | Read an unregistered wallet name | Returned wallet_not_registered. Did not substitute another wallet or invent a duplicate-name problem. |
+| 8 | Detailed stablecoin markets and best exit | Distinguished recorded/displayed/omitted pools, quote-token prices and absent execution quotes. |
+| 9 | Wallet-specific ERC20 discovery versus native RPC | Correctly separated coverage flags and known holdings from unknown networks. Native observation times remained omitted. |
+| 10 | Chat capabilities and actual research completion | Correctly reported published partial jobs and unsupported creation/trading tools. Job-to-wallet identity required inference because the field was omitted. |
+
+The follow-up fix includes explicit native balance observations, their times
+and blocks, registry scan blocks and safe snapshot price-reference values.
+An observed zero remains evidence without becoming a positive holding or
+changing portfolio totals. Unavailable RPC balances remain null. Reference
+source/debug fields remain excluded, including for mixed-case cbBTC references.
+Scoped research job reads now name their approved wallet explicitly.
+
+Two additional real questions verify the fix. One continued the original chat
+and checked observations, reference changes and job identities. A separate
+fresh-conversation test repeated the saved-analysis question without older
+answers. Both returned the recorded zero/unknown distinction and correct
+block/reference changes. The continued-chat check also matched every explicit
+job-to-wallet identity. These verification questions are separate from the ten-case count.
+Raw responses, original failures and financial evidence remain private.
+
+The final regression suites passed 94 root Python tests and 46 viewer Python
+tests, plus the declared Node and syntax checks. Two independent read-only
+reviews checked the final projection delta. Their mixed-case reference finding
+was corrected and rechecked.
+
 ## Wallet and research flows
 
 - Added the exact operator-supplied watching address through the real form,
@@ -92,10 +132,14 @@ Research notes currently open as the plain Markdown export in another tab.
    timestamp/block changes in comparison evidence.
 9. Follow the latest mobile answer initially while preserving historical
    reading positions through pane switches and composer resizing.
+10. Retain scoped native zero/time/block observations and safe historical
+    price-reference evidence for accurate saved-analysis comparisons.
+11. Name the approved wallet in research job reads instead of requiring
+    inference from blocks or receipts.
 
 ## Verification and release boundaries
 
-`npm test` passed: 93 root Python tests, 45 viewer Python tests, all declared
+`npm test` passed: 94 root Python tests, 46 viewer Python tests, all declared
 Node suites and syntax checks. Independent backend and frontend reviewers
 rechecked the final functional deltas. Their findings were fixed and verified.
 A clean 71-member installation passed, including real encrypted OWS creation

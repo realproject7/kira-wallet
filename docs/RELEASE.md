@@ -23,6 +23,12 @@ the prior wallet setup, scoped native AI, token artwork, compact wallet/pool
 layouts and README improvements, plus fixes found through real local testing.
 See [local live acceptance](KIRA_LIVE_QA.md) for the test scope and findings.
 
+The second local question round adds native observation and historical reference
+evidence to the model context and explicit wallet identities to research jobs.
+The earlier unpublished 0.1.2 candidate is preserved in the ignored
+`dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
+and its matching archive for publication; do not mix manifests from candidates.
+
 Keep GitHub v0.1.1, its tag and its released archive immutable. The 0.1.2
 candidate is a new artifact with a new source identity. Preparing it does not
 publish a GitHub release, merge PR 19, promote the website or publish to npm.

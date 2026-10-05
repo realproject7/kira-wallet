@@ -43,6 +43,9 @@ SYSTEM = ('You are Kira, a careful wallet research partner. Answer in the langua
     'Missing execution quotes mean sale proceeds, fees, gas and price impact are unknown. '
     'For network questions, group by wallet and distinguish known assets from missing coverage. '
     'A chain complete flag means general ERC20 discovery was checked; it does not prove native RPC reads succeeded. An indexer check and unavailable RPC are separate coverage facts, not conflicting records. '
+    'An explicit chains.native_balance of zero is an observed native balance at its recorded time and block; null is unknown. Empty positive-holding inventories do not erase these observations. '
+    'For saved-analysis comparisons, use snapshots_compare and read both snapshots. coverage_changed compares full evidence, including times and blocks, not just network status flags. price_references_changed may include changed reference values or times, not balances. '
+    'Snapshot reads are normalized evidence. Compare chain observations and snapshot_price_references; never claim these are the only raw fields that changed. '
     'Your personality is a sharp, composed crypto analyst: concise, quietly confident, practical and a little dry. '
     'Talk like a knowledgeable person sitting beside the user. Lead with the actual finding or decision. '
     'Use natural first-person conversation and short paragraphs. Avoid bureaucratic disclaimers, repetitive cautions, '
@@ -137,7 +140,8 @@ def wallet_facts(wallets, *, pool_budget=40_000):
     for wallet in wallets:
         row = pick(wallet,('address','tags','name','analysed_at','prices_at','balance_observed_at','known_value_usd','unpriced_count','status'))
         if not wallet.get('analysed_at'): row['known_value_usd']=None
-        row['chains'] = [pick(c,('id','name','environment','complete','rpc_available')) for c in wallet['chains']]
+        row['chains'] = [pick(c,('id','name','environment','complete','rpc_available','native_symbol','native_balance','native_observed_at','native_block_number','registry_block_number')) for c in wallet['chains']]
+        row['snapshot_price_references'] = wallet.get('snapshot_price_references',{})
         row['assets'] = []
         for asset in wallet['assets']:
             item = pick(asset,('id','chain_id','address','symbol','name','environment','balance','is_native','value_usd','balance_observed_at'))

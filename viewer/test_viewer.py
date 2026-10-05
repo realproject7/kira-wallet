@@ -27,6 +27,25 @@ class ViewerTests(unittest.TestCase):
         (self.directory/'results.json').write_text(json.dumps(self.snapshot))
     def tearDown(self):self.temp.cleanup()
 
+    def test_native_zero_observations_survive_without_becoming_holdings(self):
+        self.snapshot['tokens']=[]
+        zero,held=self.snapshot['coverage']
+        zero.update(native_balance='0',native_observed_at='2026-10-05T01:00:00Z',native_block_number='101')
+        held.update(native_balance='0.25',native_observed_at='2026-10-05T01:01:00Z',native_block_number='202')
+        self.snapshot['coverage'].append({**zero,'chain_id':999,'name':'Unknown native',
+            'rpc_status':'unavailable','native_balance':'0'})
+        self.snapshot['price_references']['ETH_USD']['source']='https://private.invalid/SECRET-MARKER'
+        self.snapshot['price_references']['DEBUG']={'value':'SECRET-MARKER'}
+        wallet=model.project_wallet(self.entry,self.snapshot,self.root)
+        self.assertEqual(len(wallet['assets']),1)
+        self.assertEqual(wallet['assets'][0]['balance_observed_at'],'2026-10-05T01:01:00Z')
+        self.assertEqual(wallet['known_value_usd'],500)
+        self.assertEqual(wallet['chains'][0]['native_balance'],'0')
+        self.assertEqual(wallet['chains'][0]['native_block_number'],'101')
+        self.assertIsNone(wallet['chains'][2]['native_balance'])
+        self.assertEqual(wallet['snapshot_price_references']['ETH_USD']['value'],'2000')
+        self.assertNotIn('SECRET-MARKER',json.dumps(wallet['snapshot_price_references']))
+
     def test_unreliable_pool_prices_are_excluded(self):
         w=model.project_wallet(self.entry,self.snapshot,self.root)
         nato=next(t for t in w['assets'] if t['symbol']=='NATO')

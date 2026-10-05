@@ -188,6 +188,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         px=(number(ref.get('usd')) if ref else eth if sym=='ETH' else number(refs.get(sym+'_USD',{}).get('value'))) if native_identity(c['chain_id'],sym) else None
         assets.append({'id':f'{c["chain_id"]}:native','chain_id':c['chain_id'],'symbol':sym,'name':'Ether' if sym=='ETH' else sym,
             'address':None,'balance':raw,'is_native':True,'curve_reserve':None,
+            'balance_observed_at':c.get('native_observed_at'),
             'image_url':image_for(images,c['chain_id'],native_symbol=sym),
             'price':{'usd':px,'basis':ref.get('basis','Market index') if ref else 'Market index','quality':'estimated','observed_at':ref.get('observed_at') if ref else price_time,
                      'source':ref.get('source') if ref else refs.get(sym+'_USD',{}).get('source')} if px is not None else None,
@@ -202,7 +203,12 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         chains.append({'id':c['chain_id'],'name':c['name'],'environment':c['environment'],
             'image_url':chain_image(c['chain_id']),
             'assets':len(rows),'value_usd':sum(a['value_usd'] for a in rows if a['value_usd'] is not None) if c['environment']=='mainnet' and any(a['value_usd'] is not None for a in rows) else None,
-            'complete':c['general_erc20_discovery']=='indexer_checked','rpc_available':c['rpc_status']=='available'})
+            'complete':c['general_erc20_discovery']=='indexer_checked','rpc_available':c['rpc_status']=='available',
+            'native_symbol':c.get('native_symbol'),
+            'native_balance':c.get('native_balance') if c['rpc_status']=='available' and number(c.get('native_balance')) is not None else None,
+            'native_observed_at':c.get('native_observed_at'),
+            'native_block_number':c.get('native_block_number'),
+            'registry_block_number':(c.get('mintclub_registry_scan') or {}).get('block_number')})
     values=[a['value_usd'] for a in assets if a['environment']=='mainnet' and a['value_usd'] is not None]
     total=sum(values) if values else None
     return {'address':entry['address'],'key':entry['address_key'],'tags':entry.get('tags',[]),
@@ -210,6 +216,8 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         'prices_at':price_time,'balance_observed_at':max((t.get('balance_observed_at','') for t in tokens),default=snapshot.get('compiled_at')),
         'known_value_usd':total,'unpriced_count':sum(a['value_usd'] is None for a in assets),
         'assets':assets,'chains':chains,'counts':snapshot.get('counts',{}),'status':snapshot.get('status'),
+        'snapshot_price_references':{key:{'value':value['value'],'observed_at':value.get('observed_at')}
+            for key,value in refs.items() if re.fullmatch(r'[A-Za-z][A-Za-z0-9]{0,15}_USD',key) and isinstance(value,dict) and number(value.get('value')) is not None},
         'report_url':'/api/report/'+entry['address_key']}
 
 def dashboard(wallets):
