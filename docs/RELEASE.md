@@ -17,21 +17,16 @@ their invented wallet addresses, balances and seeded chat are documented in
 
 ## npm publication preparation
 
-The published npm package is 0.1.0. The next source candidate is 0.1.1, with
-wallet-first setup, safe Markdown answers, a five-token home preview and editable
-question starters, native price/artwork fallback and clearer unknown-value filters.
-The operator removed the recovery-home report. The candidate also adds automatic RPC fallback, visible chain filtering, a separate animated chat composer, browser-wallet connection controls, encrypted OWS onboarding and scoped agent research tools. It now includes a full-height chat dock, session history, expandable chat and a visible research tray.
-Registry publication remains operator-only. The coding agent never publishes.
+The published npm package is 0.1.0, verified again on 2026-10-05. Registry
+0.1.1 remains unavailable. The current source candidate is **0.1.2**. It includes
+the prior wallet setup, scoped native AI, token artwork, compact wallet/pool
+layouts and README improvements, plus fixes found through real local testing.
+See [local live acceptance](KIRA_LIVE_QA.md) for the test scope and findings.
 
-Registry 0.1.1 was unavailable on 2026-10-05; latest remained 0.1.0. The source
-candidate now also includes clearer own-AI positioning, detailed reconstructed
-CASHCAT and Blast examples, contract-scoped token artwork, compact pool groups,
-full-height chat, and bounded market facts. See KIRA_PRODUCT_POLISH.md for product
-acceptance evidence. These changes require a newly prepared archive from the
-reviewed commit; the earlier 0.1.1 archive remains a separate immutable artifact.
-The final candidate also includes compact wallet rows and an automatic compact
-inventory for large portfolios. It preserves every holding and approved scope,
-with detailed market and exit evidence available through scoped token reads.
+Keep GitHub v0.1.1, its tag and its released archive immutable. The 0.1.2
+candidate is a new artifact with a new source identity. Preparing it does not
+publish a GitHub release, merge PR 19, promote the website or publish to npm.
+Registry publication remains operator-only. The coding agent never publishes.
 
 Required preparation from a clean, reviewed source checkout:
 
@@ -43,12 +38,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.1.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.2.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.1.tgz --access public
+npm publish ./dist/kira-wallet-0.1.2.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.

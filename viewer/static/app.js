@@ -54,7 +54,13 @@ function renderWallets(){
   }).join('');
 }
 function renderView(){
-  if(selectedView==='wallet'){const w=currentWallet();if(w&&!w.analysed_at&&typeof pendingWalletJob==='function'&&pendingWalletJob(w)){navigate('#/activity');return;}}
+  if(selectedView==='wallet'){
+    const w=currentWallet(),pending=typeof pendingWalletJob==='function'&&pendingWalletJob(w||{key:selectedWallet});
+    if(!w||(!w.analysed_at&&pending)){
+      if(!w)toast(pending?'This wallet is waiting for registration. Follow its progress in Activity.':'This wallet is not registered in this workspace.');
+      navigate('#/activity');return;
+    }
+  }
   renderWallets();
   $('home-view').hidden=selectedView!=='home';$('wallet-view').hidden=selectedView!=='wallet';
   $('detail-view').hidden=!['token','network'].includes(selectedView);
@@ -123,7 +129,7 @@ function renderWallet(){
   $('wallet-tags').innerHTML=w.tags.slice(1).map(t=>`<span class="tag">${escapeHTML(t)}</span>`).join(' ');
   $('report-link').hidden=!w.report_url;if(w.report_url)$('report-link').href=safeURL(w.report_url);
   $('total-value').textContent=w.analysed_at?money(w.known_value_usd):'—';
-  $('valuation-note').textContent=w.analysed_at?(w.known_value_usd==null?'Value is unknown because prices are unavailable.':'Market and curve spot estimates · excludes unpriced assets'):'Analysis will appear here when it is ready.';
+  $('valuation-note').textContent=w.analysed_at?(w.known_value_usd==null?(w.assets.length?'Value is unknown because prices are unavailable.':'No positive holdings recorded · unchecked networks remain unknown.'):'Market and curve spot estimates · excludes unpriced assets'):'Analysis will appear here when it is ready.';
   $('asset-count').textContent=w.assets.length;$('unpriced-count').textContent=w.unpriced_count+' unpriced';
   const mainnets=w.chains.filter(c=>c.environment==='mainnet');
   $('chain-count').textContent=mainnets.filter(c=>c.assets>0).length;
@@ -189,7 +195,7 @@ function renderHoldings(){
     const c=w.chains.find(c=>String(c.id)===selectedChain);
     $('empty').querySelector('h3').textContent=c&&!c.complete?'Research is incomplete on '+c.name:'No assets in this view';
     $('empty').querySelector('p').textContent=c&&!c.complete?'This chain has not been fully checked. Missing data does not mean a zero balance.':'Choose another chain or lower the minimum value.';
-  }else{$('empty').querySelector('h3').textContent='No assets in this view';$('empty').querySelector('p').textContent=w.analysed_at?'Choose another chain or lower the minimum value.':'Analysis will appear here when it is ready.';}
+  }else{$('empty').querySelector('h3').textContent=w.analysed_at&&!w.assets.length?'No holdings recorded':'No assets in this view';$('empty').querySelector('p').textContent=w.analysed_at?(!w.assets.length?'No positive balances were found in the checked networks. Refresh holdings to check again.':'Choose another chain or lower the minimum value.'):'Analysis will appear here when it is ready.';}
   bindImages();
 }
 function timeRange(range){return range?.from?stamp(range.from)+(range.to!==range.from?' – '+stamp(range.to):''):'Not recorded';}
@@ -262,7 +268,6 @@ async function poll(){
     const data=await response.json();const signature=response.headers.get('ETag');
     const wasLoaded=state!==null;
     state=data;etag=signature;$('load-error').hidden=true;$('content').hidden=false;$('connection').textContent='Connected';$('demo-badge').hidden=data.demo!==true;
-    if(selectedView==='wallet'&&!state.wallets.some(w=>w.key===selectedWallet)){selectedWallet=null;selectedChain='all';selectedView='home';}
     if(signature!==currentSignature){renderView();currentSignature=signature;if(wasLoaded)toast('Research updated');}
   }catch{ $('connection').textContent='Reconnecting';if(!state){$('load-error').hidden=false;$('content').hidden=true;} }
   finally{busy=false;}

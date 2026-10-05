@@ -90,6 +90,21 @@ class JobsHTTPTest(unittest.TestCase):
                         {'Host':'foreign.test:'+str(self.http.server_port)},{'Sec-Fetch-Site':'cross-site'},{'Origin':''}]:
             self.assertEqual(self.request(headers=headers)[0],403)
         self.assertEqual(len(self.http.jobs.list()),0)
+
+    def test_external_link_can_open_shell_without_access_to_data(self):
+        navigation={'Sec-Fetch-Site':'cross-site','Sec-Fetch-Dest':'document','Sec-Fetch-Mode':'navigate'}
+        for path in ('/?setup=1','/index.html'):
+            with urllib.request.urlopen(urllib.request.Request(self.url+path,headers=navigation)) as response:
+                self.assertEqual(response.status,200)
+                self.assertIn(b'Kira Wallet',response.read())
+        for path in ('/api/session','/api/state','/api/agent','/api/ows','/app.js'):
+            self.assertEqual(self.request(path,method='GET',headers=navigation)[0],403)
+        self.assertEqual(self.request(headers=navigation)[0],403)
+        for headers in ({**navigation,'Origin':'https://foreign.test'},
+                        {**navigation,'Host':'foreign.test:'+str(self.http.server_port)},
+                        {**navigation,'Sec-Fetch-Dest':'iframe'},
+                        {**navigation,'Sec-Fetch-Mode':'cors'}):
+            self.assertEqual(self.request('/',method='GET',headers=headers)[0],403)
     def test_setup_readiness_requires_controls_session_and_local_origin(self):
         expected={'rpc_mode':'public','discovery_provider':'none','discovery_configured':False,'discovery_key_available':False}
         with patch('onboarding.readiness',return_value=expected):

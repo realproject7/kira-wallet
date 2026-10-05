@@ -44,7 +44,12 @@ document.addEventListener('keydown',event=>{
     else if(!event.shiftKey&&document.activeElement===nodes.at(-1)){event.preventDefault();nodes[0]?.focus();}
   }
 });
-if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>document.querySelector('.kira-dock').style.setProperty('--composer-reserve',($('chat-form').getBoundingClientRect().height+38)+'px')).observe($('chat-form'));
+function updateComposerReserve(){
+  const scroller=$('conversation-scroll'),follow=scroller.clientHeight>0&&scroller.scrollHeight-scroller.clientHeight-scroller.scrollTop<80;
+  document.querySelector('.kira-dock').style.setProperty('--composer-reserve',($('chat-form').getBoundingClientRect().height+38)+'px');
+  if(follow)scroller.scrollTop=scroller.scrollHeight;
+}
+if(typeof ResizeObserver!=='undefined')new ResizeObserver(updateComposerReserve).observe($('chat-form'));
 $('chat-history-button').addEventListener('click',async()=>{
   const epoch=++historyEpoch;historySelection=null;$('chat-history-preview').hidden=true;$('chat-history-list').hidden=false;
   $('chat-history-list').textContent='Loading conversations…';$('chat-history-error').textContent='';

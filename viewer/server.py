@@ -23,7 +23,12 @@ last_good=None
 class Handler(BaseHTTPRequestHandler):
     def local_request(self):
         expected='127.0.0.1:'+str(self.server.server_port)
-        if self.headers.get('Host')!=expected or self.headers.get('Origin', 'http://'+expected)!='http://'+expected or self.headers.get('Sec-Fetch-Site') in ('cross-site','same-site'):
+        # A link or desktop launcher can navigate to the public HTML shell.
+        # Its subsequent data requests still require the exact local origin.
+        entry_navigation=(self.command=='GET' and urlparse(self.path).path in ('/','/index.html')
+                          and self.headers.get('Sec-Fetch-Dest')=='document'
+                          and self.headers.get('Sec-Fetch-Mode')=='navigate')
+        if self.headers.get('Host')!=expected or self.headers.get('Origin', 'http://'+expected)!='http://'+expected or (self.headers.get('Sec-Fetch-Site') in ('cross-site','same-site') and not entry_navigation):
             self.send_error(403,'Local origin required.');return False
         return True
 

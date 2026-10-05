@@ -40,3 +40,13 @@ test('a changed public identity cannot silently start a second creation after am
   await h.el('ows-create-form').listeners.submit({preventDefault(){}});
   assert.equal(submitted,0);assert.match(h.el('ows-error').textContent,/already have finished/);
 });
+test('registered names hide internal creation identities without changing wallet selection',async()=>{
+  const address='0x'+'1'.repeat(40),internal='Savings-'+ID;
+  const h=harness(new Map(),async()=>({available:true,wallets:[],connection:{name:internal,address,tag:'Savings'}}));
+  await h.run('loadOws()');assert.equal(h.el('ows-connected-name').textContent,'Savings');
+  h.run(`owsSelected={id:'${ID}',name:'${internal}',accounts:[{address:'${address}'}]};renderOws()`);
+  assert.equal(h.el('ows-selected-name').textContent,'Savings');
+  h.run(`state.wallets=[{key:'${address}',name:'Renamed Savings'}];owsSelected={id:'${ID}',name:'${internal}',accounts:[{address:'${address}'}]};renderOws()`);
+  assert.equal(h.el('ows-connected-name').textContent,'Renamed Savings');assert.equal(h.el('ows-selected-name').textContent,'Renamed Savings');
+  assert.equal(h.run('owsSelected.id'),ID);assert.equal(h.el('ows-selected-address').textContent,address);
+});

@@ -10,16 +10,23 @@ function saveOwsRequest() {
     else sessionStorage.removeItem('kira-ows-request');
   } catch { /* The in-memory request remains available in this page. */ }
 }
+function owsDisplayName(wallet) {
+  const address = (wallet?.address || wallet?.accounts?.[0]?.address || '').toLowerCase();
+  const registered = state?.wallets?.find(w => (w.key || w.address || '').toLowerCase() === address);
+  const connection = owsState?.connection;
+  const linked = connection && ((wallet?.id && wallet.id === connection.wallet_id) || (address && address === connection.address?.toLowerCase()));
+  return registered?.name || wallet?.tag || (linked && connection.tag) || wallet?.name || '';
+}
 function renderOws() {
   const available = owsState?.available === true;
   $('ows-status').textContent = owsState?.note || 'Checking the local vault…';
   $('ows-connection').hidden = !owsState?.connection;
-  $('ows-connected-name').textContent = owsState?.connection?.name || '';
+  $('ows-connected-name').textContent = owsDisplayName(owsState?.connection);
   $('ows-connected-address').textContent = owsState?.connection?.address || '';
   $('ows-create-section').hidden = false;
   $('ows-pending').hidden = !owsRequest;
   $('ows-connect-form').hidden = !owsSelected;
-  if (owsSelected) { $('ows-selected-name').textContent = owsSelected.name; $('ows-selected-address').textContent = owsSelected.accounts[0].address; }
+  if (owsSelected) { $('ows-selected-name').textContent = owsDisplayName(owsSelected); $('ows-selected-address').textContent = owsSelected.accounts[0].address; }
   for (const button of $('ows-dialog').querySelectorAll('button:not([data-close-dialog])')) button.disabled = owsBusy || (!available && button.id !== 'ows-disconnect');
   for (const input of $('ows-dialog').querySelectorAll('input')) input.disabled = owsBusy;
   if (!watchingConnection.snapshot().accounts.length && owsState?.connection) {
@@ -35,10 +42,10 @@ async function loadOws() {
     if (create) { $('ows-create-name').value = name; $('ows-create-section').open = true; }
     else { owsSelected = owsState.wallets.find(w => w.id === id) || null; $('ows-connect-tag').value = tag; }
   }
-  $('ows-list').replaceChildren(...owsState.wallets.filter(w => w.accounts.length).map(wallet => walletChoice(wallet.name, shortAddress(wallet.accounts[0].address), '/kira-logo.png', () => {
+  $('ows-list').replaceChildren(...owsState.wallets.filter(w => w.accounts.length).map(wallet => walletChoice(owsDisplayName(wallet), shortAddress(wallet.accounts[0].address), '/kira-logo.png', () => {
     if (owsBusy) return;
     if (owsRequest) { $('ows-error').textContent = 'Recover the pending request or check your vault before starting another.'; return; }
-    owsSelected = wallet; $('ows-connect-tag').value = wallet.name; renderOws(); $('ows-connect-tag').focus();
+    owsSelected = wallet; $('ows-connect-tag').value = owsDisplayName(wallet); renderOws(); $('ows-connect-tag').focus();
   }, wallet.id === owsSelected?.id)));
   renderOws();
 }

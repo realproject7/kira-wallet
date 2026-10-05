@@ -69,9 +69,13 @@ $('home-view-all').addEventListener('click', () => {
   $('all-token-testnets').checked = false;
   catalogPage = 1;
 });
+let chatPanePosition=null;
 function setWorkspacePane(pane) {
-  document.querySelector('.workspace').dataset.pane = pane;
+  const workspace=document.querySelector('.workspace'),scroller=$('conversation-scroll'),mobile=matchMedia('(max-width: 980px)').matches,previous=workspace.dataset.pane;
+  if(mobile&&pane==='portfolio'&&previous==='kira')chatPanePosition={top:scroller.scrollTop,pinned:scroller.scrollHeight-scroller.clientHeight-scroller.scrollTop<80};
+  workspace.dataset.pane = pane;
   document.body.classList.toggle('chat-pane',pane==='kira');
+  if(mobile&&pane==='kira'&&previous!=='kira')scroller.scrollTop=!chatPanePosition||chatPanePosition.pinned?scroller.scrollHeight:chatPanePosition.top;
   document.querySelectorAll('.mobile-pane-control [data-pane]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.pane === pane)));
 }
 document.querySelectorAll('.mobile-pane-control [data-pane]').forEach(button => button.addEventListener('click', () => {

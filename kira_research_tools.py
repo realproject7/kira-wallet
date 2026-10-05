@@ -66,7 +66,7 @@ class ResearchTools:
         if name=='portfolio_read':return context
         if name=='wallet_read':
             wallet=self.wallet(arguments['wallet'],approved)
-            return next(row for row in context['wallets'] if row['address'].lower()==wallet)
+            return {**next(row for row in context['wallets'] if row['address'].lower()==wallet),'note':context['note']}
         if name=='token_read':
             from kira_jobs import ADDRESS
             address=arguments['address'].lower()

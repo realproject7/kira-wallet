@@ -37,6 +37,25 @@ class ResearchToolsTest(unittest.TestCase):
         projected=self.call('snapshot_read',{'snapshot_id':snapshot})
         self.assertEqual(projected['snapshot_id'],snapshot)
         self.assertNotIn('SECRET-MARKER',json.dumps(projected));self.assertNotIn('fabricated',json.dumps(projected));self.assertNotIn('report_url',json.dumps(projected))
+    def test_bounded_wallet_markets_can_be_retrieved_without_losing_recorded_counts(self):
+        from copy import deepcopy
+        import sys
+        sys.path.insert(0,str(Path(__file__).resolve().parent/'viewer'))
+        from model import load_state
+        state,stamp,stale=load_state(self.root);wallet=state['wallets'][0];template=wallet['assets'][0]
+        wallet['assets']=[]
+        for index in range(100):
+            asset=deepcopy(template);asset['id']=f'8453:0x{index:040x}'
+            asset['market_pools']=[{'venue':'Uniswap','pool':'0x'+'3'*40,'url':'https://example.com/pool/'+str(pool),'liquidity_usd':100,'pair':[]} for pool in range(12)]
+            wallet['assets'].append(asset)
+        with patch('model.load_state',return_value=(state,stamp,stale)):
+            summary=self.call('wallet_read',{'wallet':self.first['address_key']})
+            last=summary['assets'][-1]
+            self.assertEqual(last['pools'],[]);self.assertEqual(last['pools_recorded'],12);self.assertEqual(last['pools_omitted'],12)
+            self.assertIn('token_read',summary['note'])
+            detail=self.call('token_read',{'chain_id':8453,'address':'0x'+format(99,'040x')})
+            self.assertEqual(len(detail['positions'][0]['asset']['pools']),12)
+            self.assertEqual(detail['positions'][0]['asset']['pools_omitted'],0)
     def test_duplicate_refresh_reuses_job_and_foreign_jobs_are_hidden(self):
         with patch.object(JobStore,'launch'):
             first=self.call('holdings_refresh',{'wallet':self.first['address_key']})
