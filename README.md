@@ -1,130 +1,125 @@
-# Kira Wallet
+<p align="center">
+  <img src="https://raw.githubusercontent.com/realproject7/kira-wallet/v0.1.2/viewer/static/kira-explain.png" width="140" alt="Kira, your wallet research partner">
+</p>
 
-Track your wallets across chains. Understand your holdings with your own AI.
-Kira is a local, read-only wallet app with no hosted portfolio server. It finds
-and records assets on supported EVM networks, with indexed token discovery when
-configured. Missing coverage and prices stay unknown.
+<h1 align="center">Kira Wallet</h1>
+<p align="center"><strong>Manage your wallets. With your own AI.</strong></p>
+<p align="center">
+  <a href="https://kirawallet.app">Website</a> ·
+  <a href="https://github.com/realproject7/kira-wallet/releases">Releases</a> ·
+  <a href="docs/CLI.md">CLI guide</a>
+</p>
 
-Original code and character assets are open source under MIT. Third-party
-references retain their own terms; see [notices](THIRD_PARTY_NOTICES.md). The npm
-package is available as `kira-wallet`. No signing, transfers or trades are implemented.
+Bring the AI you already use to your wallets. Add public wallet addresses, see
+what you hold across supported EVM chains, and ask Kira to research your tokens
+or refresh your holdings. Kira runs on your computer and uses your existing
+Codex or Claude Code account.
 
-## Local installation
+![Kira portfolio overview and chat](https://raw.githubusercontent.com/realproject7/kira-wallet/80ecaee312730997dcf2e0f48d8d88878d4bcde4/docs/screenshots/kira-readme-overview.jpg)
 
-Requirements: Node.js 22 or newer and Python 3.11 or newer. macOS is verified.
-Analysis and daemon lifecycle currently require POSIX process and file-lock APIs.
+## Get started
+
+**Requires Node.js 22+ and Python 3.11+. macOS is verified.** The research and
+background-process features require a POSIX environment.
+
+Install Kira:
 
 ```sh
 npm install -g kira-wallet
 kira setup
 ```
 
-The viewer starts at http://127.0.0.1:8787. Data defaults to
-`~/.local/share/kira-wallet`, separate from the installed package. Use
-`--data-dir /absolute/private/directory` before the command for another portfolio.
-Published 0.1.0 opens model setup; close it to add a wallet first. The 0.1.1 source
-candidate guides wallet setup first and makes AI connection optional. Broad ERC20
-discovery needs an indexer connection in Workspace settings. Public RPC alone
-provides limited discovery. The next registry release remains operator-only.
-For source development, run `npm install --ignore-scripts` and use
-`node bin/kira.cjs` in place of `kira`.
+Open the local app at [127.0.0.1:8787](http://127.0.0.1:8787).
 
-For an isolated sample with synthetic data:
+Prefer an archive? [GitHub releases](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2)
+include the same package and its checksum.
+
+1. **Add a watching wallet.** Paste a public address and give it a name. Add more
+   wallets whenever you need them.
+2. **Set up discovery.** In **Workspace settings**, connect an indexer for broad
+   ERC20 discovery. Public RPC alone has limited discovery; incomplete coverage
+   stays visible.
+3. **Connect your AI.** Install and sign in to the
+   [Codex CLI](https://developers.openai.com/codex/cli) or
+   [Claude Code](https://code.claude.com/docs/en/quickstart), then choose your
+   account from **Connect a model** in Kira Chat. Select one wallet or your whole
+   portfolio, test the connection, and choose whether to allow research tools.
+4. **Ask Kira.** Start with a question, or ask it to refresh a wallet's holdings
+   or prices. Follow the job in **Activity** while it runs.
+
+Want to look around first? Try the demo:
 
 ```sh
-node bin/kira.cjs --data-dir /tmp/kira-sample demo --port 8790
-node bin/kira.cjs --data-dir /tmp/kira-sample stop
+kira --data-dir /tmp/kira-demo demo --port 8790
 ```
 
-## Research
+Open [127.0.0.1:8790](http://127.0.0.1:8790). Stop it with
+`kira --data-dir /tmp/kira-demo stop`.
+
+## What can I ask?
+
+- “Which chains do I have ETH worth $10 or more on?”
+- “Find tokens I may have overlooked. Show their quantity, recorded price,
+  market venues and any available full-balance exit quote.”
+- “Review my Blast holdings across all my wallets. What is known, and where
+  is coverage missing?”
+- “Compare my saved analyses. What changed?”
+- “Refresh prices for my daily wallet, then tell me what the job actually found.”
+
+Kira can read approved records, compare saved analyses, and start holdings or
+price research when you enable its wallet tools. It distinguishes recorded spot
+value from an execution quote. Missing prices and holdings stay unknown;
+transfer inactivity needs transfer-history evidence. Testnets and pool liquidity
+are excluded from your portfolio's USD value.
+
+![USDC markets and balances by wallet](https://raw.githubusercontent.com/realproject7/kira-wallet/80ecaee312730997dcf2e0f48d8d88878d4bcde4/docs/screenshots/kira-readme-markets.jpg)
+
+*Markets, paired token logos and each wallet's balance in one view.*
+
+## Your wallets, your controls
+
+- **Watch an existing wallet** using its public address. Watching does not grant
+  Kira permission to spend.
+- **Create an encrypted local wallet** with **Create wallet** in the sidebar.
+  Enter the encryption passphrase in the local form. Kira connects the public
+  EVM account; keys stay in the local OWS vault.
+- **Choose what AI can see.** Wallet access can be off, limited to one wallet,
+  or cover your portfolio. Approved context is sent through your selected
+  native CLI and model account. Their data policies still apply.
+- **Keep records locally.** No Kira account or hosted portfolio database is
+  required. Chat drafts stay in memory; saving Kira chat history is opt-in.
+
+Chat currently handles research and wallet records. Signing, transfers and trade
+execution are not implemented. [Wallet onboarding details](docs/CLI.md#browser-and-local-ows-wallets).
+
+## Useful commands
 
 ```sh
-kira add <operator-supplied-address> --tag '<exact tag>'
-kira refresh '<registered address or tag>'
-kira prices '<registered address or tag>'
+kira add <public-address> --tag 'Daily wallet'
+kira refresh 'Daily wallet'
+kira prices 'Daily wallet'
+kira status
+kira stop
 ```
 
-From source, substitute `node bin/kira.cjs` for `kira`. Commands create private
-runtime data. The viewer detects local updates within five seconds; it does
-not poll providers. Resume a failed analysis with the same command and
-`--resume <relative snapshot directory>`.
+Data defaults to `~/.local/share/kira-wallet`, separate from the installed
+package. Use `--data-dir /absolute/private/directory` before a command to choose
+another workspace. For connection, model or provider help, see the
+[CLI guide](docs/CLI.md) and [viewer guide](viewer/README.md).
 
-The engine checks official Mint Club deployment scope, discovers indexed held
-tokens when configured, pins chain reads to blocks, enumerates reachable bond
-registries, queries ERC20 and registered ERC1155 token ID 0 balances, records
-curve reserves and burn quotes, and verifies supported DEX pool contracts.
-Shared caches contain asset identities, never another wallet's balances.
-Registry publication is atomic and analysis writers are serialized.
-
-Public RPC can read native balances, known tokens and reachable bond registries.
-General ERC20 discovery requires an indexed provider and successful responses.
-Mapped native currencies have an independent public price and artwork fallback, using explicit coin IDs without wallet addresses. This does not expand ERC20 discovery.
-Testnets, pool TVL and shared curve backing are excluded from wallet USD totals.
-Spot value is distinct from an executable redemption estimate.
-
-See [CLI and provider configuration](docs/CLI.md) and
-[viewer behavior](viewer/README.md). Development reports, design concepts and
-generation records remain in the source checkout under `docs/` and `prototype/`.
-
-## Verification
+## Build and contribute
 
 ```sh
+npm install --ignore-scripts
+node bin/kira.cjs setup
 npm test
-node --check pipeline-onchain.cjs
-node --check onchain.cjs
+python3 scripts/check-public.py
 ```
 
-UI changes also require responsive browser and keyboard checks. Installation
-checks must use a fresh directory without operator credentials or data.
+From source, use `node bin/kira.cjs` in place of `kira`.
+[Local AI tool setup](docs/AGENT_TOOLS.md) ·
+[Release preparation](docs/RELEASE.md).
 
-## Durable local workspace
-
-Development build 0.1.0-dev.2 adds persisted research jobs and opt-in protected
-browser controls. Start with `kira start --controls`; the usual start stays
-read-only. CLI and browser use the same typed job service for research, exact
-wallet names and connection references. Jobs preserve prior results, retain
-partial evidence and require explicit interruption recovery. Price jobs keep
-immutable overlays. Saved analyses can be compared with exact decimal balance
-changes and missing records remain unknown.
-
-`kira tools` is a read-only local MCP adapter, with no automatic account or
-model connection. See [CLI usage](docs/CLI.md), [job contract](docs/JOB_CONTRACT.md),
-[tool setup gate](docs/AGENT_TOOLS.md) and [continuation evidence](docs/KIRA_JOBS_BUILD_REPORT.md).
-
-## Kira research workspace
-
-The workspace places Kira's local briefing and connected conversation
-beside the evidence. The brand link returns Home. Overview, All tokens
-and Activity have distinct tabs; wallet controls stay together. On small
-screens, switch directly between Portfolio and Kira.
-
-All tokens uses existing recorded aggregates with chain-plus-contract identity,
-search, network and pricing filters, and 50 rows per page. It does not query
-providers. Activity separates active work from persisted job history and shows
-state, elapsed time, last progress and recovery controls. Missing progress does
-not silently turn a running job into a completed or failed job.
-
-Run `kira setup` to connect your installed Codex or Claude Code CLI account.
-Choose one registered wallet or the whole portfolio, and allow wallet research tools. Kira can read saved analyses, compare history and queue holdings or price updates. You can also keep wallet access off for general chat. A real
-response check verifies the selected model before permissions are saved. Drafts
-stay in memory. Kira-local conversation retention is opt-in; provider and native
-CLI policies remain separate. Context or model changes start a fresh conversation.
-Chat does not sign, trade or automatically start research. See the
-[onboarding and conversation contract](docs/ONBOARDING_CHAT_CONTRACT.md), the
-[redesign report](docs/KIRA_REDESIGN_REPORT.md) and
-[agreed wallet capability direction](docs/WALLET_CAPABILITIES.md).
-
-For a contribution, use synthetic data and run `python3 scripts/check-public.py`
-before a push. Never attach a personal portfolio screenshot, registry, snapshot,
-job, credential, local path or log to an issue or PR. Repository history uses a
-public noreply identity. The `kira-workspace-v1` tag preserves the prior UI.
-
-The top-bar **Connect wallet** opens browser-wallet connection and local OWS
-onboarding. MetaMask account approval remains a device action. OWS creation
-requires a human-entered encryption passphrase; keys stay in the local OWS
-vault. Kira connects only public EVM accounts. See [wallet onboarding](docs/CLI.md#browser-and-local-ows-wallets).
-
-New RPC configurations use public fallback automatically. Failing custom reads
-switch to a chain-verified public endpoint while retaining the selected block.
-Explicit custom-only preferences are preserved. Broader ERC20 discovery still
-requires an indexer.
+Original code and Kira character assets are available under the [MIT license](LICENSE).
+Third-party artwork and references retain their own terms; see
+[Third-party notices](THIRD_PARTY_NOTICES.md).

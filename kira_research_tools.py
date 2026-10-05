@@ -50,8 +50,8 @@ class ResearchTools:
         if job['operation'] not in ('wallet.add','wallet.refresh','prices.refresh'):
             raise JobError('job_scope','Only approved wallet research jobs are available.')
         selector=job['input'].get('wallet') or job['input'].get('address')
-        self.wallet(selector,approved)
-        return {key:job.get(key) for key in ('job_id','operation','state','stage','created_at','updated_at','checkpoint','result','chains')}
+        wallet=self.wallet(selector,approved)
+        return {'wallet':wallet,**{key:job.get(key) for key in ('job_id','operation','state','stage','created_at','updated_at','checkpoint','result','chains')}}
 
     def call(self, name, arguments, key):
         tool=next((row for row in CATALOG if row['name']==name),None)
@@ -66,13 +66,15 @@ class ResearchTools:
         if name=='portfolio_read':return context
         if name=='wallet_read':
             wallet=self.wallet(arguments['wallet'],approved)
-            return next(row for row in context['wallets'] if row['address'].lower()==wallet)
+            return {**next(row for row in context['wallets'] if row['address'].lower()==wallet),'note':context['note']}
         if name=='token_read':
             from kira_jobs import ADDRESS
             address=arguments['address'].lower()
             if address!='native' and not ADDRESS.fullmatch(address):raise JobError('invalid_token','Expected native or a 20-byte contract address.')
             identity=str(arguments['chain_id'])+':'+address
-            return {'identity':identity,'positions':[{'wallet':row['address'],'asset':asset} for row in context['wallets'] for asset in row['assets'] if asset['id']==identity],
+            from kira_agent import projection
+            specific=projection(self.root,self.config,token_id=identity)
+            return {'identity':identity,'positions':[{'wallet':row['address'],'asset':asset} for row in specific['wallets'] for asset in row['assets']],
                     'note':'An absent record is unknown, not a verified zero holding.'}
         if name=='snapshots_list':return self.store.snapshots(self.wallet(arguments['wallet'],approved))
         if name=='snapshot_read':return self.snapshot(arguments['snapshot_id'],approved)

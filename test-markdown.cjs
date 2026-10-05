@@ -9,4 +9,10 @@ for(const input of ['<img src=x onerror=alert(1)>','[click](javascript:alert(1))
 assert.match(render('before\n```\nunclosed <tag>'),/&lt;tag&gt;/);
 assert.match(render('1. first\n2. second'),/<ol>/);
 assert.match(render('| A | B |\n|---|---|\n| one |'),/<td><\/td>/);
+assert.match(render('**`chain` stage (23 networks)**'),/<strong><code>chain<\/code> stage \(23 networks\)<\/strong>/);
+assert.equal(render('**`a*b`**'),'<p><strong><code>a*b</code></strong></p>');
+assert.equal(render('**`**literal**`**'),'<p><strong><code>**literal**</code></strong></p>');
+assert.match(render('*Check `status` first*'),/<em>Check <code>status<\/code> first<\/em>/);
+assert.match(render('`**literal** <img>`'),/<code>\*\*literal\*\* &lt;img&gt;<\/code>/);
+assert.doesNotMatch(render('**`<script>` <img onerror=x>**'),/<(?:script|img)\b/i);
 console.log('Safe Markdown, table, code and raw HTML/link boundaries passed.');

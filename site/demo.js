@@ -1,9 +1,47 @@
-'use strict';
-const video=document.getElementById('kira-demo-video'),toggle=document.getElementById('demo-toggle');
-const reduced=matchMedia('(prefers-reduced-motion: reduce)');let manuallyPaused=false,inView=true;
-function label(){toggle.textContent=video.paused?'Play demo':'Pause demo';toggle.setAttribute('aria-label',toggle.textContent);}
-function sync(){if(reduced.matches||manuallyPaused||document.hidden||!inView)video.pause();else video.play().catch(()=>label());label();}
-toggle.addEventListener('click',()=>{if(video.paused){manuallyPaused=false;video.play().catch(()=>label());}else{manuallyPaused=true;video.pause();}label();});
-video.addEventListener('play',label);video.addEventListener('pause',label);document.addEventListener('visibilitychange',sync);reduced.addEventListener('change',sync);
-new IntersectionObserver(entries=>{inView=entries[0].isIntersecting;sync();},{threshold:.15}).observe(video);
-sync();
+"use strict";
+
+// Deliberate, keyboard-accessible examples. No autoplay or pause controls.
+const tabs = Array.from(document.querySelectorAll('.demo-tabs [role="tab"]'));
+const panels = Array.from(document.querySelectorAll('.demo-panel'));
+function selectTab(tab, focus = false) {
+  for (const item of tabs) {
+    const selected = item === tab;
+    item.setAttribute('aria-selected', String(selected));
+    item.tabIndex = selected ? 0 : -1;
+  }
+  for (const panel of panels) panel.hidden = panel.id !== tab.getAttribute('aria-controls');
+  if (focus) tab.focus();
+}
+for (const tab of tabs) {
+  tab.addEventListener('click', () => selectTab(tab));
+  tab.addEventListener('keydown', event => {
+    const index = tabs.indexOf(tab);
+    let next;
+    if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+    if (event.key === 'ArrowLeft') next = (index - 1 + tabs.length) % tabs.length;
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End') next = tabs.length - 1;
+    if (next !== undefined) {
+      event.preventDefault();
+      selectTab(tabs[next], true);
+    }
+  });
+}
+
+const copy = document.getElementById('copy-install');
+copy.addEventListener('click', async () => {
+  const command = document.getElementById('install-command');
+  const status = document.getElementById('copy-status');
+  try {
+    await navigator.clipboard.writeText(command.textContent);
+    copy.textContent = 'Copied';
+    status.textContent = 'Installation commands copied.';
+  } catch {
+    const range = document.createRange();
+    range.selectNodeContents(command);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    status.textContent = 'Commands selected. Copy them to continue.';
+  }
+});

@@ -1,10 +1,18 @@
 # CLI and provider configuration
 
-The npm package carries the Python engine, browser assets and declared viem
+The package carries the Python engine, browser assets and declared viem
 dependency. It needs no Python packages and no sibling project. The package
 file list excludes wallets, snapshots, conversations, caches, logs and private settings.
-Version 0.1.0 is published on npm. Install with `npm install -g kira-wallet`,
-then run `kira setup`. Future registry publication remains an operator action. The code and original character assets use the MIT license.
+Install Kira from npm, then run `kira setup`:
+
+```sh
+npm install -g kira-wallet
+kira setup
+```
+
+The npm registry currently offers version 0.1.2. The same archive and checksum
+are available from the [GitHub release](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2).
+Registry publication remains an operator action. The code and original character assets use the MIT license.
 
 ## Lifecycle
 
@@ -17,7 +25,7 @@ Another portfolio never silently reuses that server.
 screen. Use `--no-open` to print its URL instead. If a read-only viewer is already
 running, stop it explicitly before setup. The normal `kira start` remains read-only.
 
-The 0.1.1 source candidate starts with a wallet checklist. Add a public EVM
+The 0.1.2 GitHub release starts with a wallet checklist. Add a public EVM
 address or use the browser wallet picker. Registration starts one explicit
 research job; follow it in Activity and read the saved portfolio report.
 No signature, seed phrase or private key is needed.
@@ -31,8 +39,8 @@ prove complete coverage; inspect the recorded results and gaps.
 Connecting Codex or Claude is optional. Use Connect your AI when ready, verify
 a generic response and explicitly choose context permissions. Assistant answers
 render a safe Markdown subset; raw HTML, images and links remain inert text.
-These changes require the next operator-published package. Registry 0.1.0
-continues to use the earlier account-first setup.
+Install the 0.1.1 GitHub archive for this wallet-first setup. The npm registry's
+0.1.0 package continues to use the earlier account-first setup.
 
 ## Your model account
 

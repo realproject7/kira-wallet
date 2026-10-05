@@ -27,6 +27,25 @@ class ViewerTests(unittest.TestCase):
         (self.directory/'results.json').write_text(json.dumps(self.snapshot))
     def tearDown(self):self.temp.cleanup()
 
+    def test_native_zero_observations_survive_without_becoming_holdings(self):
+        self.snapshot['tokens']=[]
+        zero,held=self.snapshot['coverage']
+        zero.update(native_balance='0',native_observed_at='2026-10-05T01:00:00Z',native_block_number='101')
+        held.update(native_balance='0.25',native_observed_at='2026-10-05T01:01:00Z',native_block_number='202')
+        self.snapshot['coverage'].append({**zero,'chain_id':999,'name':'Unknown native',
+            'rpc_status':'unavailable','native_balance':'0'})
+        self.snapshot['price_references']['ETH_USD']['source']='https://private.invalid/SECRET-MARKER'
+        self.snapshot['price_references']['DEBUG']={'value':'SECRET-MARKER'}
+        wallet=model.project_wallet(self.entry,self.snapshot,self.root)
+        self.assertEqual(len(wallet['assets']),1)
+        self.assertEqual(wallet['assets'][0]['balance_observed_at'],'2026-10-05T01:01:00Z')
+        self.assertEqual(wallet['known_value_usd'],500)
+        self.assertEqual(wallet['chains'][0]['native_balance'],'0')
+        self.assertEqual(wallet['chains'][0]['native_block_number'],'101')
+        self.assertIsNone(wallet['chains'][2]['native_balance'])
+        self.assertEqual(wallet['snapshot_price_references']['ETH_USD']['value'],'2000')
+        self.assertNotIn('SECRET-MARKER',json.dumps(wallet['snapshot_price_references']))
+
     def test_unreliable_pool_prices_are_excluded(self):
         w=model.project_wallet(self.entry,self.snapshot,self.root)
         nato=next(t for t in w['assets'] if t['symbol']=='NATO')
@@ -34,6 +53,37 @@ class ViewerTests(unittest.TestCase):
         china=next(t for t in w['assets'] if t['symbol']=='🇨🇳')
         self.assertIsNone(china['value_usd']);self.assertEqual(china['price']['quality'],'unfunded')
         self.assertGreater(w['known_value_usd'],3000);self.assertLess(w['known_value_usd'],5000)
+
+    def test_shared_pool_uses_market_time_instead_of_balance_time(self):
+        from details import project_details
+        first=model.project_wallet(self.entry,self.snapshot,self.root)
+        second=deepcopy(first);second['key']='second';second['address']='0x'+'2'*40
+        for wallet,balance_time,market_time,liquidity in (
+                (first,'2026-10-03T00:00:00Z','2026-10-05T00:00:00Z',200),
+                (second,'2026-10-05T00:00:00Z','2026-10-03T00:00:00Z',100)):
+            asset=wallet['assets'][0];asset['balance_observed_at']=balance_time
+            asset['market_pools']=[{'url':'https://example.com/shared','observed_at':market_time,
+                                   'liquidity_usd':liquidity}]
+        token=next(t for t in project_details([first,second],self.root)['tokens']
+                   if t['id']==first['assets'][0]['id'])
+        self.assertEqual(len(token['market_pools']),1)
+        self.assertEqual(token['market_pools'][0]['liquidity_usd'],200)
+        second['assets'][0]['market_pools'][0]['observed_at']=None
+        token=next(t for t in project_details([second,first],self.root)['tokens']
+                   if t['id']==first['assets'][0]['id'])
+        self.assertEqual(token['market_pools'][0]['liquidity_usd'],200)
+
+    def test_pool_symbols_are_strings_and_empty_artwork_lookups_are_cached(self):
+        raw=next(t for t in self.snapshot['tokens'] if t['symbol']=='NATO')
+        raw['dex_pools'][0]['paired_tokens'][0]['symbol']=123
+        asset=next(a for a in model.project_wallet(self.entry,self.snapshot,self.root)['assets'] if a['symbol']=='NATO')
+        self.assertEqual(asset['market_pools'][0]['pair'][0]['symbol'],'?')
+        address='0x'+'2'*40;calls=[]
+        def fetch(url):calls.append(url);return []
+        snapshots=[{'tokens':[{'chain_id':81457,'token_address':address}]}]
+        token_images.refresh_catalog(snapshots,self.root,fetch=fetch)
+        token_images.refresh_catalog(snapshots,self.root,fetch=fetch)
+        self.assertEqual(len([u for u in calls if '/tokens/v1/blast/' in u]),1)
 
     def test_curve_price_uses_the_reserve_asset_price(self):
         w=model.project_wallet(self.entry,self.snapshot,self.root)
@@ -179,7 +229,34 @@ class ViewerTests(unittest.TestCase):
             self.assertIn('bnb@2x.png',token_images.image_for(catalog,56,native_symbol='BNB'))
             self.assertIsNone(token_images.image_for(catalog,1,native_symbol='APE'))
             self.assertIsNone(token_images.image_for(catalog,33139,'0x'+'1'*40))
-        fetch.assert_not_called()
+            fetch.assert_not_called()
+
+    def test_contract_scoped_lp_and_dex_artwork_preserves_cache_on_failure(self):
+        address='0x'+'1'*40;other='0x'+'2'*40
+        image='https://cdn.dexscreener.com/cms/images/fixture'
+        snapshots=[{'tokens':[{'chain_id':4663,'token_address':address},
+                              {'chain_id':81457,'token_address':other}]}]
+        calls=[]
+        def fetch(source):
+            calls.append(source)
+            if source==token_images.LP_CATALOG:
+                return {'items':[{'chain':{'id':1},'token':{'address':address,'imageUrl':image}},
+                                 {'chain':{'id':4663},'token':{'address':address,'imageUrl':image}}]}
+            if '/tokens/v1/blast/' in source:
+                return [{'chainId':'base','baseToken':{'address':other},'info':{'imageUrl':image}},
+                        {'chainId':'blast','baseToken':{'address':other},'info':{'imageUrl':'https://evil.example/logo.png'}}]
+            return None
+        token_images.refresh_catalog(snapshots,self.root,fetch=fetch)
+        catalog=token_images.read_catalog(self.root)
+        self.assertEqual(token_images.image_for(catalog,4663,address),image)
+        self.assertIsNone(token_images.image_for(catalog,1,address))
+        self.assertIsNone(token_images.image_for(catalog,81457,other))
+        self.assertTrue(any('/tokens/v1/blast/' in source for source in calls))
+        token_images.refresh_catalog(snapshots,self.root,force=True,fetch=lambda _:None)
+        self.assertEqual(token_images.image_for(token_images.read_catalog(self.root),4663,address),image)
+        self.assertIsNone(token_images.safe_image('https://cdn.dexscreener.com.evil.example/image'))
+        self.assertIsNotNone(token_images.image_for({},81457,'0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad'))
+        self.assertIsNone(token_images.image_for({},1,'0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad'))
 
     def test_native_usd_projection_rejects_unknown_and_mismatched_chains(self):
         self.snapshot['tokens']=[]

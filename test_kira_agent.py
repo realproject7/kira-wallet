@@ -52,6 +52,30 @@ class AgentTest(unittest.TestCase):
         all_=projection(self.root,settings(scope='portfolio'));self.assertIsNone(all_['wallets'][1]['known_value_usd'])
         self.assertEqual(projection(self.root,settings())['scope'],'none')
 
+    def test_market_detail_cannot_displace_holdings_or_disable_large_wallet_chat(self):
+        from copy import deepcopy
+        import sys
+        sys.path.insert(0,str(Path(__file__).resolve().parent/'viewer'))
+        import model
+        state,stamp,stale=model.load_state(self.root)
+        wallet=state['wallets'][0];template=wallet['assets'][0]
+        wallet['assets']=[]
+        for index in range(100):
+            asset=deepcopy(template);asset['id']=f'8453:0x{index:040x}'
+            asset['market_pools']=[{'venue':'Uniswap V3','pool':'0x'+'3'*40,
+                'url':'https://example.com/pool/'+str(pool),'liquidity_usd':100,
+                'price_usd':1,'observed_at':'2026-10-05T00:00:00Z',
+                'pair':[{'symbol':'USDC','address':'0x'+'4'*40}]} for pool in range(12)]
+            wallet['assets'].append(asset)
+        with patch('model.load_state',return_value=(state,stamp,stale)):
+            facts=projection(self.root,settings(scope='portfolio'))
+            self.assertEqual(len(facts['wallets'][0]['assets']),100)
+            self.assertLessEqual(len(json.dumps(facts,ensure_ascii=False).encode()),240_000)
+            self.assertGreater(sum(a['pools_omitted'] for a in facts['wallets'][0]['assets']),0)
+            detail=projection(self.root,settings(scope='portfolio'),token_id=wallet['assets'][-1]['id'])
+            self.assertEqual(len(detail['wallets'][0]['assets']),1)
+            self.assertEqual(len(detail['wallets'][0]['assets'][0]['pools']),12)
+
     def test_exit_quotes_only_reach_explicitly_approved_context(self):
         registry=json.loads((self.root/'wallets.json').read_text())
         entry=registry['wallets'][0];path=self.root/entry['latest_snapshot']['result']
@@ -67,6 +91,35 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(quote['output_amount'],'12')
         self.assertFalse(quote['gas_included'])
         self.assertNotIn('source_url',json.dumps(scoped))
+
+    def test_large_inventory_keeps_every_holding_and_defers_detail_without_changing_scope(self):
+        from copy import deepcopy
+        import model
+        state,stamp,stale=model.load_state(self.root)
+        wallet=state['wallets'][0];template=wallet['assets'][0]
+        wallet['assets']=[]
+        for index in range(800):
+            asset=deepcopy(template);asset['id']=f'8453:0x{index:040x}'
+            asset['address']='0x'+f'{index:040x}';asset['symbol']='SAMPLE';asset['name']='Synthetic holding'
+            asset['value_usd']=None;asset['price']=None;asset['balance']='1.2345'
+            asset['links']=[{'label':'Uniswap','url':'https://example.com/pool/'+str(index)}]
+            asset['exit_quote']={'output_amount':'0.1234','output_symbol':'ETH','gas_included':False,'observed_at':'2026-10-05T00:00:00Z'}
+            wallet['assets'].append(asset)
+        config=settings(scope='portfolio',wallet_tools=True)
+        with patch('model.load_state',return_value=(state,stamp,stale)):
+            facts=projection(self.root,config)
+            self.assertEqual(facts['scope'],'portfolio');self.assertEqual(facts['detail_level'],'holdings')
+            holdings=facts['wallets'][0]['assets']
+            self.assertEqual([a['id'] for a in holdings],[a['id'] for a in wallet['assets']])
+            self.assertEqual(len(holdings),800);self.assertEqual(holdings[-1]['balance'],'1.2345')
+            self.assertIsNone(holdings[-1]['value_usd']);self.assertIsNone(holdings[-1]['price'])
+            self.assertNotIn('exit_quote',holdings[-1]);self.assertLessEqual(len(json.dumps(facts,ensure_ascii=False).encode()),240_000)
+            detail=projection(self.root,config,token_id=holdings[-1]['id'])
+            self.assertEqual(detail['wallets'][0]['assets'][0]['exit_quote']['output_amount'],'0.1234')
+            self.store.config=config
+            self.assertEqual(self.done(self.store,self.send('Which tokens do I hold?'))['state'],'succeeded')
+            self.assertEqual(self.store.config,config)
+
     def test_scope_provider_and_wallet_changes_do_not_replay_history(self):
         self.configure(settings(scope='portfolio'));self.done(self.store,self.send('Earlier portfolio discussion.'))
         self.configure(settings(provider='claude',scope='none'))

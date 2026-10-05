@@ -37,11 +37,50 @@ class ResearchToolsTest(unittest.TestCase):
         projected=self.call('snapshot_read',{'snapshot_id':snapshot})
         self.assertEqual(projected['snapshot_id'],snapshot)
         self.assertNotIn('SECRET-MARKER',json.dumps(projected));self.assertNotIn('fabricated',json.dumps(projected));self.assertNotIn('report_url',json.dumps(projected))
+
+    def test_historical_read_preserves_native_observations_and_safe_price_references(self):
+        snapshot=self.first['latest_snapshot']['directory'];file=self.root/self.first['latest_snapshot']['result']
+        result=json.loads(file.read_text());chain=result['coverage'][0]
+        chain.update(native_symbol='ETH',native_balance='0',rpc_status='available',
+            native_observed_at='2026-10-05T01:00:00Z',native_block_number='101',
+            provider_debug='SECRET-MARKER',mintclub_registry_scan={'block_number':'102','debug':'SECRET-MARKER'})
+        result['price_references']={'ETH_USD':{'value':'2000','observed_at':'2026-10-05T00:59:00Z','source':'SECRET-MARKER'},
+            'cbBTC_USD':{'value':'90000','observed_at':'2026-10-05T00:58:00Z','source':'SECRET-MARKER'}}
+        atomic(file,result)
+        projected=self.call('snapshot_read',{'snapshot_id':snapshot})
+        wallet=projected['wallets'][0];native=wallet['chains'][0]
+        self.assertEqual(native['native_balance'],'0');self.assertEqual(native['native_block_number'],'101')
+        self.assertEqual(native['registry_block_number'],'102')
+        self.assertEqual(native['native_observed_at'],'2026-10-05T01:00:00Z')
+        self.assertEqual(wallet['snapshot_price_references']['ETH_USD']['value'],'2000')
+        self.assertEqual(wallet['snapshot_price_references']['cbBTC_USD'],{'value':'90000','observed_at':'2026-10-05T00:58:00Z'})
+        self.assertNotIn('SECRET-MARKER',json.dumps(projected));self.assertNotIn(self.other,json.dumps(projected))
+        self.assertFalse(any(a['id']==str(chain['chain_id'])+':native' for a in wallet['assets']))
+    def test_bounded_wallet_markets_can_be_retrieved_without_losing_recorded_counts(self):
+        from copy import deepcopy
+        import sys
+        sys.path.insert(0,str(Path(__file__).resolve().parent/'viewer'))
+        from model import load_state
+        state,stamp,stale=load_state(self.root);wallet=state['wallets'][0];template=wallet['assets'][0]
+        wallet['assets']=[]
+        for index in range(100):
+            asset=deepcopy(template);asset['id']=f'8453:0x{index:040x}'
+            asset['market_pools']=[{'venue':'Uniswap','pool':'0x'+'3'*40,'url':'https://example.com/pool/'+str(pool),'liquidity_usd':100,'pair':[]} for pool in range(12)]
+            wallet['assets'].append(asset)
+        with patch('model.load_state',return_value=(state,stamp,stale)):
+            summary=self.call('wallet_read',{'wallet':self.first['address_key']})
+            last=summary['assets'][-1]
+            self.assertEqual(last['pools'],[]);self.assertEqual(last['pools_recorded'],12);self.assertEqual(last['pools_omitted'],12)
+            self.assertIn('token_read',summary['note'])
+            detail=self.call('token_read',{'chain_id':8453,'address':'0x'+format(99,'040x')})
+            self.assertEqual(len(detail['positions'][0]['asset']['pools']),12)
+            self.assertEqual(detail['positions'][0]['asset']['pools_omitted'],0)
     def test_duplicate_refresh_reuses_job_and_foreign_jobs_are_hidden(self):
         with patch.object(JobStore,'launch'):
             first=self.call('holdings_refresh',{'wallet':self.first['address_key']})
             second=self.call('holdings_refresh',{'wallet':self.first['address_key']})
             self.assertEqual(first['job_id'],second['job_id']);self.assertEqual(first['state'],'queued')
+            self.assertEqual(first['wallet'],self.first['address_key'])
             foreign=JobStore(self.root).submit({'schema_version':1,'operation':'wallet.refresh','input':{'wallet':self.other},'idempotency_key':str(uuid.uuid4())})
         with self.assertRaises(JobError):self.call('job_read',{'job_id':foreign['job_id']})
         self.assertNotIn(foreign['job_id'],json.dumps(self.call('job_list')))

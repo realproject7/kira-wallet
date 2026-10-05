@@ -28,7 +28,7 @@ test('question starters fill an editable draft without a model call or permissio
   let calls=0;const h=harness(async()=>{calls++;return status();});
   let submits=0;h.el('chat-form').requestSubmit=()=>submits++;
   h.el('chat-suggestions').listeners.click({target:{closest:()=>({dataset:{prompt:'liquidity'}})}});
-  assert.match(h.el('kira-draft').value,/at least \$100/);
+  assert.match(h.el('kira-draft').value,/full balance/);
   assert.equal(h.el('chat-suggestions').hidden,true);
   assert.equal(h.run('agentState.config.scope'),'none');
   assert.equal(h.run('draftRevision'),1);assert.equal(calls,0);assert.equal(submits,0);
@@ -43,7 +43,7 @@ test('a starter drafted during a pending send survives its successful receipt',a
   h.el('kira-draft').value='';h.el('kira-draft').listeners.input();
   h.el('chat-suggestions').listeners.click({target:{closest:()=>({dataset:{prompt:'prices'}})}});
   const draft=h.el('kira-draft').value;receipt.resolve({id:'turn'});await pending;
-  assert.equal(h.el('kira-draft').value,draft);assert.match(draft,/unreliable prices/);
+  assert.equal(h.el('kira-draft').value,draft);assert.match(draft,/Blast holdings/);
 });
 test('a next draft typed before the send receipt survives successful completion', async () => {
   const receipt=deferred();

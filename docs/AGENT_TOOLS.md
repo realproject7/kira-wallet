@@ -38,6 +38,14 @@ scoped to registered wallets allowed by the conversation. Historical reads use
 normalized financial projections. Unknown values and historical quote times
 remain explicit. Native shell, file, browser and MCP execution stay disabled.
 
+Chain evidence includes explicit native balances, including observed zero,
+their observation times and blocks, and registry scan blocks. Empty positive
+holding inventories do not remove these observations. Saved-analysis reads
+also retain snapshot price-reference values and times without provider URLs
+or debug fields. A comparison flag can reflect observation or reference changes
+without proving a balance change or a different set of checked networks.
+Research job reads include the approved wallet identity directly.
+
 Refresh tools admit typed durable engine jobs. Current scope and cancellation
 are checked immediately before admission. Queued work is visible in Activity;
 chat cancellation does not cancel engine work already accepted. Duplicate

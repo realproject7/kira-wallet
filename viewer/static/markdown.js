@@ -2,10 +2,30 @@
 // Deliberately small Markdown subset. Raw HTML and links remain escaped text.
 (function(root) {
   const escape = text => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function closing(text, start, marker) {
+    for(let i=start;i<text.length&&!/[\r\n]/.test(text[i]);i++) {
+      if(text[i]==='`') {
+        const end=text.indexOf('`',i+1);
+        if(end>i+1&&!/[\r\n]/.test(text.slice(i,end))){i=end;continue;}
+      }
+      if(text.startsWith(marker,i))return i>start?i:-1;
+    }
+    return -1;
+  }
   function inline(text) {
-    return String(text).split(/(`[^`\n]+`)/g).map(part => part.startsWith('`') && part.endsWith('`')
-      ? '<code>' + escape(part.slice(1,-1)) + '</code>'
-      : escape(part).replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/\*([^*\n]+)\*/g,'<em>$1</em>')).join('');
+    text=String(text);let output='';
+    for(let i=0;i<text.length;) {
+      if(text[i]==='`') {
+        const end=text.indexOf('`',i+1);
+        if(end>i+1&&!/[\r\n]/.test(text.slice(i,end))){output+='<code>'+escape(text.slice(i+1,end))+'</code>';i=end+1;continue;}
+      }
+      if(text[i]==='*') {
+        const marker=text.startsWith('**',i)?'**':'*',end=closing(text,i+marker.length,marker);
+        if(end!==-1){const tag=marker.length===2?'strong':'em';output+='<'+tag+'>'+inline(text.slice(i+marker.length,end))+'</'+tag+'>';i=end+marker.length;continue;}
+      }
+      output+=escape(text[i++]);
+    }
+    return output;
   }
   const cells = line => line.trim().replace(/^\|/,'').replace(/\|$/,'').split('|').map(c=>c.trim());
   const divider = line => cells(line).length > 1 && cells(line).every(c=>/^:?-{3,}:?$/.test(c));

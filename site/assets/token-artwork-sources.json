@@ -1,24 +1,54 @@
-[
-  {
-    "asset": "site/assets/signet.png",
-    "source": "https://mint.club/api/tokens/logo?chainId=8453&address=0xDF2B673Ec06d210C8A8Be89441F8de60B5C679c9",
-    "sha256": "37ac9d1bd9e1b72d1c82062a912faf11e29292f4afd24c4400d667bdd107a932"
-  },
-  {
-    "asset": "site/assets/usdc.png",
-    "source": "https://fc.hunt.town/tokens/logo/8453/0x833589fcd6edb6e08f4c7c32d4f71b54bda02913/image",
-    "sha256": "e6ad27acddba282714b441f571cfb4c0190994ac05f8d649be070ad0adced6ae"
-  },
-  {
-    "asset": "site/assets/ape.png",
-    "source": "https://fc.hunt.town/tokens/logo/1/0x4d224452801aced8b2f0aebe155379bb5d594381/image",
-    "sha256": "d00236adf4746a7464c30cc1ad7e007efabf49123015dc8748a62329dfb6848d",
-    "note": "Public ApeCoin logo."
-  },
-  {
-    "asset": "site/assets/eth.png",
-    "source": "https://fc.hunt.town/tokens/logo/1/0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2/image",
-    "sha256": "30318433bd1c52c90043f852a1c074575d028304bb6fef559268e34b805760f9",
-    "note": "WETH artwork also identifies ETH in this illustrative demo."
-  }
-]
+{
+  "verified_at": "2026-10-05",
+  "notes": "Artwork identifies public token contracts, not operator holdings. All showcase financial and activity data are illustrative.",
+  "tokens": [
+    {
+      "asset": "cashcat.png",
+      "chain_id": 4663,
+      "address": "0x020bfc650a365f8bb26819deaabf3e21291018b4",
+      "metadata": "https://lptoken.fun/api/markets?sort=volume&limit=100",
+      "image": "https://cdn.dexscreener.com/cms/images/Lq7a3pS9Wn8EuGp0?width=128&height=128&fit=crop&quality=95&format=auto",
+      "sha256": "69c5e1564f45bd0aa78f8aa539057d0ac4fc13802a451ce82489f972c388d216"
+    },
+    {
+      "asset": "blast.png",
+      "chain_id": 81457,
+      "address": "0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad",
+      "metadata": "https://api.coingecko.com/api/v3/coins/blast",
+      "image": "https://cdn.dexscreener.com/cms/images/3f0ca9d70e9e308f51bc934839b67a14812acff53feb8c89d7962d148c5b2301?width=64&height=64&fit=crop&quality=95&format=auto",
+      "sha256": "0295b030937f1b1c7b1d200c44a89d08ecbae2ee3e7072c8e86df481ae3a7cbb"
+    },
+    {
+      "asset": "usdb.png",
+      "chain_id": 81457,
+      "address": "0x4300000000000000000000000000000000000003",
+      "metadata": "https://api.coingecko.com/api/v3/coins/usdb",
+      "image": "https://coin-images.coingecko.com/coins/images/35595/small/65c67f0ebf2f6a1bd0feb13c_usdb-icon-yellow.png?1709255427",
+      "sha256": "efc3bf131a65006459db629a32195696207a3faac05be33d8bbc9ac36731e806"
+    }
+  ],
+  "existing_assets": [
+    {
+      "asset": "site/assets/signet.png",
+      "source": "https://mint.club/api/tokens/logo?chainId=8453&address=0xDF2B673Ec06d210C8A8Be89441F8de60B5C679c9",
+      "sha256": "37ac9d1bd9e1b72d1c82062a912faf11e29292f4afd24c4400d667bdd107a932"
+    },
+    {
+      "asset": "site/assets/usdc.png",
+      "source": "https://fc.hunt.town/tokens/logo/8453/0x833589fcd6edb6e08f4c7c32d4f71b54bda02913/image",
+      "sha256": "e6ad27acddba282714b441f571cfb4c0190994ac05f8d649be070ad0adced6ae"
+    },
+    {
+      "asset": "site/assets/ape.png",
+      "source": "https://fc.hunt.town/tokens/logo/1/0x4d224452801aced8b2f0aebe155379bb5d594381/image",
+      "sha256": "d00236adf4746a7464c30cc1ad7e007efabf49123015dc8748a62329dfb6848d",
+      "note": "Public ApeCoin logo."
+    },
+    {
+      "asset": "site/assets/eth.png",
+      "source": "https://fc.hunt.town/tokens/logo/1/0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2/image",
+      "sha256": "30318433bd1c52c90043f852a1c074575d028304bb6fef559268e34b805760f9",
+      "note": "WETH artwork also identifies ETH in this illustrative demo."
+    }
+  ]
+}

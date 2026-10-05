@@ -32,6 +32,12 @@ Home sums direct mainnet positions across wallets. A position is one asset in on
 
 Market links open Mint Club or the observed DEX pool evidence. A DEX link can lead to DEX Screener or the pool contract explorer when that pool is absent from the market index. Research notes link to the complete recorded report.
 
+Markets show token pairs, paired artwork and venue labels. Two pools appear first;
+Show more reveals the remaining recorded routes. Token detail includes pool
+addresses, observation times and reported liquidity. Across wallets, duplicate
+routes use the newest market observation, independently of balance timestamps.
+Pool liquidity is never treated as a sell quote or added to wallet value.
+
 ## Add an analysis or refresh it
 
 The source of truth is `wallets.json`. Each wallet's `latest_snapshot.result` points to a `results.json` with the recorded schema, and its `latest_snapshot.directory` points to that snapshot folder. Keep wallet addresses and operator tags in the registry. The viewer reads all registered wallets, with no hardcoded wallet list.
@@ -52,7 +58,16 @@ The browser never contacts an RPC or price provider and never reads RPC credenti
 
 Mint Club holdings use `/api/tokens/logo?chainId=...&address=...`. Reserve assets use the image catalog collected from `/api/reserve-tokens/list`, `/api/reserve-tokens/stats`, `/api/reserve-tokens/popular`, and the `reserveToken` metadata in `/api/tokens/details/{chainId}/{address}`. Legacy 1inch URLs currently return HTTP 403 and are resolved through the Hunt token-image endpoint for the same chain and contract. Native coins use explicit chain-and-currency identities for CoinGecko artwork. ETH on an L2 uses ETH artwork. Known network artwork is a fallback when metadata is unavailable; wrapped-token logos are never reused for a native coin. Unknown native identities retain their symbol fallback.
 
-The wallet analysis pipeline collects image metadata automatically and reuses successful metadata for 24 hours. The agent can refresh it independently:
+The wallet analysis pipeline collects image metadata automatically and reuses successful metadata for 24 hours.
+
+Non-Mint tokens also use chain-and-contract metadata from lpTOKEN.fun and DEX
+Screener. CASHCAT artwork comes from lpTOKEN's Robinhood listing; Blast USDB and
+BLAST have verified CoinGecko fallbacks. DEX artwork is restricted to the approved
+CDN host. Successful empty lookups are cached for 24 hours, and failed providers
+preserve prior images. Public metadata requests contain token contracts, never
+wallet addresses. No browser provider polling is added.
+
+The agent can refresh it independently:
 
 ```sh
 python3 viewer/token_images.py --force

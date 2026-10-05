@@ -53,7 +53,12 @@ class JobsTest(JobFixtures, unittest.TestCase):
         job=self.store.submit(self.request('wallet.add',{'address':OTHER,'tag':'  Exact tag  '}));self.assertEqual(job['input']['tag'],'  Exact tag  ')
     def test_ambiguous_tag_rejected(self):
         value=json.loads((self.root/'wallets.json').read_text());value['wallets'].append({'address_key':OTHER,'tags':['Original']});atomic(self.root/'wallets.json',value)
-        with self.assertRaises(JobError):self.store.submit(self.request(value={'wallet':'Original'}))
+        with self.assertRaises(JobError) as error:self.store.submit(self.request(value={'wallet':'Original'}))
+        self.assertEqual(error.exception.code,'wallet_not_unique')
+    def test_missing_wallet_is_not_reported_as_duplicate_name(self):
+        for selector in ('Not registered',OTHER):
+            with self.assertRaises(JobError) as error:self.store.wallet(selector)
+            self.assertEqual(error.exception.code,'wallet_not_registered')
     def test_restart_queued_never_replays_provider(self):
         job=self.store.submit(self.request());self.store.recover();self.assertEqual(self.store.get(job['job_id'])['state'],'queued')
     def test_restart_interrupted_and_explicit_resume(self):

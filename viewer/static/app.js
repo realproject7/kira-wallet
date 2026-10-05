@@ -11,7 +11,7 @@ const compactQuantity = raw => raw!=null&&Number(raw)>=100000 ? new Intl.NumberF
 const shortAddress = address => address.slice(0,6)+'…'+address.slice(-4);
 const stamp = raw => raw ? new Date(raw).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}) : 'Not analysed yet';
 const safeURL = raw => {try{const url=new URL(raw,location.origin);return (url.origin===location.origin||url.protocol==='https:') ? url.href : '#';}catch{return '#';}};
-const imageHosts = new Set(['mint.club','tokens.1inch.io','coin-images.coingecko.com','fc.hunt.town','mint-club-v2.s3.us-west-2.amazonaws.com']);
+const imageHosts = new Set(['mint.club','tokens.1inch.io','coin-images.coingecko.com','fc.hunt.town','mint-club-v2.s3.us-west-2.amazonaws.com','cdn.dexscreener.com']);
 const safeImage = raw => {try{const url=new URL(raw);return url.protocol==='https:'&&imageHosts.has(url.hostname)&&!url.username&&!url.password&&(!url.port||url.port==='443') ? url.href : null;}catch{return null;}};
 const walletGlyph = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6.5h13a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 1.4-1.9L15 1.8v4.7"/><path d="M19 10h-4a2 2 0 0 0 0 4h4"/><path d="M15.5 12h.01"/></svg>';
 
@@ -54,7 +54,13 @@ function renderWallets(){
   }).join('');
 }
 function renderView(){
-  if(selectedView==='wallet'){const w=currentWallet();if(w&&!w.analysed_at&&typeof pendingWalletJob==='function'&&pendingWalletJob(w)){navigate('#/activity');return;}}
+  if(selectedView==='wallet'){
+    const w=currentWallet(),pending=typeof pendingWalletJob==='function'&&pendingWalletJob(w||{key:selectedWallet});
+    if(!w||(!w.analysed_at&&pending)){
+      if(!w)toast(pending?'This wallet is waiting for registration. Follow its progress in Activity.':'This wallet is not registered in this workspace.');
+      navigate('#/activity');return;
+    }
+  }
   renderWallets();
   $('home-view').hidden=selectedView!=='home';$('wallet-view').hidden=selectedView!=='wallet';
   $('detail-view').hidden=!['token','network'].includes(selectedView);
@@ -123,7 +129,7 @@ function renderWallet(){
   $('wallet-tags').innerHTML=w.tags.slice(1).map(t=>`<span class="tag">${escapeHTML(t)}</span>`).join(' ');
   $('report-link').hidden=!w.report_url;if(w.report_url)$('report-link').href=safeURL(w.report_url);
   $('total-value').textContent=w.analysed_at?money(w.known_value_usd):'—';
-  $('valuation-note').textContent=w.analysed_at?(w.known_value_usd==null?'Value is unknown because prices are unavailable.':'Market and curve spot estimates · excludes unpriced assets'):'Analysis will appear here when it is ready.';
+  $('valuation-note').textContent=w.analysed_at?(w.known_value_usd==null?(w.assets.length?'Value is unknown because prices are unavailable.':'No positive holdings recorded · unchecked networks remain unknown.'):'Market and curve spot estimates · excludes unpriced assets'):'Analysis will appear here when it is ready.';
   $('asset-count').textContent=w.assets.length;$('unpriced-count').textContent=w.unpriced_count+' unpriced';
   const mainnets=w.chains.filter(c=>c.environment==='mainnet');
   $('chain-count').textContent=mainnets.filter(c=>c.assets>0).length;
@@ -138,6 +144,7 @@ function renderWallet(){
   $('chain-filter').value=selectedChain;renderHoldings();
 }
 function icon(asset){
+  if(typeof asset.symbol!=='string'||!asset.symbol)return ['', '?'];
   if(asset.symbol==='ETH')return ['ether','◆'];
   if(asset.symbol==='CHICKEN')return ['chicken','🐔'];
   if(asset.symbol==='hcbBTC')return ['bitcoin','₿'];
@@ -163,7 +170,7 @@ function assetRow(a){
   const links=a.links.filter(l=>l.label!=='Explorer');
   if(!links.length){const e=a.links.find(l=>l.label==='Explorer');if(e)links.push(e);}
   const reserve=a.curve_reserve?`Curve reserve: ${a.curve_reserve.amount} ${a.curve_reserve.symbol}`:'';
-  return `<tr data-asset-id="${escapeHTML(a.id)}" data-value="${a.value_usd ?? ''}"><td><a class="token-name token-link" href="${tokenHref(a.id)}" aria-label="Open ${escapeHTML(a.symbol)} token overview">${coinIcon(a)}<div class="coin-title"><div class="symbol" title="${escapeHTML(a.symbol)}">${escapeHTML(a.symbol)}</div><div class="token-description" title="${escapeHTML((a.address||'Native asset')+' '+reserve)}">${escapeHTML(a.is_native?'Native asset':a.name)}</div></div></a></td><td><span class="mobile-label">Balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span></td><td><span class="mobile-label">Price</span><span class="token-price ${p?.usd==null?'unpriced':''}" title="${escapeHTML(p?.observed_at||'')}">${unitPrice(p?.usd)}</span><div class="price-basis">${escapeHTML(source)}</div></td><td><span class="token-value ${a.value_usd==null?'unpriced':''}">${money(a.value_usd)}</span></td><td><div class="market-links">${links.map(l=>`<a class="market-link ${l.label==='Mint Club'?'mint':''}" href="${escapeHTML(safeURL(l.url))}" title="${escapeHTML(l.label+' · '+l.url)}" target="_blank" rel="noreferrer">${escapeHTML(l.label)}<span aria-hidden="true">↗</span></a>`).join('')||'<span class="native-label">No market found</span>'}</div></td></tr>`;
+  return `<tr data-asset-id="${escapeHTML(a.id)}" data-value="${a.value_usd ?? ''}"><td><a class="token-name token-link" href="${tokenHref(a.id)}" aria-label="Open ${escapeHTML(a.symbol)} token overview">${coinIcon(a)}<div class="coin-title"><div class="symbol" title="${escapeHTML(a.symbol)}">${escapeHTML(a.symbol)}</div><div class="token-description" title="${escapeHTML((a.address||'Native asset')+' '+reserve)}">${escapeHTML(a.is_native?'Native asset':a.name)}</div></div></a></td><td><span class="mobile-label">Balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span></td><td><span class="mobile-label">Price</span><span class="token-price ${p?.usd==null?'unpriced':''}" title="${escapeHTML(p?.observed_at||'')}">${unitPrice(p?.usd)}</span><div class="price-basis">${escapeHTML(source)}</div></td><td><span class="token-value ${a.value_usd==null?'unpriced':''}">${money(a.value_usd)}</span></td><td><div class="market-links">${marketLinks(links,a)}</div></td></tr>`;
 }
 function renderHoldings(){
   const w=currentWallet();if(!w)return;
@@ -188,21 +195,32 @@ function renderHoldings(){
     const c=w.chains.find(c=>String(c.id)===selectedChain);
     $('empty').querySelector('h3').textContent=c&&!c.complete?'Research is incomplete on '+c.name:'No assets in this view';
     $('empty').querySelector('p').textContent=c&&!c.complete?'This chain has not been fully checked. Missing data does not mean a zero balance.':'Choose another chain or lower the minimum value.';
-  }else{$('empty').querySelector('h3').textContent='No assets in this view';$('empty').querySelector('p').textContent=w.analysed_at?'Choose another chain or lower the minimum value.':'Analysis will appear here when it is ready.';}
+  }else{$('empty').querySelector('h3').textContent=w.analysed_at&&!w.assets.length?'No holdings recorded':'No assets in this view';$('empty').querySelector('p').textContent=w.analysed_at?(!w.assets.length?'No positive balances were found in the checked networks. Refresh holdings to check again.':'Choose another chain or lower the minimum value.'):'Analysis will appear here when it is ready.';}
   bindImages();
 }
 function timeRange(range){return range?.from?stamp(range.from)+(range.to!==range.from?' – '+stamp(range.to):''):'Not recorded';}
-function marketLinks(links){return links.map(l=>`<a class="market-link ${l.label==='Mint Club'?'mint':''}" href="${escapeHTML(safeURL(l.url))}" target="_blank" rel="noreferrer">${escapeHTML(l.label)} <span aria-hidden="true">↗</span></a>`).join('')||'<span class="native-label">No market recorded</span>';}
+function marketLinks(links,asset={},detailed=false){
+  const pools=asset.market_pools||[];
+  const row=pool=>{
+    const pair=pool.pair||[],label=pair.length?pair.map(c=>c.symbol).join(' / '):'Recorded pool';
+    const artwork=pair.length?pair.map(c=>coinIcon({...c,chain_id:asset.chain_id})).join(''):coinIcon(asset);
+    return `<a class="pool-link" href="${escapeHTML(safeURL(pool.url))}" target="_blank" rel="noreferrer" title="${escapeHTML(pool.pool||pool.url)}"><span class="pool-art" aria-hidden="true">${artwork}</span><span class="pool-description"><strong>${escapeHTML(label)}</strong><small>${escapeHTML(pool.venue)}${detailed?' · '+escapeHTML(pool.pool?shortAddress(pool.pool):'Address unavailable'):''}</small>${detailed?`<small>Observed ${escapeHTML(pool.observed_at?stamp(pool.observed_at):'time unknown')}</small>`:''}</span>${detailed?`<span class="pool-metrics"><strong>${money(pool.liquidity_usd)}</strong><small>Pool liquidity</small></span>`:''}<span class="pool-arrow" aria-hidden="true">↗</span></a>`;
+  };
+  const poolURLs=new Set(pools.map(p=>p.url));
+  const other=links.filter(l=>!poolURLs.has(l.url)).map(l=>`<a class="market-link ${l.label==='Mint Club'?'mint':''}" href="${escapeHTML(safeURL(l.url))}" target="_blank" rel="noreferrer"><span class="venue-mark" aria-hidden="true">${l.label==='Mint Club'?'M':l.label==='Explorer'?'↗':escapeHTML(l.label.slice(0,1))}</span>${escapeHTML(l.label)} <span aria-hidden="true">↗</span></a>`).join('');
+  const limit=2;
+  return pools.slice(0,limit).map(row).join('')+(pools.length>limit?`<details class="more-pools"><summary>Show ${pools.length-limit} more pools</summary><div>${pools.slice(limit).map(row).join('')}</div></details>`:'')+other||'<span class="native-label">No market recorded</span>';
+}
 function accountCard(row,token){
   const a=row.asset,value=token?a?.value_usd:row.value_usd;
   const meta=token?(a?quantity(a.balance)+' '+escapeHTML(token.symbol):escapeHTML(row.status)):row.position_count+' positions · '+row.unpriced_count+' unpriced';
   const shareValue=token?share(value,token.value_usd):null;
-  const quote=a?.exit_quote?`<div class="account-quote"><span>Recorded full-balance burn output</span><strong>${escapeHTML(a.exit_quote.output_amount)} ${escapeHTML(a.exit_quote.output_symbol)}</strong><small>${stamp(a.exit_quote.observed_at)} · block ${escapeHTML(a.exit_quote.block_number)} · net of royalty · excludes gas</small></div>`:'';
+  const quote=a?.exit_quote?`<div class="account-quote"><div><span>Recorded full-balance burn output</span><strong>${escapeHTML(a.exit_quote.output_amount)} ${escapeHTML(a.exit_quote.output_symbol)}</strong></div><small>${stamp(a.exit_quote.observed_at)} · block ${escapeHTML(a.exit_quote.block_number)} · net of royalty · excludes gas</small></div>`:'';
   const price=token?.environment==='testnet'?null:a?.price?.usd;
-  return `<article class="account-card"><a class="account-card-heading" href="#/wallet/${escapeHTML(row.key)}"><span class="card-wallet-icon">${walletGlyph}</span><span class="wallet-card-identity"><strong>${escapeHTML(row.name)}</strong><span>${escapeHTML(shortAddress(row.address))}</span></span><span class="card-arrow" aria-hidden="true">${arrowGlyph}</span></a><div class="account-value">${money(value)}</div><div class="account-meta">${meta}</div>${token&&a?`<dl class="account-facts"><div><dt>Recorded price</dt><dd>${unitPrice(price)} <span>${escapeHTML(token.environment==='testnet'?'Testnet':a.price?.basis||'No price')}</span></dd></div><div><dt>Share of priced holdings</dt><dd>${shareValue}</dd></div></dl>${quote}`:''}<div class="account-footnote"><span>${escapeHTML(row.coverage)}</span><span>Analysis ${stamp(row.analysed_at)}</span>${token&&a?`<span>Price ${a.price?.observed_at?stamp(a.price.observed_at):'not recorded'}</span>`:''}</div></article>`;
+  return `<article class="account-card"><a class="account-card-heading" href="#/wallet/${escapeHTML(row.key)}" aria-label="Open ${escapeHTML(row.name)} holdings"><span class="card-wallet-icon">${walletGlyph}</span><span class="wallet-card-identity"><strong>${escapeHTML(row.name)}</strong><span>${escapeHTML(shortAddress(row.address))}</span></span><span class="account-position"><span class="account-value">${money(value)}</span><span class="account-meta">${meta}</span></span><span class="card-arrow" aria-hidden="true">${arrowGlyph}</span></a>${token&&a?`<dl class="account-facts"><div><dt>Recorded price</dt><dd>${unitPrice(price)} <span>${escapeHTML(token.environment==='testnet'?'Testnet':a.price?.basis||'No price')}</span></dd></div><div><dt>Share of priced holdings</dt><dd>${shareValue}</dd></div></dl>${quote}`:''}<div class="account-footnote"><span>${escapeHTML(row.coverage)}</span><span>Analysis ${stamp(row.analysed_at)}</span>${token&&a?`<span>Price ${a.price?.observed_at?stamp(a.price.observed_at):'not recorded'}</span>`:''}</div></article>`;
 }
 function aggregateRow(a){
-  return `<tr data-asset-id="${escapeHTML(a.id)}"><td><a class="token-name token-link" href="${tokenHref(a.id)}" aria-label="Open ${escapeHTML(a.symbol)} token overview">${coinIcon(a)}<div class="coin-title"><div class="symbol">${escapeHTML(a.symbol)}</div><div class="token-description">${escapeHTML(a.is_native?'Native asset':a.name)}</div></div></a></td><td><span class="mobile-label">Total balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span></td><td><span class="mobile-label">Wallets</span><span class="amount">${a.wallet_count}</span></td><td><span class="token-value">${money(a.value_usd)}</span>${a.unpriced_count?`<div class="price-basis">${a.unpriced_count} unpriced</div>`:''}</td><td><div class="market-links">${marketLinks(a.links.filter(l=>l.label!=='Explorer'))}</div></td></tr>`;
+  return `<tr data-asset-id="${escapeHTML(a.id)}"><td><a class="token-name token-link" href="${tokenHref(a.id)}" aria-label="Open ${escapeHTML(a.symbol)} token overview">${coinIcon(a)}<div class="coin-title"><div class="symbol">${escapeHTML(a.symbol)}</div><div class="token-description">${escapeHTML(a.is_native?'Native asset':a.name)}</div></div></a></td><td><span class="mobile-label">Total balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span></td><td><span class="mobile-label">Wallets</span><span class="amount">${a.wallet_count}</span></td><td><span class="token-value">${money(a.value_usd)}</span>${a.unpriced_count?`<div class="price-basis">${a.unpriced_count} unpriced</div>`:''}</td><td><div class="market-links">${marketLinks(a.links.filter(l=>l.label!=='Explorer'),a)}</div></td></tr>`;
 }
 function renderNetworkTokens(network){
   const search=tokenSearch.trim().toLowerCase();
@@ -233,7 +251,7 @@ function renderDetail(){
     const low=prices.length?Math.min(...prices):null,high=prices.length?Math.max(...prices):null;
     const latest=[...held].sort((a,b)=>(b.asset.price?.observed_at||b.analysed_at||'').localeCompare(a.asset.price?.observed_at||a.analysed_at||''))[0]?.asset;
     const reserve=latest?.curve_reserve;
-    facts=`<div class="detail-facts"><section class="fact-panel"><h2>Token identity</h2><div class="contract-address">${escapeHTML(token.address||'Native asset · chain '+token.chain_id)}</div><dl><div><dt>Recorded price${low!==high?' range':''}</dt><dd>${unitPrice(low)}${low!==high?' – '+unitPrice(high):''}</dd></div><div><dt>Price observations</dt><dd>${timeRange(token.price_times)}</dd></div></dl></section><section class="fact-panel"><h2>Markets & backing</h2><div class="market-links detail-markets">${marketLinks(token.links)}</div>${reserve?`<dl><div><dt>Recorded curve reserve</dt><dd>${quantity(reserve.amount)} ${escapeHTML(reserve.symbol)}</dd></div></dl><p>Shared curve backing. Excluded from wallet value.</p>`:'<p>Links reflect markets found in the recorded research.</p>'}</section></div>`;
+    facts=`<div class="detail-facts"><section class="fact-panel"><h2>Token identity</h2><div class="contract-address">${escapeHTML(token.address||'Native asset · chain '+token.chain_id)}</div><dl><div><dt>Recorded price${low!==high?' range':''}</dt><dd>${unitPrice(low)}${low!==high?' – '+unitPrice(high):''}</dd></div><div><dt>Price observations</dt><dd>${timeRange(token.price_times)}</dd></div></dl></section><section class="fact-panel"><h2>Markets & backing</h2><div class="market-links detail-markets">${marketLinks(token.links,token,true)}</div>${reserve?`<dl><div><dt>Recorded curve reserve</dt><dd>${quantity(reserve.amount)} ${escapeHTML(reserve.symbol)}</dd></div></dl><p>Shared curve backing. Excluded from wallet value.</p>`:'<p>Links reflect markets found in the recorded research.</p>'}</section></div>`;
   }
   const accounts=`<section class="detail-accounts"><div class="section-heading"><h2>By wallet</h2><span class="section-note">${token?'Recorded holdings':'Network allocation'}</span></div><div class="account-grid">${record.wallets.map(r=>accountCard(r,token)).join('')}</div><p class="detail-note">${token?'An absent record is not a verified zero balance. Prices and burn quotes can differ between analysis times.':'Totals include known mainnet values. Incomplete discovery can omit additional holdings.'}</p></section>`;
   const holdings=token?'':`<section class="holdings"><div class="holdings-toolbar"><h2>Tokens <span id="network-visible-count" class="count-badge"></span></h2><div class="filters"><label class="token-search"><span class="sr-only">Search network tokens</span><input id="network-token-search" type="search" placeholder="Search tokens" value="${escapeHTML(tokenSearch)}"></label><div class="segment" role="group" aria-label="Minimum combined token value">${[0,5,10].map(n=>`<button data-min="${n}" aria-pressed="${n===minimum}">${n?'≥ $'+n:'All'}</button>`).join('')}</div></div></div><p class="detail-note filter-note">Filter by combined token value across wallets. Summary totals include all recorded holdings.</p><div id="network-token-table" class="table-wrap"><table class="token-table"><colgroup><col><col><col><col><col></colgroup><thead><tr><th scope="col">Token</th><th scope="col">Total balance</th><th scope="col">Wallets</th><th scope="col">Value</th><th scope="col">Markets</th></tr></thead><tbody id="network-token-body"></tbody></table></div><div id="network-token-empty" class="empty" hidden><h3>No tokens in this view</h3><p>Lower the minimum value or clear your search. Missing coverage does not mean zero holdings.</p></div></section>`;
@@ -250,7 +268,6 @@ async function poll(){
     const data=await response.json();const signature=response.headers.get('ETag');
     const wasLoaded=state!==null;
     state=data;etag=signature;$('load-error').hidden=true;$('content').hidden=false;$('connection').textContent='Connected';$('demo-badge').hidden=data.demo!==true;
-    if(selectedView==='wallet'&&!state.wallets.some(w=>w.key===selectedWallet)){selectedWallet=null;selectedChain='all';selectedView='home';}
     if(signature!==currentSignature){renderView();currentSignature=signature;if(wasLoaded)toast('Research updated');}
   }catch{ $('connection').textContent='Reconnecting';if(!state){$('load-error').hidden=false;$('content').hidden=true;} }
   finally{busy=false;}

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-05T03:14:47.447469+00:00",
+  "viewer_ui_source": "f51c59e5cbdc5a29aa39dd6e91cdbb8aa7896419",
+  "fixture": "Isolated demo records with random EVM addresses, invented balances and a handwritten conversation. Unchanged production UI renders ordinary wallet names. All model and research POST requests are disabled. No personal portfolio records or transcripts were read.",
+  "wallet_names": [
+    "Daily",
+    "Savings"
+  ],
+  "wallet_addresses": [
+    "0x7C6C450c4097a33D54daA3407F0788f0Bcc84F5B",
+    "0x3BD6A1fB3e046dd818C69FED9b03a095a0bb40d3"
+  ],
+  "pool_addresses": [
+    "0x46Fa5a6Eefd20F3d7B38c9533f69c189d0BE180D",
+    "0x2ece226705B0922D094BCe8Fa76FE822Bb35e1F8",
+    "0x2dF29f70f7eC38141cb9Dc5Faa155DFE166E8506",
+    "0xa1Dd04729a0ae0C1a1Ba5307960fe0422CF74a62"
+  ],
+  "personal_wallet_data": false,
+  "images": [
+    {
+      "file": "kira-readme-overview.jpg",
+      "viewport": [
+        1728,
+        1120
+      ],
+      "sha256": "524ea3b7eccc1fe6afffbd22917f01d5cf359269f352f6a321a08b041ca94fea"
+    },
+    {
+      "file": "kira-readme-markets.jpg",
+      "viewport": [
+        1728,
+        1140
+      ],
+      "sha256": "ce71d4bc4f85f2b9af2341b7ca2fb506280f6bceacf8e3241d03e8cd79edf6f4"
+    }
+  ]
+}

@@ -1,23 +1,160 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light">
-  <title>Kira Wallet · Your tokens. Your own AI.</title><meta name="description" content="A local, watch-only wallet research workspace. Explore recorded holdings, see missing evidence, and talk with Kira through your own Codex or Claude Code account.">
-  <meta property="og:title" content="Kira Wallet"><meta property="og:description" content="Your tokens. Your own AI. Your records stay local."><meta property="og:type" content="website"><meta property="og:url" content="https://kirawallet.app">
-  <link rel="canonical" href="https://kirawallet.app"><link rel="icon" href="/favicon.svg"><link rel="apple-touch-icon" href="/assets/kira-logo.png"><link rel="stylesheet" href="/site.css">
-<script src="/demo.js" defer></script></head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Kira Wallet · Manage your wallets with your own AI.</title>
+  <meta name="description" content="Bring your Codex or Claude account to your wallets. See your tokens together, ask Kira to research your holdings, and keep your keys and records on your computer.">
+  <meta property="og:title" content="Kira Wallet · Manage your wallets with your own AI.">
+  <meta property="og:description" content="Bring your Codex or Claude account to your wallets. See your tokens together, ask Kira to research your holdings, and keep your keys and records on your computer.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://kirawallet.app">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Kira Wallet · Manage your wallets with your own AI.">
+  <meta name="twitter:description" content="Your wallets, your AI account, and Kira to do the research. Keys stay yours. Records stay local.">
+  <link rel="canonical" href="https://kirawallet.app">
+  <link rel="icon" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/assets/kira-logo.png">
+  <link rel="stylesheet" href="/site.css?v=8cdd1eea16">
+  <script src="/demo.js?v=8cdd1eea16" defer></script>
+</head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="nav"><a class="brand" href="/" aria-label="Kira Wallet home"><img src="/assets/kira-logo.png" width="38" height="38" alt=""><span>Kira Wallet</span></a><nav aria-label="Main"><a href="#demo">See Kira work</a><a href="#privacy">Your data</a><a class="nav-cta" href="#install">Get Kira <span aria-hidden="true">↗</span></a></nav></header>
+<header class="nav wrap">
+  <a class="brand" href="/" aria-label="Kira Wallet home"><img src="/assets/kira-logo.png" width="38" height="38" alt=""><span>Kira Wallet</span></a>
+  <nav aria-label="Main">
+    <a href="#meet-kira">Meet Kira</a>
+    <a href="#privacy">Your control</a>
+    <a class="nav-cta" href="#install">Get Kira <span aria-hidden="true">↗</span></a>
+  </nav>
+</header>
 <main id="main">
-<section class="hero wrap"><div class="hero-copy"><h1>Your wallets.<br>Your tokens.<br>Your own AI.</h1><p class="lead">Find and follow your tokens across supported chains. Connect your own AI to understand your holdings. Your wallet records stay on your computer.</p><div class="hero-actions"><a class="button" href="#install">Get Kira <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a><a class="source-link" href="https://github.com/realproject7/kira-wallet" target="_blank" rel="noreferrer">Explore the source <span aria-hidden="true">↗</span></a></div><p class="hero-meta">Runs locally · Watch only · Open source</p></div>
-<div id="demo" class="hero-motion"><div class="motion-frame"><video id="kira-demo-video" width="720" height="860" muted loop playsinline preload="metadata" poster="/assets/kira-scenarios-poster.png" aria-label="Three reconstructed Kira conversations" aria-describedby="demo-note"><source src="/assets/kira-scenarios.mp4" type="video/mp4"></video></div><div class="motion-controls"><p id="demo-note">Reconstructed conversations · Illustrative results</p><button id="demo-toggle" type="button" aria-label="Play demo">Play demo</button></div><p class="motion-note">LP discovery is a preview scenario. Current research covers direct token holdings.</p><details class="motion-transcript"><summary>Read the scenarios</summary><div><h3>Find overlooked tokens</h3><p>“Which networks or tokens might be missing from my recorded holdings?”</p><p>APE on Ethereum, CASHCAT on Robinhood and SIGNET on Base appear as illustrative findings. Kira suggests checking coverage before treating missing records as zero.</p><h3>Check Blast exposure</h3><p>“Which tokens do I have on Blast across all my wallets?”</p><p>The example groups ETH, USDB and BLAST and calls out gas needs.</p><h3>Remember forgotten LPs</h3><p>“Do I have a liquidity pool position on Aerodrome or Uniswap?”</p><p>This concept shows WETH/USDC on Aerodrome and ETH/USDC on Uniswap. These are reconstructed positions, not live wallet evidence.</p></div></details></div></section>
-<section class="principles wrap" aria-label="Product principles"><p>Across supported chains.<br><strong>One place for your tokens.</strong></p><p>Connect your own AI.<br><strong>Choose what it can see.</strong></p><p>Keep your records local.<br><strong>Your wallet stays yours.</strong></p></section>
+  <section class="hero wrap" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <p class="eyebrow">YOUR WALLET RESEARCH PARTNER</p>
+      <h1 id="hero-title"><span>Manage your wallets.</span><span>With your own AI.</span></h1>
+      <p class="lead">Bring the Codex or Claude account you already use. See your tokens together, ask better questions, and let Kira do the research.</p>
+      <div class="hero-actions">
+        <a class="button" href="#install">Get Kira <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
+        <a class="source-link" href="https://github.com/realproject7/kira-wallet" target="_blank" rel="noreferrer">Explore the source <span aria-hidden="true">↗</span></a>
+      </div>
+      <p class="hero-meta"><span class="status-dot" aria-hidden="true"></span>Runs locally. Works with your AI account.</p>
+    </div>
+    <div id="demo" class="demo" role="region" aria-label="Kira product examples">
+      <div class="demo-header">
+        <div class="demo-brand"><img src="/assets/kira-logo.png" width="30" height="30" alt=""><span>Kira Chat</span></div>
+        <span class="demo-badge">Demo</span>
+      </div>
+      <div class="demo-tabs" role="tablist" aria-label="Example questions">
+        <button id="demo-tab-tokens" role="tab" aria-selected="true" aria-controls="demo-tokens" tabindex="0">Find value</button>
+        <button id="demo-tab-blast" role="tab" aria-selected="false" aria-controls="demo-blast" tabindex="-1">Review Blast</button>
+        <button id="demo-tab-compare" role="tab" aria-selected="false" aria-controls="demo-compare" tabindex="-1">See changes</button>
+      </div>
+      <div class="demo-body">
+        <section id="demo-tokens" class="demo-panel" role="tabpanel" aria-labelledby="demo-tab-tokens">
+          <p class="demo-question">What are my overlooked tokens worth? Show balances, prices and markets.</p>
+          <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
+          <p class="demo-answer">Start with these three. CASHCAT has a market to review; SIGNET still needs a price.</p>
+          <div class="token-results">
+            <article class="token-result">
+              <div class="token-top"><img src="/assets/cashcat.png" width="36" height="36" alt=""><div class="token-identity"><strong>CASHCAT</strong><span>Robinhood · Daily wallet</span></div><strong class="token-value">$216.00</strong></div>
+              <div class="token-facts"><span>1,200 tokens</span><span>$0.1800 each</span></div>
+              <a class="token-market" href="https://lptoken.fun/trade/robinhood/0x020bfc650a365f8bb26819deaabf3e21291018b4" target="_blank" rel="noreferrer">Uniswap v4 · CASHCAT / USDG <span aria-hidden="true">↗</span></a>
+            </article>
+            <article class="token-result">
+              <div class="token-top"><img src="/assets/ape.png" width="36" height="36" alt=""><div class="token-identity"><strong>APE</strong><span>Ethereum · Daily wallet</span></div><strong class="token-value">$17.00</strong></div>
+              <div class="token-facts"><span>20 tokens</span><span>$0.8500 each</span></div>
+              <span class="token-market">Uniswap v3 · APE / WETH</span>
+            </article>
+            <article class="token-result">
+              <div class="token-top"><img src="/assets/signet.png" width="36" height="36" alt=""><div class="token-identity"><strong>SIGNET</strong><span>Base · Trading wallet</span></div><span class="token-value unknown">Unpriced</span></div>
+              <div class="token-facts"><span>650 tokens</span><span>Price unavailable</span></div>
+              <span class="token-market muted">No funded market recorded</span>
+            </article>
+          </div>
+          <div class="demo-summary"><span>Recorded spot value</span><strong>$233.00 <small>+ 1 unpriced token</small></strong></div>
+        </section>
+        <section id="demo-blast" class="demo-panel" role="tabpanel" aria-labelledby="demo-tab-blast" hidden>
+          <p class="demo-question">Review my Blast wallets. What do I hold, and where can these tokens trade?</p>
+          <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
+          <p class="demo-answer">Your Blast holdings, together. Keep some ETH for fees before moving funds.</p>
+          <div class="token-results">
+            <article class="token-result">
+              <div class="token-top"><img src="/assets/eth.png" width="36" height="36" alt=""><div class="token-identity"><strong>ETH</strong><span>Blast · Daily wallet</span></div><strong class="token-value">$135.00</strong></div>
+              <div class="token-facts"><span>0.050 ETH</span><span>$2,700.00 each</span></div>
+              <span class="token-market">Native gas asset</span>
+            </article>
+            <article class="token-result">
+              <div class="token-top"><img src="/assets/usdb.png" width="36" height="36" alt=""><div class="token-identity"><strong>USDB</strong><span>Blast · Daily wallet</span></div><strong class="token-value">$250.00</strong></div>
+              <div class="token-facts"><span>250 tokens</span><span>$1.0000 each</span></div>
+              <a class="token-market" href="https://dexscreener.com/blast/0xf00da13d2960cf113edcef6e3f30d92e52906537" target="_blank" rel="noreferrer">Thruster v3 · USDB / WETH <span aria-hidden="true">↗</span></a>
+            </article>
+            <article class="token-result">
+              <div class="token-top"><img src="/assets/blast.png" width="36" height="36" alt=""><div class="token-identity"><strong>BLAST</strong><span>Blast · Trading wallet</span></div><strong class="token-value">$15.66</strong></div>
+              <div class="token-facts"><span>100,000 tokens</span><span>$0.0001566 each</span></div>
+              <a class="token-market" href="https://dexscreener.com/blast/0x9a0aa28d999a21d3cf6f2703cdbba9feaf4a32f7" target="_blank" rel="noreferrer">Thruster v3 · BLAST / WETH <span aria-hidden="true">↗</span></a>
+            </article>
+          </div>
+          <div class="demo-summary"><span>Recorded spot value</span><strong>$400.66 <small>across 2 wallets</small></strong></div>
+        </section>
+        <section id="demo-compare" class="demo-panel" role="tabpanel" aria-labelledby="demo-tab-compare" hidden>
+          <p class="demo-question">What changed since the last time you checked my wallet?</p>
+          <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
+          <p class="demo-answer">Your balances stayed the same. Prices moved, and a few coverage gaps were filled.</p>
+          <div class="token-results">
+            <article class="token-result">
+              <div class="token-top"><img src="/assets/cashcat.png" width="36" height="36" alt=""><div class="token-identity"><strong>CASHCAT</strong><span>1,200 tokens · unchanged</span></div><strong class="token-value change">+$12.00</strong></div>
+              <div class="comparison-facts"><span>Price</span><strong>$0.1800 <span aria-hidden="true">→</span> $0.1900</strong></div>
+              <span class="token-market">Robinhood · recorded spot value</span>
+            </article>
+            <article class="token-result">
+              <div class="token-top"><img src="/assets/eth.png" width="36" height="36" alt=""><div class="token-identity"><strong>ETH</strong><span>0.050 ETH · unchanged</span></div><strong class="token-value change">+$2.50</strong></div>
+              <div class="comparison-facts"><span>Price</span><strong>$2,700 <span aria-hidden="true">→</span> $2,750</strong></div>
+              <span class="token-market">Blast · recorded spot value</span>
+            </article>
+            <article class="coverage-result"><span class="coverage-icon" aria-hidden="true">✓</span><div><strong>Two balances verified as zero</strong><p>Previously unknown. Now observed on-chain.</p></div></article>
+          </div>
+          <div class="demo-summary"><span>Change in priced value</span><strong class="change">+$14.50 <small>balances unchanged</small></strong></div>
+        </section>
+      </div>
+      <div class="demo-composer" aria-hidden="true"><span>Ask Kira about your wallets…</span><div><small><span class="status-dot"></span>Your AI account</small><span class="demo-send">↑</span></div></div>
+    </div>
+  </section>
 
-<section id="privacy" class="privacy wrap"><div class="privacy-mark">K</div><div><h2>Local records.<br>Explicit context.</h2><p>Your portfolio and Kira conversation files live on your computer. This website is an introduction and installation guide. It does not host your wallet workspace.</p><div class="privacy-details"><div><h3>Research connections</h3><p>RPC uses your custom connection with public fallback by default. Indexers extend token discovery. Browser wallets and local OWS accounts link their public addresses; signing keys stay outside the research agent.</p></div><div><h3>Model connections</h3><p>Your message and approved context go through your native CLI to its model service. Choose one wallet or the whole portfolio and enable research tools. General chat remains available with wallet access off. Provider and native CLI policies apply.</p></div></div><p class="privacy-footnote">No signing or trading through chat. You can allow your agent to inspect records and run holdings or price research. Changing model or context starts a fresh conversation.</p></div></section>
-<section id="install" class="install wrap"><div><h2>Start with<br>your wallet.</h2><p>macOS · Node.js 22+ · Python 3.11+</p><p class="install-note">Install the published npm package, then open local setup. Wallet creation, chat history and research updates are prepared for the next release.</p><a class="source-link" href="https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/CLI.md" target="_blank" rel="noreferrer">Read the setup guide ↗</a></div><div class="terminal"><div class="terminal-top"><span>TERMINAL</span><span>NPM INSTALL</span></div><pre><code>npm install -g kira-wallet
-kira setup</code></pre><p>Open the local setup screen. Connect your CLI account, choose context permissions, and check a response.</p><div class="terminal-footer"><span>Codex CLI 0.158.x</span><span>Claude Code 2.1.259–2.1.x</span></div></div></section>
+  <section id="meet-kira" class="meet wrap" aria-labelledby="meet-title">
+    <div class="companion-visual">
+      <span class="kira-greeting">Hi, I’m Kira.</span>
+      <img src="/assets/kira-explain.png" width="598" height="800" loading="lazy" alt="Kira holding her notebook and introducing your wallet research workspace">
+      <div class="companion-caption"><strong>A little help. A clearer picture.</strong><span>Your wallet research partner.</span></div>
+    </div>
+    <div class="meet-copy">
+      <p class="eyebrow">MEET YOUR NEW RESEARCH PARTNER</p>
+      <h2 id="meet-title">Let Kira do<br>the legwork.</h2>
+      <p class="section-lead">Less hunting through explorers.<br>More understanding what you hold.</p>
+      <div class="capabilities">
+        <article><span class="capability-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h15a1 1 0 0 1 1 1v12H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h13v3M20 10h-5v5h5M16 12.5h1"/></svg></span><div><h3>Your wallets, in one place.</h3><p>Add a public address. Find your tokens across supported chains without connecting your keys.</p></div></article>
+        <article><span class="capability-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 4h16v12H9l-5 4V4M8 8h8M8 12h5"/></svg></span><div><h3>Ask. Compare. Refresh.</h3><p>Use your own AI to research tokens, compare saved checks, and refresh holdings or prices.</p></div></article>
+        <article><span class="capability-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v18M3 12h18M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></span><div><h3>A fresh wallet, too.</h3><p>Create an encrypted wallet in the local app. Kira follows its public account while keys stay in your vault.</p></div></article>
+      </div>
+    </div>
+  </section>
+
+  <section id="privacy" class="privacy wrap" aria-labelledby="privacy-title">
+    <div class="privacy-heading"><p class="eyebrow">BUILT AROUND YOUR CONTROL</p><h2 id="privacy-title">Your keys stay yours.</h2></div>
+    <div class="privacy-grid">
+      <article><span class="privacy-number">01</span><h3>Watch without granting access.</h3><p>A public address is enough. Watching a wallet gives Kira no permission to spend.</p></article>
+      <article><span class="privacy-number">02</span><h3>Keep your records local.</h3><p>Your portfolio and saved chats stay on your computer. New wallet keys stay encrypted in your local vault.</p></article>
+      <article><span class="privacy-number">03</span><h3>Choose what your AI sees.</h3><p>You select the wallet context. Your messages and selected records go to your chosen AI provider.</p></article>
+    </div>
+  </section>
+
+  <section id="install" class="install wrap" aria-labelledby="install-title">
+    <div class="install-copy"><p class="eyebrow">LET’S GET YOU SET UP</p><h2 id="install-title">Your next question<br>starts here.</h2><p>Install Kira, add a wallet, and connect your AI account. Your local workspace is ready when you are.</p><p class="requirements">macOS · Node.js 22+ · Python 3.11+</p><a class="source-link" href="https://github.com/realproject7/kira-wallet/blob/codex/kira-product-polish/docs/CLI.md" target="_blank" rel="noreferrer">Read the setup guide <span aria-hidden="true">↗</span></a></div>
+    <div class="terminal"><div class="terminal-top"><span>GET KIRA</span><button id="copy-install" type="button" aria-label="Copy installation commands">Copy commands</button></div><pre><code id="install-command">npm install -g kira-wallet
+kira setup</code></pre><p>Open your local app. Add a wallet. Say hello to Kira.</p><span id="copy-status" class="sr-only" role="status"></span></div>
+  </section>
 </main>
-<footer class="footer wrap"><a class="brand" href="/"><img src="/assets/kira-logo.png" width="30" height="30" alt=""><span>Kira Wallet</span></a><p>Your tokens. Your own AI. Local records.</p><a href="https://github.com/realproject7/kira-wallet" target="_blank" rel="noreferrer">Open source · MIT ↗</a></footer>
+<footer class="footer wrap"><a class="brand" href="/"><img src="/assets/kira-logo.png" width="30" height="30" alt=""><span>Kira Wallet</span></a><p>Your wallets. Your AI. A little help from Kira.</p><a href="https://github.com/realproject7/kira-wallet" target="_blank" rel="noreferrer">Open source · MIT <span aria-hidden="true">↗</span></a></footer>
 </body>
 </html>

@@ -149,7 +149,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         if 'http' in label.lower() or 'claim' in label.lower():label='Airdrop';name='Unverified token'
         links=[]
         if t.get('mintclub'):links.append({'label':'Mint Club','url':t['mintclub']['source_url']})
-        found={}
+        found={}; market_pools=[]
         for pool in t.get('dex_pools',[]):
             if not pool_has_liquidity(pool):continue
             venue=pool['venue'].lower(); label_venue='Uniswap' if 'uniswap' in venue else 'Aerodrome' if 'aerodrome' in venue else venue.replace('-',' ').title()
@@ -158,12 +158,22 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             if not weight and measured.get('quote_balance'):
                 weight=(number(measured['quote_balance']) or 0)*(eth or 0) if measured.get('quote_symbol')=='WETH' else number(measured['quote_balance']) or 0
             if label_venue not in found or weight>found[label_venue][0]:found[label_venue]=(weight,pool['source_url'])
+            pair=[]
+            for coin in pool.get('paired_tokens',[])[:2]:
+                if not isinstance(coin,dict):continue
+                symbol=coin.get('symbol')
+                pair.append({'address':coin.get('address'),'symbol':symbol if isinstance(symbol,str) and symbol else '?',
+                             'image_url':image_for(images,t['chain_id'],coin.get('address'))})
+            market_pools.append({'venue':label_venue,'pool':pool.get('pool'),'url':pool['source_url'],
+                'pair':pair,'liquidity_usd':number((pool.get('reported_liquidity') or {}).get('usd')),
+                'price_usd':number(pool.get('reported_price_usd')),'observed_at':pool.get('observed_at') or snapshot.get('compiled_at')})
+        market_pools.sort(key=lambda row:-(row['liquidity_usd'] or 0))
         links += [{'label':k,'url':v[1]} for k,v in found.items()]
         explorer=EXPLORERS.get(t['chain_id'])
         if explorer:links.append({'label':'Explorer','url':explorer+'/token/'+t['token_address']})
         assets.append({'id':f'{t["chain_id"]}:{t["token_address"].lower()}','chain_id':t['chain_id'],
             'symbol':label,'name':name,'address':t['token_address'],'balance':t['wallet_balance'],
-            'price':p,'value_usd':value,'is_native':False,'links':links,
+            'price':p,'value_usd':value,'is_native':False,'links':links,'market_pools':market_pools,
             'balance_observed_at':t.get('balance_observed_at') or snapshot.get('compiled_at'),
             'burn_quote':(t.get('mintclub') or {}).get('wallet_full_burn'),
             'exit_quote':exit_quote(t),
@@ -178,6 +188,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         px=(number(ref.get('usd')) if ref else eth if sym=='ETH' else number(refs.get(sym+'_USD',{}).get('value'))) if native_identity(c['chain_id'],sym) else None
         assets.append({'id':f'{c["chain_id"]}:native','chain_id':c['chain_id'],'symbol':sym,'name':'Ether' if sym=='ETH' else sym,
             'address':None,'balance':raw,'is_native':True,'curve_reserve':None,
+            'balance_observed_at':c.get('native_observed_at'),
             'image_url':image_for(images,c['chain_id'],native_symbol=sym),
             'price':{'usd':px,'basis':ref.get('basis','Market index') if ref else 'Market index','quality':'estimated','observed_at':ref.get('observed_at') if ref else price_time,
                      'source':ref.get('source') if ref else refs.get(sym+'_USD',{}).get('source')} if px is not None else None,
@@ -192,7 +203,12 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         chains.append({'id':c['chain_id'],'name':c['name'],'environment':c['environment'],
             'image_url':chain_image(c['chain_id']),
             'assets':len(rows),'value_usd':sum(a['value_usd'] for a in rows if a['value_usd'] is not None) if c['environment']=='mainnet' and any(a['value_usd'] is not None for a in rows) else None,
-            'complete':c['general_erc20_discovery']=='indexer_checked','rpc_available':c['rpc_status']=='available'})
+            'complete':c['general_erc20_discovery']=='indexer_checked','rpc_available':c['rpc_status']=='available',
+            'native_symbol':c.get('native_symbol'),
+            'native_balance':c.get('native_balance') if c['rpc_status']=='available' and number(c.get('native_balance')) is not None else None,
+            'native_observed_at':c.get('native_observed_at'),
+            'native_block_number':c.get('native_block_number'),
+            'registry_block_number':(c.get('mintclub_registry_scan') or {}).get('block_number')})
     values=[a['value_usd'] for a in assets if a['environment']=='mainnet' and a['value_usd'] is not None]
     total=sum(values) if values else None
     return {'address':entry['address'],'key':entry['address_key'],'tags':entry.get('tags',[]),
@@ -200,6 +216,8 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         'prices_at':price_time,'balance_observed_at':max((t.get('balance_observed_at','') for t in tokens),default=snapshot.get('compiled_at')),
         'known_value_usd':total,'unpriced_count':sum(a['value_usd'] is None for a in assets),
         'assets':assets,'chains':chains,'counts':snapshot.get('counts',{}),'status':snapshot.get('status'),
+        'snapshot_price_references':{key:{'value':value['value'],'observed_at':value.get('observed_at')}
+            for key,value in refs.items() if re.fullmatch(r'[A-Za-z][A-Za-z0-9]{0,15}_USD',key) and isinstance(value,dict) and number(value.get('value')) is not None},
         'report_url':'/api/report/'+entry['address_key']}
 
 def dashboard(wallets):

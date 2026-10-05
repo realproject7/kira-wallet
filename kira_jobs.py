@@ -147,8 +147,10 @@ class JobStore:
             raise JobError('invalid_wallet', 'Expected a registered address or exact tag.')
         wallets = read(self.root / 'wallets.json')['wallets']
         matches = [w for w in wallets if w['address_key'] == selector.lower() or selector in w['tags']]
+        if not matches:
+            raise JobError('wallet_not_registered', 'No registered wallet matches this address or name. A new wallet may still be queued for registration. Check Activity.')
         if len(matches) != 1:
-            raise JobError('wallet_not_unique', 'Choose a unique registered wallet address.')
+            raise JobError('wallet_not_unique', 'More than one registered wallet has this name. Choose its exact public address.')
         return matches[0]
 
     def normalize(self, operation, value):
@@ -299,7 +301,7 @@ class JobStore:
                 'valuation_method_changed':bool((a or {}).get('mintclub'))!=bool((b or {}).get('mintclub'))})
         return {'schema_version':1,'before':before,'after':after,'wallet':new['wallet_address'],
             'coverage_changed':old.get('coverage')!=new.get('coverage'),'price_references_changed':old.get('price_references')!=new.get('price_references'),
-            'positions':changes,'note':'Absent records are unknown, not zero. Price overlays have separate observations and are not balance changes.'}
+            'positions':changes,'note':'Absent records are unknown, not zero. Price overlays have separate observations and are not balance changes. Coverage changes compare full evidence, including observation times and blocks; this alone does not prove the set of checked networks changed. Positions compare direct token records. Read both snapshots to compare native balances.'}
 
     def snapshots(self, wallet):
         key = self.wallet(wallet)['address_key']

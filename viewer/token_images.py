@@ -1,4 +1,4 @@
-"""Mint Club image metadata. Only the agent refreshes the local catalog."""
+"""Contract-scoped token artwork. Only research refreshes the local catalog."""
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
@@ -15,7 +15,18 @@ from chain_images import chain_image
 ROOT = Path(os.environ.get('KIRA_DATA_DIR',Path(__file__).resolve().parents[1])).expanduser().resolve()
 API = 'https://mint.club/api'
 IMAGE_HOSTS = ('mint.club', 'tokens.1inch.io', 'coin-images.coingecko.com', 'fc.hunt.town',
-               'mint-club-v2.s3.us-west-2.amazonaws.com')
+               'mint-club-v2.s3.us-west-2.amazonaws.com', 'cdn.dexscreener.com')
+DEX_CHAINS = {1:'ethereum', 8453:'base', 81457:'blast', 4663:'robinhood',
+              10:'optimism', 42161:'arbitrum', 56:'bsc', 137:'polygon',
+              43114:'avalanche', 130:'unichain', 33139:'apechain'}
+LP_CATALOG = 'https://lptoken.fun/api/markets?sort=volume&limit=100'
+# Contract-verified CoinGecko artwork fallback, checked 2026-10-05.
+KNOWN_TOKEN_ARTWORK = {
+    '81457:0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad':
+        'https://coin-images.coingecko.com/coins/images/35494/small/Blast.jpg?1719385662',
+    '81457:0x4300000000000000000000000000000000000003':
+        'https://coin-images.coingecko.com/coins/images/35595/small/65c67f0ebf2f6a1bd0feb13c_usdb-icon-yellow.png?1709255427',
+}
 
 
 def identity(chain_id, address):
@@ -59,7 +70,7 @@ def image_for(catalog, chain_id, address=None, *, mint=False, native_symbol=None
         return chain_image(1 if native_symbol == 'ETH' else chain_id)
     if mint: return mint_logo(chain_id, address)
     row = catalog.get('tokens', {}).get(identity(chain_id, address)) or {}
-    image = safe_image(row.get('image_url'))
+    image = safe_image(row.get('image_url')) or KNOWN_TOKEN_ARTWORK.get(identity(chain_id,address))
     # Mint Club still returns legacy 1inch URLs that reject requests with HTTP 403.
     # Its Hunt token-image endpoint serves the same reserve contract's logo.
     if image and urlparse(image).hostname == 'tokens.1inch.io':
@@ -69,7 +80,7 @@ def image_for(catalog, chain_id, address=None, *, mint=False, native_symbol=None
 
 def fetch_metadata(url):
     try:
-        request = urllib.request.Request(url, headers={'User-Agent': 'wallet-research'})
+        request = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 KiraWallet/0.1', 'Accept':'application/json'})
         with urllib.request.urlopen(request, timeout=15) as response: return json.load(response)
     except (OSError, ValueError): return None
 
@@ -83,11 +94,51 @@ def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, 
         try: return 0 <= (now - datetime.fromisoformat(raw)).total_seconds() < 86400
         except (ValueError, TypeError): return False
     records = catalog.setdefault('tokens', {})
+    artwork_checked=catalog.setdefault('artwork_checked',{})
+    wanted = {identity(t.get('chain_id'),t.get('token_address')):t
+              for snapshot in snapshots for t in snapshot.get('tokens',[])
+              if not t.get('mintclub') and identity(t.get('chain_id'),t.get('token_address'))}
     for asset,row in (native_images or {}).items():
         image = safe_image(row.get('image_url'))
         if image and asset in {value[1] for value in NATIVE_ASSETS.values()}:
             catalog.setdefault('native', {})[asset] = {**row, 'image_url': image}
     errors = 0
+    # lpTOKEN uses chain-specific imageUrl metadata, often from DEX Screener.
+    # Read public catalog metadata without sending a wallet address.
+    missing = {key:t for key,t in wanted.items()
+               if force or not fresh(artwork_checked.get(key) or records.get(key,{}).get('observed_at'))}
+    if any(t['chain_id'] in (4663,8453,1) for t in missing.values()):
+        response = fetch(LP_CATALOG)
+        if isinstance(response,dict) and isinstance(response.get('items'),list):
+            for market in response['items'][:100]:
+                if not isinstance(market,dict):continue
+                token=market.get('token') or {};chain=market.get('chain') or {}
+                if not isinstance(token,dict) or not isinstance(chain,dict):continue
+                key=identity(chain.get('id'),token.get('address'));image=safe_image(token.get('imageUrl'))
+                if key in missing and image:
+                    records[key]={'image_url':image,'source':LP_CATALOG,'observed_at':observed}
+                    artwork_checked[key]=observed
+                    missing.pop(key)
+        else:errors+=1
+    batches=[]
+    for chain_id,slug in DEX_CHAINS.items():
+        addresses=[t['token_address'].lower() for t in missing.values() if t['chain_id']==chain_id]
+        for offset in range(0,len(addresses),30):
+            batch=addresses[offset:offset+30]
+            batches.append((chain_id,slug,set(batch),'https://api.dexscreener.com/tokens/v1/'+slug+'/'+','.join(batch)))
+    def dex_get(batch):return batch,fetch(batch[3])
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for (chain_id,slug,addresses,source),response in pool.map(dex_get,batches):
+            if not isinstance(response,list):errors+=1;continue
+            for address in addresses:artwork_checked[identity(chain_id,address)]=observed
+            for pair in response[:1000]:
+                if not isinstance(pair,dict) or pair.get('chainId')!=slug:continue
+                token=pair.get('baseToken') or {};info=pair.get('info') or {}
+                if not isinstance(token,dict) or not isinstance(info,dict):continue
+                address=token.get('address');key=identity(chain_id,address)
+                image=safe_image(info.get('imageUrl'))
+                if key and isinstance(address,str) and address.lower() in addresses and image:
+                    records[key]={'image_url':image,'source':source,'observed_at':observed}
     def add(token, source):
         if not isinstance(token, dict): return
         key = identity(token.get('chainId'), token.get('tokenAddress'))
