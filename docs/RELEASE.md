@@ -1,5 +1,22 @@
 # Release preparation
 
+## GitHub and npm distribution
+
+GitHub version releases and npm registry publication are separate. The GitHub
+0.1.1 release provides the reviewed `kira-wallet-0.1.1.tgz`, its SHA-256 file and
+release manifest. Its tag pins the source used to create those assets. Install
+that archive using the GitHub URL in README.md while npm still serves 0.1.0.
+The historical 0.1.0 GitHub release points to `cfa91659a92b14467c7458d27508157f5fd615a9`
+and preserves the exact already-published npm archive.
+
+The operator explicitly requested GitHub version releases. npm publication
+remains operator-only. A GitHub tag or Release does not merge the open PR or
+promote the website. README screenshots are freshly captured sample portfolios;
+their invented wallet addresses, balances and seeded chat are documented in
+`screenshots/kira-readme-sources.json`. No private portfolio image is uploaded.
+
+## npm publication preparation
+
 The published npm package is 0.1.0. The next source candidate is 0.1.1, with
 wallet-first setup, safe Markdown answers, a five-token home preview and editable
 question starters, native price/artwork fallback and clearer unknown-value filters.

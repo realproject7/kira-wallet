@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-05T02:51:26.661819+00:00",
+  "viewer_ui_source": "8712e8f5a2af27c8bd190e313c44070b9c676de5",
+  "fixture": "Fresh sample snapshots with invented balances and a handwritten illustrative conversation. Production static UI is unchanged. No personal portfolio records or transcripts were read.",
+  "wallet_names": [
+    "Sample daily wallet",
+    "Sample savings wallet"
+  ],
+  "personal_wallet_data": false,
+  "images": [
+    {
+      "file": "kira-readme-overview.png",
+      "viewport": [
+        1728,
+        1120
+      ],
+      "sha256": "0d21a2f8eab978573f5f9c3661ecf5add1dcfc36aff4ed3e8bd89fdac9c54fd6"
+    },
+    {
+      "file": "kira-readme-markets.png",
+      "viewport": [
+        1728,
+        1140
+      ],
+      "sha256": "648ad3146b3308c888e9e506285fc2965988bb9118312bf49b804a4c2cac4408"
+    }
+  ]
+}
