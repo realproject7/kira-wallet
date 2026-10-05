@@ -12,6 +12,9 @@ CASHCAT and Blast examples, contract-scoped token artwork, compact pool groups,
 full-height chat, and bounded market facts. See KIRA_PRODUCT_POLISH.md for product
 acceptance evidence. These changes require a newly prepared archive from the
 reviewed commit; the earlier 0.1.1 archive remains a separate immutable artifact.
+The final candidate also includes compact wallet rows and an automatic compact
+inventory for large portfolios. It preserves every holding and approved scope,
+with detailed market and exit evidence available through scoped token reads.
 
 Required preparation from a clean, reviewed source checkout:
 

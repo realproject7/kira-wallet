@@ -86,3 +86,29 @@ with regression tests; final review and packaging receipts accompany the PR.
 
 npm latest was 0.1.0 and 0.1.1 returned E404. Installation guidance preserves that
 distinction. Registry publication remains operator-only.
+
+## Wallet rows and large-portfolio chat follow-up
+
+Token and network detail now place wallet identity and position value in one
+row. Price and allocation are adjacent facts. Historical burn output retains its
+time, block, royalty basis and gas exclusion in a separate compact surface.
+Missing holdings retain an unknown value. At the tested desktop size, the empty
+row is 107px and the row with a burn quote is 240px. Long wallet names and 320px,
+390px and 1100px layouts have no horizontal overflow.
+
+The actual local chat rejected sends before starting a model turn because the
+base recorded context exceeded 240,000 bytes even with pool detail removed.
+Repeated market links and burn evidence also consumed that budget. The new
+fallback retains every holding, balance, exact chain/contract identity, price
+observation, testnet environment, unknown value and approved wallet. It defers
+market and exit detail to the existing scoped `token_read` tool. It does not
+change the configured provider or permissions. Current records supersede older
+answers in the conversation. Portfolios still above the limit after compaction
+receive an explicit scope-selection error; records are never silently truncated.
+
+An 800-holding regression confirms complete inventory, unchanged permissions,
+successful chat admission and full token-specific exit evidence. `npm test`
+passed 135 Python tests and all Node suites. Clean package installation and
+70-member boundary verification passed. Both private portfolios were included in
+the public-file and Git-history scan with no findings. npm 0.1.1 remains
+unpublished as of the registry check on 2026-10-05.
