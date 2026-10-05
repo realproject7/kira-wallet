@@ -8,9 +8,10 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / 'site' / 'assets'
-FPS, SCALE, SECONDS = 24, 2, 16
+FPS, SCALE, SECONDS = 24, 3, 16
+VIDEO_CRF = 14
 FONT = '/System/Library/Fonts/SFNS.ttf'
-INK, MUTED, PLUM = '#302735', '#716078', '#735183'
+INK, MUTED, PLUM = '#302735', '#66536e', '#684578'
 BACKGROUND, CARD, LINE = '#fdfbff', '#f5f0f8', '#e8dff0'
 CASES = [
     {
@@ -65,7 +66,9 @@ LOGO = Image.open(ASSETS / 'kira-logo.png').convert('RGBA')
 @lru_cache(maxsize=32)
 def font(size, weight=400):
     result = ImageFont.truetype(FONT, round(size * SCALE))
-    result.set_variation_by_axes([100, max(17, min(96, size)), 400, weight])
+    # A little more stem weight keeps small raster text legible after video
+    # compression and responsive downscaling without enlarging the layout.
+    result.set_variation_by_axes([100, max(17, min(96, size)), 400, max(450, weight)])
     return result
 
 class Painter:
@@ -107,8 +110,8 @@ class Painter:
     def logo(self, source, x, y, size):
         pixels = round(size * SCALE)
         icon = Image.new('RGBA', (pixels, pixels), '#ffffff')
-        art = source.copy()
-        art.thumbnail((pixels, pixels), Image.Resampling.LANCZOS)
+        ratio = min(pixels / source.width, pixels / source.height)
+        art = source.resize((round(source.width * ratio), round(source.height * ratio)), Image.Resampling.LANCZOS)
         icon.paste(art, ((pixels - art.width) // 2, (pixels - art.height) // 2), art)
         mask = Image.new('L', (pixels, pixels), 0)
         ImageDraw.Draw(mask).ellipse((0, 0, pixels - 1, pixels - 1), fill=255)
@@ -288,7 +291,7 @@ def render(name, profile):
     output = ASSETS / ('kira-scenarios' + suffix + '.mp4')
     layouts = [geometry(case, profile) for case in CASES]
     completed = [conversation(case, 14, profile, layout) for case, layout in zip(CASES, layouts)]
-    command = ['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{profile["width"] * SCALE}x{profile["height"] * SCALE}', '-r', str(FPS), '-i', '-', '-an', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(output)]
+    command = ['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{profile["width"] * SCALE}x{profile["height"] * SCALE}', '-r', str(FPS), '-i', '-', '-an', '-c:v', 'libx264', '-preset', 'medium', '-crf', str(VIDEO_CRF), '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(output)]
     initial = frame(0, profile, layouts, completed)
     with subprocess.Popen(command, stdin=subprocess.PIPE) as movie:
         assert movie.stdin is not None
@@ -313,6 +316,7 @@ def main():
     manifest = {
         'kind': 'synthetic_recorded_holdings_demo', 'seconds': SECONDS * len(CASES),
         'seconds_per_case': SECONDS, 'fps': FPS, 'render_scale': SCALE,
+        'video_crf': VIDEO_CRF,
         'presentation': 'One continuous chat stream. Earlier messages remain above; new questions and answers append below with internal automatic scrolling.',
         'profiles': PROFILES, 'cases': CASES,
         'notes': 'Synthetic questions, balances and prices. Recorded spot values are not executable sale quotes. No private portfolio is read. Public token artwork provenance remains in token-artwork-sources.json.',

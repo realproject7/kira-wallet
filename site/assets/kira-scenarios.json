@@ -3,7 +3,8 @@
   "seconds": 48,
   "seconds_per_case": 16,
   "fps": 24,
-  "render_scale": 2,
+  "render_scale": 3,
+  "video_crf": 14,
   "presentation": "One continuous chat stream. Earlier messages remain above; new questions and answers append below with internal automatic scrolling.",
   "profiles": {
     "desktop": {

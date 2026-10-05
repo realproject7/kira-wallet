@@ -11,7 +11,7 @@ all three questions and answers into one conversation.
   types a question, shows Kira researching, reveals its answer and adds three
   result cards. Earlier messages remain above as the conversation scrolls.
 - The composer stays inside the bottom of the frame. A shorter movie viewport,
-  two-pixel rendering scale and separate mobile compositions preserve readable
+  three-pixel rendering scale and separate mobile compositions preserve readable
   type and spacing. One white result panel aligns token identities, values and
   prices. All three rows and their subtotal fit above the composer. Mobile width responds to viewport height with a readable
   280px floor; short landscape screens retain normal page vertical scrolling.
@@ -31,13 +31,14 @@ all three questions and answers into one conversation.
 ## Generated assets
 
 All three MP4 files use H.264, 24 fps, no audio and faststart. Each runs exactly
-48 seconds. Source and poster URLs carry revision `88ddc35ce6ff`.
+48 seconds. Source and poster URLs carry a content revision to refresh cached
+media after each render.
 
 | Profile | Viewport width | Pixel dimensions | Logical dimensions | Bytes |
 | --- | --- | --- | --- | ---: |
-| Desktop | Above 700px | 1040×1140 | 520×570 | 1,627,539 |
-| Mobile | 421–700px | 880×1040 | 440×520 | 1,908,035 |
-| Compact | Up to 420px | 720×1040 | 360×520 | 1,754,113 |
+| Desktop | Above 700px | 1560×1710 | 520×570 | 3,550,993 |
+| Mobile | 421–700px | 1320×1560 | 440×520 | 3,782,381 |
+| Compact | Up to 420px | 1080×1560 | 360×520 | 3,609,169 |
 
 The new mobile layouts replace the old 320×600 composition that enlarged type
 and the entire frame on wider phones. At a 494px viewport, the film body text is
@@ -51,6 +52,27 @@ widths, coverage wrapping and composer/footer separation. It reads public
 artwork and synthetic examples only. It never reads a portfolio. The JSON
 manifest records the synthetic quantities, prices, timing and layouts.
 Recorded spot values are not executable sale quotes.
+
+### Text fidelity
+
+The film embeds raster text, so its resolution and compression affect small
+labels differently from the native HTML header. The font-fidelity follow-up
+raises the render scale from 2× to 3× and lowers H.264 CRF from 18 to 14 with
+the medium preset. Regular strokes have a minimum weight of 450, and muted
+labels use darker colors. The logical frame, body sizes and motion stay the
+same. Token artwork is resized to its target pixel dimensions so the higher
+render scale does not shrink low-resolution logos inside their circular frames.
+
+At the same 30-second desktop frame, original-versus-decoded RGB error on dark
+foreground pixels fell from 4.56 to 3.12 levels out of 255. This is a local
+compression check against each uncompressed render, not a perceptual score or
+a device-wide quality guarantee. The higher-resolution files are about 3.6–3.8MB
+each, roughly twice their preceding sizes. Only the active responsive film loads.
+All three new films passed full decoding and retained 48 seconds, 24 fps and no
+audio. Actual Chrome checks at 1440, 494 and 390px selected the new 3× sources,
+showed no horizontal overflow and retained automatic playback. A desktop click
+also left playback active. Browser console errors were empty. Logical panel and
+composer geometry remain covered by the renderer assertions in every frame.
 
 ## Verification
 
@@ -73,8 +95,8 @@ fixture with a missing desktop movie to verify media-error fallback. Switching
 to the valid mobile movie while a market link held focus preserved the visible
 transcript and paused video, then recovered when focus left.
 
-The current page produced no browser console errors. Independent read-only
-review of the final source and decoded media found no actionable execution
+The autoplay/mobile correction produced no browser console errors. Independent
+read-only review of that source and decoded media found no actionable execution
 issues. Its stale font-size documentation finding was corrected. Review VM
 checks covered normal interaction, responsive source transitions and focused
 error/reduced-motion recovery. The preceding README capture review remains
