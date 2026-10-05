@@ -16,8 +16,8 @@
   <link rel="canonical" href="https://kirawallet.app">
   <link rel="icon" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/assets/kira-logo.png">
-  <link rel="stylesheet" href="/site.css?v=8cdd1eea16">
-  <script src="/demo.js?v=8cdd1eea16" defer></script>
+  <link rel="stylesheet" href="/site.css?v=b162f640e620">
+  <script src="/demo.js?v=b162f640e620" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -41,18 +41,18 @@
       </div>
       <p class="hero-meta"><span class="status-dot" aria-hidden="true"></span>Runs locally. Works with your AI account.</p>
     </div>
-    <div id="demo" class="demo" role="region" aria-label="Kira product examples">
+    <div id="demo" class="demo" role="region" aria-label="Kira product examples" tabindex="0" aria-describedby="demo-reading-help">
+      <p id="demo-reading-help" class="sr-only">Automatic chat demonstration. Focus this area to read the conversation at your own pace. Move focus outside to resume playback.</p>
       <div class="demo-header">
         <div class="demo-brand"><img src="/assets/kira-logo.png" width="30" height="30" alt=""><span>Kira Chat</span></div>
         <span class="demo-badge">Demo</span>
       </div>
-      <div class="demo-tabs" role="tablist" aria-label="Example questions">
-        <button id="demo-tab-tokens" role="tab" aria-selected="true" aria-controls="demo-tokens" tabindex="0">Find value</button>
-        <button id="demo-tab-blast" role="tab" aria-selected="false" aria-controls="demo-blast" tabindex="-1">Review Blast</button>
-        <button id="demo-tab-compare" role="tab" aria-selected="false" aria-controls="demo-compare" tabindex="-1">See changes</button>
-      </div>
-      <div class="demo-body">
-        <section id="demo-tokens" class="demo-panel" role="tabpanel" aria-labelledby="demo-tab-tokens">
+      <video id="demo-film" class="demo-film" autoplay muted loop playsinline preload="metadata" aria-hidden="true" hidden
+        data-desktop="/assets/kira-scenarios.mp4?v=b162f640e620" data-mobile="/assets/kira-scenarios-mobile.mp4?v=b162f640e620"
+        data-poster-desktop="/assets/kira-scenarios-poster.png?v=b162f640e620" data-poster-mobile="/assets/kira-scenarios-mobile-poster.png?v=b162f640e620"
+        ></video>
+      <div class="demo-body" tabindex="0" role="region" aria-label="Demo conversation transcript">
+        <section id="demo-tokens" class="demo-panel" aria-label="Token values">
           <p class="demo-question">What are my overlooked tokens worth? Show balances, prices and markets.</p>
           <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
           <p class="demo-answer">Start with these three. CASHCAT has a market to review; SIGNET still needs a price.</p>
@@ -75,7 +75,7 @@
           </div>
           <div class="demo-summary"><span>Recorded spot value</span><strong>$233.00 <small>+ 1 unpriced token</small></strong></div>
         </section>
-        <section id="demo-blast" class="demo-panel" role="tabpanel" aria-labelledby="demo-tab-blast" hidden>
+        <section id="demo-blast" class="demo-panel" aria-label="Blast holdings">
           <p class="demo-question">Review my Blast wallets. What do I hold, and where can these tokens trade?</p>
           <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
           <p class="demo-answer">Your Blast holdings, together. Keep some ETH for fees before moving funds.</p>
@@ -98,7 +98,7 @@
           </div>
           <div class="demo-summary"><span>Recorded spot value</span><strong>$400.66 <small>across 2 wallets</small></strong></div>
         </section>
-        <section id="demo-compare" class="demo-panel" role="tabpanel" aria-labelledby="demo-tab-compare" hidden>
+        <section id="demo-compare" class="demo-panel" aria-label="Saved analysis changes">
           <p class="demo-question">What changed since the last time you checked my wallet?</p>
           <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
           <p class="demo-answer">Your balances stayed the same. Prices moved, and a few coverage gaps were filled.</p>
@@ -150,7 +150,7 @@
   </section>
 
   <section id="install" class="install wrap" aria-labelledby="install-title">
-    <div class="install-copy"><p class="eyebrow">LET’S GET YOU SET UP</p><h2 id="install-title">Your next question<br>starts here.</h2><p>Install Kira, add a wallet, and connect your AI account. Your local workspace is ready when you are.</p><p class="requirements">macOS · Node.js 22+ · Python 3.11+</p><a class="source-link" href="https://github.com/realproject7/kira-wallet/blob/codex/kira-product-polish/docs/CLI.md" target="_blank" rel="noreferrer">Read the setup guide <span aria-hidden="true">↗</span></a></div>
+    <div class="install-copy"><p class="eyebrow">LET’S GET YOU SET UP</p><h2 id="install-title">Your next question<br>starts here.</h2><p>Install Kira, add a wallet, and connect your AI account. Your local workspace is ready when you are.</p><p class="requirements">macOS · Node.js 22+ · Python 3.11+</p><a class="source-link" href="https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/CLI.md" target="_blank" rel="noreferrer">Read the setup guide <span aria-hidden="true">↗</span></a></div>
     <div class="terminal"><div class="terminal-top"><span>GET KIRA</span><button id="copy-install" type="button" aria-label="Copy installation commands">Copy commands</button></div><pre><code id="install-command">npm install -g kira-wallet
 kira setup</code></pre><p>Open your local app. Add a wallet. Say hello to Kira.</p><span id="copy-status" class="sr-only" role="status"></span></div>
   </section>

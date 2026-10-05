@@ -1,142 +1,142 @@
 {
-  "kind": "reconstructed_concept_demo",
-  "seconds": 42,
+  "kind": "synthetic_recorded_holdings_demo",
+  "seconds": 48,
+  "seconds_per_case": 16,
   "fps": 24,
-  "illustrative_observed_at": "2026-10-05T00:00:00Z",
+  "render_scale": 2,
+  "presentation": "One continuous chat stream. Earlier messages remain above; new questions and answers append below with internal automatic scrolling.",
+  "profiles": {
+    "desktop": {
+      "width": 520,
+      "height": 570,
+      "body": 14,
+      "detail": 13,
+      "card": 112,
+      "composer": 100
+    },
+    "mobile": {
+      "width": 320,
+      "height": 600,
+      "body": 16,
+      "detail": 14,
+      "card": 118,
+      "composer": 118
+    }
+  },
   "cases": [
     {
-      "label": "Find overlooked value",
-      "question": "Which tokens have been sitting idle, and what could I receive if I sold them?",
-      "working": "Checking activity evidence, holdings and exit routes\u2026",
-      "answer": "Three holdings to review in this example. Spot value and expected sale output are different.",
+      "id": "tokens",
+      "label": "Find value",
+      "question": "What are my overlooked tokens worth? Show balances, prices and markets.",
+      "working": "Reading your holdings and recorded markets…",
+      "answer": "Start with these three. CASHCAT has a market to review; SIGNET still needs a price.",
+      "summary": "Recorded spot value",
+      "total": "$233.00",
+      "note": "+ 1 unpriced token",
       "tokens": [
         {
           "symbol": "CASHCAT",
           "icon": "cashcat",
-          "chain": "Robinhood",
-          "balance": "1,200",
-          "price": "$0.1800",
+          "chain": "Robinhood · Daily wallet",
+          "quantity": "1,200 tokens",
+          "price": "$0.1800 each",
           "value": "$216.00",
-          "chain_id": 4663,
-          "contract": "0x020bfc650a365f8bb26819deaabf3e21291018b4",
-          "pool": "0xa92a3df27a00a276183ff7265fd8affa11df1fe8bb23ddfaf13f6c879a3f818b",
-          "market_url": "https://lptoken.fun/trade/robinhood/0x020bfc650a365f8bb26819deaabf3e21291018b4",
-          "route": "Uniswap v4 \u00b7 CASHCAT / USDG",
-          "output": "Simulated output 212.19 USDG \u00b7 gas $0.55",
-          "detail": "Example: no transfers in 180 days \u00b7 impact 1.5% \u00b7 fee 0.269%"
+          "market": "Uniswap v4 · CASHCAT / USDG"
         },
         {
           "symbol": "APE",
           "icon": "ape",
-          "chain": "Ethereum",
-          "balance": "20",
-          "price": "$0.8500",
+          "chain": "Ethereum · Daily wallet",
+          "quantity": "20 tokens",
+          "price": "$0.8500 each",
           "value": "$17.00",
-          "chain_id": 1,
-          "contract": "0x4d224452801aced8b2f0aebe155379bb5d594381",
-          "route": "Uniswap v3 \u00b7 APE / WETH",
-          "output": "Sale output unknown \u00b7 no execution quote",
-          "detail": "Example: no transfers in 90 days \u00b7 gas and impact unknown"
+          "market": "Uniswap v3 · APE / WETH"
         },
         {
           "symbol": "SIGNET",
           "icon": "signet",
-          "chain": "Base",
-          "balance": "650",
-          "price": "Unknown",
-          "value": "Unknown",
-          "chain_id": 8453,
-          "contract": "0xdf2b673ec06d210c8a8be89441f8de60b5c679c9",
-          "route": "No funded market recorded",
-          "output": "Sale output unknown",
-          "detail": "Activity history unavailable \u00b7 inactivity unconfirmed"
+          "chain": "Base · Trading wallet",
+          "quantity": "650 tokens",
+          "price": "Price unavailable",
+          "value": "Unpriced",
+          "market": "No funded market recorded"
         }
-      ],
-      "next": "CASHCAT net example: $211.64 after gas, assuming USDG = $1. All figures are illustrative; refresh before acting."
+      ]
     },
     {
-      "label": "Review a whole network",
-      "question": "Review my Blast holdings across wallets. What is liquid, and what should I check before moving it?",
-      "working": "Grouping wallets, token identities and recorded pools\u2026",
-      "answer": "Your Blast exposure, grouped in this demo. Preserve ETH for fees and quote each exit separately.",
+      "id": "blast",
+      "label": "Review Blast",
+      "question": "Review my Blast wallets. What do I hold, and where can these tokens trade?",
+      "working": "Grouping your Blast wallets and token records…",
+      "answer": "Your Blast holdings, together. Keep some ETH for fees before moving funds.",
+      "summary": "Recorded spot value",
+      "total": "$400.66",
+      "note": "across 2 wallets",
       "tokens": [
         {
           "symbol": "ETH",
           "icon": "eth",
-          "chain": "Blast \u00b7 Wallet A",
-          "balance": "0.050",
-          "price": "$2,700",
+          "chain": "Blast · Daily wallet",
+          "quantity": "0.050 ETH",
+          "price": "$2,700.00 each",
           "value": "$135.00",
-          "chain_id": 81457,
-          "contract": "native",
-          "route": "Native gas asset \u00b7 bridge route not quoted",
-          "output": "Keep ETH for gas \u00b7 bridge fees unknown",
-          "detail": "Balance and price: example observation only"
+          "market": "Native gas asset"
         },
         {
           "symbol": "USDB",
           "icon": "usdb",
-          "chain": "Blast \u00b7 Wallet A",
-          "balance": "250",
-          "price": "$1.000",
+          "chain": "Blast · Daily wallet",
+          "quantity": "250 tokens",
+          "price": "$1.0000 each",
           "value": "$250.00",
-          "chain_id": 81457,
-          "contract": "0x4300000000000000000000000000000000000003",
-          "pool": "0xf00da13d2960cf113edcef6e3f30d92e52906537",
-          "market_url": "https://dexscreener.com/blast/0xf00da13d2960cf113edcef6e3f30d92e52906537",
-          "route": "Thruster v3 \u00b7 USDB / WETH",
-          "output": "Sale output unknown \u00b7 quote full balance first",
-          "detail": "Pool liquidity $158,000 \u00b7 illustrative observation"
+          "market": "Thruster v3 · USDB / WETH"
         },
         {
           "symbol": "BLAST",
           "icon": "blast",
-          "chain": "Blast \u00b7 Wallet B",
-          "balance": "100,000",
-          "price": "$0.0001566",
+          "chain": "Blast · Trading wallet",
+          "quantity": "100,000 tokens",
+          "price": "$0.0001566 each",
           "value": "$15.66",
-          "chain_id": 81457,
-          "contract": "0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad",
-          "pool": "0x9a0aa28d999a21d3cf6f2703cdbba9feaf4a32f7",
-          "market_url": "https://dexscreener.com/blast/0x9a0aa28d999a21d3cf6f2703cdbba9feaf4a32f7",
-          "route": "Thruster v3 \u00b7 BLAST / WETH",
-          "output": "Sale output unknown \u00b7 costs can matter",
-          "detail": "Pool liquidity $15,000 \u00b7 illustrative observation"
+          "market": "Thruster v3 · BLAST / WETH"
         }
-      ],
-      "next": "Demo spot total: $400.66. Neither a bridge quote nor cash proceeds. Check unpriced tokens and missing wallet coverage too."
+      ]
     },
     {
-      "label": "Understand an LP position \u00b7 preview",
-      "question": "Could I have forgotten LP positions? Show the underlying tokens, fees and what withdrawing would return.",
-      "working": "Previewing position ownership and underlying assets\u2026",
-      "answer": "Two reconstructed positions. Pool links alone do not prove that you own liquidity.",
+      "id": "compare",
+      "label": "See changes",
+      "question": "What changed since the last time you checked my wallet?",
+      "working": "Comparing your saved balances and prices…",
+      "answer": "Your balances stayed the same. Prices moved, and a few coverage gaps were filled.",
+      "summary": "Change in priced value",
+      "total": "+$14.50",
+      "note": "balances unchanged",
       "tokens": [
         {
-          "symbol": "WETH / USDC",
-          "icon": "lp",
-          "chain": "Base \u00b7 Aerodrome",
-          "balance": "LP position",
-          "price": "Preview",
-          "value": "$154.00",
-          "route": "Underlying: 0.030 WETH + 73.00 USDC",
-          "output": "Illustrative fees: $2.00 \u00b7 withdrawal unquoted",
-          "detail": "Ownership, fee and exit data are concept-only"
+          "symbol": "CASHCAT",
+          "icon": "cashcat",
+          "chain": "1,200 tokens · unchanged",
+          "quantity": "Price",
+          "price": "$0.1800 → $0.1900",
+          "value": "+$12.00",
+          "market": "Robinhood · recorded spot value"
         },
         {
-          "symbol": "ETH / USDC",
-          "icon": "lp",
-          "chain": "Ethereum \u00b7 Uniswap",
-          "balance": "Position NFT",
-          "price": "Preview",
-          "value": "$278.00",
-          "route": "Underlying: 0.060 ETH + 116.00 USDC",
-          "output": "Illustrative fees: $4.50 \u00b7 withdrawal unquoted",
-          "detail": "Values use illustrative ETH/WETH = $2,700"
+          "symbol": "ETH",
+          "icon": "eth",
+          "chain": "0.050 ETH · unchanged",
+          "quantity": "Price",
+          "price": "$2,700 → $2,750",
+          "value": "+$2.50",
+          "market": "Blast · recorded spot value"
+        },
+        {
+          "coverage": true,
+          "symbol": "Two balances verified as zero",
+          "detail": "Previously unknown. Now observed on-chain."
         }
-      ],
-      "next": "LP discovery preview. Current Kira research covers direct holdings. No position, fee or withdrawal in this demo is measured."
+      ]
     }
   ],
-  "notes": "All balances, prices, activity and outputs are illustrative. Linked market identities are public research references, not execution quotes. LP ownership and pools in the LP preview are concept-only. Dormancy, DEX quotes and LP discovery are previews. Artwork uses verified chain/contract metadata from lpTOKEN.fun, DEX Screener and CoinGecko; see token-artwork-sources.json."
+  "notes": "Synthetic questions, balances and prices. Recorded spot values are not executable sale quotes. No private portfolio is read. Public token artwork provenance remains in token-artwork-sources.json."
 }

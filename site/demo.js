@@ -1,32 +1,99 @@
 "use strict";
 
-// Deliberate, keyboard-accessible examples. No autoplay or pause controls.
-const tabs = Array.from(document.querySelectorAll('.demo-tabs [role="tab"]'));
-const panels = Array.from(document.querySelectorAll('.demo-panel'));
-function selectTab(tab, focus = false) {
-  for (const item of tabs) {
-    const selected = item === tab;
-    item.setAttribute('aria-selected', String(selected));
-    item.tabIndex = selected ? 0 : -1;
-  }
-  for (const panel of panels) panel.hidden = panel.id !== tab.getAttribute('aria-controls');
-  if (focus) tab.focus();
+const demo = document.getElementById('demo');
+const film = document.getElementById('demo-film');
+const reading = demo.querySelector('.demo-body');
+const composer = demo.querySelector('.demo-composer');
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const mobile = window.matchMedia('(max-width: 700px)');
+let visible = true;
+let ready = false;
+let failed = false;
+let revision = 0;
+let pendingSeek = 0;
+
+function readingHasFocus() {
+  return document.activeElement === demo || reading.contains(document.activeElement);
 }
-for (const tab of tabs) {
-  tab.addEventListener('click', () => selectTab(tab));
-  tab.addEventListener('keydown', event => {
-    const index = tabs.indexOf(tab);
-    let next;
-    if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
-    if (event.key === 'ArrowLeft') next = (index - 1 + tabs.length) % tabs.length;
-    if (event.key === 'Home') next = 0;
-    if (event.key === 'End') next = tabs.length - 1;
-    if (next !== undefined) {
-      event.preventDefault();
-      selectTab(tabs[next], true);
+
+function showFilm(show) {
+  // A recovered source must not hide the transcript beneath a focused link.
+  show = show && !readingHasFocus();
+  film.hidden = !show;
+  reading.classList.toggle('sr-only', show);
+  reading.tabIndex = show ? -1 : 0;
+  composer.hidden = show;
+  for (const link of reading.querySelectorAll('a')) {
+    if (show) link.setAttribute('tabindex', '-1');
+    else link.removeAttribute('tabindex');
+  }
+}
+
+function updatePlayback() {
+  if (!ready || failed || reducedMotion.matches || !visible || document.hidden || readingHasFocus()) {
+    film.pause();
+    return;
+  }
+  const currentRevision = revision;
+  film.play().catch(error => {
+    // Source switches abort prior play requests without indicating a failure.
+    if (currentRevision === revision && error.name !== 'AbortError') {
+      failed = true;
+      showFilm(false);
     }
   });
 }
+
+function configureFilm() {
+  if (ready && Number.isFinite(film.currentTime)) pendingSeek = film.currentTime;
+  revision += 1;
+  film.pause();
+  ready = false;
+  failed = false;
+  if (reducedMotion.matches) {
+    film.removeAttribute('src');
+    film.load();
+    showFilm(false);
+    return;
+  }
+  const profile = mobile.matches ? 'Mobile' : 'Desktop';
+  film.poster = film.dataset['poster' + profile];
+  film.src = film.dataset[profile.toLowerCase()];
+  film.load();
+}
+
+film.addEventListener('loadedmetadata', () => {
+  ready = true;
+  film.currentTime = Math.min(pendingSeek, Math.max(0, film.duration - .1));
+});
+film.addEventListener('canplay', () => {
+  if (!failed && !reducedMotion.matches) showFilm(true);
+  updatePlayback();
+});
+film.addEventListener('error', () => {
+  failed = true;
+  showFilm(false);
+});
+demo.addEventListener('focusin', () => {
+  if (readingHasFocus()) showFilm(false);
+  updatePlayback();
+});
+demo.addEventListener('focusout', event => {
+  if (!demo.contains(event.relatedTarget)) {
+    if (ready && !failed && !reducedMotion.matches) showFilm(true);
+    updatePlayback();
+  }
+});
+document.addEventListener('visibilitychange', updatePlayback);
+if ('IntersectionObserver' in window) {
+  new IntersectionObserver(entries => {
+    visible = entries[0].isIntersecting;
+    updatePlayback();
+  }, {threshold: .05}).observe(demo);
+}
+reducedMotion.addEventListener('change', configureFilm);
+mobile.addEventListener('change', configureFilm);
+configureFilm();
 
 const copy = document.getElementById('copy-install');
 copy.addEventListener('click', async () => {
