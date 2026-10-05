@@ -72,7 +72,9 @@ class ResearchTools:
             address=arguments['address'].lower()
             if address!='native' and not ADDRESS.fullmatch(address):raise JobError('invalid_token','Expected native or a 20-byte contract address.')
             identity=str(arguments['chain_id'])+':'+address
-            return {'identity':identity,'positions':[{'wallet':row['address'],'asset':asset} for row in context['wallets'] for asset in row['assets'] if asset['id']==identity],
+            from kira_agent import projection
+            specific=projection(self.root,self.config,token_id=identity)
+            return {'identity':identity,'positions':[{'wallet':row['address'],'asset':asset} for row in specific['wallets'] for asset in row['assets']],
                     'note':'An absent record is unknown, not a verified zero holding.'}
         if name=='snapshots_list':return self.store.snapshots(self.wallet(arguments['wallet'],approved))
         if name=='snapshot_read':return self.snapshot(arguments['snapshot_id'],approved)

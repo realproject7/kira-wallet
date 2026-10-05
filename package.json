@@ -1,7 +1,7 @@
 {
   "name": "kira-wallet",
   "version": "0.1.1",
-  "description": "Track tokens across EVM chains with your own AI. A local, read-only wallet app with no hosted portfolio server.",
+  "description": "Manage your wallets with your own AI. Track tokens, research markets and refresh holdings in a local workspace.",
   "license": "MIT",
   "private": false,
   "bin": {

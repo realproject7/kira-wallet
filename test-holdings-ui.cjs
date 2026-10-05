@@ -28,11 +28,28 @@ assert.equal(node('holdings-filter-note').hidden,true);assert.equal(node('empty'
 assert.match(node('asset-groups').innerHTML,/ETH/);assert.match(node('asset-groups').innerHTML,/APE/);assert.match(node('asset-groups').innerHTML,/BNB/);
 console.log('Unknown wallet value and explicit filter recovery preserve all recorded holdings.');
 context.unitPrice=n=>'$'+n;context.quantity=String;context.tokenHref=String;context.coinIcon=()=>'';
+context.shortAddress=s=>s.slice(0,6)+'…'+s.slice(-4);
+vm.runInContext(source.slice(source.indexOf('function marketLinks('),source.indexOf('function accountCard(')),context);
 vm.runInContext(source.slice(source.indexOf('function assetRow(a){'),source.indexOf('function renderHoldings(){')),context);
 const historic=context.assetRow({id:'fixture',symbol:'Fixture',name:'Fixture',balance:'1',value_usd:100,links:[],
   price:{usd:100,basis:'Curve spot',retained_from_previous:true,observed_at:'2026-10-01T00:00:00Z'}});
 assert.match(historic,/Previous Curve spot/);assert.match(historic,/title="2026-10-01T00:00:00Z"/);
 console.log('Retained price labels preserve the original observation time.');
+const pools=Array.from({length:4},(_,i)=>({url:'https://example.com/pool/'+i,pool:'0x'+'1'.repeat(40),
+  venue:'Uniswap V3',pair:[{symbol:'USDC'},{symbol:'WETH'}],liquidity_usd:i===0?null:100,
+  observed_at:'2026-10-05T00:00:00Z'}));
+const markets=context.marketLinks([{url:pools[0].url,label:'Uniswap V3'}],{market_pools:pools},true);
+assert.equal(markets.split('<details')[0].match(/class="pool-link"/g).length,2);
+assert.match(markets,/<summary>Show 2 more pools<\/summary>/);
+assert.equal(markets.match(/class="pool-link"/g).length,4);
+assert.match(markets,/<strong>—<\/strong><small>Pool liquidity/);
+assert.match(markets,/Observed 2026-10-05T00:00:00Z/);
+console.log('Markets show two pools initially, retain every route and preserve unknown liquidity.');
+context.safeImage=()=>null;
+vm.runInContext(source.slice(source.indexOf('function icon(asset){'),source.indexOf('function bindImages(){')),context);
+const malformed=context.marketLinks([],{symbol:'Fixture',market_pools:[{...pools[0],pair:[{symbol:123},{}]}]});
+assert.match(malformed,/coin-fallback">\?<\/span>/);
+console.log('Malformed pool symbols cannot crash the real artwork renderer.');
 
 const workspaceSource=fs.readFileSync('viewer/static/workspace.js','utf8');
 for(const id of ['all-token-network','all-token-pricing','all-token-sort','all-token-search','job-filter'])node(id).value='previous';

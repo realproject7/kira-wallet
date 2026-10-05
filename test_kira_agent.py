@@ -52,6 +52,30 @@ class AgentTest(unittest.TestCase):
         all_=projection(self.root,settings(scope='portfolio'));self.assertIsNone(all_['wallets'][1]['known_value_usd'])
         self.assertEqual(projection(self.root,settings())['scope'],'none')
 
+    def test_market_detail_cannot_displace_holdings_or_disable_large_wallet_chat(self):
+        from copy import deepcopy
+        import sys
+        sys.path.insert(0,str(Path(__file__).resolve().parent/'viewer'))
+        import model
+        state,stamp,stale=model.load_state(self.root)
+        wallet=state['wallets'][0];template=wallet['assets'][0]
+        wallet['assets']=[]
+        for index in range(100):
+            asset=deepcopy(template);asset['id']=f'8453:0x{index:040x}'
+            asset['market_pools']=[{'venue':'Uniswap V3','pool':'0x'+'3'*40,
+                'url':'https://example.com/pool/'+str(pool),'liquidity_usd':100,
+                'price_usd':1,'observed_at':'2026-10-05T00:00:00Z',
+                'pair':[{'symbol':'USDC','address':'0x'+'4'*40}]} for pool in range(12)]
+            wallet['assets'].append(asset)
+        with patch('model.load_state',return_value=(state,stamp,stale)):
+            facts=projection(self.root,settings(scope='portfolio'))
+            self.assertEqual(len(facts['wallets'][0]['assets']),100)
+            self.assertLessEqual(len(json.dumps(facts,ensure_ascii=False).encode()),240_000)
+            self.assertGreater(sum(a['pools_omitted'] for a in facts['wallets'][0]['assets']),0)
+            detail=projection(self.root,settings(scope='portfolio'),token_id=wallet['assets'][-1]['id'])
+            self.assertEqual(len(detail['wallets'][0]['assets']),1)
+            self.assertEqual(len(detail['wallets'][0]['assets'][0]['pools']),12)
+
     def test_exit_quotes_only_reach_explicitly_approved_context(self):
         registry=json.loads((self.root/'wallets.json').read_text())
         entry=registry['wallets'][0];path=self.root/entry['latest_snapshot']['result']

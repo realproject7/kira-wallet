@@ -1,9 +1,12 @@
 # Kira Wallet
 
-Track your wallets across chains. Understand your holdings with your own AI.
-Kira is a local, read-only wallet app with no hosted portfolio server. It finds
-and records assets on supported EVM networks, with indexed token discovery when
-configured. Missing coverage and prices stay unknown.
+Manage your wallets with your own AI. Connect your existing Codex or Claude
+Code account, add public wallet addresses, and ask Kira to research your tokens
+or refresh your holdings. Your keys stay yours and your records stay on your
+computer. Indexed discovery extends coverage on supported EVM chains; missing
+prices and coverage stay unknown. The source candidate also creates encrypted
+local OWS wallets. Chat can research their public accounts; signing and trading
+are outside its current capabilities.
 
 Original code and character assets are open source under MIT. Third-party
 references retain their own terms; see [notices](THIRD_PARTY_NOTICES.md). The npm

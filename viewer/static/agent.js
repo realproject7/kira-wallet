@@ -4,9 +4,9 @@ let chatTurn = null, chatEpoch = 0, chatRequest = null, chatRetry = null, agentL
 let chatSignature = '', agentReady = false, chatDraftRevision = 0;
 const scopeNames = {none: 'No wallet context', wallet: 'One approved wallet', portfolio: 'Whole portfolio'};
 const questionStarters = {
-  liquidity: 'Which of my tokens can I swap for at least $100 through a liquidity pool? Check my full holding, price impact and costs. Flag missing or stale quotes instead of assuming a token can be sold.',
-  prices: 'Which of my tokens have missing or unreliable prices? Explain what evidence is missing and how I can check it.',
-  coverage: 'Which networks or tokens might be missing from my recorded holdings? Explain the coverage gaps and what I should check next.'
+  liquidity: 'Which tokens in my wallets may have been sitting idle, and what could I receive if I sold my full balance? Show each token’s chain, contract, quantity, price and timestamp, pool pair and venue, spot value, and any recorded full-balance output. Use actual transfer-history evidence for inactivity; if it is unavailable, say so. Keep sale proceeds, price impact, fees and gas unknown when there is no current executable quote.',
+  prices: 'Review my Blast holdings across all wallets. Show quantities, unit prices, valuation timestamps and recorded market routes for each token. Separate ETH for gas, assets with reliable market evidence, unpriced tokens and missing wallet coverage. Do not assume a trending token is one I hold. Tell me what to refresh before deciding my next move.',
+  coverage: 'Which tokens or networks need another look? Show exact quantities and contract identities for unpriced holdings, explain missing or unreliable price and coverage evidence, and prioritise the next research actions. Keep unknown values distinct from zero.'
 };
 const agentPost = (path, body) => localAPI(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
 function currentSetup() {

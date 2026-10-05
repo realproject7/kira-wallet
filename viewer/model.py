@@ -149,7 +149,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         if 'http' in label.lower() or 'claim' in label.lower():label='Airdrop';name='Unverified token'
         links=[]
         if t.get('mintclub'):links.append({'label':'Mint Club','url':t['mintclub']['source_url']})
-        found={}
+        found={}; market_pools=[]
         for pool in t.get('dex_pools',[]):
             if not pool_has_liquidity(pool):continue
             venue=pool['venue'].lower(); label_venue='Uniswap' if 'uniswap' in venue else 'Aerodrome' if 'aerodrome' in venue else venue.replace('-',' ').title()
@@ -158,12 +158,22 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             if not weight and measured.get('quote_balance'):
                 weight=(number(measured['quote_balance']) or 0)*(eth or 0) if measured.get('quote_symbol')=='WETH' else number(measured['quote_balance']) or 0
             if label_venue not in found or weight>found[label_venue][0]:found[label_venue]=(weight,pool['source_url'])
+            pair=[]
+            for coin in pool.get('paired_tokens',[])[:2]:
+                if not isinstance(coin,dict):continue
+                symbol=coin.get('symbol')
+                pair.append({'address':coin.get('address'),'symbol':symbol if isinstance(symbol,str) and symbol else '?',
+                             'image_url':image_for(images,t['chain_id'],coin.get('address'))})
+            market_pools.append({'venue':label_venue,'pool':pool.get('pool'),'url':pool['source_url'],
+                'pair':pair,'liquidity_usd':number((pool.get('reported_liquidity') or {}).get('usd')),
+                'price_usd':number(pool.get('reported_price_usd')),'observed_at':pool.get('observed_at') or snapshot.get('compiled_at')})
+        market_pools.sort(key=lambda row:-(row['liquidity_usd'] or 0))
         links += [{'label':k,'url':v[1]} for k,v in found.items()]
         explorer=EXPLORERS.get(t['chain_id'])
         if explorer:links.append({'label':'Explorer','url':explorer+'/token/'+t['token_address']})
         assets.append({'id':f'{t["chain_id"]}:{t["token_address"].lower()}','chain_id':t['chain_id'],
             'symbol':label,'name':name,'address':t['token_address'],'balance':t['wallet_balance'],
-            'price':p,'value_usd':value,'is_native':False,'links':links,
+            'price':p,'value_usd':value,'is_native':False,'links':links,'market_pools':market_pools,
             'balance_observed_at':t.get('balance_observed_at') or snapshot.get('compiled_at'),
             'burn_quote':(t.get('mintclub') or {}).get('wallet_full_burn'),
             'exit_quote':exit_quote(t),

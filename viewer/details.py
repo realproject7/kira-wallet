@@ -69,6 +69,14 @@ def project_details(wallets, root):
                       'wallet_count': len(holdings), 'unpriced_count': sum(a.get('value_usd') is None for a in assets)})
         links = {(link['label'], link['url']): link for a in assets for link in a['links']}
         token['links'] = list(links.values())
+        pools={}
+        for asset in assets:
+            for pool in asset.get('market_pools',[]):
+                previous=pools.get(pool['url'])
+                # Market evidence has its own clock, independent of wallet reads.
+                if previous is None or (pool.get('observed_at') or '') > (previous.get('observed_at') or ''):
+                    pools[pool['url']]=pool
+        token['market_pools']=sorted(pools.values(),key=lambda p:-(p.get('liquidity_usd') or 0))
         rows = []
         by_wallet = {w['key']: a for w, a in holdings}
         for wallet in wallets:

@@ -19,3 +19,5 @@ optional platform bindings are distributed under MIT by their upstream owner.
 The SDK is an optional dependency used for human-submitted encrypted wallet
 creation and public account listing. See
 [Open Wallet Standard](https://github.com/open-wallet-standard/core).
+
+CASHCAT, BLAST and USDB artwork in the public reconstructed demo comes from lpTOKEN.fun token metadata, DEX Screener and CoinGecko. Token marks belong to their respective owners and identify the assets without implying affiliation or endorsement. The source URLs and chain-specific contract identities are recorded in `site/assets/token-artwork-sources.json`.

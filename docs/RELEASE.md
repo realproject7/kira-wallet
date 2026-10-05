@@ -6,6 +6,13 @@ question starters, native price/artwork fallback and clearer unknown-value filte
 The operator removed the recovery-home report. The candidate also adds automatic RPC fallback, visible chain filtering, a separate animated chat composer, browser-wallet connection controls, encrypted OWS onboarding and scoped agent research tools. It now includes a full-height chat dock, session history, expandable chat and a visible research tray.
 Registry publication remains operator-only. The coding agent never publishes.
 
+Registry 0.1.1 was unavailable on 2026-10-05; latest remained 0.1.0. The source
+candidate now also includes clearer own-AI positioning, detailed reconstructed
+CASHCAT and Blast examples, contract-scoped token artwork, compact pool groups,
+full-height chat, and bounded market facts. See KIRA_PRODUCT_POLISH.md for product
+acceptance evidence. These changes require a newly prepared archive from the
+reviewed commit; the earlier 0.1.1 archive remains a separate immutable artifact.
+
 Required preparation from a clean, reviewed source checkout:
 
 ```sh
