@@ -15,10 +15,7 @@ what you hold across supported EVM chains, and ask Kira to research your tokens
 or refresh your holdings. Kira runs on your computer and uses your existing
 Codex or Claude Code account.
 
-![Kira portfolio overview and chat, using sample wallets and illustrative balances](https://raw.githubusercontent.com/realproject7/kira-wallet/v0.1.1/docs/screenshots/kira-readme-overview.png)
-
-*All screenshots use sample wallets, invented balances and an illustrative
-conversation. They contain no personal wallet data.*
+![Kira portfolio overview and chat](https://raw.githubusercontent.com/realproject7/kira-wallet/80ecaee312730997dcf2e0f48d8d88878d4bcde4/docs/screenshots/kira-readme-overview.jpg)
 
 ## Get started
 
@@ -51,15 +48,14 @@ release above. npm publication is pending.
 4. **Ask Kira.** Start with a question, or ask it to refresh a wallet's holdings
    or prices. Follow the job in **Activity** while it runs.
 
-Want to look around first? Run an isolated sample without adding your wallets:
+Want to look around first? Try the demo:
 
 ```sh
-kira --data-dir /tmp/kira-sample demo --port 8790
+kira --data-dir /tmp/kira-demo demo --port 8790
 ```
 
-Open [127.0.0.1:8790](http://127.0.0.1:8790). The sample uses synthetic data and
-never contacts AI or research providers. Stop it with
-`kira --data-dir /tmp/kira-sample stop`.
+Open [127.0.0.1:8790](http://127.0.0.1:8790). Stop it with
+`kira --data-dir /tmp/kira-demo stop`.
 
 ## What can I ask?
 
@@ -77,10 +73,9 @@ value from an execution quote. Missing prices and holdings stay unknown;
 transfer inactivity needs transfer-history evidence. Testnets and pool liquidity
 are excluded from your portfolio's USD value.
 
-![Recorded USDC markets and compact balances by wallet, using synthetic data](https://raw.githubusercontent.com/realproject7/kira-wallet/v0.1.1/docs/screenshots/kira-readme-markets.png)
+![USDC markets and balances by wallet](https://raw.githubusercontent.com/realproject7/kira-wallet/80ecaee312730997dcf2e0f48d8d88878d4bcde4/docs/screenshots/kira-readme-markets.jpg)
 
-*Recorded markets, paired token logos, additional pools on demand, and each
-wallet's balance in one view. Market and balance figures here are illustrative.*
+*Markets, paired token logos and each wallet's balance in one view.*
 
 ## Your wallets, your controls
 
@@ -122,9 +117,8 @@ npm test
 python3 scripts/check-public.py
 ```
 
-From source, use `node bin/kira.cjs` in place of `kira`. Use synthetic data for
-screenshots and tests. Keep personal wallets, snapshots, credentials and logs out
-of commits and issues. [Local AI tool setup](docs/AGENT_TOOLS.md) ·
+From source, use `node bin/kira.cjs` in place of `kira`.
+[Local AI tool setup](docs/AGENT_TOOLS.md) ·
 [Release preparation](docs/RELEASE.md).
 
 Original code and Kira character assets are available under the [MIT license](LICENSE).
