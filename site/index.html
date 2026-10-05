@@ -16,8 +16,8 @@
   <link rel="canonical" href="https://kirawallet.app">
   <link rel="icon" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/assets/kira-logo.png">
-  <link rel="stylesheet" href="/site.css?v=f892e15befe2">
-  <script src="/demo.js?v=f892e15befe2" defer></script>
+  <link rel="stylesheet" href="/site.css?v=8b1847be9c20">
+  <script src="/demo.js?v=8b1847be9c20" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -45,13 +45,15 @@
       <div class="demo-header">
         <div class="demo-brand"><img src="/assets/kira-logo.png" width="30" height="30" alt=""><span>Kira Chat</span></div>
       </div>
-      <video id="demo-film" class="demo-film" autoplay muted loop playsinline preload="metadata" aria-hidden="true" disablepictureinpicture disableremoteplayback hidden
-        data-desktop="/assets/kira-scenarios.mp4?v=f892e15befe2" data-mobile="/assets/kira-scenarios-mobile.mp4?v=f892e15befe2"
-        data-compact="/assets/kira-scenarios-compact.mp4?v=f892e15befe2" data-poster-compact="/assets/kira-scenarios-compact-poster.png?v=f892e15befe2"
-        data-poster-desktop="/assets/kira-scenarios-poster.png?v=f892e15befe2" data-poster-mobile="/assets/kira-scenarios-mobile-poster.png?v=f892e15befe2"
-        ></video>
+      <div id="demo-motion" class="demo-motion" hidden aria-hidden="true">
+        <div class="motion-scroll"><div class="motion-stream"></div></div>
+        <div class="demo-composer motion-composer">
+          <div class="motion-draft">Ask Kira about your wallets…</div>
+          <div class="motion-composer-footer"><small><span class="status-dot"></span>Your AI account</small><span class="demo-send">↑</span></div>
+        </div>
+      </div>
       <div class="demo-body" tabindex="0" role="region" aria-label="Demo conversation transcript">
-        <section id="demo-tokens" class="demo-panel" aria-label="Token values">
+        <section id="demo-tokens" class="demo-panel" aria-label="Token values" data-working="Reading your holdings and recorded markets…">
           <p class="demo-question">What are my overlooked tokens worth? Show balances, prices and markets.</p>
           <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
           <p class="demo-answer">SIGNET uses a HUNT-backed Mint Club curve. CASHCAT and APE trade on DEX markets.</p>
@@ -75,7 +77,7 @@
             <div class="demo-summary"><span>Recorded spot value</span><strong>$272.65 <small>Includes SIGNET’s curve value</small></strong></div>
           </div>
         </section>
-        <section id="demo-blast" class="demo-panel" aria-label="Blast holdings">
+        <section id="demo-blast" class="demo-panel" aria-label="Blast holdings" data-working="Grouping your Blast wallets and token records…">
           <p class="demo-question">Review my Blast wallets. What do I hold, and where can these tokens trade?</p>
           <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
           <p class="demo-answer">Your Blast holdings, together. Keep some ETH for fees before moving funds.</p>
@@ -99,7 +101,7 @@
             <div class="demo-summary"><span>Recorded spot value</span><strong>$400.66 <small>across 2 wallets</small></strong></div>
           </div>
         </section>
-        <section id="demo-compare" class="demo-panel" aria-label="Saved analysis changes">
+        <section id="demo-compare" class="demo-panel" aria-label="Saved analysis changes" data-working="Comparing your saved balances and prices…">
           <p class="demo-question">What changed since the last time you checked my wallet?</p>
           <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
           <p class="demo-answer">Your balances stayed the same. Prices moved, and a few coverage gaps were filled.</p>

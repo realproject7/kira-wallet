@@ -1,112 +1,72 @@
-# Continuous showcase film, 2026-10-05
+# Native HTML showcase animation, 2026-10-05
 
-The operator wanted the existing automatic chat video with clearer design.
-The manually switched HTML demo in PR 19 misinterpreted that request. This
-correction restores automatic motion, removes the question tabs, and appends
-all three questions and answers into one conversation.
+The showcase now renders the conversation as browser text, HTML and CSS.
+Encoded video cannot preserve small text at every responsive size. Native
+layout removes that compression and scaling step without adding a video or
+React runtime. The three examples still play automatically in one conversation.
 
 ## Behavior
 
-- A silent 48-second film plays inline and loops. Each 16-second conversation
-  types a question, shows Kira researching, reveals its answer and adds three
-  result cards. Earlier messages remain above as the conversation scrolls.
-- The composer stays inside the bottom of the frame. A shorter movie viewport,
-  three-pixel rendering scale and separate mobile compositions preserve readable
-  type and spacing. One white result panel aligns token identities, values and
-  prices. All three rows and their subtotal fit above the composer. Mobile width responds to viewport height with a readable
-  280px floor; short landscape screens retain normal page vertical scrolling.
-- No scenario tabs, Pause button, Demo badge or notes appear around the film.
-  The existing character-led story and privacy copy stay.
-- Token cards identify Balance and Unit price separately, with the token symbol
-  beside each quantity. Comparison cards identify Previous price and Current
-  price. The numbers are illustrative balances, not model usage counts.
-- The film has no pointer target, controls or keyboard stop. Clicking the
-  frame leaves automatic playback running. Its wrapper is not focusable.
-  The equivalent HTML transcript stays available to assistive readers.
-  A recovered source never hides a focused link in a visible fallback.
-- Reduced motion, a failed media load or blocked autoplay use the same HTML
-  transcript. Offscreen and hidden-document playback pauses. Responsive
-  source switching preserves the current playback position.
+A 48-second loop gives each example 16 seconds. The question types into the
+composer, Kira researches, the answer types, and result rows appear in order.
+Earlier messages stay above as the conversation scrolls. The composer stays
+at the bottom of the frame. There are no scenario tabs, Pause button, Demo
+badge or click-to-pause behavior.
 
-## Generated assets
+The animated copy has no interactive targets and is hidden from assistive
+technology. The original complete HTML transcript is the single content
+source. Screen readers can read it without repeated live announcements.
+Reduced motion or JavaScript being unavailable exposes the readable transcript
+with its source links. A focused fallback link is never hidden on recovery.
 
-All three MP4 files use H.264, 24 fps, no audio and faststart. Each runs exactly
-48 seconds. Source and poster URLs carry a content revision to refresh cached
-media after each render.
+The animation pauses while offscreen or while the document is hidden. It
+resumes at the same elapsed time. Responsive resizing reflows the same HTML
+without choosing a new media source or restarting the conversation. CSS uses
+native font sizes and actual scrolling, with no scaled canvas or video texture.
+Only small opacity reveals and research dots use CSS animation.
 
-| Profile | Viewport width | Pixel dimensions | Logical dimensions | Bytes |
-| --- | --- | --- | --- | ---: |
-| Desktop | Above 700px | 1560×1710 | 520×570 | 3,550,993 |
-| Mobile | 421–700px | 1320×1560 | 440×520 | 3,782,381 |
-| Compact | Up to 420px | 1080×1560 | 360×520 | 3,609,169 |
+## Layout
 
-The new mobile layouts replace the old 320×600 composition that enlarged type
-and the entire frame on wider phones. At a 494px viewport, the film body text is
-14.9px and the complete demo is 587.6px tall. At 390px, body text is 14.5px.
-A single framed panel, 100px result rows and a 92px composer leave space for
-all three assets and their subtotal at the end of each answer.
+| Viewport | Maximum frame width | Conversation height | Result panel height |
+| --- | --- | --- | --- |
+| Above 700px | 520px | 570px | 392–394px |
+| 421–700px | 440px | 520px | 392–394px |
+| Up to 420px | 360px | 520px | 392–394px |
 
-Reproduction on macOS requires Pillow, ffmpeg and the system SFNS font:
-`python3 scripts/render-showcase.py`. Renderer assertions check card text
-widths, coverage wrapping and composer/footer separation. It reads public
-artwork and synthetic examples only. It never reads a portfolio. The JSON
-manifest records the synthetic quantities, prices, timing and layouts.
-Recorded spot values are not executable sale quotes.
+The available result viewport is 450px on desktop and 402px on mobile.
+Token names and values use 14px text. Balances use 12px, market references
+11px, and subordinate labels 10px. All three rows and the subtotal fit above
+the composer even at a 320px page width. Normal page scrolling handles short
+screens rather than shrinking the text to fit the screen height.
 
-### Text fidelity
-
-The film embeds raster text, so its resolution and compression affect small
-labels differently from the native HTML header. The font-fidelity follow-up
-raises the render scale from 2× to 3× and lowers H.264 CRF from 18 to 14 with
-the medium preset. Regular strokes have a minimum weight of 450, and muted
-labels use darker colors. The logical frame, body sizes and motion stay the
-same. Token artwork is resized to its target pixel dimensions so the higher
-render scale does not shrink low-resolution logos inside their circular frames.
-
-At the same 30-second desktop frame, original-versus-decoded RGB error on dark
-foreground pixels fell from 4.56 to 3.12 levels out of 255. This is a local
-compression check against each uncompressed render, not a perceptual score or
-a device-wide quality guarantee. The higher-resolution files are about 3.6–3.8MB
-each, roughly twice their preceding sizes. Only the active responsive film loads.
-All three new films passed full decoding and retained 48 seconds, 24 fps and no
-audio. Actual Chrome checks at 1440, 494 and 390px selected the new 3× sources,
-showed no horizontal overflow and retained automatic playback. A desktop click
-also left playback active. Browser console errors were empty. Logical panel and
-composer geometry remain covered by the renderer assertions in every frame.
+`site/index.html` owns the example contents. `site/demo.js` clones that
+transcript into a pointer-free animated stream and schedules its phases.
+`site/site.css` owns both responsive layouts and the readable fallback.
+The older renderer and MP4 exports remain available as offline exports;
+the public page no longer loads or plays them. Their scenario manifest is
+historical export provenance, not the animation's content source.
 
 ## Verification
 
-Actual Chrome checks for the final layouts covered widths 320, 390, 420, 421,
-494, 530, 667 (375px landscape height), 700, 701, 768, 1001 and 1440. No
-horizontal page overflow or header overflow occurred. Both the 420/421 and
-700/701 breakpoints selected the correct movie and aspect ratio. At 1440×900
-the entire demo was 637.8px tall, including its composer. All twelve widths
-confirmed a non-focusable wrapper, no movie controls and no pointer target.
-Three mobile clicks advanced from 10.233s to 11.524s while playback stayed
-active; two desktop clicks also left playback active and visible, with body
-focus. No browser console errors were reported.
+`python3 scripts/showcase-preview.py --port 8807 --frame 44.5` serves the
+public site with production security headers and freezes the QA clock at the
+last example's complete results. This is a test fixture, not the live page.
+The `--reduced-motion` and `--no-js` modes exercise the readable fallback
+without changing the operator's OS settings or accessing a wallet.
 
-The preceding browser acceptance decoded all three movies, played automatically
-with muted looping and showed successive conversation stages. The latest change
-removes the old focus-to-pause behavior that also fired on pointer clicks.
-Fallback links remain reachable when reduced motion or media failure exposes
-the transcript. Leaving the demo offscreen pauses playback. The preceding correction used a separate local
-fixture with a missing desktop movie to verify media-error fallback. Switching
-to the valid mobile movie while a market link held focus preserved the visible
-transcript and paused video, then recovered when focus left.
+Actual Chrome geometry checks covered 320, 390, 494, 700, 701 and 1440px.
+All three result panels fit the viewport, with zero horizontal page overflow.
+The last subtotal has at least 6px of space before the viewport edge. The
+production CSP permits the animation; the page contains no video or canvas.
+The reduced-motion preview stops playback and preserves keyboard access to
+market links. The JavaScript-free preview renders the full transcript.
 
-The autoplay/mobile correction produced no browser console errors. Independent
-read-only review of that source and decoded media found no actionable execution
-issues. Its stale font-size documentation finding was corrected. Review VM
-checks covered normal interaction, responsive source transitions and focused
-error/reduced-motion recovery. The preceding README capture review remains
-valid because those images and their fixture are unchanged. Reduced-motion behavior was
-source-reviewed; no operating-system motion preference was changed for QA.
-This evidence does not claim native wallet or model testing for a site change.
-
-Syntax, media metadata, local assets, ARIA references, diff formatting and
-public-file privacy validation were checked. Functional wallet code and the
-operator-published npm 0.1.2 archive/tag remain unchanged.
+Live autoplay, click behavior, continuous scrolling and looping were checked
+separately from the frozen geometry fixture. Syntax, local asset references,
+ARIA IDs, diff formatting and the public-file privacy guard were also checked.
+This follow-up has implementer verification. The preceding independent review
+covered the older movie implementation and is not a review of this rewrite.
+No operator wallet, model provider or key vault was used for site QA.
 
 ## SIGNET pricing
 
@@ -114,7 +74,7 @@ SIGNET on Base is the Mint Club token
 `0xDF2B673Ec06d210C8A8Be89441F8de60B5C679c9`, backed by HUNT. The
 [official token page](https://mint.club/token/base/SIGNET), checked on 2026-10-05,
 showed a curve price of 0.613 HUNT and an approximately $0.061 USD reference.
-The film now shows a fictional balance of 650 SIGNET, $0.0610 per token and
+The animation shows a fictional balance of 650 SIGNET, $0.0610 per token and
 $39.65 spot value, alongside its HUNT curve price. The first subtotal is $272.65.
 These rounded references do not claim an executable burn output or a live price
 feed. The curve relationship and source are recorded in the scenario manifest.
@@ -141,9 +101,9 @@ Design evidence for balance and price separation:
 
 ## Publication boundaries
 
-PR 19 is merged and the repository default branch has the updated README.
-This motion correction and the new screenshots are in PR 20. The operator
-explicitly authorized immediate website publication without another approval
-question. Registry publication remains operator-only, and these site/docs
-changes do not require another npm publication. The published npm 0.1.2 bytes
-remain immutable.
+PR 19 is merged. This animation and the distinct README screenshots remain
+in PR 20 until authorized merge. The operator explicitly authorized immediate
+showcase publication without another approval question. The HTML animation
+itself needs no npm release. The separately requested CLI startup change has
+its own package release boundary. Published npm 0.1.2 bytes and its tag remain
+immutable, and registry publication remains operator-only.
