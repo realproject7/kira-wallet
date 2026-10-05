@@ -1,5 +1,9 @@
 # Showcase polish, 2026-10-05
 
+Historical acceptance for PR 19. The operator subsequently clarified that the
+automatic video must remain. The continuous-film correction supersedes the
+manual-demo behavior below; see [motion acceptance](KIRA_SHOWCASE_MOTION.md).
+
 The operator requested a clearer showcase demo, a character-led product pitch,
 fewer annotations and deliberate headline wrapping. This change affects the
 static website only. The published npm 0.1.2 archive and tag remain unchanged.
@@ -49,6 +53,7 @@ The research considered Gorgias, Guru and Microsoft Copilot patterns for a
 readable chat example, a character-led capability story and a calm composer.
 [Design references](https://www.lazyweb.com/agentic-search/9bde7e00-d871-4aee-ac36-77aeffd6df08).
 
-The updated README remains in PR 19's implementation branch until the operator
-authorizes its merge into the repository's default branch, `codex/kira-release`.
-Production website publication has separate existing authorization.
+PR 19 was merged with explicit operator approval on 2026-10-05. Its merge commit
+is `2ed52a24bc38ac4101aceff781cb7ff58941be57`. The default branch,
+`codex/kira-release`, now includes the updated README. Production website
+publication has separate existing authorization.

@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "captured_at": "2026-10-05T03:14:47.447469+00:00",
-  "viewer_ui_source": "f51c59e5cbdc5a29aa39dd6e91cdbb8aa7896419",
-  "fixture": "Isolated demo records with random EVM addresses, invented balances and a handwritten conversation. Unchanged production UI renders ordinary wallet names. All model and research POST requests are disabled. No personal portfolio records or transcripts were read.",
+  "captured_at": "2026-10-05T09:11:47.525478+00:00",
+  "viewer_ui_source": "f994e99acb4e2d778fb4c95479f04355c88c00b3",
+  "fixture": "Disposable offline records with public fixture EVM wallet identities and separate handwritten conversations. Production snapshot projection and viewer UI render the captures unchanged. Model CLI invocation, research operations and key creation are disabled. No operator portfolio or conversation was read.",
   "wallet_names": [
     "Daily",
     "Savings"
@@ -25,15 +25,21 @@
         1728,
         1120
       ],
-      "sha256": "524ea3b7eccc1fe6afffbd22917f01d5cf359269f352f6a321a08b041ca94fea"
+      "main_view": "Portfolio overview",
+      "question": "Give me a quick portfolio check. What matters most?",
+      "sha256": "362df133d0ac895d23f80d6e460326c98a9ffc0854849b35c076d1ab0b2a491f"
     },
     {
       "file": "kira-readme-markets.jpg",
       "viewport": [
         1728,
-        1140
+        1120
       ],
-      "sha256": "ce71d4bc4f85f2b9af2341b7ca2fb506280f6bceacf8e3241d03e8cd79edf6f4"
+      "main_view": "USDC markets and wallet balances",
+      "question": "Where is my USDC, and which markets should I review?",
+      "sha256": "03c9f70fbac0f49d7adcba089281d281a3af7ffad41d6251a0f8ffd61cc05e32"
     }
-  ]
+  ],
+  "capture_fixture": "scripts/readme-preview.py",
+  "capture_fixture_sha256": "4c3678ae506bf1be95ad7d5b6f4eec787f89cc6ad293073c342a617525991030"
 }
