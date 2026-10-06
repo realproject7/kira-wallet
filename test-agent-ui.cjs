@@ -9,21 +9,79 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 function harness(api) {
   const elements = new Map();
   function el(id) {
-    if (!elements.has(id)) elements.set(id,{id,value:'',checked:false,hidden:false,disabled:false,textContent:'',html:'',writes:0,dataset:{},listeners:{},classList:{toggle(){}},
+    if (!elements.has(id)) elements.set(id,{id,value:'',checked:false,hidden:false,disabled:false,open:false,opens:0,textContent:'',html:'',writes:0,dataset:{},listeners:{},classList:{toggle(){}},
       set innerHTML(value){this.html=value;this.writes++;},get innerHTML(){return this.html;},
-      addEventListener(type,listener){this.listeners[type]=listener;},setAttribute(){},removeAttribute(){},focus(){},showModal(){},close(){this.listeners.close?.();}});
+      addEventListener(type,listener){this.listeners[type]=listener;},setAttribute(){},removeAttribute(){},focus(){},showModal(){this.open=true;this.opens++;},close(){this.open=false;this.listeners.close?.();}});
     return elements.get(id);
   }
   const scope = el('scope');scope.value='none';
   const context = vm.createContext({KiraMarkdown:require('./viewer/static/markdown.js'),$:el,localSession:{controls:false},state:{wallets:[]},localAPI:api,toast(){},escapeHTML:s=>String(s).replaceAll('<','&lt;'),
     document:{querySelector:selector=>selector.includes('agent-scope')?scope:el(selector),querySelectorAll:()=>[]},
-    navigator:{clipboard:{writeText:async()=>{}}},location:{hash:'#/home',search:''},history:{replaceState(){}},URLSearchParams,crypto:require('node:crypto').webcrypto,
+    navigator:{clipboard:{writeText:async()=>{}}},location:{pathname:'/',hash:'#/home',search:''},history:{replaceState(_state,_title,url){const next=new URL(url,'http://localhost');context.location.pathname=next.pathname;context.location.hash=next.hash;context.location.search=next.search;}},URLSearchParams,crypto:require('node:crypto').webcrypto,
+    readRoute(){context.renderedRoute=context.location.hash;},
     setInterval:()=>1,clearInterval(){},setTimeout});
   vm.runInContext(source,context);
   vm.runInContext("localSession.controls=true; agentState={config:{provider:'codex',model:'',scope:'none',retain_history:false},providers:[],conversation_id:'conversation',messages:[],active_turn:null};renderAgent();",context);
   return {el,run:code=>vm.runInContext(code,context),context};
 }
 const status = () => ({config:{provider:'codex',model:'',scope:'none',retain_history:false},providers:[],conversation_id:'conversation',messages:[],active_turn:null});
+test('setup opens the existing account modal once without submitting model or wallet operations',async()=>{
+  const calls=[];const h=harness(async(path,options)=>{calls.push({path,options});return {...status(),config:null};});
+  h.run("location.search='?setup=1';location.hash='#/activity'");
+  await h.run('initialAgent()');
+  assert.equal(h.el('agent-dialog').open,true);assert.equal(h.el('agent-dialog').opens,1);
+  assert.equal(h.run('agentStep'),1);assert.equal(h.run('location.search'),'');
+  assert.equal(h.context.renderedRoute,'#/home');
+  assert.ok(calls.length>0);assert.ok(calls.every(call=>call.path==='/api/agent'&&!call.options));
+  h.el('agent-dialog').close();await h.run('initialAgent()');
+  assert.equal(h.el('agent-dialog').open,false);assert.equal(h.el('agent-dialog').opens,1);
+});
+test('setup waits for controls and workspace even when another status load is already ready',async()=>{
+  const h=harness(async()=>status());
+  h.run("location.search='?setup=1';localSession.controls=false;state=null");
+  await h.run('initialAgent()');assert.equal(h.el('agent-dialog').opens,0);
+  h.run('localSession.controls=true');await h.run('loadAgent()');await h.run('initialAgent()');
+  assert.equal(h.el('agent-dialog').opens,0);assert.equal(h.run('location.search'),'?setup=1');
+  h.run('state={wallets:[]}');await h.run('initialAgent()');
+  assert.equal(h.el('agent-dialog').opens,1);assert.equal(h.run('location.search'),'');
+});
+test('setup retries a failed initial status lookup without losing its intent',async()=>{
+  let fail=true;const h=harness(async()=>{if(fail)throw Error('Unavailable');return status();});
+  h.run("location.search='?setup=1'");await h.run('initialAgent()');
+  assert.equal(h.el('agent-dialog').opens,0);assert.equal(h.run('location.search'),'?setup=1');
+  fail=false;await h.run('initialAgent()');assert.equal(h.el('agent-dialog').opens,1);
+});
+test('ordinary startup leaves navigation and the modal unchanged',async()=>{
+  const h=harness(async()=>status());h.run("location.hash='#/activity'");
+  await h.run('initialAgent()');await h.run('initialAgent()');
+  assert.equal(h.el('agent-dialog').opens,0);assert.equal(h.run('location.hash'),'#/activity');
+});
+test('setup reloads saved Claude account and permission choices instead of fresh defaults',async()=>{
+  const config={provider:'claude',model:'saved-model',scope:'wallet',wallet:'sample',retain_history:true,trust_native_cli:true,wallet_tools:false};
+  const h=harness(async()=>({...status(),config}));
+  h.run("location.search='?setup=1';state.wallets=[{key:'sample',name:'Sample wallet'}]");await h.run('initialAgent()');
+  assert.equal(h.run('agentProvider'),'claude');assert.equal(h.el('agent-model').value,'saved-model');
+  assert.equal(h.el('agent-wallet').value,'sample');assert.equal(h.el('agent-retain').checked,true);
+  assert.equal(h.el('agent-tools').checked,false);assert.equal(h.el('agent-trust').checked,true);
+});
+test('setup does not reset choices in a modal already opened by the user',async()=>{
+  const h=harness(async()=>status());h.el('agent-dialog').showModal();h.el('agent-model').value='unsaved-choice';
+  h.run("location.search='?setup=1';agentStep=2");await h.run('initialAgent()');
+  assert.equal(h.el('agent-dialog').opens,1);assert.equal(h.el('agent-model').value,'unsaved-choice');
+  assert.equal(h.run('agentStep'),2);
+});
+test('dismissing a manually opened modal cancels pending startup intent without changing the current route',async()=>{
+  const first=deferred(),calls=[];
+  const h=harness(async(path,options)=>{calls.push({path,options});return calls.length===1?first.promise:status();});
+  h.run("location.search='?setup=1&view=local';location.hash='#/activity'");
+  const initial=h.run('initialAgent()');
+  await h.run('openAgent()');h.el('agent-dialog').close();
+  assert.equal(h.run('location.search'),'?view=local');assert.equal(h.run('location.hash'),'#/activity');
+  first.resolve(status());await initial;await h.run('initialAgent()');
+  assert.equal(h.el('agent-dialog').open,false);assert.equal(h.el('agent-dialog').opens,1);
+  assert.equal(h.run('location.hash'),'#/activity');
+  assert.ok(calls.every(call=>call.path==='/api/agent'&&!call.options));
+});
 test('question starters fill an editable draft without a model call or permission change',()=>{
   let calls=0;const h=harness(async()=>{calls++;return status();});
   let submits=0;h.el('chat-form').requestSubmit=()=>submits++;

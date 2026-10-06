@@ -4,6 +4,13 @@ Kira connects the user's installed, unmodified Codex or Claude Code CLI. It does
 
 The setup flow separates account readiness, model choice, context permission, and confirmation. The conversation composer remains visible. It shows the connected CLI, automatic context scope, response state, cancellation, and a new conversation action. Enter sends; Shift+Enter adds a line; composition events never send.
 
+`kira setup` opens the existing Account, Permissions and Ready modal directly
+after the local session and workspace are available. Opening setup does not run
+a model response check, save permissions or start wallet research. Existing
+settings are loaded when setup is reopened. Closing the modal consumes that
+page's setup request, so background polling does not reopen it. Ordinary
+`kira start` keeps the normal workspace entry behavior.
+
 Automatic context is none, one explicitly selected registered wallet, or the whole recorded portfolio. An allowlisted projection preserves exact balances, contract and chain identities, timestamps, unknown values, and coverage gaps. It excludes credentials, RPC endpoints, paths, raw errors, jobs, and provider payloads. User-entered text is also sent to the selected provider. Scope, wallet, provider, or model changes start a new conversation and never replay old messages. Only a bounded current conversation is replayed.
 
 Approved wallet context can include validated historical full-balance Mint Club

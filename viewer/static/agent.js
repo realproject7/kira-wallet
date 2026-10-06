@@ -154,6 +154,11 @@ $('agent-test').addEventListener('click', async () => {
   finally { setupTesting = false; setupTurn = null; $('agent-test').disabled = false; $('agent-back').disabled = false; }
 });
 $('agent-dialog').addEventListener('close', () => {
+  const query = new URLSearchParams(location.search);
+  if (query.get('setup') === '1') {
+    query.delete('setup');
+    history.replaceState(null, '', location.pathname + (query.size ? '?' + query : '') + location.hash);
+  }
   invalidateSetup(); if (setupTurn) agentPost('/api/chat/cancel', {id: setupTurn}).catch(() => {});
 });
 $('agent-save').addEventListener('click', async () => {
@@ -221,9 +226,19 @@ $('chat-new').addEventListener('click', async () => {
   catch (error) { $('chat-error').textContent = error.message; }
 });
 async function initialAgent() {
-  if (agentLoading || agentReady || !localSession?.controls) return; agentLoading = true;
-  try { await loadAgent(); if (new URLSearchParams(location.search).get('setup') === '1') { history.replaceState(null, '', '/#/home'); await loadSetupReadiness(); renderSetupPath(); } }
+  const setupRequested = new URLSearchParams(location.search).get('setup') === '1';
+  if (agentLoading || !localSession?.controls || (agentReady && !setupRequested) || (setupRequested && !state)) return; agentLoading = true;
+  try {
+    await loadAgent();
+    if (setupRequested && new URLSearchParams(location.search).get('setup') === '1') {
+      history.replaceState(null, '', '/#/home'); readRoute();
+      if (!$('agent-dialog').open) await openAgent();
+    }
+  }
   catch { /* The normal local session polling can reconnect. */ }
   finally { agentLoading = false; }
 }
-renderAgent(); initialAgent(); const agentStartup = setInterval(() => { initialAgent(); if (agentReady) clearInterval(agentStartup); }, 1000);
+renderAgent(); initialAgent(); const agentStartup = setInterval(() => {
+  initialAgent();
+  if (agentReady && new URLSearchParams(location.search).get('setup') !== '1') clearInterval(agentStartup);
+}, 1000);
