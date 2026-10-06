@@ -45,8 +45,9 @@ wallet acceptance. PR review and operator registry publication remain pending.
 
 ## Distribution
 
-The source version is 0.1.3. Its prepared candidate is tied to the clean source
-commit by the ignored release manifest and SHA-256. Published 0.1.2 bytes and
-tags remain immutable. This candidate also includes the OWS attribution
+The source version at these checks was 0.1.3. The operator published it on
+2026-10-06, and the registry and installed bytes were verified against the
+prepared archive. Published 0.1.2 and 0.1.3 bytes and tags remain immutable.
+Version 0.1.3 also includes the OWS attribution
 described in [OWS branding acceptance](KIRA_OWS_BRANDING.md). Registry publication is operator-only. The separately
 deployed HTML showcase needs no npm publication.

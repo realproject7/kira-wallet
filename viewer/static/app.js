@@ -129,7 +129,8 @@ function renderWallet(){
   $('wallet-tags').innerHTML=w.tags.slice(1).map(t=>`<span class="tag">${escapeHTML(t)}</span>`).join(' ');
   $('report-link').hidden=!w.report_url;if(w.report_url)$('report-link').href=safeURL(w.report_url);
   $('total-value').textContent=w.analysed_at?money(w.known_value_usd):'—';
-  $('valuation-note').textContent=w.analysed_at?(w.known_value_usd==null?(w.assets.length?'Value is unknown because prices are unavailable.':'No positive holdings recorded · unchecked networks remain unknown.'):'Market and curve spot estimates · excludes unpriced assets'):'Analysis will appear here when it is ready.';
+  const partial=w.chains.some(c=>c.environment==='mainnet'&&(!c.complete||!c.rpc_available||c.registry_complete===false));
+  $('valuation-note').textContent=w.analysed_at?(w.known_value_usd==null?(w.assets.length?'Value is unknown because prices are unavailable.':'No positive holdings recorded · unchecked networks remain unknown.'):(partial?'Partial portfolio · ':'')+'Market and curve spot estimates · excludes unpriced assets'):'Analysis will appear here when it is ready.';
   $('asset-count').textContent=w.assets.length;$('unpriced-count').textContent=w.unpriced_count+' unpriced';
   const mainnets=w.chains.filter(c=>c.environment==='mainnet');
   $('chain-count').textContent=mainnets.filter(c=>c.assets>0).length;
@@ -141,7 +142,26 @@ function renderWallet(){
   const chainOptions=w.chains.filter(c=>c.assets>0||!c.complete);
   if(selectedChain!=='all'&&!chainOptions.some(c=>String(c.id)===selectedChain))selectedChain='all';
   $('chain-filter').innerHTML='<option value="all">All chains</option>'+chainOptions.map(c=>`<option value="${c.id}">${escapeHTML(c.name)}${c.environment==='testnet'?' · Testnet':''}${!c.complete?' · Incomplete':''}</option>`).join('');
-  $('chain-filter').value=selectedChain;renderHoldings();
+  $('chain-filter').value=selectedChain;renderHoldings();renderDiscoveryCoverage(w);
+}
+function renderDiscoveryCoverage(w) {
+  const readiness=typeof setupReadiness!=='undefined'?setupReadiness:null;
+  const notice=KiraView.discoveryNotice(w,readiness);
+  $('discovery-notice').hidden=!notice;
+  if(!notice)return;
+  $('discovery-notice-title').textContent=notice.title;
+  $('discovery-notice-text').textContent=notice.message;
+  const controls=typeof localSession!=='undefined'&&localSession?.controls===true&&state?.demo!==true;
+  $('discovery-settings').hidden=!controls||notice.action!=='settings';
+  $('discovery-refresh').hidden=!controls||notice.action!=='refresh';
+  $('discovery-refresh').disabled=$('refresh-wallet').disabled;
+  $('discovery-network-details').textContent=w.chains.filter(c=>c.environment==='mainnet'&&(!c.complete||!c.rpc_available||c.registry_complete===false)).map(c=>{
+    const reasons=[];
+    if(!c.rpc_available)reasons.push('on-chain reads unavailable');
+    if(!c.complete)reasons.push(({disabled:'token discovery off',missing_credential:'indexer credential unavailable',unsupported:'indexer unsupported',provider_error:'indexer request failed'})[c.discovery_status]||'token discovery incomplete');
+    if(c.registry_complete===false)reasons.push('Mint Club checks incomplete'+(c.registry_errors||c.balance_errors?' ('+(c.registry_errors||0)+' registry errors, '+(c.balance_errors||0)+' balance errors)':''));
+    return c.name+': '+reasons.join('; ');
+  }).join('\n');
 }
 function icon(asset){
   if(typeof asset.symbol!=='string'||!asset.symbol)return ['', '?'];

@@ -7,7 +7,7 @@ let click;const saved=new Map();
 const wallet={name:'Fixture',address:'0x'+'1'.repeat(40),tags:['Fixture'],analysed_at:'2026-10-04',known_value_usd:null,unpriced_count:3,
   assets:[1,33139,56].map((chain_id,i)=>({chain_id,environment:'mainnet',value_usd:null,symbol:['ETH','APE','BNB'][i]})),
   chains:[1,33139,56].map(id=>({id,name:'Chain '+id,environment:'mainnet',assets:1,complete:false,rpc_available:true,value_usd:null}))};
-const context={$:node,currentWallet:()=>wallet,minimum:10,selectedChain:'all',selectedView:'wallet',
+const context={$:node,KiraView:require('./viewer/static/workspace-model.js'),currentWallet:()=>wallet,minimum:10,selectedChain:'all',selectedView:'wallet',
   escapeHTML:String,money:n=>n==null?'—':'$'+n,stamp:String,safeURL:String,
   document:{querySelectorAll:()=>buttons,addEventListener:(event,handler)=>{click=handler;}},
   localStorage:{setItem:(key,value)=>saved.set(key,value)},renderBreadcrumb(){},bindImages(){},
@@ -22,6 +22,22 @@ assert.equal(node('visible-count').textContent,0);
 assert.match(node('holdings-filter-note').innerHTML,/3 unpriced holdings are hidden/);
 assert.match(node('empty-h3').textContent,/hidden by the value filter/);
 assert.match(node('coverage-note').textContent,/checked for ERC20 tokens/);
+assert.equal(node('discovery-notice').hidden,false);
+assert.match(node('discovery-notice-title').textContent,/partial/);
+context.setupReadiness={discovery_provider:'none',discovery_configured:false,discovery_key_available:false};
+context.renderWallet();assert.equal(node('discovery-notice-title').textContent,'Token discovery is off');
+assert.equal(node('discovery-settings').hidden,true,'Read-only views cannot change discovery settings.');
+wallet.chains[0].complete=true;wallet.chains[0].discovery_status='checked';
+context.renderWallet();assert.match(node('discovery-notice-title').textContent,/partial/,'Explorer coverage must not be described as entirely disabled.');
+wallet.chains[0].complete=false;
+wallet.chains.forEach(c=>c.discovery_status='disabled');
+context.setupReadiness={discovery_provider:'alchemy',discovery_configured:true,discovery_key_available:true};
+context.localSession={controls:true};context.state={demo:false};context.renderWallet();
+assert.match(node('discovery-notice-title').textContent,/Refresh holdings/);
+assert.equal(node('discovery-refresh').hidden,false);
+context.setupReadiness={discovery_provider:'alchemy',discovery_configured:true,discovery_key_available:false};context.renderWallet();
+assert.match(node('discovery-notice-title').textContent,/needs a connection/);
+assert.equal(node('discovery-settings').hidden,false);
 click({target:{closest:()=>({hasAttribute:()=>true})}});
 assert.equal(saved.size,0,'View filters stay temporary.');assert.equal(node('visible-count').textContent,3);
 assert.equal(node('holdings-filter-note').hidden,true);assert.equal(node('empty').hidden,true);

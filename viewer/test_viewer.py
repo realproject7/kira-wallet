@@ -46,6 +46,19 @@ class ViewerTests(unittest.TestCase):
         self.assertEqual(wallet['snapshot_price_references']['ETH_USD']['value'],'2000')
         self.assertNotIn('SECRET-MARKER',json.dumps(wallet['snapshot_price_references']))
 
+    def test_discovery_reasons_and_registry_gaps_are_projected_without_raw_errors(self):
+        first=self.snapshot['coverage'][0]
+        first.update(discovery_status='disabled',general_erc20_discovery='incomplete',mintclub_registry_scan={
+            'complete':False,'registry_errors':12,'balance_errors':3,'error_examples':[{'error':{'message':'SECRET-MARKER'}}]})
+        self.snapshot['coverage'][1]['discovery_status']='SECRET-MARKER'
+        wallet=model.project_wallet(self.entry,self.snapshot,self.root)
+        self.assertEqual(wallet['chains'][0]['discovery_status'],'disabled')
+        self.assertFalse(wallet['chains'][0]['registry_complete'])
+        self.assertEqual(wallet['chains'][0]['registry_errors'],12)
+        self.assertEqual(wallet['chains'][0]['balance_errors'],3)
+        self.assertEqual(wallet['chains'][1]['discovery_status'],'incomplete')
+        self.assertNotIn('SECRET-MARKER',json.dumps(wallet))
+
     def test_unreliable_pool_prices_are_excluded(self):
         w=model.project_wallet(self.entry,self.snapshot,self.root)
         nato=next(t for t in w['assets'] if t['symbol']=='NATO')

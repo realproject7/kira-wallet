@@ -40,6 +40,25 @@ const seed=()=>{fs.mkdirSync(path.dirname(cacheFile),{recursive:true});fs.writeF
   const outage={multicall:async()=>{outages++;const e=new Error('offline');e.name='HttpRequestError';throw e;}};
   const failed=await calls(outage,Array.from({length:100},()=>({})),102n);
   assert.equal(outages,1);assert.equal(failed.length,100);assert(failed.every(r=>r.status==='failure'));
+  let wrappedRequests=0;
+  const wrapped={multicall:async()=>{wrappedRequests++;const cause=Object.assign(new Error('offline'),{name:'HttpRequestError',status:429});throw Object.assign(new Error('HTTP request failed'),{name:'ContractFunctionExecutionError',cause});}};
+  assert((await calls(wrapped,[{},{},{}],102n)).every(r=>r.status==='failure'));assert.equal(wrappedRequests,1);
+  let limitedRequests=0;
+  const limited={multicall:async({contracts,blockNumber})=>{limitedRequests++;assert.equal(blockNumber,103n);if(contracts.length>2)throw Object.assign(new Error('Payload too large'),{name:'HttpRequestError',status:413});return contracts.map(()=>({status:'success',result:1n}));}};
+  assert((await calls(limited,Array.from({length:8},()=>({})),103n)).every(r=>r.status==='success'));assert.equal(limitedRequests,7);
+  const aggregateAbi=h.viem.parseAbi(['function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)']);
+  const balanceAbi=h.viem.parseAbi(['function balanceOf(address) view returns (uint256)']);
+  let actualRequests=0;
+  const actual=h.viem.createPublicClient({transport:h.viem.custom({request:async({method,params})=>{
+    assert.equal(method,'eth_call');assert.equal(params[1],'0x67');actualRequests++;
+    const batch=h.viem.decodeFunctionData({abi:aggregateAbi,data:params[0].data}).args[0];
+    if(batch.length>2)throw Object.assign(new Error('Payload too large'),{name:'HttpRequestError',status:413});
+    return h.viem.encodeFunctionResult({abi:aggregateAbi,functionName:'aggregate3',result:batch.map(()=>({success:true,returnData:h.viem.encodeAbiParameters([{type:'uint256'}],[1n])}))});
+  }},{retryCount:0})});
+  const realResults=await calls(actual,Array.from({length:8},()=>({address:addresses[0],abi:balanceAbi,functionName:'balanceOf',args:[addresses[1]]})),103n);
+  assert(realResults.every(r=>r.status==='success'&&r.result===1n));assert.equal(actualRequests,7);
+  const diagnostic=h.safeError(Object.assign(new Error('Failure https://private.example/SECRET-MARKER'),{name:'ContractFunctionExecutionError',cause:{status:413,code:-32005}}));
+  assert.equal(diagnostic.http_status,413);assert.equal(diagnostic.rpc_code,-32005);assert(!JSON.stringify(diagnostic).includes('SECRET-MARKER'));
   const originalEndpoints=h.endpoints,originalClient=h.client;
   try {
     const tried=[];
