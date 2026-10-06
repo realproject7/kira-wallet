@@ -1,5 +1,6 @@
 'use strict';
 let localSession=null, jobList=[], jobsSignature='', localPolling=false;
+let discoverySettingsRevision='';
 const pendingActions=new Set();
 const jobLabels={'wallet.add':'Wallet research','wallet.refresh':'Holdings refresh','prices.refresh':'Price refresh','wallet.setTags':'Wallet names','settings.rpc':'RPC settings','settings.discovery':'Token discovery'};
 const stageLabels={queued:'Waiting to start',starting:'Opening saved evidence',registered:'Wallet registered',discovery:'Token discovery',chain:'Checking on-chain holdings',dex_discovery:'Checking markets',token_images:'Preparing token artwork',published:'Evidence saved',failed:'Research stopped',stopped:'Research stopped',interrupted:'Ready for recovery'};
@@ -28,6 +29,7 @@ function refreshControlState(){
     $(id).disabled=(sample&&id.startsWith('refresh'))||active||(id==='refresh-prices'&&!currentWallet()?.analysed_at);
     $(id).title=sample?'Sample research cannot contact providers.':active?'A research job is already active for this wallet.':'';
   }
+  $('discovery-refresh').disabled=$('refresh-wallet').disabled;
   if(typeof renderWatching==='function')renderWatching();
 }
 let jobsPage=1, jobsConnected=true, lastJobsPoll=null;
@@ -74,13 +76,15 @@ async function pollJobs(){
     if(!localSession){const response=await fetch('/api/session',{cache:'no-store',signal:AbortSignal.timeout(5000)});if(!response.ok)return;localSession=await response.json();}
     refreshControlState();if(!localSession.controls){renderJobs();return;}
     const jobs=await localAPI('/api/jobs');jobList=jobs;const reconnected=!jobsConnected;jobsConnected=true;lastJobsPoll=new Date().toISOString();
+    const setting=jobs.filter(j=>j.operation==='settings.discovery'&&j.state==='succeeded').map(j=>j.job_id+':'+j.updated_at).sort().join(',');
+    if(setting!==discoverySettingsRevision){discoverySettingsRevision=setting;if(typeof loadSetupReadiness==='function')await loadSetupReadiness();}
     const signature=JSON.stringify(jobs)+JSON.stringify(jobs.map(j=>KiraView.jobPresentation(j).quiet));if(signature!==jobsSignature||reconnected){jobsSignature=signature;renderJobs();}else{$('jobs-freshness').textContent='Checked '+stamp(lastJobsPoll);}
     refreshControlState();
   }catch{jobsConnected=false;renderJobs();}
   finally{localPolling=false;}
 }
 for(const button of document.querySelectorAll('[data-close-dialog]'))button.addEventListener('click',()=>button.closest('dialog').close());
-function openAdd(){if(!localSession?.controls)return;if(!watchingSubmission)$('wallet-form-error').textContent='';if(typeof renderWatching==='function')renderWatching();$('wallet-dialog').showModal();}
+function openAdd(){if(!localSession?.controls)return;if(!watchingSubmission)$('wallet-form-error').textContent='';if(typeof renderWatching==='function')renderWatching();$('wallet-dialog').showModal();if(typeof loadSetupReadiness==='function')loadSetupReadiness();}
 $('open-wallet').addEventListener('click',openAdd);$('empty-add-wallet').addEventListener('click',openAdd);
 function formAction(form,error,action){
   form.addEventListener('submit',async e=>{e.preventDefault();error.textContent='';const buttons=[...form.querySelectorAll('button[type="submit"]')];if(buttons.some(b=>b.disabled))return;buttons.forEach(b=>b.disabled=true);
@@ -104,7 +108,10 @@ $('refresh-prices').addEventListener('click',async()=>{try{await submitOperation
 $('edit-tags').addEventListener('click',()=>{if(!currentWallet())return;$('tags-dialog').dataset.wallet=selectedWallet;$('tag-values').value=currentWallet().tags.join('\n');$('tags-error').textContent='';$('tags-dialog').showModal();});
 formAction($('tags-form'),$('tags-error'),async()=>{await submitOperation('wallet.setTags',{wallet:$('tags-dialog').dataset.wallet,tags:$('tag-values').value.split('\n').filter(t=>t.length)});$('tags-dialog').close();});
 $('jobs-list').addEventListener('click',async event=>{const button=event.target.closest('[data-job-action]');if(!button)return;button.disabled=true;try{await submitOperation('job.'+button.dataset.jobAction,{job_id:button.dataset.jobId});}catch(error){button.disabled=false;toast(error.message);}});
-$('open-settings').addEventListener('click',async()=>{try{const config=await localAPI('/api/settings');$('rpc-mode').value=config.rpc.mode;$('rpc-custom-only').checked=!config.rpc.allow_public_fallback;$('rpc-references').value=Object.entries(config.rpc.chains).map(([chain,row])=>chain+' '+row.url_env).join('\n');$('discovery-provider').value=config.discovery.provider;$('discovery-key').value=config.discovery.key_env;$('settings-error').textContent='';if(typeof KiraSelect!=='undefined')KiraSelect.refresh();$('settings-dialog').showModal();}catch(error){toast(error.message);}});
+$('open-settings').addEventListener('click',async()=>{try{const config=await localAPI('/api/settings');$('rpc-mode').value=config.rpc.mode;$('rpc-custom-only').checked=!config.rpc.allow_public_fallback;$('rpc-references').value=Object.entries(config.rpc.chains).map(([chain,row])=>chain+' '+row.url_env).join('\n');$('discovery-provider').value=config.discovery.provider;$('discovery-key').value=config.discovery.key_env;$('settings-error').textContent='';if(typeof KiraSelect!=='undefined')KiraSelect.refresh();$('settings-dialog').showModal();if(typeof loadSetupReadiness==='function')loadSetupReadiness();}catch(error){toast(error.message);}});
+$('discovery-settings').addEventListener('click',()=>$('open-settings').click());
+$('wallet-discovery-settings').addEventListener('click',()=>{$('wallet-dialog').close();$('open-settings').click();});
+$('discovery-refresh').addEventListener('click',()=>$('refresh-wallet').click());
 formAction($('rpc-form'),$('settings-error'),async()=>{const lines=$('rpc-references').value.split('\n').filter(s=>s.trim());const chains=lines.map(line=>{const parts=line.trim().split(/\s+/);if(parts.length!==2)throw new Error('Enter a chain ID and environment variable name on each line.');return {chain_id:Number(parts[0]),url_env:parts[1]};});await submitOperation('settings.rpc',{mode:$('rpc-mode').value,allow_public_fallback:!$('rpc-custom-only').checked,chains});});
 formAction($('discovery-form'),$('settings-error'),async()=>{await submitOperation('settings.discovery',{provider:$('discovery-provider').value,key_env:$('discovery-key').value});if(typeof loadSetupReadiness==='function')await loadSetupReadiness();});
 $('view-history').addEventListener('click',async()=>{try{const rows=await localAPI('/api/snapshots?wallet='+encodeURIComponent(selectedWallet));$('history-list').innerHTML=rows.map(row=>`<article class="history-row"><strong>${stamp(row.compiled_at)}</strong><span>${escapeHTML(row.status==='completed'?'Saved':'Saved with coverage gaps')}</span><small>${escapeHTML(row.snapshot_id)}</small></article>`).join('')||'<p>No analysis has been published yet.</p>';$('compare-form').hidden=rows.length<2;for(const id of ['compare-before','compare-after'])$(id).innerHTML=rows.map(row=>`<option value="${escapeHTML(row.snapshot_id)}">${stamp(row.compiled_at)} · ${escapeHTML(row.snapshot_id.split('/').at(-1))}</option>`).join('');$('compare-after').selectedIndex=Math.max(0,rows.length-1);$('comparison-result').textContent='';$('history-error').textContent='';$('history-dialog').showModal();}catch(error){toast(error.message);}});

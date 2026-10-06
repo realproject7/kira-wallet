@@ -5,7 +5,9 @@
 GitHub version releases and npm registry publication are separate. The GitHub
 0.1.2 release provides the reviewed `kira-wallet-0.1.2.tgz`, its SHA-256 file and
 release manifest. Its tag pins the source used to create those assets. Install
-that archive from GitHub or use `npm install -g kira-wallet`; npm also serves 0.1.2.
+that archive from GitHub. The operator published npm 0.1.3 on 2026-10-06;
+its archive and installed bytes were verified separately. GitHub v0.1.3
+remains a draft. GitHub and registry status must not be inferred from each other.
 Version 0.1.2 was published to GitHub on 2026-10-05 from
 `f994e99acb4e2d778fb4c95479f04355c88c00b3`. Its archive SHA-256 is
 `866b7f1ad543bff1ff59d3bf840eca6313eb6e206e78b8611186e5a971153f28`.
@@ -21,7 +23,7 @@ their invented wallet addresses, balances and seeded chat are documented in
 
 ## npm publication preparation
 
-The next candidate is **0.1.3**, which makes `kira start` open the full local
+Published **0.1.3** makes `kira start` open the full local
 app by default. `--read-only` preserves the viewer-only mode, `--no-open`
 supports terminal-only use, and `--controls` remains compatible with existing
 scripts. A running instance never changes modes silently. Local session,
@@ -30,9 +32,22 @@ creation now identifies Open Wallet Standard with its official locally served
 logo and explains encrypted local storage and public-account research. The
 OWS integration and wallet-operation permissions are unchanged.
 
-This candidate requires PR review and operator publication. It is not yet
-available from the registry. The showcase HTML animation is deployed separately
-and requires no npm release. Keep the published 0.1.2 archive and tag immutable.
+The next candidate is **0.1.4**. It makes incomplete token discovery visible
+before registration and beside wallet holdings, separates disabled discovery
+from missing credentials and provider failures, and offers a connection or
+holdings-refresh action. Registry failures retain bounded redacted examples
+and RPC error codes. Oversized multicalls split into smaller batches while
+transport outages remain bounded. Existing explorer preferences are preserved
+when discovery settings are saved. Connecting an indexer and refreshing
+holdings are still required to recover tokens absent from an older snapshot.
+RPC failures show affected networks, retry guidance and a settings action.
+Failed candidate balance reads keep the saved result and valuation partial
+even when general token discovery succeeded.
+
+Version 0.1.4 requires independent review and operator registry publication.
+It is not yet available from the registry. The showcase HTML animation is
+deployed separately and requires no npm release. Keep published 0.1.2 and
+0.1.3 package bytes immutable. See [discovery acceptance](KIRA_DISCOVERY_ACCEPTANCE.md).
 
 The operator published npm **0.1.2** on 2026-10-05. Its registry archive was
 downloaded and matched the reviewed GitHub archive above, including SHA-256,
@@ -54,8 +69,8 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep GitHub v0.1.1, its tag and its released archive immutable. Version 0.1.2
-is also released and immutable. Do not rebuild it from later documentation
+Keep GitHub v0.1.1, its tag and its released archive immutable. Versions 0.1.2
+and 0.1.3 are also published and immutable. Do not rebuild them from later documentation
 commits. Future package changes need a new version. Release preparation does not
 publish a GitHub release, merge PR 19, promote the website or publish to npm.
 Registry publication remains operator-only. The coding agent never publishes.
@@ -70,12 +85,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.3.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.4.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.3.tgz --access public
+npm publish ./dist/kira-wallet-0.1.4.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.

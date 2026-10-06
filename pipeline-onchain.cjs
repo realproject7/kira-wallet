@@ -48,12 +48,28 @@ async function connect(n) {
   }
   throw error || new Error('No RPC endpoint configured; public fallback is disabled.');
 }
+function rpcFailure(error) {
+  let sizeLimit=false,transportFailure=false;
+  for(let cause=error,depth=0;cause&&depth<10;cause=cause.cause,depth++) {
+    if(['HttpRequestError','TimeoutError'].includes(cause.name))transportFailure=true;
+    if(cause.status===413||/\b(batch|payload|response|request body)\b.*\b(large|size|limit|exceed)/i.test(cause.shortMessage||cause.message||'')||/gas.*(cap|limit).*exceed|exceed.*gas.*(cap|limit)/i.test(cause.shortMessage||cause.message||''))sizeLimit=true;
+    if(cause.status===429)return {sizeLimit:false,transportFailure:true};
+  }
+  return {sizeLimit,transportFailure};
+}
 async function calls(c, contracts, block) {
   if (!contracts.length) return [];
   try {
-    return await c.multicall({contracts,blockNumber:block,batchSize:0,multicallAddress:MULTICALL});
+    const results=await c.multicall({contracts,blockNumber:block,batchSize:0,multicallAddress:MULTICALL});
+    // viem allowFailure also wraps an aggregate RPC failure as per-contract rows.
+    if(results.length&&results.every(r=>r.status==='failure')) {
+      const limited=results.find(r=>rpcFailure(r.error).sizeLimit);
+      if(limited)throw limited.error;
+    }
+    return results;
   } catch (e) {
-    if (['HttpRequestError','TimeoutError'].includes(e.name)) return contracts.map(()=>({status:'failure',error:e}));
+    const {sizeLimit,transportFailure}=rpcFailure(e);
+    if (!sizeLimit&&transportFailure) return contracts.map(()=>({status:'failure',error:e}));
     if (contracts.length > 1) {
       const mid = Math.ceil(contracts.length/2);
       return [...await calls(c,contracts.slice(0,mid),block), ...await calls(c,contracts.slice(mid),block)];
@@ -135,6 +151,7 @@ async function scanChain(input, n, output) {
       cache_reused:reg.cache_reused,balance_errors:errors.filter(t=>t.registered_mintclub).length,
       positive_balances:held.filter(t=>t.registered_mintclub).length,block_number:block,complete:reg.errors===0 && checked===reg.count,
       source:'On-chain Mint Club bond tokenCount()/tokens(index), then direct wallet balance calls',bond_address:n.mintclub_bond_address};
+    row.registry_scan.error_examples=reg.entries.filter(t=>t.error||!t.address).slice(0,5).map(t=>({index:t.index,error:t.error||{message:'Registry address unavailable'}}));
     row.balance_errors = errors;
     for (const t of held) {
       const item = {chain_id:n.chain_id,network:n.network,token_address:t.address,token_type:t.token_type,token_id:t.token_type==='ERC1155'?'0':null,
