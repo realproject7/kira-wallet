@@ -40,6 +40,9 @@ and RPC error codes. Oversized multicalls split into smaller batches while
 transport outages remain bounded. Existing explorer preferences are preserved
 when discovery settings are saved. Connecting an indexer and refreshing
 holdings are still required to recover tokens absent from an older snapshot.
+RPC failures show affected networks, retry guidance and a settings action.
+Failed candidate balance reads keep the saved result and valuation partial
+even when general token discovery succeeded.
 
 Version 0.1.4 requires independent review and operator registry publication.
 It is not yet available from the registry. The showcase HTML animation is

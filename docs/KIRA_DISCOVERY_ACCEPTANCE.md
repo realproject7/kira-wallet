@@ -18,6 +18,14 @@ It labels incomplete portfolio estimates as partial. Network details retain
 separate discovery, RPC and registry coverage. Read-only and sample views do
 not acquire research permissions.
 
+RPC and candidate-balance failures now receive an explicit warning with
+expanded affected-network details. Retry holdings starts the existing gated
+research action; Review RPC settings opens the existing connection dialog.
+The warning says to wait briefly before retrying and review the connection
+or choose another provider if failures persist. Missing balances remain
+unknown. Successful discovery alone cannot mark failed balance reads complete,
+and old snapshots can project their fixed balance-failure note safely.
+
 Connecting an indexer does not change an immutable saved analysis. Refresh
 holdings runs discovery again. Refresh prices only updates existing holdings.
 Discovery settings preserve existing explorer preferences, and the UI rereads
@@ -31,7 +39,7 @@ remain bounded instead of retrying every contract separately.
 
 ## Verification
 
-- Required `npm test` suite passed: 150 Python tests, required Node behavior
+- Required `npm test` suite passed: 152 Python tests, required Node behavior
   checks and browser script syntax checks.
 - `scripts/check-install.py` passed with a fresh 73-member package installation
   and startup/shutdown lifecycle in a temporary synthetic workspace.
@@ -50,13 +58,20 @@ remain bounded instead of retrying every contract separately.
   unknown prices. UI behavior checks cover disabled discovery, missing
   credentials, stale analysis after connection, read-only actions and
   partially successful explorer coverage.
+- RPC recovery regressions cover unavailable chains, registry failures,
+  non-Mint candidate-balance failures, mixed missing connections, unknown
+  valuations, read-only controls and removal after a successful analysis.
 - Chrome fixture checks at 1440 x 900 and 390 x 844: partial estimate and
   discovery notice render without horizontal overflow. Both connection actions
   open Research connections. The add-wallet dialog says Add with limited
   discovery when the provider is absent. Fixture actions submitted no research,
   account authorization or provider requests.
+- RPC-failure fixtures at the same desktop/mobile sizes show expanded Base
+  and BNB Chain details, both recovery actions and a partial estimate without
+  horizontal overflow. Review RPC settings opens the connection dialog.
 
-The design reference was Mixpanel's dashboard connection guidance, retrieved
+The design references were Mixpanel's dashboard connection guidance and
+Databricks' inline data-check failure state, retrieved
 with [Lazyweb](https://www.lazyweb.com/agentic-search/51280761-491a-4a3f-a78e-ed2dcd427ee8).
 No operator wallet information or screenshots were submitted to that service.
 

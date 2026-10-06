@@ -126,5 +126,22 @@ class WalletPipelineTests(unittest.TestCase):
         self.assertEqual(result['price_references']['ETH_USD']['value'],'2100')
         self.assertEqual(result['price_references']['ETH_USD']['source'],'Alchemy Portfolio Tokens By Wallet')
 
+    def test_candidate_balance_errors_keep_successful_discovery_partial(self):
+        wallet.atomic(self.folder/'onchain-summary.json',{'chains':[{'chain_id':8453,'tokens':[],
+            'native_balance':'0','observed_at':'2026-10-04T12:00:00Z','rpc_status':'available',
+            'registry_scan':{'complete':True,'checked':0,'registry_count':0},
+            'balance_errors':[{'error':{'message':'PRIVATE-DIAGNOSTIC'}}]}]})
+        def node(command,input_path,output_path):wallet.atomic(output_path,{'tokens':[]})
+        with patch.object(wallet,'run_node',side_effect=node),patch.object(wallet,'event'),\
+             patch('native_assets.market_metadata',return_value={'prices':{},'images':{},'evidence':None}),\
+             patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder:market),\
+             patch('token_images.refresh_catalog',return_value={}):
+            result=wallet.finish({'address':self.address,'tags':['Fixture']},self.folder,
+                [{**self.network,'name':'Base','mintclub_network':'base'}],
+                [{'chain_id':8453,'complete':True,'source':None,'pages':[],'native':[]}])
+        self.assertEqual(result['coverage'][0]['candidate_balance_errors'],1)
+        self.assertEqual(result['status'],'completed_with_coverage_gaps')
+        self.assertNotIn('PRIVATE-DIAGNOSTIC',json.dumps(result))
+
 
 if __name__=='__main__':unittest.main()

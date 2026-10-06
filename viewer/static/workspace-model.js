@@ -17,13 +17,22 @@
     return { rows: rows.slice((page - 1) * pageSize, page * pageSize), count: rows.length, page, pages };
   }
   const active = job => ['queued', 'running'].includes(job.state);
+  const rpcGap = chain => chain.rpc_available===false||chain.registry_complete===false||chain.candidate_balance_errors>0;
+  const coverageGap = chain => !chain.complete||rpcGap(chain);
   function discoveryNotice(wallet, readiness = null) {
     const chains=(wallet?.chains||[]).filter(c=>c.environment==='mainnet');
-    const gaps=chains.filter(c=>!c.complete||!c.rpc_available||c.registry_complete===false);
+    const gaps=chains.filter(coverageGap);
     if(!wallet?.analysed_at||!gaps.length)return null;
     const missing=chains.some(c=>!c.complete);
     const disabled=(readiness?.discovery_provider==='none'&&chains.every(c=>!c.complete))||(!readiness&&chains.every(c=>c.discovery_status==='disabled'));
     const noKey=readiness?.discovery_configured&&!readiness.discovery_key_available;
+    const rpc=chains.filter(rpcGap);
+    if(rpc.length){
+      const connection=missing&&(disabled||noKey);
+      return {title:'Some balances could not be checked',
+        message:'On-chain checks did not finish on '+rpc.length+(rpc.length===1?' network.':' networks.')+' Missing balances are unknown, so this portfolio is partial. Wait a moment, then retry holdings. If errors continue, review RPC settings or use a different provider.'+(connection?' Token discovery also needs a connection to find other ERC20 holdings.':''),
+        action:'refresh',settings:true,rpcIssues:true,refreshLabel:'Retry holdings',settingsLabel:connection?'Review connections':'Review RPC settings'};
+    }
     if(missing&&disabled)return {title:'Token discovery is off',message:'This analysis checks native balances and Mint Club assets only. Other ERC20 holdings may be missing. Connect token discovery, then refresh holdings.',action:'settings'};
     if(missing&&noKey)return {title:'Token discovery needs a connection',message:'The selected indexer credential is unavailable. Review its connection, then refresh holdings. This portfolio is partial.',action:'settings'};
     if(missing&&readiness?.discovery_key_available&&chains.some(c=>['disabled','missing_credential'].includes(c.discovery_status)))return {title:'Refresh holdings to discover other tokens',message:'Your discovery connection is now available. This saved analysis predates it and remains partial until you refresh holdings.',action:'refresh'};
@@ -49,7 +58,7 @@
     const h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = seconds % 60;
     return (h ? h + 'h ' : '') + m + 'm ' + s + 's';
   }
-  const api = { catalog, pageSize, active, jobPresentation, duration, discoveryNotice };
+  const api = { catalog, pageSize, active, jobPresentation, duration, discoveryNotice, coverageGap };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KiraView = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -48,7 +48,7 @@ class ViewerTests(unittest.TestCase):
 
     def test_discovery_reasons_and_registry_gaps_are_projected_without_raw_errors(self):
         first=self.snapshot['coverage'][0]
-        first.update(discovery_status='disabled',general_erc20_discovery='incomplete',mintclub_registry_scan={
+        first.update(discovery_status='disabled',general_erc20_discovery='incomplete',candidate_balance_errors=9,mintclub_registry_scan={
             'complete':False,'registry_errors':12,'balance_errors':3,'error_examples':[{'error':{'message':'SECRET-MARKER'}}]})
         self.snapshot['coverage'][1]['discovery_status']='SECRET-MARKER'
         wallet=model.project_wallet(self.entry,self.snapshot,self.root)
@@ -56,8 +56,19 @@ class ViewerTests(unittest.TestCase):
         self.assertFalse(wallet['chains'][0]['registry_complete'])
         self.assertEqual(wallet['chains'][0]['registry_errors'],12)
         self.assertEqual(wallet['chains'][0]['balance_errors'],3)
+        self.assertEqual(wallet['chains'][0]['candidate_balance_errors'],9)
         self.assertEqual(wallet['chains'][1]['discovery_status'],'incomplete')
         self.assertNotIn('SECRET-MARKER',json.dumps(wallet))
+
+    def test_legacy_balance_failure_count_is_safe_without_rewriting_snapshot(self):
+        first=self.snapshot['coverage'][0]
+        first['notes']=['4 candidate token balances could not be read.','SECRET-MARKER']
+        for malformed in (None,-1,'SECRET-MARKER',True):
+            with self.subTest(value=malformed):
+                first['candidate_balance_errors']=malformed
+                wallet=model.project_wallet(self.entry,self.snapshot,self.root)
+                self.assertEqual(wallet['chains'][0]['candidate_balance_errors'],4)
+                self.assertNotIn('SECRET-MARKER',json.dumps(wallet))
 
     def test_unreliable_pool_prices_are_excluded(self):
         w=model.project_wallet(self.entry,self.snapshot,self.root)
