@@ -153,7 +153,7 @@ function renderDiscoveryCoverage(w) {
   $('discovery-notice-text').textContent=notice.message;
   const controls=typeof localSession!=='undefined'&&localSession?.controls===true&&state?.demo!==true;
   $('discovery-settings').hidden=!controls||!(notice.action==='settings'||notice.settings);
-  $('discovery-settings').textContent=notice.settingsLabel||'Connect token discovery';
+  $('discovery-settings').textContent=notice.settingsLabel||'Connect data provider';
   $('discovery-refresh').hidden=!controls||notice.action!=='refresh';
   $('discovery-refresh').textContent=notice.refreshLabel||'Refresh holdings';
   $('discovery-refresh').disabled=$('refresh-wallet').disabled;

@@ -17,11 +17,11 @@ const KiraView=require('./viewer/static/workspace-model.js');
   assert.doesNotMatch(nodes.get('setup-path').innerHTML,/Public RPC checks known assets/);
   now=1000;await interval();assert.equal(calls,1); // Bound retries during an outage.
   now=6000;await interval();assert.equal(calls,2);assert.equal(cleared,false);
-  assert.match(nodes.get('setup-path').innerHTML,/Indexer key detected/);
+  assert.match(nodes.get('setup-path').innerHTML,/Local Alchemy key found/);
   assert.equal(nodes.get('home-empty').hidden,true);
   now=12000;await interval();assert.equal(calls,2); // Successful readiness does not keep polling.
   failNext=true;await context.loadSetupReadiness();assert.match(nodes.get('setup-path').innerHTML,/Retrying/);
-  now=18000;await interval();assert.equal(calls,4);assert.match(nodes.get('setup-path').innerHTML,/Indexer key detected/);
+  now=18000;await interval();assert.equal(calls,4);assert.match(nodes.get('setup-path').innerHTML,/Local Alchemy key found/);
   console.log('Wallet setup recovers from transient readiness failure without inventing an unconfigured state.');
   // State may arrive before this final deferred script in a read-only session.
   nodes.clear();context.localSession={controls:false};context.state.details.tokens=[{id:'1:sample',environment:'mainnet',value_usd:10}];

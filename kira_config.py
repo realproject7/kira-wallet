@@ -19,6 +19,19 @@ def default_config():
     return {'schema_version':1,'rpc':{'mode':'public','allow_public_fallback':True,'chains':{}},
             'discovery':{'provider':'none','key_env':'ALCHEMY_API_KEY','explorers':False}}
 
+def provider_config(config, provider, key_env):
+    """One settings transition. Preserve explicit fallback and custom overrides."""
+    result={**config,'rpc':{**config['rpc'],'chains':{cid:dict(row) for cid,row in config['rpc']['chains'].items()}},
+            'discovery':{**config['discovery'],'provider':'alchemy' if provider=='alchemy' else 'none','key_env':key_env}}
+    result['rpc']['mode']='custom' if provider=='alchemy' else 'public'
+    if provider=='alchemy':
+        from wallet import ALCHEMY
+        for cid,network in ALCHEMY.items():
+            previous=result['rpc']['chains'].get(str(cid))
+            if not previous or previous.get('alchemy_network'):
+                result['rpc']['chains'][str(cid)]={'url_env':key_env,'alchemy_network':network}
+    return result
+
 def load_config():
     path=config_path()
     if not path.exists():return default_config()

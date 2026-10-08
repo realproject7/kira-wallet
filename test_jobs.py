@@ -130,6 +130,39 @@ class JobsTest(JobFixtures, unittest.TestCase):
         self.assertTrue(saved['discovery']['explorers'])
         self.assertEqual(saved['discovery']['key_env'],'TEST_INDEXER_KEY')
 
+    def test_combined_connection_is_atomic_and_preserves_preferences(self):
+        from kira_config import default_config
+        config=default_config();config['rpc'].update(allow_public_fallback=False,chains={'8453':{'url_env':'CUSTOM_BASE'},'777':{'url_env':'UNRELATED'}})
+        config['discovery']['explorers']=True
+        atomic(self.root/'.kira.local.json',config)
+        with patch.dict(os.environ,{'TEST_INDEXER_KEY':'synthetic-secret'}):
+            job=self.store.submit(self.request('settings.provider',{'provider':'alchemy','key_env':'TEST_INDEXER_KEY'}));self.store.worker()
+        self.assertEqual(self.store.get(job['job_id'])['state'],'succeeded')
+        saved=json.loads((self.root/'.kira.local.json').read_text())
+        self.assertFalse(saved['rpc']['allow_public_fallback']);self.assertTrue(saved['discovery']['explorers'])
+        self.assertEqual(saved['rpc']['chains']['8453'],{'url_env':'CUSTOM_BASE'})
+        self.assertEqual(saved['rpc']['chains']['777'],{'url_env':'UNRELATED'})
+        self.assertEqual(saved['rpc']['chains']['1']['url_env'],'TEST_INDEXER_KEY')
+        self.assertNotIn('synthetic-secret',(self.root/'.kira.local.json').read_text())
+        basic=self.store.submit(self.request('settings.provider',{'provider':'public','key_env':'TEST_INDEXER_KEY'},'public-setting'));self.store.worker()
+        self.assertEqual(self.store.get(basic['job_id'])['state'],'succeeded')
+        basic_config=json.loads((self.root/'.kira.local.json').read_text())
+        self.assertEqual(basic_config['rpc']['mode'],'public');self.assertEqual(basic_config['discovery']['provider'],'none')
+        self.assertEqual(basic_config['rpc']['chains'],saved['rpc']['chains'])
+
+    def test_missing_key_and_cancel_leave_both_settings_unchanged(self):
+        from kira_config import default_config
+        config=default_config();atomic(self.root/'.kira.local.json',config);before=(self.root/'.kira.local.json').read_bytes()
+        job=self.store.submit(self.request('settings.provider',{'provider':'alchemy','key_env':'KIRA_SYNTHETIC_ABSENT_KEY'}));self.store.worker()
+        self.assertEqual(self.store.get(job['job_id'])['state'],'failed')
+        self.assertEqual(self.store.get(job['job_id'])['errors'][0]['code'],'connection_key_missing')
+        self.assertEqual((self.root/'.kira.local.json').read_bytes(),before)
+        job=self.store.submit(self.request('settings.provider',{'provider':'public','key_env':'TEST_KEY'},'cancel-setting'))
+        self.store.submit(self.request('job.cancel',{'job_id':job['job_id']},'cancel-action'));self.store.worker()
+        self.assertEqual((self.root/'.kira.local.json').read_bytes(),before)
+        for value in ({'provider':'unknown','key_env':'KEY'},{'provider':'alchemy','key_env':'secret value'},{'provider':'alchemy','key_env':'KEY','secret':'value'}):
+            with self.assertRaises(JobError):self.store.submit(self.request('settings.provider',value,'invalid-provider'))
+
 
 class WorkerProcessTest(JobFixtures, unittest.TestCase):
     # Inherit the synthetic fixture setup, but only run process-specific cases.

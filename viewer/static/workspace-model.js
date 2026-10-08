@@ -31,9 +31,9 @@
       const connection=missing&&(disabled||noKey);
       return {title:'Some balances could not be checked',
         message:'On-chain checks did not finish on '+rpc.length+(rpc.length===1?' network.':' networks.')+' Missing balances are unknown, so this portfolio is partial. Wait a moment, then retry holdings. If errors continue, review RPC settings or use a different provider.'+(connection?' Token discovery also needs a connection to find other ERC20 holdings.':''),
-        action:'refresh',settings:true,rpcIssues:true,refreshLabel:'Retry holdings',settingsLabel:connection?'Review connections':'Review RPC settings'};
+        action:'refresh',settings:true,rpcIssues:true,refreshLabel:'Retry holdings',settingsLabel:connection?'Review data connection':'Review RPC settings'};
     }
-    if(missing&&disabled)return {title:'Token discovery is off',message:'This analysis checks native balances and Mint Club assets only. Other ERC20 holdings may be missing. Connect token discovery, then refresh holdings.',action:'settings'};
+    if(missing&&disabled)return {title:'Token discovery is off',message:'This analysis checks native balances and Mint Club assets only. Other ERC20 holdings may be missing. Connect a data provider, then refresh holdings.',action:'settings'};
     if(missing&&noKey)return {title:'Token discovery needs a connection',message:'The selected indexer credential is unavailable. Review its connection, then refresh holdings. This portfolio is partial.',action:'settings'};
     if(missing&&readiness?.discovery_key_available&&chains.some(c=>['disabled','missing_credential'].includes(c.discovery_status)))return {title:'Refresh holdings to discover other tokens',message:'Your discovery connection is now available. This saved analysis predates it and remains partial until you refresh holdings.',action:'refresh'};
     return {title:'Your portfolio is partial',message:'Some token discovery or on-chain checks did not complete. Missing holdings remain unknown. Review the network details below before refreshing holdings.',action:readiness?.discovery_key_available?'refresh':'settings'};

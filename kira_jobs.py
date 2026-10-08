@@ -19,7 +19,7 @@ import uuid
 
 ASSETS = Path(__file__).resolve().parent
 State = Literal['queued', 'running', 'interrupted', 'succeeded', 'partial', 'failed', 'cancelled']
-Operation = Literal['wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery']
+Operation = Literal['wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider']
 TERMINAL = {'succeeded', 'partial', 'failed', 'cancelled', 'interrupted'}
 ADDRESS = re.compile(r'0x[0-9a-fA-F]{40}')
 
@@ -124,10 +124,10 @@ class JobStore:
         if not isinstance(job,dict) or type(job.get('schema_version')) is not int or job.get('schema_version') != 1: raise JobError('unsupported_version', 'Unsupported persisted job version.')
         required={'schema_version','job_id','operation','input','state','attempt','sequence','result','previous_result','key_hash','request_hash','created_at','updated_at','cancel_requested','checkpoint','stage','events','errors','chains'}
         optional={'raw_hash','control_receipts','control_raw','provider_configuration','started_at'}
-        if required-set(job) or set(job)-required-optional or job['job_id']!=job_id or job['checkpoint']!='snapshots/jobs/'+job_id or not isinstance(job['operation'],str) or job['operation'] not in {'wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery'} or not isinstance(job['state'],str) or job['state'] not in TERMINAL|{'queued','running'} or any(type(job[k]) is not int or job[k]<0 for k in ('attempt','sequence')) or type(job['cancel_requested']) is not bool or not isinstance(job['input'],dict) or any(not isinstance(job[k],list) for k in ('events','errors')) or not isinstance(job['chains'],dict):
+        if required-set(job) or set(job)-required-optional or job['job_id']!=job_id or job['checkpoint']!='snapshots/jobs/'+job_id or not isinstance(job['operation'],str) or job['operation'] not in {'wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider'} or not isinstance(job['state'],str) or job['state'] not in TERMINAL|{'queued','running'} or any(type(job[k]) is not int or job[k]<0 for k in ('attempt','sequence')) or type(job['cancel_requested']) is not bool or not isinstance(job['input'],dict) or any(not isinstance(job[k],list) for k in ('events','errors')) or not isinstance(job['chains'],dict):
             raise JobError('invalid_envelope','Persisted job validation failed. Preserve the file for recovery.')
         names={'wallet.add':['address','tag'],'wallet.refresh':['wallet'],'prices.refresh':['wallet'],'wallet.setTags':['wallet','tags'],
-            'settings.rpc':['mode','chains','allow_public_fallback'],'settings.discovery':['provider','key_env']}[job['operation']]
+            'settings.rpc':['mode','chains','allow_public_fallback'],'settings.discovery':['provider','key_env'],'settings.provider':['provider','key_env']}[job['operation']]
         fields(job['input'],names)
         wallet=job['input'].get('wallet') or job['input'].get('address')
         if wallet is not None and (not isinstance(wallet,str) or not ADDRESS.fullmatch(wallet)):raise JobError('invalid_envelope','Persisted wallet identity is invalid.')
@@ -154,6 +154,11 @@ class JobStore:
         return matches[0]
 
     def normalize(self, operation, value):
+        if operation == 'settings.provider':
+            fields(value,['provider','key_env'])
+            if value['provider'] not in ('public','alchemy') or not isinstance(value['key_env'],str) or not re.fullmatch(r'[A-Z_][A-Z0-9_]{0,99}',value['key_env']):
+                raise JobError('invalid_settings','Choose a data provider and a local credential reference.')
+            return value.copy()
         if operation == 'settings.rpc':
             fields(value,['mode','chains','allow_public_fallback'])
             if value['mode'] not in ('public','custom') or type(value['allow_public_fallback']) is not bool or not isinstance(value['chains'],list) or len(value['chains'])>30:
@@ -403,7 +408,12 @@ class JobStore:
                     previous=config['rpc']['chains'].get(key,{})
                     if row['url_env']==previous.get('url_env') and previous.get('alchemy_network'):row['alchemy_network']=previous['alchemy_network']
                 config['rpc']=updated
-            else:config['discovery']={**job['input'],'explorers':config['discovery'].get('explorers',False)}
+            elif job['operation']=='settings.discovery':config['discovery']={**job['input'],'explorers':config['discovery'].get('explorers',False)}
+            else:
+                from kira_config import provider_config,secret_values
+                config=provider_config(config,**job['input'])
+                if job['input']['provider']=='alchemy' and not secret_values(config).get(job['input']['key_env']):
+                    raise JobError('connection_key_missing','Kira cannot find the local Alchemy key. Follow the connection guide, then retry. Existing settings are unchanged.')
             atomic(config_path(),config)
             result={'status':'completed','setting':job['operation']};atomic(self.jobs/'results'/(job['job_id']+'.json'),result);return result
         env = {**os.environ, 'KIRA_DATA_DIR': str(self.root), 'KIRA_JOB_ID': job['job_id'], 'KIRA_JOB_SNAPSHOT': job['checkpoint'], 'KIRA_ANALYSIS_FD': str(writer.fileno()), 'PYTHONUNBUFFERED': '1'}

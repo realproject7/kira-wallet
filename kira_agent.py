@@ -251,6 +251,7 @@ class AgentStore:
         self.root = Path(root);self.path = self.root/'.kira-agent.json';self.runner=runner;self.detector=detector
         self.lock=threading.RLock();self.turns={};self.active=None;self.epoch=0;self.messages=[];self.conversation=str(uuid.uuid4());self.tested=set();self.config=None;self.workers=[];self.tool_status=None
         self._capabilities=None;self._checked=0
+        self._model_lock=threading.Lock();self._model_cache={}
         self.sessions={};self.started_at=datetime.now(timezone.utc).isoformat();self.updated_at=self.started_at
         if self.path.exists():
             try: self.config=config_input(json.loads(self.path.read_text()),self.root)
@@ -343,6 +344,19 @@ class AgentStore:
         if recheck or self._capabilities is None or time.monotonic()-self._checked > 60:
             self._capabilities=self.detector();self._checked=time.monotonic()
         with self.lock:return {'config':self.config,'providers':self._capabilities,'conversation_id':self.conversation,'messages':self.messages.copy(),'active_turn':self.active,'tool_status':self.tool_status}
+
+    def models(self, provider, recheck=False):
+        if provider not in PROVIDERS:raise JobError('invalid_provider','Choose Codex or Claude.')
+        with self._model_lock:
+            row=next((row for row in self.status(recheck)['providers'] if row['id']==provider),None)
+            if not row or not row['installed'] or not row['supported']:
+                return {'models':[], 'note':'Install a supported CLI to load model choices. The default model remains available.'}
+            cached=self._model_cache.get(provider)
+            if not recheck and cached and time.monotonic()-cached[0]<60:return cached[1]
+            from kira_models import catalog
+            result=catalog(provider)
+            self._model_cache[provider]=(time.monotonic(),result)
+            return result
 
     def fingerprint(self,config):return hashlib.sha256(json.dumps(config,sort_keys=True).encode()).hexdigest()
 

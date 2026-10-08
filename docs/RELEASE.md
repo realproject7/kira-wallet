@@ -32,7 +32,7 @@ creation now identifies Open Wallet Standard with its official locally served
 logo and explains encrypted local storage and public-account research. The
 OWS integration and wallet-operation permissions are unchanged.
 
-The next candidate is **0.1.4**. It makes incomplete token discovery visible
+Published **0.1.4** makes incomplete token discovery visible
 before registration and beside wallet holdings, separates disabled discovery
 from missing credentials and provider failures, and offers a connection or
 holdings-refresh action. Registry failures retain bounded redacted examples
@@ -44,10 +44,19 @@ RPC failures show affected networks, retry guidance and a settings action.
 Failed candidate balance reads keep the saved result and valuation partial
 even when general token discovery succeeded.
 
-Version 0.1.4 requires independent review and operator registry publication.
-It is not yet available from the registry. The showcase HTML animation is
-deployed separately and requires no npm release. Keep published 0.1.2 and
-0.1.3 package bytes immutable. See [discovery acceptance](KIRA_DISCOVERY_ACCEPTANCE.md).
+The next candidate is **0.1.5**. It opens the existing setup modal directly,
+adds readable Codex and Claude model choices, and exposes model and permission
+changes in Workspace settings. New setup recommends local history; upgrades
+preserve explicit opt-outs. Watching wallet methods use individual buttons.
+Data provider connection offers one atomic Alchemy RPC and discovery save,
+with custom overrides under Advanced. A missing key keeps prior settings.
+The wallet draft survives a connection detour. Connecting still requires an
+explicit holdings refresh before missing assets can appear in saved evidence.
+
+Version 0.1.5 requires independent review and operator registry publication.
+It is not yet available from the registry. Keep published 0.1.4 and earlier
+package bytes immutable. The showcase remains a separate deployment.
+See [discovery acceptance](KIRA_DISCOVERY_ACCEPTANCE.md).
 
 The operator published npm **0.1.2** on 2026-10-05. Its registry archive was
 downloaded and matched the reviewed GitHub archive above, including SHA-256,
@@ -69,8 +78,7 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep GitHub v0.1.1, its tag and its released archive immutable. Versions 0.1.2
-and 0.1.3 are also published and immutable. Do not rebuild them from later documentation
+Keep GitHub v0.1.1, its tag and its released archive immutable. Versions 0.1.2, 0.1.3 and 0.1.4 are also published and immutable. Do not rebuild them from later documentation
 commits. Future package changes need a new version. Release preparation does not
 publish a GitHub release, merge PR 19, promote the website or publish to npm.
 Registry publication remains operator-only. The coding agent never publishes.
@@ -85,12 +93,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.4.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.5.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.4.tgz --access public
+npm publish ./dist/kira-wallet-0.1.5.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.

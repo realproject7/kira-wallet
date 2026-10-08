@@ -128,7 +128,7 @@ function renderWatching() {
   const discovery=typeof setupReadiness!=='undefined'?setupReadiness:null,ready=discovery?.discovery_key_available===true;
   $('wallet-discovery-warning').hidden=ready||!!submission||state?.demo===true;
   $('wallet-discovery-warning-title').textContent=!discovery?'Token discovery is not verified':discovery.discovery_configured?'Token discovery needs a connection':'Token discovery is off';
-  $('wallet-discovery-warning-text').textContent=discovery?.discovery_configured?'The selected indexer credential is unavailable. Connect it before researching, or continue with native and Mint Club assets only.':'Other ERC20 holdings may be missing. Connect an indexer before researching, or continue with native and Mint Club assets only.';
+  $('wallet-discovery-warning-text').textContent=discovery?.discovery_configured?'The selected Alchemy key is unavailable. Connect your data provider before researching, or continue with native and Mint Club assets only.':'Other ERC20 holdings may be missing. Connect a data provider before researching, or continue with native and Mint Club assets only.';
   $('wallet-register').textContent = watchingSubmitting ? 'Saving wallet…' : ready||state?.demo?'Add and research':'Add with limited discovery';
   if (browser && $('wallet-dialog').open && watchingLastStatus === 'requesting' && current.status === 'accounts')
     $('wallet-accounts').querySelector('button')?.focus();

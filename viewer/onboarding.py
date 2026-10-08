@@ -6,8 +6,10 @@ def readiness():
     config = load_config()
     discovery = config['discovery']
     configured = discovery['provider'] != 'none'
-    available = configured and bool(secret_values(config).get(discovery['key_env']))
+    local_available = bool(secret_values(config).get(discovery['key_env']))
+    available = configured and local_available
     return {'rpc_mode': config['rpc']['mode'],
             'discovery_provider': discovery['provider'],
             'discovery_configured': configured,
-            'discovery_key_available': bool(available)}
+            'discovery_key_available': bool(available),
+            'local_key_available': local_available}

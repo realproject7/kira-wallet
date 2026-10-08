@@ -121,3 +121,59 @@ test('a connected browser wallet is visible from the top bar and explicit discon
   const h=harness();await h.choose();assert.match(h.element('open-connection').textContent,/0x2222/);
   h.element('wallet-disconnect').listeners.click();assert.equal(h.element('open-connection').textContent,'Connect wallet');assert.equal(h.posts.length,0);
 });
+test('data connection detour keeps the chosen browser account and wallet name',async()=>{
+  const h=harness();await h.choose();
+  const config={rpc:{mode:'public',allow_public_fallback:true,chains:{}},discovery:{provider:'none',key_env:'TEST_KEY'}};
+  Object.assign(h.run('globalThis'),{connectionFixture:config});
+  h.run("localAPI=async path=>path==='/api/settings'?connectionFixture:{local_key_available:false}");
+  await h.element('wallet-discovery-settings').listeners.click();
+  assert.equal(h.element('wallet-dialog').open,true);assert.equal(h.element('settings-dialog').open,true);
+  assert.equal(h.element('settings-done').textContent,'Back to wallet');
+  h.element('settings-dialog').close();
+  assert.equal(h.run('watchingRegistrationInput().address'),A);
+  assert.equal(h.element('new-wallet-tag').value,'  Exact synthetic name  ');
+  assert.equal(h.posts.length,0);
+});
+test('a lost settings result retries the same accepted job without another submission',async()=>{
+  const h=harness();
+  h.run("globalThis.settingPosts=0;globalThis.failSettingRead=true;submitOperation=async()=>{settingPosts++;return {job_id:'accepted-setting'}};localAPI=async path=>{if(path.startsWith('/api/jobs/')){if(failSettingRead)throw Error('Synthetic lost read');return {state:'succeeded'};}return path==='/api/settings'?{rpc:{mode:'public',chains:{}},discovery:{provider:'none',key_env:'KEY'}}:{local_key_available:false};};$('data-provider').value='public';$('discovery-key').value='KEY';");
+  await assert.rejects(h.run("saveConnectionSetting('settings.provider',{provider:'public',key_env:'KEY'})"),/lost read/);
+  h.run('failSettingRead=false');
+  await h.run("saveConnectionSetting('settings.provider',{provider:'public',key_env:'KEY'})");
+  assert.equal(h.run('settingPosts'),1);assert.match(h.element('provider-status').textContent,/saved/);
+});
+test('failed provider save shows guidance and never describes the connection as saved',async()=>{
+  const h=harness();h.run("submitOperation=async()=>({job_id:'failed-setting'});localAPI=async()=>({state:'failed',errors:[{message:'Local key missing. Follow the guide.'}]})");
+  await assert.rejects(h.run("saveConnectionSetting('settings.provider',{provider:'alchemy',key_env:'KEY'})"),/Local key missing/);
+  assert.equal(h.run('pendingSetting'),null);assert.equal(h.element('provider-status').textContent,'Connection settings were not saved.');
+});
+test('status failure after commit reports saved settings and retry still checks the same job',async()=>{
+  const h=harness();h.run("globalThis.settingPosts=0;globalThis.failStatus=true;submitOperation=async()=>{settingPosts++;return {job_id:'committed-setting'}};localAPI=async path=>{if(path.startsWith('/api/jobs/'))return {state:'succeeded'};if(failStatus)throw Error('Lost status');return path==='/api/settings'?{rpc:{mode:'public',chains:{}},discovery:{provider:'none',key_env:'KEY'}}:{local_key_available:false};};$('data-provider').value='public';$('discovery-key').value='KEY'");
+  await assert.rejects(h.run("saveConnectionSetting('settings.provider',{provider:'public',key_env:'KEY'})"),/Settings were saved/);
+  assert.match(h.element('provider-status').textContent,/Connection saved/);
+  h.run('failStatus=false');await h.run("saveConnectionSetting('settings.provider',{provider:'public',key_env:'KEY'})");
+  assert.equal(h.run('settingPosts'),1);
+});
+test('a lost submission receipt stays uncertain instead of claiming the write did not happen',async()=>{
+  const h=harness();h.run("submitOperation=async()=>{throw Error('Lost submission receipt')}");
+  await assert.rejects(h.run("saveConnectionSetting('settings.provider',{provider:'public',key_env:'KEY'})"),/Lost submission receipt/);
+  assert.match(h.element('provider-status').textContent,/Could not confirm/);
+  assert.doesNotMatch(h.element('provider-status').textContent,/not saved/);
+});
+test('Workspace settings reads saved model choices even before initial chat status arrives',async()=>{
+  const h=harness();h.run("globalThis.agentState=null;localAPI=async path=>path==='/api/agent'?{config:{provider:'claude',model:'sonnet',scope:'none',retain_history:false,wallet_tools:true}}:{rpc:{mode:'public'},discovery:{provider:'none'}}");
+  await h.run('openWorkspaceSettings()');
+  assert.match(h.element('workspace-model-summary').textContent,/Claude · sonnet/);
+  assert.match(h.element('workspace-model-summary').textContent,/History off · Research off/);
+});
+test('an older dismissed Workspace lookup cannot replace the latest saved summary',async()=>{
+  const h=harness();h.run("globalThis.lookupNumber=0;globalThis.pendingLookup=[];localAPI=path=>new Promise(resolve=>pendingLookup.push({path,resolve}));");
+  const old=h.run('openWorkspaceSettings()');h.element('workspace-settings-dialog').close();
+  const current=h.run('openWorkspaceSettings()');
+  h.run("pendingLookup[2].resolve({config:{provider:'claude',model:'new-model',scope:'none',retain_history:false,wallet_tools:false}});pendingLookup[3].resolve({rpc:{mode:'custom'},discovery:{provider:'alchemy'}})");
+  await current;
+  h.run("pendingLookup[0].resolve({config:{provider:'codex',model:'old-model',scope:'portfolio',retain_history:true,wallet_tools:true}});pendingLookup[1].resolve({rpc:{mode:'public'},discovery:{provider:'none'}})");
+  await old;
+  assert.match(h.element('workspace-model-summary').textContent,/Claude · new-model/);
+  assert.match(h.element('workspace-data-summary').textContent,/Alchemy selected/);
+});
