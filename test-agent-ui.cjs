@@ -32,7 +32,7 @@ test('setup opens the existing account modal once without submitting model or wa
   assert.equal(h.el('agent-dialog').open,true);assert.equal(h.el('agent-dialog').opens,1);
   assert.equal(h.run('agentStep'),1);assert.equal(h.run('location.search'),'');
   assert.equal(h.context.renderedRoute,'#/home');
-  assert.ok(calls.length>0);assert.ok(calls.every(call=>call.path==='/api/agent'&&!call.options));
+  assert.ok(calls.length>0);assert.ok(calls.every(call=>(call.path==='/api/agent'||call.path.startsWith('/api/agent/models?'))&&!call.options));
   h.el('agent-dialog').close();await h.run('initialAgent()');
   assert.equal(h.el('agent-dialog').open,false);assert.equal(h.el('agent-dialog').opens,1);
 });
@@ -80,7 +80,7 @@ test('dismissing a manually opened modal cancels pending startup intent without 
   first.resolve(status());await initial;await h.run('initialAgent()');
   assert.equal(h.el('agent-dialog').open,false);assert.equal(h.el('agent-dialog').opens,1);
   assert.equal(h.run('location.hash'),'#/activity');
-  assert.ok(calls.every(call=>call.path==='/api/agent'&&!call.options));
+  assert.ok(calls.every(call=>(call.path==='/api/agent'||call.path.startsWith('/api/agent/models?'))&&!call.options));
 });
 test('question starters fill an editable draft without a model call or permission change',()=>{
   let calls=0;const h=harness(async()=>{calls++;return status();});
@@ -195,4 +195,52 @@ test('working status updates preserve a reader position and follow the bottom wh
   scroll.scrollTop=795;h.run("agentState.tool_status='Analysing the results';renderAgent();");
   assert.equal(scroll.scrollTop,1200);
   assert.match(h.el('chat-messages').innerHTML,/kira-research/);
+});
+test('fresh setup recommends history while an existing opt-out stays off',async()=>{
+  const fresh=harness(async()=>({...status(),config:null}));await fresh.run('openAgent()');
+  assert.equal(fresh.el('agent-retain').checked,true);
+  const saved=harness(async()=>status());await saved.run('openAgent()');
+  assert.equal(saved.el('agent-retain').checked,false);
+  assert.equal(saved.el('agent-tools').disabled,true);
+});
+test('saved custom model survives unavailable catalog and remains editable',async()=>{
+  const h=harness(async path=>{if(path.startsWith('/api/agent/models'))throw Error('Offline');return {...status(),config:{...status().config,model:'private-custom-model'}};});
+  await h.run('openAgent()');await tick();
+  assert.equal(h.el('agent-model').value,'private-custom-model');assert.equal(h.el('agent-model-choice').value,'__custom__');
+  assert.equal(h.el('agent-model-advanced').open,true);
+  assert.match(h.el('agent-model-note').textContent,/unavailable/);
+  h.el('agent-model-choice').value='';h.el('agent-model-choice').listeners.change();
+  assert.equal(h.run('currentSetup().model'),'');
+});
+test('provider catalog switch rejects late choices and preserves a typed identifier',async()=>{
+  const pending=deferred();
+  const h=harness(async path=>path.includes('provider=codex')?pending.promise:path.includes('provider=claude')?{models:[{id:'sonnet',name:'Sonnet'}]}:status());
+  await h.run('openAgent()');
+  h.el('agent-providers').listeners.click({target:{closest:()=>({dataset:{provider:'claude'}})}});
+  await tick();h.el('agent-model-choice').value='sonnet';h.el('agent-model-choice').listeners.change();
+  assert.equal(h.run('currentSetup().provider'),'claude');assert.equal(h.run('currentSetup().model'),'sonnet');
+  pending.resolve({models:[{id:'late-codex',name:'Late Codex'}]});await tick();
+  assert.doesNotMatch(h.el('agent-model-choice').innerHTML,/late-codex/);
+  assert.equal(h.el('agent-model').value,'sonnet');
+});
+test('model list arrival cannot overwrite a manual draft or revive a dismissed modal',async()=>{
+  const pending=deferred();const h=harness(async path=>path.startsWith('/api/agent/models')?pending.promise:status());
+  await h.run('openAgent()');h.el('agent-model').value='typed-model';h.el('agent-model').listeners.input();
+  h.el('agent-dialog').close();pending.resolve({models:[{id:'other-model',name:'Other model'}]});await tick();
+  assert.equal(h.el('agent-model').value,'typed-model');assert.equal(h.el('agent-dialog').open,false);
+});
+test('Ready review renders the selected readable model before the response check',async()=>{
+  const h=harness(async path=>path.startsWith('/api/agent/models')?{models:[{id:'native-choice',name:'Readable native model'}]}:status());
+  await h.run('openAgent()');await tick();h.el('agent-model-choice').value='native-choice';h.el('agent-model-choice').listeners.change();
+  h.run('agentStep=3;updateStep()');
+  assert.match(h.el('agent-review').innerHTML,/Readable native model/);
+  assert.match(h.el('agent-review').innerHTML,/Wallet access is off/);
+});
+test('reopening starts at Account and a dismissed status read cannot overwrite a later draft',async()=>{
+  const pending=deferred();const h=harness(async()=>pending.promise);
+  h.run('agentStep=3;updateStep()');const opening=h.run('openAgent()');
+  assert.equal(h.el('agent-step-1').hidden,false);assert.equal(h.el('agent-step-3').hidden,true);
+  assert.equal(h.el('agent-next').disabled,true);assert.equal(h.el('agent-model-choice').disabled,true);
+  h.el('agent-dialog').close();h.el('agent-model').value='later-draft';pending.resolve(status());await opening;
+  assert.equal(h.el('agent-model').value,'later-draft');assert.equal(h.el('agent-dialog').open,false);
 });

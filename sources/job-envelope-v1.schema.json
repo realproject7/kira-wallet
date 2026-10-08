@@ -54,7 +54,8 @@
         "prices.refresh",
         "wallet.setTags",
         "settings.rpc",
-        "settings.discovery"
+        "settings.discovery",
+        "settings.provider"
       ]
     },
     "result": {

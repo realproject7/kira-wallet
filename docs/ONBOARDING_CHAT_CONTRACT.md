@@ -11,6 +11,20 @@ settings are loaded when setup is reopened. Closing the modal consumes that
 page's setup request, so background polling does not reopen it. Ordinary
 `kira start` keeps the normal workspace entry behavior.
 
+The 0.1.5 selector defaults to Use default model. Codex uses a bounded stdio
+app-server handshake and model/list request; it never starts a thread or turn.
+The subprocess has an eight-second metadata deadline and 256 KB output bound.
+Metadata failures leave the default and Advanced identifier entry available.
+Only installed supported CLI versions are queried. Claude uses its documented
+Sonnet, Opus and Haiku aliases. Every chosen model still requires a deliberate
+generic response test. Vendor account and managed policies may restrict access.
+Workspace settings reuses this modal for both providers and all permissions.
+Fresh setup preselects local history; existing false values remain false.
+History permits reopening chats, without extending model memory or scope.
+No wallet context permits general chat and manual wallet management while
+wallet context and research tools remain unavailable. Any effective model or
+permission change starts a fresh conversation.
+
 Automatic context is none, one explicitly selected registered wallet, or the whole recorded portfolio. An allowlisted projection preserves exact balances, contract and chain identities, timestamps, unknown values, and coverage gaps. It excludes credentials, RPC endpoints, paths, raw errors, jobs, and provider payloads. User-entered text is also sent to the selected provider. Scope, wallet, provider, or model changes start a new conversation and never replay old messages. Only a bounded current conversation is replayed.
 
 Approved wallet context can include validated historical full-balance Mint Club
@@ -60,7 +74,7 @@ in Activity and also appear in the chat tray. Unanalysed wallets show a sidebar
 spinner and open Activity while their first holdings job is active.
 
 History is capped at 100 memory sessions and reads up to 200 validated local
-files. Saving remains opt-in. Memory sessions disappear when the process stops.
+files. Saving is recommended for fresh setup and remains an editable choice. Memory sessions disappear when the process stops.
 A previous session can continue only with exactly the same model and context
 configuration. Reading history does not expand model access. Old saved files
 remain readable. No missing memory-only conversations are reconstructed.
@@ -72,3 +86,15 @@ The receipt is consumed only on success. This does not enable history retention.
 The Kira system voice is concise, composed and practical. It leads with findings
 and preserves evidence, unknown values and signing boundaries. Personality is
 prompt guidance; response quality still depends on the selected model.
+
+## 0.1.5 preparation evidence
+
+The combined settings and model-selection tests cover catalog failures, stale
+responses, custom identifiers, fresh retention defaults, saved opt-outs,
+atomic provider changes, preference preservation, missing keys, cancellation
+and ambiguous receipts. Desktop 1440 × 900 and mobile 390 × 844 checks used an
+empty disposable workspace. Codex 0.158.0 and Claude Code 2.1.293 completed
+native default-model response checks with no wallet data. The provider save
+used a synthetic local key reference and made no provider research request.
+Real extension approval, personal OWS passphrases and live holdings coverage
+are separate operator acceptance. Published 0.1.4 snapshots are not rewritten.

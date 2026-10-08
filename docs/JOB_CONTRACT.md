@@ -8,7 +8,8 @@ this contract. Chat interruption never cancels an engine job.
 Mutations use `{schema_version: 1, operation, input, idempotency_key}`.
 Supported operations are `wallet.add` (address, exact tag), `wallet.refresh`
 (wallet address or exact tag), `prices.refresh` (same), `wallet.setTags`
-(wallet, exact tags), `job.resume` and `job.cancel` (job_id).
+(wallet, exact tags), `settings.rpc`, `settings.discovery`, `settings.provider`,
+`job.resume` and `job.cancel` (job_id).
 Read operations are `job.read`, `job.list`, `snapshot.read`, and
 `snapshots.compare`. The portfolio projection retains its existing schema.
 
@@ -20,6 +21,17 @@ input fails with `idempotency_conflict`. Terminal duplicate submission returns
 the same job without rerunning providers. Resume requeues the same job ID and
 increments its attempt on execution. Retain the key until the job is removed
 by a future explicit retention policy. Version mismatches fail closed.
+
+`settings.provider` accepts exactly `{provider: "public" | "alchemy", key_env}`.
+The key reference is a bounded environment variable name, never a credential.
+One writer-locked atomic replacement changes RPC mode and discovery together.
+Alchemy updates generated network references while preserving explicit custom
+chain overrides, unrelated chains, explorer choice and public fallback policy.
+A missing local key fails before replacement. Public mode keeps inactive custom
+references for later use. A detected key is not a validated provider or complete
+holdings result. Existing settings.rpc and settings.discovery requests remain
+compatible. The browser waits for terminal settings results; retrying a lost
+result checks the same accepted job instead of submitting another change.
 
 ## Envelope
 

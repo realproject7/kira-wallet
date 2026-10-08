@@ -1,6 +1,6 @@
 {
   "name": "kira-wallet",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Manage your wallets with your own AI. Track tokens, research markets and refresh holdings in a local workspace.",
   "license": "MIT",
   "private": false,
@@ -56,7 +56,8 @@
     "kira_ows.py",
     "ows_bridge.cjs",
     "docs/KIRA_LIVE_QA.md",
-    "docs/KIRA_DISCOVERY_ACCEPTANCE.md"
+    "docs/KIRA_DISCOVERY_ACCEPTANCE.md",
+    "kira_models.py"
   ],
   "scripts": {
     "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js && node test-watching.cjs && node test-watching-ui.cjs && node --check viewer/static/watching.js && node --check viewer/static/watching-model.js && node --check viewer/static/agent.js && node test-agent-ui.cjs && node test-markdown.cjs && node --check viewer/static/report.js && node test-report-ui.cjs && node test-holdings-ui.cjs && node test-rpc-fallback.cjs && node test-ows.cjs && node test-ows-ui.cjs && node --check viewer/static/ows.js && node --check viewer/static/chat-workspace.js && node --check viewer/static/selects.js && node --check site/demo.js"
