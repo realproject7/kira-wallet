@@ -172,7 +172,7 @@ def main():
     imp=configsub.add_parser('import-env');imp.add_argument('--file',required=True);imp.add_argument('--key-env',default='ALCHEMY_API_KEY')
     rpc=sub.add_parser('rpc');rpcsub=rpc.add_subparsers(dest='setting',required=True)
     rpcsub.add_parser('public')
-    custom=rpcsub.add_parser('set');custom.add_argument('--chain',type=int,required=True);custom.add_argument('--url-env',required=True);fallback=custom.add_mutually_exclusive_group();fallback.add_argument('--public-fallback',action='store_true',default=None);fallback.add_argument('--custom-only',dest='public_fallback',action='store_false')
+    custom=rpcsub.add_parser('set');custom.add_argument('--chain',type=int,required=True);custom.add_argument('--url-env',required=True);custom.add_argument('--priority',choices=['public_first','custom_first']);fallback=custom.add_mutually_exclusive_group();fallback.add_argument('--public-fallback',action='store_true',default=None);fallback.add_argument('--custom-only',dest='public_fallback',action='store_false')
     discovery=sub.add_parser('discovery');discovery.add_argument('provider',choices=['none','alchemy']);discovery.add_argument('--key-env',default='ALCHEMY_API_KEY');discovery.add_argument('--explorers',action='store_true')
     args=parser.parse_args();root=Path(args.data_dir).expanduser().resolve();os.environ['KIRA_DATA_DIR']=str(root)
     if sys.version_info<(3,11):raise ValueError('Python 3.11 or newer is required.')
@@ -239,6 +239,7 @@ def main():
             elif args.setting=='public':cfg['rpc']['mode']='public'
             else:
                 cfg['rpc'].update(mode='custom')
+                if args.priority:cfg['rpc']['priority']=args.priority
                 if args.public_fallback is not None:cfg['rpc']['allow_public_fallback']=args.public_fallback
                 cfg['rpc']['chains'][str(args.chain)]={'url_env':args.url_env}
             # Validate before replacing the user's working configuration.

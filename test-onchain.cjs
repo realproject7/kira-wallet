@@ -49,13 +49,16 @@ const seed=()=>{fs.mkdirSync(path.dirname(cacheFile),{recursive:true});fs.writeF
   const aggregateAbi=h.viem.parseAbi(['function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)']);
   const balanceAbi=h.viem.parseAbi(['function balanceOf(address) view returns (uint256)']);
   let actualRequests=0;
-  const actual=h.viem.createPublicClient({transport:h.viem.custom({request:async({method,params})=>{
-    assert.equal(method,'eth_call');assert.equal(params[1],'0x67');actualRequests++;
+  const {RpcPool}=require('./rpc-pool.cjs'),pool=new RpcPool({interval:0}),hash='0x'+'a'.repeat(64);pool.pin(999,103n,hash);
+  const transport=()=>h.viem.custom({request:async({method,params})=>{
+    if(method==='eth_chainId')return '0x3e7';if(method==='eth_getBlockByNumber')return {number:'0x67',hash};
+    assert.equal(method,'eth_call');assert.deepEqual(params[1],{blockHash:hash,requireCanonical:true});actualRequests++;
     const batch=h.viem.decodeFunctionData({abi:aggregateAbi,data:params[0].data}).args[0];
-    if(batch.length>2)throw Object.assign(new Error('Payload too large'),{name:'HttpRequestError',status:413});
+    if(batch.length>2)throw Object.assign(new Error('Payload too large'),{code:-32005});
     return h.viem.encodeFunctionResult({abi:aggregateAbi,functionName:'aggregate3',result:batch.map(()=>({success:true,returnData:h.viem.encodeAbiParameters([{type:'uint256'}],[1n])}))});
-  }},{retryCount:0})});
-  const realResults=await calls(actual,Array.from({length:8},()=>({address:addresses[0],abi:balanceAbi,functionName:'balanceOf',args:[addresses[1]]})),103n);
+  }},{retryCount:0});
+  const actual=h.viem.createPublicClient({transport:pool.transport(999,['synthetic'],transport)});
+  const realResults=await calls(actual,Array.from({length:8},(_,i)=>({address:'0x'+(i+1).toString(16).padStart(40,'0'),abi:balanceAbi,functionName:'balanceOf',args:[addresses[1]]})),103n);
   assert(realResults.every(r=>r.status==='success'&&r.result===1n));assert.equal(actualRequests,7);
   const diagnostic=h.safeError(Object.assign(new Error('Failure https://private.example/SECRET-MARKER'),{name:'ContractFunctionExecutionError',cause:{status:413,code:-32005}}));
   assert.equal(diagnostic.http_status,413);assert.equal(diagnostic.rpc_code,-32005);assert(!JSON.stringify(diagnostic).includes('SECRET-MARKER'));
@@ -65,8 +68,8 @@ const seed=()=>{fs.mkdirSync(path.dirname(cacheFile),{recursive:true});fs.writeF
     h.endpoints=()=>['custom','public'];
     h.client=(chain,url)=>({getChainId:async()=>{tried.push(url);return url==='custom'?1:8453;}});
     await connect({chain_id:8453,public_rpc:['must-not-use-unconfigured']});
-    assert.deepEqual(tried,['custom','public']);
-    h.endpoints=()=>['custom'];tried.length=0;
+    assert.deepEqual(tried,[undefined]);
+    h.endpoints=()=>['custom'];tried.length=0;h.client=()=>({getChainId:async()=>{tried.push('custom');return 1;}});
     await assert.rejects(connect({chain_id:8453,public_rpc:['must-not-use-unconfigured']}),/identity mismatch/);
     assert.deepEqual(tried,['custom']);
     h.endpoints=()=>[];await assert.rejects(connect({chain_id:8453}),/No RPC endpoint/);

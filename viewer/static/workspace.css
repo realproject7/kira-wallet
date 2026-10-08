@@ -473,6 +473,10 @@ main { margin-left: 232px; width: calc(100% - 232px); }
 .connection-guide { padding:14px; margin:14px 0; border:1px solid #d8cfdf; border-radius:12px; font-size:13px; line-height:1.6; }
 .connection-guide p { margin-bottom:0; }
 .connection-guide code { overflow-wrap:anywhere; }
+.connection-guide summary { font-weight:600; cursor:pointer; }
+.connection-guide ol { padding-left:22px; }
+.connection-guide li + li { margin-top:14px; }
+.connection-guide a { text-decoration:underline; }
 #connection-advanced { margin-top:22px; }
 #connection-advanced > label { margin-top:14px; }
 #settings-done { margin-top:8px; }

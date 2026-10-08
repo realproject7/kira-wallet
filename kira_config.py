@@ -16,7 +16,7 @@ def config_path():
     return Path(os.environ.get('KIRA_CONFIG', data_root()/'.kira.local.json')).expanduser()
 
 def default_config():
-    return {'schema_version':1,'rpc':{'mode':'public','allow_public_fallback':True,'chains':{}},
+    return {'schema_version':1,'rpc':{'mode':'public','allow_public_fallback':True,'priority':'public_first','chains':{}},
             'discovery':{'provider':'none','key_env':'ALCHEMY_API_KEY','explorers':False}}
 
 def provider_config(config, provider, key_env):
@@ -44,7 +44,8 @@ def load_config():
         raise ValueError('Invalid RPC configuration.')
     if not isinstance(discovery,dict) or discovery.get('provider') not in ('none','alchemy') or type(discovery.get('explorers',False)) is not bool:
         raise ValueError('Invalid discovery configuration.')
-    if set(rpc)-{'mode','allow_public_fallback','chains'} or set(discovery)-{'provider','key_env','explorers'}:raise ValueError('Unknown provider configuration fields.')
+    if rpc.get('priority','public_first') not in ('public_first','custom_first'):raise ValueError('Invalid RPC priority.')
+    if set(rpc)-{'mode','allow_public_fallback','priority','chains'} or set(discovery)-{'provider','key_env','explorers'}:raise ValueError('Unknown provider configuration fields.')
     if any(not isinstance(row,dict) or set(row)-{'url_env','alchemy_network'} for row in rpc['chains'].values()):raise ValueError('Unknown RPC endpoint fields.')
     for name in [discovery.get('key_env'),*[row.get('url_env') if isinstance(row,dict) else None for row in rpc['chains'].values()]]:
         if not isinstance(name,str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*',name):raise ValueError('Credentials must use valid environment references.')
@@ -97,7 +98,8 @@ def endpoints(network,cfg=None):
         # New setups default to automatic fallback. Preserve an explicit existing
         # opt-out for operators who require custom providers only.
         if not rpc['allow_public_fallback']:return urls
-    urls.extend(network.get('public_rpc') or [])
+    public=network.get('public_rpc') or []
+    urls=public+urls if rpc.get('priority','public_first')=='public_first' else urls+public
     return list(dict.fromkeys(urls))
 
 def runtime():
@@ -105,7 +107,7 @@ def runtime():
     try: values=secret_values(cfg)
     except ValueError: values={}
     return {'endpoints':{str(n['chain_id']):endpoints(n,cfg) for n in networks},
-            'secrets':list(values.values()),'data_root':str(data_root())}
+            'secrets':list(values.values()),'data_root':str(data_root()),'health_file':str(data_root()/'cache/rpc-health.json')}
 
 if __name__=='__main__':
     # Internal child-process channel only. The user CLI never emits this payload.

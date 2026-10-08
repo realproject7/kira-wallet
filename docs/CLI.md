@@ -10,7 +10,7 @@ npm install -g kira-wallet
 kira setup
 ```
 
-The operator published npm version 0.1.4. Version 0.1.5 is a preparation candidate. GitHub v0.1.3 remains
+The operator published npm version 0.1.5. Version 0.1.6 is a preparation candidate. GitHub v0.1.3 remains
 a draft; the previous archive and checksum are available from the
 [0.1.2 GitHub release](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2).
 Registry publication remains an operator action. The code and original character assets use the MIT license.
@@ -47,8 +47,8 @@ holdings. Missing coverage keeps the portfolio estimate partial. Existing snapsh
 an indexer; a price refresh does not discover missing tokens.
 
 Public RPC checks known assets and Mint Club. For broader ERC20 discovery,
-open Data provider connection, select Alchemy and follow its local key guide.
-The 0.1.5 candidate uses one save for Alchemy RPC and discovery; chain overrides
+open Custom RPC & token coverage, select Alchemy and follow its local key guide.
+Published 0.1.5 uses one save for Alchemy RPC and discovery; chain overrides
 remain under Advanced. Never paste the key into the browser. `kira doctor`
 checks whether the configured key is available. Configuration alone does not
 prove complete coverage; inspect the recorded results and gaps.
@@ -68,7 +68,7 @@ authentication. Verified adapter versions are Codex 0.158.x and Claude Code
 verified. This is a native CLI connection, with no Kira account, API-key proxy or
 hosted portfolio backend.
 
-In the 0.1.5 candidate, setup opens the existing Account / Permissions / Ready
+From published 0.1.5, setup opens the existing Account / Permissions / Ready
 modal directly. Choose Codex or Claude, then Use default model or a readable
 model choice. Codex choices come from bounded native metadata; Claude offers
 Sonnet, Opus and Haiku aliases. A catalog is not proof of account access.
@@ -212,3 +212,12 @@ in session storage. It clears password fields immediately. Recovery keeps the
 original encryption passphrase. No signing, key export or account deletion
 endpoint is exposed. OWS absence does not block ordinary address or browser
 wallet onboarding.
+
+## Free reads and broader token coverage
+
+Public RPC is preferred for ordinary reads, including when a custom backup is
+configured. Advanced settings can select custom first or custom only. For CLI
+configuration, use `kira rpc set --chain 8453 --url-env KIRA_BASE_RPC --priority
+public_first`. Existing custom-only choices remain unchanged. Alchemy token
+discovery uses the configured key directly. See [free RPC behavior](FREE_RPC.md)
+and the [Alchemy setup guide](ALCHEMY_SETUP.md).

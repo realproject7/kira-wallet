@@ -6,6 +6,7 @@ CLI with synthetic context only. OWS uses a separate disposable test vault.
 import argparse
 from http.server import ThreadingHTTPServer
 import json
+import os
 from pathlib import Path
 import secrets
 import shutil
@@ -39,6 +40,8 @@ def main():
     args=parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='kira-product-fixture-') as directory:
         root=Path(directory)
+        os.environ['KIRA_DATA_DIR']=str(root)
+        os.environ.pop('KIRA_CONFIG',None);os.environ.pop('KIRA_RPC_ENV',None)
         atomic(root/'wallets.json',{'schema_version':1,'wallets':[]})
         shutil.copy(PROJECT/'networks.json',root/'networks.json');sample(root)
         registry=json.loads((root/'wallets.json').read_text());registry.pop('demo')

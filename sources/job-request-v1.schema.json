@@ -282,6 +282,12 @@
             },
             "allow_public_fallback": {
               "type": "boolean"
+            },
+            "priority": {
+              "enum": [
+                "public_first",
+                "custom_first"
+              ]
             }
           },
           "required": [
