@@ -111,7 +111,8 @@ function renderHome(){
   $('home-position-note').textContent=s.unique_asset_count+' unique '+(s.unique_asset_count===1?'asset':'assets');
   $('home-valuation-note').textContent=s.priced_count ? 'Market and curve spot estimates · '+s.unpriced_count+' unpriced positions excluded' : 'Value appears as priced holdings become available.';
   $('home-empty').hidden=s.wallet_count>0;$('home-details').hidden=s.wallet_count===0;
-  const incomplete=state.wallets.some(w=>w.chains.some(c=>c.environment==='mainnet'&&(!c.complete||!c.rpc_available)));
+  renderHomeCoverage();
+  const incomplete=state.wallets.some(w=>w.chains.some(c=>c.environment==='mainnet'&&KiraView.coverageGap(c)));
   $('home-coverage-note').textContent='Mainnet holdings only · '+(incomplete?'Research coverage is incomplete.':'Testnets excluded from totals.');
   $('home-price-time').textContent=s.prices_from ? 'Prices '+stamp(s.prices_from)+(s.prices_from!==s.prices_to?' – '+stamp(s.prices_to):'') : '';
   $('wallet-cards').innerHTML=state.wallets.map(w=>{
@@ -144,6 +145,19 @@ function renderWallet(){
   $('chain-filter').innerHTML='<option value="all">All chains</option>'+chainOptions.map(c=>`<option value="${c.id}">${escapeHTML(c.name)}${c.environment==='testnet'?' · Testnet':''}${KiraView.coverageGap(c)?' · Incomplete':''}</option>`).join('');
   $('chain-filter').value=selectedChain;renderHoldings();renderDiscoveryCoverage(w);
 }
+function renderHomeCoverage(){
+  const readiness=typeof setupReadiness!=='undefined'?setupReadiness:null;
+  const affected=state?.wallets.find(w=>KiraView.discoveryNotice(w,readiness)?.rpcIssues)||state?.wallets.find(w=>KiraView.discoveryNotice(w,readiness));
+  const notice=affected?KiraView.discoveryNotice(affected,readiness):null;
+  $('home-discovery-notice').hidden=!notice;
+  if(!notice)return;
+  $('home-discovery-title').textContent=notice.title;
+  $('home-discovery-text').textContent=notice.message;
+  $('home-discovery-settings').textContent=notice.settingsLabel||'Review data connection';
+  $('home-discovery-settings').dataset.wallet=affected.key;
+  $('home-discovery-settings').hidden=typeof localSession==='undefined'||localSession?.controls!==true||state.demo===true;
+  $('home-discovery-review').href='#/wallet/'+encodeURIComponent(affected.key);
+}
 function renderDiscoveryCoverage(w) {
   const readiness=typeof setupReadiness!=='undefined'?setupReadiness:null;
   const notice=KiraView.discoveryNotice(w,readiness);
@@ -153,7 +167,7 @@ function renderDiscoveryCoverage(w) {
   $('discovery-notice-text').textContent=notice.message;
   const controls=typeof localSession!=='undefined'&&localSession?.controls===true&&state?.demo!==true;
   $('discovery-settings').hidden=!controls||!(notice.action==='settings'||notice.settings);
-  $('discovery-settings').textContent=notice.settingsLabel||'Connect data provider';
+  $('discovery-settings').textContent=notice.settingsLabel||'Set up Alchemy';
   $('discovery-refresh').hidden=!controls||notice.action!=='refresh';
   $('discovery-refresh').textContent=notice.refreshLabel||'Refresh holdings';
   $('discovery-refresh').disabled=$('refresh-wallet').disabled;

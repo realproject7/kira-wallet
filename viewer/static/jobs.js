@@ -88,7 +88,7 @@ function openAdd(){if(!localSession?.controls)return;if(!watchingSubmission)$('w
 $('open-wallet').addEventListener('click',openAdd);$('empty-add-wallet').addEventListener('click',openAdd);
 function formAction(form,error,action){
   form.addEventListener('submit',async e=>{e.preventDefault();error.textContent='';const buttons=[...form.querySelectorAll('button[type="submit"]')];if(buttons.some(b=>b.disabled))return;buttons.forEach(b=>b.disabled=true);
-    try{await action();}catch(failure){error.textContent=failure.message;}finally{buttons.forEach(b=>b.disabled=false);}
+    try{await action();}catch(failure){error.textContent=failure.message;}finally{buttons.forEach(b=>b.disabled=false);if(form.id==='provider-form')renderConnectionForm();}
   });
 }
 $('wallet-form').addEventListener('submit',async event=>{
@@ -108,17 +108,26 @@ $('refresh-prices').addEventListener('click',async()=>{try{await submitOperation
 $('edit-tags').addEventListener('click',()=>{if(!currentWallet())return;$('tags-dialog').dataset.wallet=selectedWallet;$('tag-values').value=currentWallet().tags.join('\n');$('tags-error').textContent='';$('tags-dialog').showModal();});
 formAction($('tags-form'),$('tags-error'),async()=>{await submitOperation('wallet.setTags',{wallet:$('tags-dialog').dataset.wallet,tags:$('tag-values').value.split('\n').filter(t=>t.length)});$('tags-dialog').close();});
 $('jobs-list').addEventListener('click',async event=>{const button=event.target.closest('[data-job-action]');if(!button)return;button.disabled=true;try{await submitOperation('job.'+button.dataset.jobAction,{job_id:button.dataset.jobId});}catch(error){button.disabled=false;toast(error.message);}});
-let connectionConfig = null, connectionReadiness = null, connectionRevision = 0, workspaceSettingsRevision = 0, pendingSetting = null, settingSaving = false, settingSaved = false, settingFailed = false;
+let connectionConfig = null, connectionReadiness = null, connectionRevision = 0, workspaceSettingsRevision = 0, pendingSetting = null, settingSaving = false, settingSaved = false, settingFailed = false, connectionWallet = null;
 function connectionSummary(config) {
-  return config.discovery.provider === 'alchemy' ? 'Alchemy selected. Coverage is confirmed by holdings research.' : config.rpc.mode === 'custom' ? 'Custom RPC selected. Broader token discovery is off.' : 'Basic public connection. Broader token discovery is off.';
+  const order = config.rpc.allow_public_fallback === false ? 'Custom RPC only.' : config.rpc.priority === 'custom_first' ? 'Custom RPC first, public backup.' : 'Public RPC first, custom backup.';
+  return config.discovery.provider === 'alchemy' ? 'Alchemy selected. Token discovery uses your key directly. '+order+' Coverage is confirmed by holdings research.' : config.rpc.mode === 'custom' ? order+' Broader token discovery is off.' : 'Basic public connection. Other tokens may be missing.';
 }
 function renderConnectionForm() {
   const alchemy = $('data-provider').value === 'alchemy';
   const available = connectionReadiness?.local_key_available === true && $('discovery-key').value === connectionConfig?.discovery.key_env;
-  $('provider-description').textContent = alchemy ? 'One connection enables Alchemy RPC reads and broader ERC20 discovery on supported networks. Custom chain overrides stay in place.' : 'Use public RPC for native and known assets. Other ERC20 holdings may be missing.';
+  $('provider-description').textContent = alchemy ? 'Recommended for broader ERC20 coverage on supported networks. Public RPC handles balance reads first; Alchemy backs up failed reads and finds other tokens directly. Advanced read preferences apply. Some tokens or networks can still be missing.' : 'Free public RPC checks native balances, selected common tokens and Mint Club assets. It cannot list all tokens in your wallet. Connect Alchemy for broader coverage and backup RPC reads.';
+  $('provider-save').disabled = settingSaving || (alchemy && !available);
   $('provider-key-status').textContent = !alchemy ? '' : available ? 'Local key found. Research results will confirm access and chain coverage.' : 'A local Alchemy key is required before this connection can be saved.';
-  $('provider-key-guide').hidden = !alchemy || available;
+  const keyRef = /^[A-Z_][A-Z0-9_]{0,99}$/.test($('discovery-key').value) ? $('discovery-key').value : 'ALCHEMY_API_KEY';
+  $('guide-key-entry').textContent = keyRef+'=YOUR_KEY';
+  $('guide-import-command').textContent = 'kira config import-env --file ~/.config/kira/alchemy.env --key-env '+keyRef;
+  $('provider-key-guide').hidden = !alchemy;
+  $('provider-key-guide').open = !available;
   $('rpc-custom-fields').hidden = $('rpc-mode').value !== 'custom';
+  $('rpc-priority').disabled = $('rpc-custom-only').checked;
+  $('settings-refresh').hidden = !connectionWallet || !connectionReadiness?.discovery_key_available;
+  $('settings-refresh').disabled = settingSaving || jobList.some(j=>['queued','running'].includes(j.state)&&j.input?.wallet===connectionWallet);
   if (typeof KiraSelect !== 'undefined') KiraSelect.refresh();
 }
 async function openWorkspaceSettings() {
@@ -136,9 +145,10 @@ async function openWorkspaceSettings() {
   $('workspace-data-summary').textContent = dataResult.status === 'fulfilled' ? connectionSummary(dataResult.value) : 'Could not check the data connection. Reopen to retry.';
 
 }
-async function openDataConnections(advanced = false) {
+async function openDataConnections(advanced = false, recommend = false, walletKey = null) {
   if (!localSession?.controls) return;
   const revision = ++connectionRevision;
+  connectionWallet = !$('wallet-dialog').open ? walletKey || (selectedView==='wallet' ? currentWallet()?.key || null : null) : null;
   $('settings-error').textContent = ''; $('provider-status').textContent = pendingSetting ? 'A saved request is pending. Save again to check its result.' : '';
   $('provider-save').disabled = true; $('settings-dialog').showModal();
   $('settings-done').textContent = $('wallet-dialog').open ? 'Back to wallet' : 'Done';
@@ -147,12 +157,13 @@ async function openDataConnections(advanced = false) {
     const [config, readiness] = await Promise.all([localAPI('/api/settings'), localAPI('/api/onboarding')]);
     if (revision !== connectionRevision || !$('settings-dialog').open) return;
     connectionConfig = config; connectionReadiness = readiness;
-    $('data-provider').value = config.discovery.provider === 'alchemy' ? 'alchemy' : 'public';
+    $('data-provider').value = recommend || config.discovery.provider === 'alchemy' ? 'alchemy' : 'public';
     $('rpc-mode').value = config.rpc.mode; $('rpc-custom-only').checked = !config.rpc.allow_public_fallback;
+    $('rpc-priority').value = config.rpc.priority || 'public_first';
     $('rpc-references').value = Object.entries(config.rpc.chains).map(([chain,row]) => chain+' '+row.url_env).join('\n');
     $('discovery-key').value = config.discovery.key_env;
-    $('provider-status').textContent = pendingSetting ? 'A saved request is pending. Save again to check its result.' : connectionSummary(config);
-    renderConnectionForm(); $('provider-save').disabled = false;
+    $('provider-status').textContent = pendingSetting ? 'A saved request is pending. Save again to check its result.' : 'Saved connection: '+connectionSummary(config);
+    renderConnectionForm();
   } catch (error) { if (revision === connectionRevision) $('settings-error').textContent = error.message; }
 }
 async function saveConnectionSetting(operation, input) {
@@ -164,7 +175,7 @@ async function saveConnectionSetting(operation, input) {
     $('provider-status').textContent = settingSaved ? 'Connection saved. Status could not be refreshed; retry checks the same request.' : pendingSetting ? 'The saved request is pending. Retry checks the same request.' : settingFailed ? 'Connection settings were not saved.' : 'Could not confirm the settings request. Check Activity or retry the same choices.';
     throw settingSaved ? new Error('Settings were saved. Reopen or retry to refresh the connection status.') : error;
   }
-  finally { settingSaving = false; }
+  finally { settingSaving = false; if(connectionConfig)renderConnectionForm(); }
 }
 async function finishConnectionSetting(operation, input) {
   const signature = JSON.stringify({operation,input});
@@ -191,13 +202,30 @@ async function finishConnectionSetting(operation, input) {
 }
 $('open-settings').addEventListener('click',openWorkspaceSettings);
 $('settings-data').addEventListener('click',()=>openDataConnections());
-$('discovery-settings').addEventListener('click',()=>openDataConnections($('discovery-settings').textContent === 'Review RPC settings'));
-$('wallet-discovery-settings').addEventListener('click',()=>openDataConnections());
+$('discovery-settings').addEventListener('click',()=>openDataConnections(false,true));
+$('home-discovery-settings').addEventListener('click',()=>openDataConnections(false,true,$('home-discovery-settings').dataset.wallet));
+$('wallet-discovery-settings').addEventListener('click',()=>openDataConnections(false,true));
 $('settings-done').addEventListener('click',()=>$('settings-dialog').close());
 $('workspace-settings-dialog').addEventListener('close',()=>{workspaceSettingsRevision++;});
 $('settings-dialog').addEventListener('close',()=>{connectionRevision++; if ($('workspace-settings-dialog').open) openWorkspaceSettings();});
 $('data-provider').addEventListener('change',renderConnectionForm);
 $('rpc-mode').addEventListener('change',renderConnectionForm);
+$('rpc-custom-only').addEventListener('change',renderConnectionForm);
+$('provider-recheck').addEventListener('click',async()=>{
+  const revision = connectionRevision; $('provider-recheck').disabled = true; $('settings-error').textContent = '';
+  try {
+    const [config,readiness]=await Promise.all([localAPI('/api/settings'),localAPI('/api/onboarding')]);
+    if(revision!==connectionRevision||!$('settings-dialog').open)return;
+    connectionConfig=config;connectionReadiness=readiness;renderConnectionForm();
+  } catch(error) { if(revision===connectionRevision)$('settings-error').textContent=error.message; }
+  finally { $('provider-recheck').disabled=false; }
+});
+$('settings-refresh').addEventListener('click',async()=>{
+  if(!connectionWallet||$('settings-refresh').disabled)return;
+  $('settings-refresh').disabled=true;
+  try { await submitOperation('wallet.refresh',{wallet:connectionWallet});$('settings-dialog').close();navigate('#/activity'); }
+  catch(error) { $('settings-error').textContent=error.message;renderConnectionForm(); }
+});
 $('discovery-key').addEventListener('input',renderConnectionForm);
 $('discovery-refresh').addEventListener('click',()=>$('refresh-wallet').click());
 formAction($('provider-form'),$('settings-error'),async()=>{
@@ -209,7 +237,7 @@ formAction($('provider-form'),$('settings-error'),async()=>{
 formAction($('rpc-form'),$('settings-error'),async()=>{
   const lines=$('rpc-references').value.split('\n').filter(s=>s.trim());
   const chains=lines.map(line=>{const parts=line.trim().split(/\s+/);if(parts.length!==2)throw new Error('Enter a chain ID and environment variable name on each line.');return {chain_id:Number(parts[0]),url_env:parts[1]};});
-  await saveConnectionSetting('settings.rpc',{mode:$('rpc-mode').value,allow_public_fallback:!$('rpc-custom-only').checked,chains});
+  await saveConnectionSetting('settings.rpc',{mode:$('rpc-mode').value,allow_public_fallback:!$('rpc-custom-only').checked,priority:$('rpc-priority').value,chains});
 });
 $('view-history').addEventListener('click',async()=>{try{const rows=await localAPI('/api/snapshots?wallet='+encodeURIComponent(selectedWallet));$('history-list').innerHTML=rows.map(row=>`<article class="history-row"><strong>${stamp(row.compiled_at)}</strong><span>${escapeHTML(row.status==='completed'?'Saved':'Saved with coverage gaps')}</span><small>${escapeHTML(row.snapshot_id)}</small></article>`).join('')||'<p>No analysis has been published yet.</p>';$('compare-form').hidden=rows.length<2;for(const id of ['compare-before','compare-after'])$(id).innerHTML=rows.map(row=>`<option value="${escapeHTML(row.snapshot_id)}">${stamp(row.compiled_at)} · ${escapeHTML(row.snapshot_id.split('/').at(-1))}</option>`).join('');$('compare-after').selectedIndex=Math.max(0,rows.length-1);$('comparison-result').textContent='';$('history-error').textContent='';$('history-dialog').showModal();}catch(error){toast(error.message);}});
 formAction($('compare-form'),$('history-error'),async()=>{const comparison=await localAPI('/api/compare?before='+encodeURIComponent($('compare-before').value)+'&after='+encodeURIComponent($('compare-after').value));$('comparison-result').innerHTML=`<p>${escapeHTML(comparison.note)}</p><p>Coverage observations ${comparison.coverage_changed?'changed':'unchanged'} · native price references ${comparison.price_references_changed?'changed':'unchanged'}</p><div class="table-wrap"><table><thead><tr><th>Token / chain</th><th>Earlier balance</th><th>Later balance</th><th>Change</th></tr></thead><tbody>${comparison.positions.map(p=>`<tr><td>${escapeHTML(p.symbol||shortAddress(p.address))} · ${p.chain_id}<small>${escapeHTML(p.presence.replaceAll('_',' '))}${p.price_references_changed?' · price references changed':''}${p.valuation_method_changed?' · method changed':''}</small></td><td>${escapeHTML(p.before_balance??'Unknown')}</td><td>${escapeHTML(p.after_balance??'Unknown')}</td><td>${escapeHTML(p.balance_delta??'Unknown')}</td></tr>`).join('')}</tbody></table></div>`;});

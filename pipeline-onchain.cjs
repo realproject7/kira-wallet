@@ -40,13 +40,10 @@ async function parallel(items, workers, fn) {
   return results;
 }
 async function connect(n) {
-  const choices=h.endpoints(n.chain_id).map(url=>()=>h.client(n.chain_id,url));
-  let error;
-  for (const [index,create] of choices.entries()) {
-    try {const c = create(); if (await c.getChainId() !== n.chain_id) throw new Error('RPC chain identity mismatch'); endpointIdentity.set(c,index);return c;}
-    catch (e) {error = e;}
-  }
-  throw error || new Error('No RPC endpoint configured; public fallback is disabled.');
+  if(!h.endpoints(n.chain_id).length)throw new Error('No RPC endpoint configured; public fallback is disabled.');
+  const c=h.client(n.chain_id);
+  if(await c.getChainId()!==n.chain_id)throw new Error('RPC chain identity mismatch');
+  endpointIdentity.set(c,h.rpcEndpointsUsed(c)[0]??0);return c;
 }
 function rpcFailure(error) {
   let sizeLimit=false,transportFailure=false;
@@ -69,7 +66,7 @@ async function calls(c, contracts, block) {
     return results;
   } catch (e) {
     const {sizeLimit,transportFailure}=rpcFailure(e);
-    if (!sizeLimit&&transportFailure) return contracts.map(()=>({status:'failure',error:e}));
+    if (!sizeLimit) return contracts.map(()=>({status:'failure',error:e}));
     if (contracts.length > 1) {
       const mid = Math.ceil(contracts.length/2);
       return [...await calls(c,contracts.slice(0,mid),block), ...await calls(c,contracts.slice(mid),block)];
@@ -78,10 +75,10 @@ async function calls(c, contracts, block) {
     catch (inner) {return [{status:'failure',error:inner}];}
   }
 }
-async function batches(c, contracts, block, size=100) {
+async function batches(c, contracts, block, size=32) {
   const plans = [];
   for (let i=0; i<contracts.length; i+=size) plans.push(contracts.slice(i,i+size));
-  return (await parallel(plans,3,b => calls(c,b,block))).flat();
+  return (await parallel(plans,1,b => calls(c,b,block))).flat();
 }
 async function registry(c, n, block) {
   const count = Number(await c.readContract({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'tokenCount',blockNumber:block}));
@@ -125,20 +122,29 @@ async function scanChain(input, n, output) {
   const row = {wallet:input.wallet,chain_id:n.chain_id,network:n.network,observed_at:stamp(),status:'unavailable',tokens:[],native_balance:null};
   let rpcClient;
   try {
-    const c = await connect(n), block = await c.getBlockNumber();rpcClient=c;
+    const c = await connect(n), snapshot = await h.snapshotBlock(c),block=snapshot.number;rpcClient=c;
     row.preferred_endpoint_index=endpointIdentity.get(c);
     row.block_number = block;
+    row.block_hash = snapshot.hash;
     row.native_balance = v.formatUnits(await c.getBalance({address:input.wallet,blockNumber:block}),18);
     row.rpc_status = 'available';
+    // Check discovered and built-in candidates before expensive cold registry work.
+    const initial=new Map(input.candidates.filter(t=>t.chain_id===n.chain_id).map(t=>[t.address.toLowerCase(),{...t,token_type:'ERC20'}]));
+    const initialTokens=[...initial.values()];
+    const initialBalances=await batches(c,initialTokens.map(t=>({address:t.address,abi:erc20,functionName:'balanceOf',args:[input.wallet]})),block);
+    const firstReads=new Map(initialTokens.map((t,i)=>[t.address.toLowerCase(),initialBalances[i]]));
     let reg;
     try {reg = await registry(c,n,block);} catch (e) {row.registry_error = h.safeError(e); reg = {count:null,entries:[],errors:1,cache_reused:0};}
     const plans = new Map();
-    for (const t of input.candidates.filter(t => t.chain_id===n.chain_id)) plans.set(t.address.toLowerCase(), {...t,token_type:'ERC20'});
+    for (const [key,t] of initial) plans.set(key,t);
     for (const t of reg.entries.filter(t => t.address && t.token_type && t.token_type!=='unknown')) {
       plans.set(t.address.toLowerCase(),{...plans.get(t.address.toLowerCase()),...t,registered_mintclub:true});
     }
     const tokens = [...plans.values()];
-    const balances = await batches(c,tokens.map(t => ({address:t.address,abi:t.token_type==='ERC1155'?erc1155:erc20,functionName:'balanceOf',args:t.token_type==='ERC1155'?[input.wallet,0n]:[input.wallet]})),block);
+    const remaining=tokens.filter(t=>!firstReads.has(t.address.toLowerCase())||t.token_type==='ERC1155');
+    const later=await batches(c,remaining.map(t => ({address:t.address,abi:t.token_type==='ERC1155'?erc1155:erc20,functionName:'balanceOf',args:t.token_type==='ERC1155'?[input.wallet,0n]:[input.wallet]})),block);
+    remaining.forEach((t,i)=>firstReads.set(t.address.toLowerCase(),later[i]));
+    const balances=tokens.map(t=>firstReads.get(t.address.toLowerCase()));
     const errors = []; let checked = 0, erc20Checked = 0, erc1155Checked = 0;
     const held = [];
     tokens.forEach((t,i) => {
@@ -192,7 +198,7 @@ function deployment(chain,protocol,name) {
   return deployments.find(r=>r.chainId===chain && r.protocol===protocol && r.contract.toLowerCase()===name.toLowerCase())?.address;
 }
 async function dexChain(n, tokens) {
-  const c=await connect(n),block=await c.getBlockNumber();
+  const c=await connect(n),block=(await h.snapshotBlock(c)).number;
   // Supplement DEX indexer discovery on Base with the canonical WETH/USDC factories.
   if (n.chain_id===8453) {
     const queries=[];
@@ -265,19 +271,19 @@ async function main() {
   const input=JSON.parse(fs.readFileSync(inputPath));
   if(!v.isAddress(input.wallet))throw new Error('Invalid wallet address');
   if(mode==='scan') {
-    const rows=await parallel(input.networks,4,n=>scanChain(input,n,outputPath));
+    const rows=await parallel(input.networks,2,n=>scanChain(input,n,outputPath));
     write(path.join(outputPath,'onchain-summary.json'),{wallet:input.wallet,observed_at:stamp(),chains:rows});
   }else if(mode==='dex') {
-    const result=await parallel(input.networks.filter(n=>input.tokens.some(t=>t.chain_id===n.chain_id)),4,async n=>{
+    const result=await parallel(input.networks.filter(n=>input.tokens.some(t=>t.chain_id===n.chain_id)),2,async n=>{
       const group=input.tokens.filter(t=>t.chain_id===n.chain_id);
       try{return await dexChain(n,group);}catch(e){group.forEach(t=>t.dex_verification_error=h.safeError(e));return group;}
     });
     write(outputPath,{wallet:input.wallet,observed_at:stamp(),tokens:result.flat()});
   }else if(mode==='reserves') {
-    const result=await parallel(input.networks.filter(n=>input.tokens.some(t=>t.chain_id===n.chain_id&&t.mintclub)),4,async n=>{
+    const result=await parallel(input.networks.filter(n=>input.tokens.some(t=>t.chain_id===n.chain_id&&t.mintclub)),2,async n=>{
       const rows=[];
       try {
-        const c=await connect(n),block=await c.getBlockNumber();
+        const c=await connect(n),block=(await h.snapshotBlock(c)).number;
         const queue=input.tokens.filter(t=>t.chain_id===n.chain_id&&t.mintclub).map(t=>t.token_address),seen=new Set();
         for(let i=0;i<queue.length;i++) {
           const address=queue[i],key=address.toLowerCase();

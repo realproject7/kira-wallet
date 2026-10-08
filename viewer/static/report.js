@@ -26,7 +26,7 @@ function renderSetupPath() {
 }
 async function loadSetupReadiness(){
   if(setupLoading||!localSession?.controls)return false;setupLoading=true;
-  try{setupReadiness=await localAPI('/api/onboarding');setupUnavailable=false;setupRetryAfter=0;renderSetupPath();if(typeof renderWatching==='function')renderWatching();if(typeof currentWallet==='function'&&currentWallet())renderDiscoveryCoverage(currentWallet());return true;}catch{setupReadiness=null;setupUnavailable=true;setupRetryAfter=Date.now()+5000;renderSetupPath();return false;}finally{setupLoading=false;}
+  try{setupReadiness=await localAPI('/api/onboarding');setupUnavailable=false;setupRetryAfter=0;renderSetupPath();if(typeof renderWatching==='function')renderWatching();if(typeof renderHomeCoverage==='function')renderHomeCoverage();if(typeof currentWallet==='function'&&currentWallet())renderDiscoveryCoverage(currentWallet());return true;}catch{setupReadiness=null;setupUnavailable=true;setupRetryAfter=Date.now()+5000;renderSetupPath();return false;}finally{setupLoading=false;}
 }
 window.addEventListener('hashchange',()=>{if(selectedView==='home')renderHomeTokens();});
 const setupStartup=setInterval(async()=>{if(state&&localSession?.controls&&!setupReadiness&&Date.now()>=setupRetryAfter){await loadSetupReadiness();renderHomeTokens();}},1000);

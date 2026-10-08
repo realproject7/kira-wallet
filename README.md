@@ -140,3 +140,14 @@ From source, use `node bin/kira.cjs` in place of `kira`.
 Original code and Kira character assets are available under the [MIT license](LICENSE).
 Third-party artwork and references retain their own terms; see
 [Third-party notices](THIRD_PARTY_NOTICES.md).
+
+### Token coverage and optional Alchemy setup
+
+Kira uses free public RPC with bounded fallback and checks a selected common-token
+list alongside native assets and Mint Club. Other ERC20 holdings can be missing.
+Incomplete results show recovery guidance on Home and the wallet page. Connect
+your own Alchemy account for broader discovery on supported networks, then
+refresh holdings. Public RPC remains the first choice for ordinary reads;
+Alchemy is a backup and supplies the dedicated token inventory API. See the
+[step-by-step Alchemy guide](docs/ALCHEMY_SETUP.md) and
+[RPC behavior](docs/FREE_RPC.md).
