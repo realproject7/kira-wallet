@@ -3,7 +3,19 @@ let localSession=null, jobList=[], jobsSignature='', localPolling=false;
 let discoverySettingsRevision='';
 const pendingActions=new Set();
 const jobLabels={'wallet.add':'Wallet research','wallet.refresh':'Holdings refresh','prices.refresh':'Price refresh','wallet.setTags':'Wallet names','settings.rpc':'RPC settings','settings.discovery':'Token discovery','settings.provider':'Data provider connection'};
-const stageLabels={queued:'Waiting to start',starting:'Opening saved evidence',registered:'Wallet registered',discovery:'Token discovery',chain:'Checking on-chain holdings',dex_discovery:'Checking markets',token_images:'Preparing token artwork',published:'Evidence saved',failed:'Research stopped',stopped:'Research stopped',interrupted:'Ready for recovery'};
+const stageLabels={queued:'Waiting to start',starting:'Opening saved evidence',registered:'Wallet registered',discovery:'Token discovery',chain:'Checking on-chain holdings',onchain_progress:'Reading on-chain records',first_evidence:'First results available',dex_discovery:'Checking markets',token_images:'Preparing token artwork',published:'Evidence saved',failed:'Research stopped',stopped:'Research stopped',interrupted:'Ready for recovery'};
+function researchStage(event) {
+  const label=stageLabels[event.stage]||event.stage;
+  if(event.stage!=='onchain_progress')return label;
+  const operations={balances:'Checking token balances',registry:'Discovering Mint Club tokens',metadata:'Reading token details',curves:'Checking curve backing',markets:'Checking markets'};
+  const counts=event.counts||{},context=event.context||{};
+  const chain=(typeof state==='undefined'?[]:state?.wallets||[]).flatMap(w=>w.chains||[]).find(c=>c.id===context.chain_id);
+  return (operations[context.operation]||label)+(context.chain_id?' · '+(chain?.name||'network '+context.chain_id):'')+(Number.isFinite(counts.checked)&&Number.isFinite(counts.total)?' · '+counts.checked+' of '+counts.total:'');
+}
+function jobStage(job) {
+  const event=job.events?.at(-1);
+  return (job.analysis_phase==='enrichment'?'Detailed research · ':'')+researchStage(event?.stage===job.stage?event:{stage:job.stage});
+}
 async function localAPI(path,options={}){
   const response=await fetch(path,{cache:'no-store',...options,headers:{'X-Kira-Session':localSession?.token||'',...options.headers},signal:options.signal||AbortSignal.timeout(12000)});
   if(response.status===403){localSession=null;throw new Error('The local session changed. Reopen this action after reconnecting.');}
@@ -34,7 +46,7 @@ function refreshControlState(){
 }
 let jobsPage=1, jobsConnected=true, lastJobsPoll=null;
 function renderJobs(){
-  const active=jobList.filter(KiraView.active);
+  const active=jobList.filter(KiraView.active).sort((a,b)=>(a.state!=='running')-(b.state!=='running'));
   $('activity-count').textContent=active.length||'';
   $('jobs-summary').textContent=active.length?active.length+' in progress':jobList.length+(jobList.length===1?' saved job':' saved jobs');
   $('jobs-freshness').textContent=!localSession?.controls?'Activity needs a local control session.':!jobsConnected?'Reconnecting. Last recorded states shown.':lastJobsPoll?'Checked '+stamp(lastJobsPoll):'Loading saved jobs…';
@@ -50,14 +62,14 @@ function renderJobs(){
     const controls=KiraView.active(j)?`<button class="quiet-button" data-job-action="cancel" data-job-id="${escapeHTML(j.job_id)}" ${j.cancel_requested?'disabled':''}>${j.cancel_requested?'Stopping…':'Stop'}</button>`:['interrupted','failed','cancelled'].includes(j.state)?`<button class="quiet-button" data-job-action="resume" data-job-id="${escapeHTML(j.job_id)}">Resume saved work</button>`:'';
     const link=j.input.wallet||j.input.address;
     const name=state?.wallets.find(w=>w.key===link?.toLowerCase())?.name||(j.operation==='wallet.add'?j.input.tag:null);
-    const recorded=(j.events||[]).map(event=>{const context=event.context;const detail=Object.entries(event.counts||{}).filter(([name])=>name!=='block_number').map(([name,value])=>name.replaceAll('_',' ')+': '+value).join(' · ');return `<li><strong>${escapeHTML(stageLabels[event.stage]||event.stage)}</strong><span>${stamp(event.observed_at)} · ${escapeHTML(detail)}${context?.block_number?' · block '+escapeHTML(context.block_number):''}</span></li>`;}).join('');
+    const recorded=(j.events||[]).map(event=>{const context=event.context;const detail=Object.entries(event.counts||{}).filter(([name])=>name!=='block_number').map(([name,value])=>name.replaceAll('_',' ')+': '+value).join(' · ');return `<li><strong>${escapeHTML(researchStage(event))}</strong><span>${stamp(event.observed_at)} · ${escapeHTML(detail)}${context?.block_number?' · block '+escapeHTML(context.block_number):''}</span></li>`;}).join('');
     const stages=recorded?`<details class="job-stages"><summary>Recorded stages · ${j.events.length}</summary><ol>${recorded}</ol></details>`:'';
-    return `<article class="job-row"><div class="job-identity"><span class="job-state ${escapeHTML(j.state)}">${presentation.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(presentation.label)}</span><strong>${escapeHTML(jobLabels[j.operation]||j.operation)}</strong>${link?`<a href="#/wallet/${escapeHTML(link.toLowerCase())}">${escapeHTML(name||shortAddress(link))}</a>`:''}<p>${escapeHTML(stageLabels[j.stage]||j.stage)}${j.state==='partial'?' · coverage gaps remain':''}</p><p class="job-timer" data-job-timer="${escapeHTML(j.job_id)}">${presentation.timerLabel} ${KiraView.duration(presentation.elapsed)}</p>${evidence?`<p class="job-evidence">${escapeHTML(evidence)}</p>`:''}${presentation.freshness?`<p class="job-freshness">${escapeHTML(presentation.freshness)}</p>`:''}${j.errors?.length?`<p class="job-error">${escapeHTML(j.errors[0].message)}</p>`:''}${stages}<small>Last update ${stamp(j.updated_at)} · attempt ${j.attempt} · ${escapeHTML(j.job_id.slice(0,8))}</small></div><div class="job-actions">${controls}</div></article>`;
+    return `<article class="job-row"><div class="job-identity"><span class="job-state ${escapeHTML(j.state)}">${presentation.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(presentation.label)}</span><strong>${escapeHTML(jobLabels[j.operation]||j.operation)}</strong>${link?`<a href="#/wallet/${escapeHTML(link.toLowerCase())}">${escapeHTML(name||shortAddress(link))}</a>`:''}<p>${escapeHTML(jobStage(j))}${j.state==='partial'?' · coverage gaps remain':''}</p><p class="job-timer" data-job-timer="${escapeHTML(j.job_id)}">${presentation.timerLabel} ${KiraView.duration(presentation.elapsed)}</p>${evidence?`<p class="job-evidence">${escapeHTML(evidence)}</p>`:''}${presentation.freshness?`<p class="job-freshness">${escapeHTML(presentation.freshness)}</p>`:''}${j.errors?.length?`<p class="job-error">${escapeHTML(j.errors[0].message)}</p>`:''}${stages}<small>Last update ${stamp(j.updated_at)} · attempt ${j.attempt} · ${escapeHTML(j.job_id.slice(0,8))}</small></div><div class="job-actions">${controls}</div></article>`;
   }).join('')||'<div class="empty"><h3>'+(!localSession?.controls?'Activity is not available in this session':'No jobs in this view')+'</h3><p>Research jobs appear here when a local action starts.</p></div>';
   $('active-work').hidden=active.length===0||selectedView==='activity';
   $('active-work').innerHTML=active.slice(0,2).map(j=>{
     const p=KiraView.jobPresentation(j,Date.now(),jobsConnected);
-    return `<div><a href="#/activity"><strong>${p.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(p.label)} · ${escapeHTML(jobLabels[j.operation]||j.operation)}</strong><small data-job-timer="${escapeHTML(j.job_id)}">${p.timerLabel} ${KiraView.duration(p.elapsed)}</small></a><p>${escapeHTML(stageLabels[j.stage]||j.stage)}${p.freshness?' · '+escapeHTML(p.freshness):''}</p></div>`;
+    return `<div><a href="#/activity"><strong>${p.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(p.label)} · ${escapeHTML(jobLabels[j.operation]||j.operation)}</strong><small data-job-timer="${escapeHTML(j.job_id)}">${p.timerLabel} ${KiraView.duration(p.elapsed)}</small></a><p>${escapeHTML(jobStage(j))}${p.freshness?' · '+escapeHTML(p.freshness):''}</p></div>`;
   }).join('')+(active.length>2?'<small>'+ (active.length-2)+' more jobs in Activity</small>':'');
   if(typeof renderBriefing==='function')renderBriefing();
   if(typeof renderWallets==='function'&&state)renderWallets();
@@ -111,12 +123,12 @@ $('jobs-list').addEventListener('click',async event=>{const button=event.target.
 let connectionConfig = null, connectionReadiness = null, connectionRevision = 0, workspaceSettingsRevision = 0, pendingSetting = null, settingSaving = false, settingSaved = false, settingFailed = false, connectionWallet = null;
 function connectionSummary(config) {
   const order = config.rpc.allow_public_fallback === false ? 'Custom RPC only.' : config.rpc.priority === 'custom_first' ? 'Custom RPC first, public backup.' : 'Public RPC first, custom backup.';
-  return config.discovery.provider === 'alchemy' ? 'Alchemy selected. Token discovery uses your key directly. '+order+' Coverage is confirmed by holdings research.' : config.rpc.mode === 'custom' ? order+' Broader token discovery is off.' : 'Basic public connection. Other tokens may be missing.';
+  return config.discovery.provider === 'alchemy' ? 'Alchemy selected. Token discovery uses your key directly. '+order+' Coverage is confirmed by holdings research.' : config.rpc.mode === 'custom' ? order+' Free token research follows your public access preference.' : 'Free research active. Broader coverage is optional.';
 }
 function renderConnectionForm() {
   const alchemy = $('data-provider').value === 'alchemy';
   const available = connectionReadiness?.local_key_available === true && $('discovery-key').value === connectionConfig?.discovery.key_env;
-  $('provider-description').textContent = alchemy ? 'Recommended for broader ERC20 coverage on supported networks. Public RPC handles balance reads first; Alchemy backs up failed reads and finds other tokens directly. Advanced read preferences apply. Some tokens or networks can still be missing.' : 'Free public RPC checks native balances, selected common tokens and Mint Club assets. It cannot list all tokens in your wallet. Connect Alchemy for broader coverage and backup RPC reads.';
+  $('provider-description').textContent = alchemy ? 'Recommended for broader ERC20 coverage on supported networks. Public RPC handles balance reads first; Alchemy backs up failed reads and finds other tokens directly. Advanced read preferences apply. Some tokens or networks can still be missing.' : 'Free research checks native balances, common tokens and Mint Club assets, with keyless token discovery on supported networks. Other tokens may be missing. Connect Alchemy for broader coverage and backup RPC reads.';
   $('provider-save').disabled = settingSaving || (alchemy && !available);
   $('provider-key-status').textContent = !alchemy ? '' : available ? 'Local key found. Research results will confirm access and chain coverage.' : 'A local Alchemy key is required before this connection can be saved.';
   const keyRef = /^[A-Z_][A-Z0-9_]{0,99}$/.test($('discovery-key').value) ? $('discovery-key').value : 'ALCHEMY_API_KEY';
@@ -150,7 +162,7 @@ async function openDataConnections(advanced = false, recommend = false, walletKe
   const revision = ++connectionRevision;
   connectionWallet = !$('wallet-dialog').open ? walletKey || (selectedView==='wallet' ? currentWallet()?.key || null : null) : null;
   $('settings-error').textContent = ''; $('provider-status').textContent = pendingSetting ? 'A saved request is pending. Save again to check its result.' : '';
-  $('provider-save').disabled = true; $('settings-dialog').showModal();
+  $('provider-save').disabled = true; $('provider-recheck').disabled = true; $('settings-dialog').showModal();
   $('settings-done').textContent = $('wallet-dialog').open ? 'Back to wallet' : 'Done';
   $('connection-advanced').open = advanced;
   try {
@@ -163,19 +175,20 @@ async function openDataConnections(advanced = false, recommend = false, walletKe
     $('rpc-references').value = Object.entries(config.rpc.chains).map(([chain,row]) => chain+' '+row.url_env).join('\n');
     $('discovery-key').value = config.discovery.key_env;
     $('provider-status').textContent = pendingSetting ? 'A saved request is pending. Save again to check its result.' : 'Saved connection: '+connectionSummary(config);
-    renderConnectionForm();
+    renderConnectionForm(); $('provider-recheck').disabled = settingSaving;
   } catch (error) { if (revision === connectionRevision) $('settings-error').textContent = error.message; }
 }
 async function saveConnectionSetting(operation, input) {
   if (settingSaving) throw new Error('A settings request is already being checked. Wait for its result.');
   settingSaving = true; settingSaved = false; settingFailed = false;
+  connectionRevision++; $('provider-recheck').disabled = true;
   try {
     await finishConnectionSetting(operation,input);
   } catch (error) {
     $('provider-status').textContent = settingSaved ? 'Connection saved. Status could not be refreshed; retry checks the same request.' : pendingSetting ? 'The saved request is pending. Retry checks the same request.' : settingFailed ? 'Connection settings were not saved.' : 'Could not confirm the settings request. Check Activity or retry the same choices.';
     throw settingSaved ? new Error('Settings were saved. Reopen or retry to refresh the connection status.') : error;
   }
-  finally { settingSaving = false; if(connectionConfig)renderConnectionForm(); }
+  finally { settingSaving = false; $('provider-recheck').disabled = false; if(connectionConfig)renderConnectionForm(); }
 }
 async function finishConnectionSetting(operation, input) {
   const signature = JSON.stringify({operation,input});
@@ -212,13 +225,21 @@ $('data-provider').addEventListener('change',renderConnectionForm);
 $('rpc-mode').addEventListener('change',renderConnectionForm);
 $('rpc-custom-only').addEventListener('change',renderConnectionForm);
 $('provider-recheck').addEventListener('click',async()=>{
+  if(settingSaving||!connectionConfig||$('provider-recheck').disabled)return;
   const revision = connectionRevision; $('provider-recheck').disabled = true; $('settings-error').textContent = '';
   try {
     const [config,readiness]=await Promise.all([localAPI('/api/settings'),localAPI('/api/onboarding')]);
     if(revision!==connectionRevision||!$('settings-dialog').open)return;
-    connectionConfig=config;connectionReadiness=readiness;renderConnectionForm();
+    const old=connectionConfig;
+    const fields={ 'data-provider':old.discovery.provider==='alchemy'?'alchemy':'public', 'discovery-key':old.discovery.key_env, 'rpc-mode':old.rpc.mode, 'rpc-priority':old.rpc.priority||'public_first', 'rpc-references':Object.entries(old.rpc.chains).map(([chain,row])=>chain+' '+row.url_env).join('\n') };
+    const fresh={ 'data-provider':config.discovery.provider==='alchemy'?'alchemy':'public', 'discovery-key':config.discovery.key_env, 'rpc-mode':config.rpc.mode, 'rpc-priority':config.rpc.priority||'public_first', 'rpc-references':Object.entries(config.rpc.chains).map(([chain,row])=>chain+' '+row.url_env).join('\n') };
+    for(const [id,value] of Object.entries(fields))if($(id).value===value)$(id).value=fresh[id];
+    if($('rpc-custom-only').checked===!old.rpc.allow_public_fallback)$('rpc-custom-only').checked=!config.rpc.allow_public_fallback;
+    connectionConfig=config;connectionReadiness=readiness;
+    if(!pendingSetting)$('provider-status').textContent='Saved connection: '+connectionSummary(config);
+    renderConnectionForm();
   } catch(error) { if(revision===connectionRevision)$('settings-error').textContent=error.message; }
-  finally { $('provider-recheck').disabled=false; }
+  finally { if(revision===connectionRevision)$('provider-recheck').disabled=settingSaving; }
 });
 $('settings-refresh').addEventListener('click',async()=>{
   if(!connectionWallet||$('settings-refresh').disabled)return;

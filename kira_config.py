@@ -17,7 +17,7 @@ def config_path():
 
 def default_config():
     return {'schema_version':1,'rpc':{'mode':'public','allow_public_fallback':True,'priority':'public_first','chains':{}},
-            'discovery':{'provider':'none','key_env':'ALCHEMY_API_KEY','explorers':False}}
+            'discovery':{'provider':'none','key_env':'ALCHEMY_API_KEY','explorers':False,'public':True}}
 
 def provider_config(config, provider, key_env):
     """One settings transition. Preserve explicit fallback and custom overrides."""
@@ -45,7 +45,8 @@ def load_config():
     if not isinstance(discovery,dict) or discovery.get('provider') not in ('none','alchemy') or type(discovery.get('explorers',False)) is not bool:
         raise ValueError('Invalid discovery configuration.')
     if rpc.get('priority','public_first') not in ('public_first','custom_first'):raise ValueError('Invalid RPC priority.')
-    if set(rpc)-{'mode','allow_public_fallback','priority','chains'} or set(discovery)-{'provider','key_env','explorers'}:raise ValueError('Unknown provider configuration fields.')
+    if type(discovery.get('public',True)) is not bool:raise ValueError('Invalid public discovery preference.')
+    if set(rpc)-{'mode','allow_public_fallback','priority','chains'} or set(discovery)-{'provider','key_env','explorers','public'}:raise ValueError('Unknown provider configuration fields.')
     if any(not isinstance(row,dict) or set(row)-{'url_env','alchemy_network'} for row in rpc['chains'].values()):raise ValueError('Unknown RPC endpoint fields.')
     for name in [discovery.get('key_env'),*[row.get('url_env') if isinstance(row,dict) else None for row in rpc['chains'].values()]]:
         if not isinstance(name,str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*',name):raise ValueError('Credentials must use valid environment references.')

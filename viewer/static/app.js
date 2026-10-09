@@ -174,9 +174,12 @@ function renderDiscoveryCoverage(w) {
   $('discovery-notice').querySelector('details').open=notice.rpcIssues===true;
   $('discovery-network-details').textContent=w.chains.filter(c=>c.environment==='mainnet'&&KiraView.coverageGap(c)).map(c=>{
     const reasons=[];
-    if(!c.rpc_available)reasons.push('balance reads failed; retry holdings, then review RPC settings if this continues');
+    if(c.rpc_pending)reasons.push('not yet checked; detailed research continues in Activity');
+    else if(!c.rpc_available)reasons.push('balance reads failed; retry holdings, then review RPC settings if this continues');
     if(!c.complete)reasons.push(({disabled:'token discovery off',missing_credential:'indexer credential unavailable',unsupported:'indexer unsupported',provider_error:'indexer request failed'})[c.discovery_status]||'token discovery incomplete');
-    if(c.registry_complete===false&&c.rpc_available)reasons.push('Mint Club balances partly unchecked; retry holdings'+(c.registry_errors||c.balance_errors?' ('+(c.registry_errors||0)+' asset checks and '+(c.balance_errors||0)+' balance reads failed)':''));
+    if(c.registry_phase==='deferred')reasons.push('full Mint Club discovery continues in Activity');
+    else if(c.registry_complete===false&&c.rpc_available)reasons.push('Mint Club balances partly unchecked; retry holdings'+(c.registry_errors||c.balance_errors?' ('+(c.registry_errors||0)+' asset checks and '+(c.balance_errors||0)+' balance reads failed)':''));
+    if(c.candidate_deferred>0)reasons.push(c.candidate_deferred+' token candidates await balance checks in Activity');
     if(c.candidate_balance_errors>0)reasons.push(c.candidate_balance_errors+' token balance reads failed; missing balances remain unknown');
     return c.name+': '+reasons.join('; ');
   }).join('\n');

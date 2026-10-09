@@ -165,6 +165,9 @@ class JobsHTTPTest(unittest.TestCase):
         _,retry=self.request(body=body);self.assertEqual(first['job_id'],retry['job_id'])
         self.assertEqual(len(self.http.jobs.list()),1)
         self.assertEqual(first['input']['tag'],'  Synthetic exact name  ')
-        self.assertEqual((self.root/'wallets.json').read_bytes(),before)
+        registry=json.loads((self.root/'wallets.json').read_text())
+        self.assertEqual(len(registry['wallets']),2)
+        self.assertEqual(registry['wallets'][-1]['tags'],['  Synthetic exact name  '])
+        self.assertNotIn('latest_snapshot',registry['wallets'][-1])
 
 if __name__=='__main__':unittest.main()

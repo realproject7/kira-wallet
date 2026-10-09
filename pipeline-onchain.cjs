@@ -24,6 +24,7 @@ const poolAbi = v.parseAbi([
 const deployments = JSON.parse(fs.readFileSync(path.join(h.assets, 'sources/uniswap-deployments.json'))).records;
 const stamp = () => new Date().toISOString();
 const endpointIdentity = new WeakMap();
+const emitProgress = (n,operation,checked,total) => console.log(JSON.stringify({stage:'onchain_progress',chain_id:n.chain_id,operation,checked,total}));
 const emitChain = row => console.log(JSON.stringify({stage:'chain',chain_id:row.chain_id,status:row.status,endpoint_index:row.endpoint_index,rpc_endpoint_indices:row.rpc_endpoint_indices,
   block_number:row.block_number==null?null:row.block_number.toString(),registry:row.registry_scan?.registry_count,
   checked:row.registry_scan?.checked,held:row.tokens.length,cache_reused:row.registry_scan?.cache_reused}));
@@ -75,10 +76,12 @@ async function calls(c, contracts, block) {
     catch (inner) {return [{status:'failure',error:inner}];}
   }
 }
-async function batches(c, contracts, block, size=32) {
+async function batches(c, contracts, block, size=128, progress=null) {
   const plans = [];
   for (let i=0; i<contracts.length; i+=size) plans.push(contracts.slice(i,i+size));
-  return (await parallel(plans,1,b => calls(c,b,block))).flat();
+  const results=[];
+  for(const plan of plans){results.push(...await calls(c,plan,block));if(progress)progress(results.length,contracts.length);}
+  return results;
 }
 async function registry(c, n, block) {
   const count = Number(await c.readContract({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'tokenCount',blockNumber:block}));
@@ -86,7 +89,7 @@ async function registry(c, n, block) {
   let entries = [], cacheReused = 0;
   if (fs.existsSync(cacheFile)) {
     const cache = JSON.parse(fs.readFileSync(cacheFile));
-    if (cache.chain_id === n.chain_id && cache.bond_address.toLowerCase() === n.mintclub_bond_address.toLowerCase() && cache.entries.length <= count) {
+    if (cache.chain_id === n.chain_id && typeof cache.bond_address==='string' && cache.bond_address.toLowerCase() === n.mintclub_bond_address.toLowerCase() && Array.isArray(cache.entries) && cache.entries.length <= count && cache.entries.every((t,i)=>t&&t.index===i&&v.isAddress(t.address)&&[0,18].includes(t.decimals)&&['ERC20','ERC1155'].includes(t.token_type))) {
       const old = cache.entries;
       const checks = old.length ? await calls(c,[0,old.length-1].map(i => ({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'tokens',args:[BigInt(i)]})),block) : [];
       if (!old.length || checks.every((r,i) => r.status==='success' && r.result.toLowerCase()===old[i ? old.length-1 : 0].address.toLowerCase())) {
@@ -94,32 +97,32 @@ async function registry(c, n, block) {
       }
     }
   }
-  const start = entries.length;
-  const addresses = await batches(c,Array.from({length:count-start},(_,i) => ({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'tokens',args:[BigInt(start+i)]})),block);
-  const additions = addresses.map((r,i) => ({index:start+i,address:r.status==='success'?r.result:null,error:r.status==='success'?null:h.safeError(r.error)}));
-  const valid = additions.filter(t => t.address);
-  const decimals = await batches(c,valid.map(t => ({address:t.address,abi:erc20,functionName:'decimals'})),block);
-  valid.forEach((t,i) => {
-    const r = decimals[i];
-    t.decimals = r.status==='success'?r.result:null;
-    // The official Mint Club clones have fixed ERC20 decimals 18 or ERC1155 decimals 0.
-    t.token_type = t.decimals===18?'ERC20':t.decimals===0?'ERC1155':'unknown';
-    if (t.token_type==='unknown') t.error = r.status==='failure'?h.safeError(r.error):{message:'Unexpected Mint Club decimals'};
-  });
-  entries = [...entries,...additions];
-  if (entries.every(t => t.address && t.token_type!=='unknown' && !t.error)) {
-    write(cacheFile,{chain_id:n.chain_id,bond_address:n.mintclub_bond_address,observed_at:stamp(),block_number:block,entries});
+  for(let start=entries.length;start<count;start+=128) {
+    const length=Math.min(128,count-start);
+    const addresses=await calls(c,Array.from({length},(_,i)=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'tokens',args:[BigInt(start+i)]})),block);
+    const additions=addresses.map((r,i)=>({index:start+i,address:r.status==='success'?r.result:null,error:r.status==='success'?null:h.safeError(r.error)}));
+    const valid=additions.filter(t=>t.address);
+    const decimals=await calls(c,valid.map(t=>({address:t.address,abi:erc20,functionName:'decimals'})),block);
+    valid.forEach((t,i)=>{const r=decimals[i];t.decimals=r.status==='success'?r.result:null;t.token_type=t.decimals===18?'ERC20':t.decimals===0?'ERC1155':'unknown';if(t.token_type==='unknown')t.error=r.status==='failure'?h.safeError(r.error):{message:'Unexpected Mint Club decimals'};});
+    const failed=additions.some(t=>!t.address||t.error);
+    entries.push(...additions);
+    // Persist each verified identity prefix. No quantities or wallet-specific data.
+    if(!failed)write(cacheFile,{chain_id:n.chain_id,bond_address:n.mintclub_bond_address,observed_at:stamp(),block_number:block,entries});
+    emitProgress(n,'registry',entries.length,count);
+    if(failed)break;
   }
-  return {count,entries,cache_reused:cacheReused,errors:entries.filter(t => t.error || !t.address).length};
+
+  return {count,entries,cache_reused:cacheReused,errors:entries.filter(t => t.error || !t.address).length+(entries.length<count?1:0)};
 }
-async function scanChain(input, n, output) {
-  const file = path.join(output,`chain-${n.chain_id}.json`);
+async function scanChain(input, n, output, baseline=false) {
+  const file = path.join(output,`${baseline?'baseline-':''}chain-${n.chain_id}.json`);
   // A resumed run retains its fixed-block completed evidence, never wallet-independent balances.
   if (fs.existsSync(file)) {
     const previous = JSON.parse(fs.readFileSync(file));
-    if (previous.wallet.toLowerCase()===input.wallet.toLowerCase() && previous.status==='complete') {emitChain(previous);return previous;}
+    if (previous.wallet.toLowerCase()===input.wallet.toLowerCase() && (previous.status==='complete'||baseline&&previous.phase==='baseline')) {emitChain(previous);return previous;}
   }
-  const row = {wallet:input.wallet,chain_id:n.chain_id,network:n.network,observed_at:stamp(),status:'unavailable',tokens:[],native_balance:null};
+  const row = {wallet:input.wallet,chain_id:n.chain_id,network:n.network,phase:baseline?'baseline':'enrichment',observed_at:stamp(),status:'unavailable',tokens:[],native_balance:null};
+  emitProgress(n,'balances',0,null);
   let rpcClient;
   try {
     const c = await connect(n), snapshot = await h.snapshotBlock(c),block=snapshot.number;rpcClient=c;
@@ -130,11 +133,13 @@ async function scanChain(input, n, output) {
     row.rpc_status = 'available';
     // Check discovered and built-in candidates before expensive cold registry work.
     const initial=new Map(input.candidates.filter(t=>t.chain_id===n.chain_id).map(t=>[t.address.toLowerCase(),{...t,token_type:'ERC20'}]));
-    const initialTokens=[...initial.values()];
-    const initialBalances=await batches(c,initialTokens.map(t=>({address:t.address,abi:erc20,functionName:'balanceOf',args:[input.wallet]})),block);
+    const allCandidates=[...initial.values()];
+    const initialTokens=baseline?allCandidates.slice(0,128):allCandidates;
+    if(baseline){initial.clear();for(const t of initialTokens)initial.set(t.address.toLowerCase(),t);}
+    const initialBalances=await batches(c,initialTokens.map(t=>({address:t.address,abi:erc20,functionName:'balanceOf',args:[input.wallet]})),block,128,(checked,total)=>emitProgress(n,'balances',checked,total));
     const firstReads=new Map(initialTokens.map((t,i)=>[t.address.toLowerCase(),initialBalances[i]]));
     let reg;
-    try {reg = await registry(c,n,block);} catch (e) {row.registry_error = h.safeError(e); reg = {count:null,entries:[],errors:1,cache_reused:0};}
+    try {reg = baseline?{count:null,entries:[],errors:0,cache_reused:0}:await registry(c,n,block);} catch (e) {row.registry_error = h.safeError(e); reg = {count:null,entries:[],errors:1,cache_reused:0};}
     const plans = new Map();
     for (const [key,t] of initial) plans.set(key,t);
     for (const t of reg.entries.filter(t => t.address && t.token_type && t.token_type!=='unknown')) {
@@ -142,7 +147,8 @@ async function scanChain(input, n, output) {
     }
     const tokens = [...plans.values()];
     const remaining=tokens.filter(t=>!firstReads.has(t.address.toLowerCase())||t.token_type==='ERC1155');
-    const later=await batches(c,remaining.map(t => ({address:t.address,abi:t.token_type==='ERC1155'?erc1155:erc20,functionName:'balanceOf',args:t.token_type==='ERC1155'?[input.wallet,0n]:[input.wallet]})),block);
+    if(remaining.length)emitProgress(n,'balances',0,remaining.length);
+    const later=await batches(c,remaining.map(t => ({address:t.address,abi:t.token_type==='ERC1155'?erc1155:erc20,functionName:'balanceOf',args:t.token_type==='ERC1155'?[input.wallet,0n]:[input.wallet]})),block,128,(checked,total)=>emitProgress(n,'balances',checked,total));
     remaining.forEach((t,i)=>firstReads.set(t.address.toLowerCase(),later[i]));
     const balances=tokens.map(t=>firstReads.get(t.address.toLowerCase()));
     const errors = []; let checked = 0, erc20Checked = 0, erc1155Checked = 0;
@@ -153,28 +159,40 @@ async function scanChain(input, n, output) {
       if (t.registered_mintclub) {checked++; if(t.token_type==='ERC20')erc20Checked++;else erc1155Checked++;}
       if (r.result>0n) held.push({...t,balance_raw:r.result});
     });
+    row.candidate_scan={total:allCandidates.length,deferred:allCandidates.length-initialTokens.length,checked:initialBalances.filter(r=>r.status==='success').length,complete:initialTokens.length===allCandidates.length&&initialBalances.every(r=>r.status==='success')};
+    if(baseline&&held.length){
+      const exists=await batches(c,held.map(t=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'exists',args:[t.address]})),block);
+      held.forEach((t,i)=>{t.registered_mintclub=exists[i].status==='success'&&exists[i].result===true;});
+    }
+    const metadata=await batches(c,held.flatMap(t=>['decimals','symbol','name'].map(functionName=>({address:t.address,abi:erc20,functionName}))),block,128,(checked,total)=>emitProgress(n,'metadata',checked,total));
+    const curves=held.filter(t=>t.registered_mintclub);
+    const details=await batches(c,curves.map(t=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getDetail',args:[t.address]})),block,128,(checked)=>emitProgress(n,'curves',checked,curves.length*2));
+    const refunds=await batches(c,curves.map(t=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getRefundForTokens',args:[t.address,t.balance_raw]})),block,128,(checked)=>emitProgress(n,'curves',curves.length+checked,curves.length*2));
+    const curveRows=new Map(curves.map((t,i)=>[t.address.toLowerCase(),{detail:details[i],refund:refunds[i]}]));
     row.registry_scan = {registry_count:reg.count,registry_errors:reg.errors,checked,erc20_checked:erc20Checked,erc1155_checked:erc1155Checked,
       cache_reused:reg.cache_reused,balance_errors:errors.filter(t=>t.registered_mintclub).length,
-      positive_balances:held.filter(t=>t.registered_mintclub).length,block_number:block,complete:reg.errors===0 && checked===reg.count,
+      positive_balances:held.filter(t=>t.registered_mintclub).length,block_number:block,complete:!baseline && reg.errors===0 && checked===reg.count,phase:baseline?'deferred':'checked',
       source:'On-chain Mint Club bond tokenCount()/tokens(index), then direct wallet balance calls',bond_address:n.mintclub_bond_address};
     row.registry_scan.error_examples=reg.entries.filter(t=>t.error||!t.address).slice(0,5).map(t=>({index:t.index,error:t.error||{message:'Registry address unavailable'}}));
     row.balance_errors = errors;
-    for (const t of held) {
+    for (const [heldIndex,t] of held.entries()) {
       const item = {chain_id:n.chain_id,network:n.network,token_address:t.address,token_type:t.token_type,token_id:t.token_type==='ERC1155'?'0':null,
         wallet_balance_raw:t.balance_raw,balance_block_number:block,balance_observed_at:stamp(),indexer_price_references:t.prices||[],mintclub:null,dex_pools:[]};
-      const meta = await calls(c,['decimals','symbol','name'].map(functionName=>({address:t.address,abi:erc20,functionName})),block);
+      const meta=metadata.slice(heldIndex*3,heldIndex*3+3);
       item.decimals = meta[0].status==='success'?meta[0].result:t.decimals;
+      item.dex_liquidity_found=false;
       item.symbol = meta[1].status==='success'?meta[1].result:t.symbol||t.address.slice(0,10);
       item.name = meta[2].status==='success'?meta[2].result:t.name||item.symbol;
       item.wallet_balance = Number.isInteger(item.decimals)?v.formatUnits(t.balance_raw,item.decimals):null;
       if (item.wallet_balance===null) item.metadata_error = 'Token decimals unavailable; quantity remains unknown.';
       if (t.registered_mintclub) {
         try {
-          const detail = await c.readContract({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getDetail',args:[t.address],blockNumber:block});
+          const captured=curveRows.get(t.address.toLowerCase());
+          if(captured.detail.status!=='success')throw captured.detail.error;
+          const detail=captured.detail.result;
           const info = detail.info;
           let refund=null,quoteError=null;
-          try {refund = await c.readContract({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getRefundForTokens',args:[t.address,t.balance_raw],blockNumber:block});}
-          catch(e){quoteError=h.safeError(e);}
+          if(captured.refund.status==='success')refund=captured.refund.result;else quoteError=h.safeError(captured.refund.error);
           item.mintclub = {bond_address:n.mintclub_bond_address,reserve_token:info.reserveToken,reserve_symbol:info.reserveSymbol,reserve_decimals:info.reserveDecimals,
             reserve_balance_raw:info.reserveBalance,reserve_balance:v.formatUnits(info.reserveBalance,info.reserveDecimals),funded:info.reserveBalance>0n,
             price_for_next_mint_in_reserve_token:v.formatUnits(info.priceForNextMint,info.reserveDecimals),current_supply:v.formatUnits(info.currentSupply,item.decimals),
@@ -270,8 +288,8 @@ async function main() {
   const [mode,inputPath,outputPath]=process.argv.slice(2);
   const input=JSON.parse(fs.readFileSync(inputPath));
   if(!v.isAddress(input.wallet))throw new Error('Invalid wallet address');
-  if(mode==='scan') {
-    const rows=await parallel(input.networks,2,n=>scanChain(input,n,outputPath));
+  if(mode==='scan'||mode==='baseline') {
+    const rows=await parallel(input.networks,2,n=>scanChain(input,n,outputPath,mode==='baseline'));
     write(path.join(outputPath,'onchain-summary.json'),{wallet:input.wallet,observed_at:stamp(),chains:rows});
   }else if(mode==='dex') {
     const result=await parallel(input.networks.filter(n=>input.tokens.some(t=>t.chain_id===n.chain_id)),2,async n=>{
@@ -307,4 +325,4 @@ async function main() {
   }else throw new Error('Expected scan or dex mode');
 }
 if(require.main===module)main().catch(e=>{console.error(h.serialize(h.safeError(e)));process.exitCode=1;});
-module.exports={parallel,calls,registry,connect};
+module.exports={parallel,calls,registry,connect,scanChain,batches};

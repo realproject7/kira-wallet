@@ -51,7 +51,7 @@ class ResearchTools:
             raise JobError('job_scope','Only approved wallet research jobs are available.')
         selector=job['input'].get('wallet') or job['input'].get('address')
         wallet=self.wallet(selector,approved)
-        return {'wallet':wallet,**{key:job.get(key) for key in ('job_id','operation','state','stage','created_at','updated_at','checkpoint','result','chains')}}
+        return {'wallet':wallet,**{key:job.get(key) for key in ('job_id','operation','state','stage','created_at','updated_at','checkpoint','result','chains','analysis_phase','parent_job_id','continuation_id','events')}}
 
     def call(self, name, arguments, key):
         tool=next((row for row in CATALOG if row['name']==name),None)

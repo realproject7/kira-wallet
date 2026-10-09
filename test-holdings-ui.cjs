@@ -25,7 +25,9 @@ assert.match(node('coverage-note').textContent,/Token discovery: 0 of 3 mainnets
 assert.equal(node('discovery-notice').hidden,false);
 assert.match(node('discovery-notice-title').textContent,/partial/);
 context.setupReadiness={discovery_provider:'none',discovery_configured:false,discovery_key_available:false};
-context.renderWallet();assert.equal(node('discovery-notice-title').textContent,'Some tokens may be missing');
+context.renderWallet();assert.match(node('discovery-notice-title').textContent,/partial/);
+assert.match(node('discovery-notice-text').textContent,/Free research remains available/);
+context.setupReadiness.public_discovery=false;context.renderWallet();assert.equal(node('discovery-notice-title').textContent,'Some tokens may be missing');
 assert.equal(node('discovery-settings').hidden,true,'Read-only views cannot change discovery settings.');
 wallet.chains[0].complete=true;wallet.chains[0].discovery_status='checked';
 context.renderWallet();assert.match(node('discovery-notice-title').textContent,/partial/,'Explorer coverage must not be described as entirely disabled.');
@@ -151,3 +153,7 @@ routeHarness.poll().then(()=>{
   assert.match(routeHarness.note,/waiting for registration/);assert.equal(routeHarness.busy,false);
   console.log('Fresh state polling preserves missing wallet routing for pending research.');
 }).catch(error=>{console.error(error);process.exitCode=1;});
+
+const pending={analysed_at:'now',chains:[{id:1,environment:'mainnet',rpc_available:true,registry_complete:false,registry_phase:'deferred',complete:true},{id:8453,environment:'mainnet',rpc_available:false,rpc_pending:true,registry_complete:false,complete:false}]};
+const notice=require('./viewer/static/workspace-model.js').discoveryNotice(pending,{discovery_provider:'none',public_discovery:true});
+assert.equal(notice.title,'First results are available');assert.equal(notice.rpcIssues,undefined);

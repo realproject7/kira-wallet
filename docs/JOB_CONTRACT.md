@@ -121,3 +121,27 @@ its projection receipt without another provider request.
 
 The read-only stdio MCP adapter uses the same job and snapshot service. It has
 no mutation tools and requires separate operator-approved client setup.
+
+## Initial evidence and continuations in 0.1.7
+
+A valid wallet admission records its identity under a short registry lock.
+Idempotent replay repairs missing admission without undoing later name edits.
+New analysis jobs have `analysis_phase: baseline`. The first usable chain
+publishes an immutable `initial/` snapshot; the running job can reference it
+without claiming that the job is finished. The baseline publishes its own final
+partial snapshot and admits exactly one durable `enrichment` continuation with
+`parent_job_id`. The parent records `continuation_id`.
+
+Baseline work runs before enrichment. New baseline admission can preempt a
+running continuation. Saved chain evidence and verified registry identity
+prefixes survive; an interrupted registry batch is read again. A newer request
+for the same wallet supersedes older detailed work. Generation checks prevent
+an older result from replacing the latest pointer, while preserving historical
+evidence. Explicit cancellation of baseline prevents automatic continuation.
+
+`onchain_progress` events identify the actual operation, chain, checked count
+and known total. `chain.status: complete` concerns the on-chain checkpoint.
+Normalized wallet `complete` concerns general token discovery. Registry coverage,
+candidate failures, deferred candidates and pending RPC reads are separate facts.
+These flags do not prove exhaustive holdings. First results can be read while
+background work remains active.
