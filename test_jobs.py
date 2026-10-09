@@ -191,6 +191,24 @@ class JobsTest(JobFixtures, unittest.TestCase):
             with self.assertRaises(JobError):self.store.snapshot(path)
         self.snapshot('snapshots/new','1');value=json.loads((self.root/'snapshots/new/results.json').read_text());value['wallet_address']=OTHER;atomic(self.root/'snapshots/new/results.json',value)
         with self.assertRaises(JobError):self.store.compare('snapshots/prior','snapshots/new')
+    def test_comparison_summary_distinguishes_chain_token_id_unknown_and_zero(self):
+        base=json.loads((self.root/'snapshots/prior/results.json').read_text())
+        def token(cid,address,balance,token_id=None):
+            return {'chain_id':cid,'token_address':address,'token_id':token_id,'wallet_balance':balance}
+        second='0x'+'b'*40;third='0x'+'c'*40
+        before=[token(1,TOKEN,'1'),token(8453,TOKEN,'2'),token(1,second,'3',7),token(1,second,'4',8),token(1,third,None)]
+        after=[token(1,TOKEN,'1'),token(8453,TOKEN,'2.000000000000000001'),token(1,second,'0',7),token(1,second,'5',9),token(1,third,'6')]
+        atomic(self.root/'snapshots/prior/results.json',{**base,'tokens':before})
+        atomic(self.root/'snapshots/new/results.json',{**base,'tokens':after})
+        summary=self.store.compare('snapshots/prior','snapshots/new')['comparison_summary']
+        self.assertEqual(summary['totals'],{'position_count':6,'new_record_count':1,'absent_record_count':1,
+            'missing_before_balance_count':2,'missing_after_balance_count':1,'unchanged_observation_count':1,
+            'different_observation_count':2,'unknown_comparison_count':3})
+        self.assertEqual([(r['chain_id'],r['position_count'],r['different_observation_count']) for r in summary['chains']],[(1,5,1),(8453,1,1)])
+        atomic(self.root/'snapshots/new/results.json',{**base,'tokens':[token(1,TOKEN,'NaN')]})
+        invalid=self.store.compare('snapshots/prior','snapshots/new')
+        self.assertIsNone(next(r for r in invalid['positions'] if r['address']==TOKEN and r['chain_id']==1)['balance_delta'])
+        self.assertEqual(invalid['comparison_summary']['totals']['different_observation_count'],0)
     def test_safe_errors_and_evidence_links(self):
         value=json.loads((self.root/'snapshots/prior/results.json').read_text());value['tokens'][0].update(source_url='https://mint.club/token/base/'+TOKEN,mintclub_error={'message':'https://provider.test/secret-key'})
         atomic(self.root/'snapshots/prior/results.json',value);saved=self.store.snapshot('snapshots/prior')

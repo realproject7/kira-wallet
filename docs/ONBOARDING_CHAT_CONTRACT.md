@@ -117,3 +117,7 @@ discovery can explain newly visible records; causal history remains unknown.
 Even equal endpoint quantities do not exclude intervening transfers. These facts
 and rules reach both supported native providers. Generated prose is not rewritten
 by keyword filters, so actual response quality still needs scoped verification.
+`comparison_summary` supplies exact full-comparison counts by chain before
+pagination. Missing earlier quantities, missing later quantities, equal and
+different observations stay separate. These counts cover recorded non-native
+token identities; they do not count native balances or infer transfer activity.

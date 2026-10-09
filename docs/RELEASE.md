@@ -181,6 +181,8 @@ updates verified Shib/Cyber routes and removes a failed Base reserve. Sanitized
 route outcomes distinguish public-only acceptance from custom fallback. Bounded
 route telemetry retains aggregate outcomes when detailed records reach their cap.
 Compact agent facts retain historical quote presence even when outputs are deferred.
+Snapshot comparisons provide exact full-comparison and per-chain counts before
+pagination so native agents do not need to tally large position pages manually.
 
 Publication remains an operator action. Post-publication acceptance uses two
 clean installations of the same verified registry bytes: public/free only first,
