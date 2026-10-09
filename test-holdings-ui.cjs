@@ -157,3 +157,6 @@ routeHarness.poll().then(()=>{
 const pending={analysed_at:'now',chains:[{id:1,environment:'mainnet',rpc_available:true,registry_complete:false,registry_phase:'deferred',complete:true},{id:8453,environment:'mainnet',rpc_available:false,rpc_pending:true,registry_complete:false,complete:false}]};
 const notice=require('./viewer/static/workspace-model.js').discoveryNotice(pending,{discovery_provider:'none',public_discovery:true});
 assert.equal(notice.title,'First results are available');assert.equal(notice.rpcIssues,undefined);
+
+const stoppedInitial=context.KiraView.discoveryNotice({analysed_at:"recorded",chains:[{environment:"mainnet",complete:false,rpc_pending:true,registry_phase:"deferred"}]},{public_discovery:true,discovery_provider:"none"});
+assert.match(stoppedInitial.message,/resume stopped work/);assert.doesNotMatch(stoppedInitial.message,/research continues/);
