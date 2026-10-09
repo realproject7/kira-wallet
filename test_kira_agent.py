@@ -9,7 +9,7 @@ import signal
 import unittest
 import uuid
 from unittest.mock import patch
-from kira_agent import AgentStore, config_input, native_env, projection, run_native, supported
+from kira_agent import recorded_valuation, AgentStore, config_input, native_env, projection, run_native, supported
 from kira_jobs import JobError, atomic
 from kira_cli import sample
 
@@ -78,6 +78,36 @@ class AgentTest(unittest.TestCase):
             self.assertEqual(len(detail['wallets'][0]['assets']),1)
             self.assertEqual(len(detail['wallets'][0]['assets'][0]['pools']),12)
 
+    def test_full_inventory_valuation_categories_survive_paging_and_stale_prices(self):
+        from copy import deepcopy
+        import model
+        state,stamp,stale=model.load_state(self.root)
+        wallet=state['wallets'][0];template=wallet['assets'][0]
+        def position(value,**fields):
+            return {**deepcopy(template),'value_usd':value,'curve_state':None,'exit_route':'unverified','is_native':False,
+                    'price':{'usd':1,'basis':'indicative curve','observed_at':'2026-10-01T00:00:00Z'},**fields}
+        wallet['assets']=[position(12,is_native=True),position(3,curve_state={'reserve_balance':'100'}),
+                          position(5),position(None),position(1000,environment='testnet',chain_id=84532)]
+        for index,asset in enumerate(wallet['assets']):
+            asset['id']=str(asset['chain_id'])+(':'+'native' if asset['is_native'] else ':0x'+format(index,'040x'))
+        with patch('model.load_state',return_value=(state,stamp,stale)):
+            projected=projection(self.root,settings(scope='portfolio'),limit=1)['wallets'][0]
+            token=projection(self.root,settings(scope='portfolio'),token_id=wallet['assets'][0]['id'])['wallets'][0]
+        facts=projected['recorded_valuation']
+        self.assertEqual(len(projected['assets']),1)
+        self.assertEqual(facts['all_priced_positions']['estimated_value_usd'],'20')
+        self.assertEqual(len(token['assets']),1)
+        self.assertEqual(token['recorded_valuation']['all_priced_positions']['estimated_value_usd'],'20')
+        self.assertEqual(facts['categories']['native']['estimated_value_usd'],'12')
+        self.assertEqual(facts['categories']['mintclub']['estimated_value_usd'],'3')
+        self.assertEqual(facts['categories']['other_tokens']['estimated_value_usd'],'5')
+        self.assertEqual(facts['unpriced_mainnet_count'],1)
+        self.assertIn('Not a floor',facts['interpretation'])
+        self.assertEqual(facts['all_priced_positions']['price_observed_at']['from'],'2026-10-01T00:00:00Z')
+        empty=recorded_valuation([position(None),position(1000,environment='testnet')])
+        self.assertIsNone(empty['all_priced_positions']['estimated_value_usd'])
+        self.assertIsNone(empty['categories']['mintclub']['estimated_value_usd'])
+
     def test_exit_quotes_only_reach_explicitly_approved_context(self):
         registry=json.loads((self.root/'wallets.json').read_text())
         entry=registry['wallets'][0];path=self.root/entry['latest_snapshot']['result']
@@ -117,6 +147,8 @@ class AgentTest(unittest.TestCase):
             self.assertEqual(facts['wallets'][0]['assets_omitted'],788)
             self.assertEqual(holdings[-1]['balance'],'1.2345')
             self.assertIsNone(holdings[-1]['value_usd']);self.assertIsNone(holdings[-1]['price'])
+            self.assertTrue(holdings[-1]['exit_quote_recorded'])
+            self.assertNotIn('exit_quote',holdings[-1])
             self.assertLessEqual(len(json.dumps(facts,ensure_ascii=False).encode()),40_000)
             detail=projection(self.root,config,token_id=holdings[-1]['id'])
             self.assertEqual(detail['wallets'][0]['assets'][0]['exit_quote']['output_amount'],'0.1234')

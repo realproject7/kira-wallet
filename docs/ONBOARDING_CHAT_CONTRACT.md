@@ -98,3 +98,22 @@ native default-model response checks with no wallet data. The provider save
 used a synthetic local key reference and made no provider research request.
 Real extension approval, personal OWS passphrases and live holdings coverage
 are separate operator acceptance. Published 0.1.4 snapshots are not rewritten.
+
+## Recorded value and history interpretation
+
+`recorded_valuation` summarizes the full recorded mainnet inventory before any
+holdings pagination. Native, Mint Club and other-token categories are disjoint.
+Compact pages retain `exit_quote_recorded` when quote outputs are deferred.
+A true flag requires reading the token details before judging the historical
+quote. A false flag describes this snapshot, not the existence of an exit route.
+Each category carries its own priced-position count and price observation range.
+The all-priced total includes all three categories; it is never a Mint Club-only
+denominator. Missing category prices remain null. Spot sums at separate, possibly
+stale or indicative price times are not floors on current wealth or sale proceeds.
+
+Snapshot comparisons state whether both quantities were observed. Missing earlier
+or later quantities cannot establish or rule out receipts or disposals. Wider
+discovery can explain newly visible records; causal history remains unknown.
+Even equal endpoint quantities do not exclude intervening transfers. These facts
+and rules reach both supported native providers. Generated prose is not rewritten
+by keyword filters, so actual response quality still needs scoped verification.

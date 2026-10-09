@@ -7,7 +7,10 @@ effort and can throttle requests or omit historical state.
 The reviewed default catalog adds alternatives on Ethereum, Base, BNB Chain,
 Polygon, Arbitrum and Optimism. PublicNode is the initial preference. Reserves
 are selected per chain rather than downloaded from an untrusted runtime list.
-The other supported networks retain their existing endpoints.
+Shibarium and Puppynet use the current official Shib endpoints. Cyber mainnet
+adds the official Superchain registry endpoint. Unverified replacements are
+never accepted just because an endpoint returns HTTP 200. Some configured
+networks can remain unavailable; their missing balances stay unknown.
 
 ## Request behavior
 
@@ -110,3 +113,34 @@ Primary references: [EIP-1898](https://eips.ethereum.org/EIPS/eip-1898),
 [Circle contracts](https://developers.circle.com/stablecoins/usdc-contract-addresses),
 [Tether contracts](https://tether.to/en/supported-protocols/),
 [Uniswap Arbitrum deployments](https://developers.uniswap.org/docs/protocols/v3/deployments/v3-arbitrum-deployments).
+
+## Recorded route evidence and remaining limits
+
+Chain coverage includes `rpc_routes`: bounded aggregate logical endpoint outcomes
+with public/custom class, endpoint index, method, outcome and count. Failures
+can include HTTP or RPC error codes. A successful read can follow failed public
+attempts; configuring public first does not prove every read was public.
+Cooldown skips, queue timeouts and successes are distinct. The receipt contains
+no endpoint URLs, keys, request arguments or balances. Cached checkpoints retain
+their original evidence and routes; a resume is not a fresh observation.
+
+A live October 10 check identified DNS failures on the old Shib endpoints,
+Ham, Over and Cyber testnet. Current official Shib endpoints returned the correct
+chain identities and supported hash-qualified balance reads. Cyber mainnet's
+registry endpoint also passed. The official Cyber testnet replacement failed
+certificate validation, so it was not added. Ham and Over have no verified
+replacement in this catalog. This is an observation, not a claim that their
+chains permanently stopped. Their failed checks remain visible.
+
+Base public balance reads work independently of arbitrary token discovery.
+The keyless Base inventory remains selected common contracts and Mint Club.
+Blockscout's current documentation deprecates per-instance APIs in favor of its
+keyed PRO API. Kira does not promise keyless Base enumeration through that route.
+The former 1RPC Base reserve returned HTTP 410 during block lookup and was
+removed. PublicNode and dRPC remain verified Base candidates. The official Base
+public endpoint returned HTTP 403 in this test and was not silently substituted.
+
+Sources: [Shib network setup](https://docs.shib.io/get-started/deploy-contracts),
+[Superchain registry](https://github.com/ethereum-optimism/superchain-registry/blob/main/chainList.toml),
+[Ham network information](https://docs.ham.fun/docs/network-information/),
+[Blockscout API migration](https://docs.blockscout.com/devs/apis).

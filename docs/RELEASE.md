@@ -94,12 +94,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.8.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.9.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.8.tgz --access public
+npm publish ./dist/kira-wallet-0.1.9.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
@@ -123,9 +123,9 @@ with untouched settings fields while preserving edited drafts.
 
 The operator published **0.1.7** on October 9, 2026. Its archive is immutable.
 
-## Proposed 0.1.8 behavior
+## Published 0.1.8 behavior
 
-The next archive is **0.1.8**, unpublished until the operator runs the command.
+The operator published **0.1.8** on October 9, 2026. Its archive is immutable.
 It queues local connection imports during research, lets settings and price
 updates preempt enrichment, preserves explicit cancellation, and checkpoints
 wallet balance batches and market verification at fixed blocks. A 180-second
@@ -169,3 +169,25 @@ establish that native extension acceptance passed. Those actions still require
 the operator's device handoff. Signing and trading remain outside Kira. Human-submitted OWS creation stores an encrypted wallet in the separate local OWS vault.
 
 See [current UI evidence](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_UI_REFINEMENT.md).
+
+## Proposed 0.1.9 behavior
+
+Version 0.1.9 permits a saved report's price update during detailed research,
+with duplicate queued/running price feedback and existing automatic continuation.
+Network empty states distinguish pending coverage, incomplete checks, completed
+empty records and actual filter exclusion. Native facts include full-inventory
+category valuation and explicit unknown activity causes. Public RPC configuration
+updates verified Shib/Cyber routes and removes a failed Base reserve. Sanitized
+route outcomes distinguish public-only acceptance from custom fallback. Bounded
+route telemetry retains aggregate outcomes when detailed records reach their cap.
+Compact agent facts retain historical quote presence even when outputs are deferred.
+
+Publication remains an operator action. Post-publication acceptance uses two
+clean installations of the same verified registry bytes: public/free only first,
+then a clean reinstall with authorized Alchemy discovery and public-first backup.
+Each lane begins without previous holdings, identity caches or RPC health.
+Compare exact chain/contract identities, observations, coverage, route classes,
+failures and runtime. Separate changed observation times from discovery effects.
+The procedure does not treat partial free discovery as exhaustive or stale spot
+sums as wealth floors. Private wallets, financial screenshots and local tickets
+stay outside the package and public review.

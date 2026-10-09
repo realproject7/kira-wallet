@@ -180,6 +180,12 @@ class JobsTest(JobFixtures, unittest.TestCase):
         value['tokens'].append({**value['tokens'][0],'chain_id':8453,'wallet_balance':'999'});atomic(self.root/'snapshots/new/results.json',value)
         result=self.store.compare('snapshots/prior','snapshots/new');rows={r['chain_id']:r for r in result['positions']}
         self.assertEqual(rows[1]['balance_delta'],'1E-18');self.assertIsNone(rows[8453]['balance_delta']);self.assertIsNone(rows[8453]['before_balance'])
+        self.assertEqual(rows[1]['balance_comparison'],'different_observations')
+        self.assertEqual(rows[8453]['balance_comparison'],'unknown')
+        self.assertEqual(rows[8453]['activity_cause'],'unknown_without_transfer_history')
+        self.assertIn('cannot establish or rule out receipts',result['note'])
+        same=self.store.compare('snapshots/new','snapshots/new')
+        self.assertTrue(all(row['balance_comparison']=='unchanged_observations' and row['activity_cause']=='unknown_without_transfer_history' for row in same['positions']))
     def test_snapshot_path_escape_and_foreign_wallet(self):
         for path in ['../wallets.json','snapshots/../../wallets.json','/etc/passwd']:
             with self.assertRaises(JobError):self.store.snapshot(path)

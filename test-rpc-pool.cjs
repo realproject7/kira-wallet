@@ -169,3 +169,27 @@ test('public cooldown survives subprocesses without URLs or private endpoint rec
     assert.equal(count,0,'Reading local health creates no network probes.');
   } finally {fs.rmSync(root,{recursive:true,force:true});}
 });
+test('route outcomes retain public failures and custom success without endpoint values or arguments',async()=>{
+ const events=[],urls=['public','https://private.example/SECRET-MARKER'];
+ const pool=fresh({publicUrls:['public']});
+ const c=viem.createPublicClient({transport:pool.transport(1,urls,transport(async(url,r)=>{
+  if(r.method==='eth_chainId')return '0x1';if(url==='public')throw Object.assign(new Error('throttle SECRET-MARKER'),{status:429});return '0x3';
+ }),()=>{},(index,event)=>events.push({index,...event}))});
+ assert.equal(await c.getBlockNumber({cacheTime:0}),3n);
+ assert.equal(await c.getBlockNumber({cacheTime:0}),3n);
+ assert(events.some(e=>e.index===0&&e.outcome==='failed'&&e.http_status===429));
+ assert(events.some(e=>e.index===0&&e.outcome==='skipped'));
+ assert(events.some(e=>e.index===1&&e.outcome==='succeeded'));
+ assert(!JSON.stringify(events).includes('SECRET-MARKER'));
+ assert(!JSON.stringify(events).includes('params'));
+});
+test('provider-controlled route codes stay bounded while overflow retains failure and success counts',()=>{
+ const {RouteRecorder}=require('./rpc-pool.cjs'),records=new RouteRecorder();
+ for(let i=0;i<10000;i++)records.record(0,'public',{method:'eth_call',outcome:'failed',reason:'size',rpc_code:i,params:['SECRET-MARKER']});
+ records.record(1,'custom',{method:'eth_call',outcome:'succeeded'});
+ const rows=records.snapshot();
+ assert(rows.length<=104);assert(JSON.stringify(rows).length<30000);
+ assert.equal(rows.filter(r=>r.outcome==='failed').reduce((n,r)=>n+r.count,0),10000);
+ assert.equal(rows.filter(r=>r.outcome==='succeeded').reduce((n,r)=>n+r.count,0),1);
+ assert(rows.some(r=>r.aggregated_overflow));assert(!JSON.stringify(rows).includes('SECRET-MARKER'));
+});

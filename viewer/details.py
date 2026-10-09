@@ -35,6 +35,8 @@ def coverage_status(wallet, coverage):
     if not coverage: return 'Not researched'
     if coverage.get('rpc_pending') or coverage.get('rpc_status') == 'pending': return 'Research pending'
     if not coverage.get('rpc_available'): return 'RPC unavailable'
+    if coverage.get('registry_phase')=='deferred' or type(coverage.get('candidate_deferred')) is int and coverage['candidate_deferred']>0: return 'Research pending'
+    if any(type(coverage.get(k)) is int and coverage[k]>0 for k in ('candidate_balance_errors','balance_errors','registry_errors')) or coverage.get('registry_complete') is False: return 'Incomplete on-chain checks'
     if not coverage.get('complete'): return 'Incomplete discovery'
     return 'Researched'
 
@@ -87,7 +89,7 @@ def project_details(wallets, root):
             row.update({'asset': asset, 'coverage': coverage_status(wallet, coverage),
                         'balance_observed_at':asset.get('balance_observed_at') if asset else None,
                         'price_observed_at':(asset.get('price') or {}).get('observed_at') if asset else None,
-                        'status': 'Held' if asset else 'No holding recorded' if coverage and coverage.get('complete') and coverage.get('rpc_available') else 'Unknown'})
+                        'status': 'Held' if asset else 'No holding recorded' if coverage_status(wallet,coverage)=='Researched' else 'Unknown'})
             rows.append(row)
         token['wallets'] = rows
         held_rows = [r for r in rows if r['asset']]
@@ -107,7 +109,7 @@ def project_details(wallets, root):
             held = [a for a in wallet['assets'] if a['chain_id'] == chain_id]
             account = wallet_identity(wallet)
             value = total_value(held)
-            if not held and coverage and coverage.get('complete') and coverage.get('rpc_available') and network['environment'] == 'mainnet': value = 0
+            if not held and coverage_status(wallet,coverage)=='Researched' and network['environment'] == 'mainnet': value = 0
             account.update({'position_count': len(held), 'value_usd': value,
                             'unpriced_count': sum(a.get('value_usd') is None for a in held),
                             'coverage': coverage_status(wallet, coverage), 'has_holdings': bool(held)})

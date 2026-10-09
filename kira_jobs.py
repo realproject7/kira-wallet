@@ -369,12 +369,14 @@ class JobStore:
             changes.append({'chain_id':identity[0],'address':identity[1],'token_id':identity[2],
                 'symbol':(b or a).get('symbol'),'before_balance':a.get('wallet_balance') if a else None,
                 'after_balance':b.get('wallet_balance') if b else None,'balance_delta':delta,
+                'balance_comparison':'unknown' if delta is None else 'unchanged_observations' if Decimal(delta)==0 else 'different_observations',
+                'activity_cause':'unknown_without_transfer_history',
                 'presence':'both' if a and b else 'new_record' if b else 'absent_record',
                 'price_references_changed':(a or {}).get('indexer_price_references')!=(b or {}).get('indexer_price_references'),
                 'valuation_method_changed':bool((a or {}).get('mintclub'))!=bool((b or {}).get('mintclub'))})
         return {'schema_version':1,'before':before,'after':after,'wallet':new['wallet_address'],
             'coverage_changed':old.get('coverage')!=new.get('coverage'),'price_references_changed':old.get('price_references')!=new.get('price_references'),
-            'positions':changes,'note':'Absent records are unknown, not zero. Price overlays have separate observations and are not balance changes. Coverage changes compare full evidence, including observation times and blocks; this alone does not prove the set of checked networks changed. Positions compare direct token records. Read both snapshots to compare native balances.'}
+            'positions':changes,'note':'Absent records are unknown, not zero. Missing prior or later observations cannot establish or rule out receipts, disposals or transfers. Broader discovery can explain visibility, but activity and its cause remain unknown without transfer history. Even equal observed balances do not exclude intervening activity. Price overlays have separate observations and are not balance changes. Coverage changes compare full evidence, including observation times and blocks; this alone does not prove the set of checked networks changed. Positions compare direct token records. Read both snapshots to compare native balances.'}
 
     def snapshots(self, wallet):
         key = self.wallet(wallet)['address_key']
