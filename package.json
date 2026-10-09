@@ -1,6 +1,6 @@
 {
   "name": "kira-wallet",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Manage your wallets with your own AI. Track tokens, research markets and refresh holdings in a local workspace.",
   "license": "MIT",
   "private": false,

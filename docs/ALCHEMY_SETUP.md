@@ -52,6 +52,13 @@ published analysis. Do not commit this file to a repository. A process
 environment variable with the same name overrides the file value; check that
 if an old key remains active.
 
+If detailed research is running, import-env queues a Local connection setup
+job in Activity. The writer pauses safely, applies the file reference, and
+resumes detailed research automatically. Wait for the setup job to complete,
+then recheck the connection. The public job contains no key value or file path.
+A legacy CLI analysis keeps its writer lock; its queued setup waits until that
+analysis finishes or is stopped.
+
 ## Check the connection and refresh
 
 Open Workspace settings, then Manage data connection. Select Alchemy and use

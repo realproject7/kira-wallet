@@ -8,6 +8,7 @@ import io
 import sys
 from unittest.mock import patch
 import wallet
+sys.path.insert(0,str(wallet.ASSETS/'viewer'))
 
 
 class WalletPipelineTests(unittest.TestCase):
@@ -149,7 +150,7 @@ class WalletPipelineTests(unittest.TestCase):
         def node(command,input_path,output_path):wallet.atomic(output_path,{'tokens':[]})
         with patch.object(wallet,'run_node',side_effect=node),patch.object(wallet,'event'),\
              patch('native_assets.market_metadata',return_value=metadata) as native,\
-             patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder:market),\
+             patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder,**kwargs:market),\
              patch('token_images.refresh_catalog',return_value={}) as images:
             result=wallet.finish({'address':self.address,'tags':['Fixture']},self.folder,[{**self.network,'name':'Base','mintclub_network':'base'}],
                 [{'chain_id':8453,'complete':False,'source':None,'pages':[],'native':[]}])
@@ -160,7 +161,7 @@ class WalletPipelineTests(unittest.TestCase):
         native.assert_called_once()
         with patch.object(wallet,'run_node',side_effect=node),patch.object(wallet,'event'),\
              patch('native_assets.market_metadata',return_value=metadata),\
-             patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder:market),\
+             patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder,**kwargs:market),\
              patch('token_images.refresh_catalog',return_value={}):
             result=wallet.finish({'address':self.address,'tags':['Fixture']},self.folder,[{**self.network,'name':'Base','mintclub_network':'base'}],
                 [{'chain_id':8453,'complete':True,'source':None,'pages':[],'native':[
@@ -176,7 +177,7 @@ class WalletPipelineTests(unittest.TestCase):
         def node(command,input_path,output_path):wallet.atomic(output_path,{'tokens':[]})
         with patch.object(wallet,'run_node',side_effect=node),patch.object(wallet,'event'),\
              patch('native_assets.market_metadata',return_value={'prices':{},'images':{},'evidence':None}),\
-             patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder:market),\
+             patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder,**kwargs:market),\
              patch('token_images.refresh_catalog',return_value={}):
             result=wallet.finish({'address':self.address,'tags':['Fixture']},self.folder,
                 [{**self.network,'name':'Base','mintclub_network':'base'}],
@@ -184,6 +185,31 @@ class WalletPipelineTests(unittest.TestCase):
         self.assertEqual(result['coverage'][0]['candidate_balance_errors'],1)
         self.assertEqual(result['status'],'completed_with_coverage_gaps')
         self.assertNotIn('PRIVATE-DIAGNOSTIC',json.dumps(result))
+
+    def test_market_budget_publishes_immutable_balances_without_deferring_completed_registry(self):
+        folder=self.folder/'snapshots'/'job';entry={'address':self.address,'address_key':self.address.lower(),'tags':['Fixture']}
+        wallet.atomic(self.folder/'wallets.json',{'wallets':[entry],'research_runs':[]})
+        wallet.atomic(folder/'onchain-summary.json',{'chains':[{'chain_id':8453,'tokens':[],
+            'native_balance':'1','observed_at':'2026-10-09T00:00:00Z','block_number':'101','rpc_status':'available',
+            'registry_scan':{'complete':True,'checked':10,'registry_count':10,'phase':'checked'}}]})
+        def node(command,input_path,output_path):wallet.atomic(output_path,{'tokens':[],'market_pending':True})
+        network={**self.network,'name':'Base','mintclub_network':'base'}
+        discovery=[{'chain_id':8453,'complete':True,'source':None,'pages':[],'native':[]}]
+        with patch.object(wallet,'ROOT',self.folder),patch.object(wallet,'run_node',side_effect=node),patch.object(wallet,'event') as events,\
+             patch('native_assets.market_metadata') as native,patch('curve_pricing.enrich') as enrich,patch('token_images.refresh_catalog') as images:
+            with self.assertRaises(wallet.MarketPause):wallet.finish(entry,folder,[network],discovery)
+            first=folder/'market-initial-0001'/'results.json';original=first.read_bytes();result=json.loads(original)
+            self.assertEqual(result['coverage'][0]['native_balance'],'1')
+            self.assertEqual(result['coverage'][0]['native_block_number'],'101')
+            self.assertTrue(result['coverage'][0]['mintclub_registry_scan']['complete'])
+            self.assertEqual(result['coverage'][0]['mintclub_registry_scan']['phase'],'checked')
+            self.assertTrue(result['pipeline']['market_pending'])
+            self.assertEqual(result['status'],'completed_with_coverage_gaps')
+            native.assert_not_called();enrich.assert_not_called();images.assert_not_called()
+            self.assertEqual(events.call_args.args[0],'market_paused')
+            with self.assertRaises(wallet.MarketPause):wallet.finish(entry,folder,[network],discovery)
+            self.assertEqual(first.read_bytes(),original)
+            self.assertTrue((folder/'market-initial-0002'/'results.json').exists())
 
 
 if __name__=='__main__':unittest.main()

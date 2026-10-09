@@ -38,6 +38,14 @@ scoped to registered wallets allowed by the conversation. Historical reads use
 normalized financial projections. Unknown values and historical quote times
 remain explicit. Native shell, file, browser and MCP execution stay disabled.
 
+Automatic context and portfolio_read include every approved wallet with a
+bounded first page of up to 12 holdings. asset_count and assets_omitted retain
+the recorded inventory size. wallet_read returns a compact page of up to 100
+holdings; offset and limit are optional. Follow next_offset until null before
+claiming a complete inventory. snapshot_read and snapshots_compare also accept
+offset and limit. token_read supplies detailed curve, pool and exit evidence.
+Context-limit errors have failed tool receipts, rather than completed receipts.
+
 Chain evidence includes explicit native balances, including observed zero,
 their observation times and blocks, and registry scan blocks. Empty positive
 holding inventories do not remove these observations. Saved-analysis reads
@@ -73,3 +81,8 @@ events. Normalized chain discovery completeness is separate from a job's
 on-chain checkpoint status. Deferred candidates and pending networks are not
 failed reads or zero holdings. Historical observations cannot establish current
 execution, transfers or realized profit.
+
+rpc_status pending means a network has not yet been researched. It does not
+prove an RPC outage. For a curve comparison, match chain and contract and
+compare reserve, supply, next-mint price and royalty observations. A newer
+block or a different wallet-sized burn quote alone cannot prove curve movement.

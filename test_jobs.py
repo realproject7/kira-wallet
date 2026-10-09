@@ -37,6 +37,49 @@ class JobFixtures:
         atomic(self.root/job['checkpoint']/'run.json',{'wallet_address':ADDRESS,**({'completed_at':'now'} if completed_manifest else {'status':'running'})})
         registry=json.loads((self.root/'wallets.json').read_text());registry['wallets'][0]['latest_snapshot']={'directory':job['checkpoint']};atomic(self.root/'wallets.json',registry)
 class JobsTest(JobFixtures, unittest.TestCase):
+    def test_exited_process_group_permission_requires_no_live_writer(self):
+        from kira_jobs import signal_process_group
+        import signal
+        for output in ('123 Z\n456 S\n','456 S\n'):
+            with patch('kira_jobs.os.killpg',side_effect=PermissionError()),patch('kira_jobs.subprocess.run',return_value=subprocess.CompletedProcess([],0,output,'')):
+                signal_process_group(123,signal.SIGKILL)
+        for output,code in [('123 S\n',0),('00123 S\n',0),('unreadable\n',0),('PGID STAT\n',0),('not-a-pgid S\n',0),('123 Zgarbage\n',0),('',0),('',1)]:
+            with patch('kira_jobs.os.killpg',side_effect=PermissionError()),patch('kira_jobs.subprocess.run',return_value=subprocess.CompletedProcess([],code,output,'')):
+                with self.assertRaises(PermissionError):signal_process_group(123,signal.SIGKILL)
+
+    def test_cancel_intent_survives_recovery_and_worker_exception(self):
+        job=self.running();job['cancel_requested']=True;self.store.save(job);self.store.recover()
+        self.assertEqual(self.store.get(job['job_id'])['state'],'cancelled')
+        job=self.store.submit(self.request(key='exception-case'))
+        def stopped(*args):
+            self.store.submit(self.request('job.cancel',{'job_id':job['job_id']},'stop-exception'))
+            raise KeyboardInterrupt()
+        with patch.object(self.store,'execute',side_effect=stopped):self.store.worker()
+        self.assertEqual(self.store.get(job['job_id'])['state'],'cancelled')
+        self.assertEqual(self.store.get(job['job_id'])['errors'][0]['code'],'cancelled')
+
+    def test_import_env_uses_private_reference_and_preserves_rpc_preference(self):
+        from kira_config import config_path,default_config,load_config
+        file=self.root/'private.env';file.write_text('TEST_KEY=synthetic-local-value\n')
+        config=default_config();config['rpc']['priority']='custom_first';atomic(config_path(),config)
+        job=self.store.queue_import(file,'TEST_KEY')
+        self.assertNotIn(str(file),json.dumps(job));self.assertNotIn('synthetic-local-value',json.dumps(job))
+        self.store.worker();saved=self.store.get(job['job_id'])
+        self.assertEqual(saved['state'],'succeeded');self.assertEqual(load_config()['rpc']['priority'],'custom_first')
+        self.assertEqual(load_config()['secret_env_file'],str(file.resolve()))
+        self.assertEqual(load_config()['discovery']['provider'],'alchemy')
+        with self.assertRaises(JobError):self.store.submit(self.request('settings.importEnv',{'import_id':str(uuid.uuid4()),'key_env':'TEST_KEY'},'missing-reference'))
+
+    def test_market_interim_receipt_is_scoped_and_budget_is_resumable(self):
+        job=self.running();identity=job['checkpoint']+'/market-initial-0001';self.snapshot(identity,'2')
+        self.store.event(job['job_id'],{'stage':'first_evidence','snapshot':identity})
+        self.assertEqual(self.store.get(job['job_id'])['result']['snapshot_id'],identity)
+        def paused(*args):raise JobError('market_budget','Resume remaining checks.')
+        with patch.object(self.store,'execute',side_effect=paused):
+            job=self.store.get(job['job_id']);job['state']='queued';self.store.save(job);self.store.worker()
+        paused=self.store.get(job['job_id']);self.assertEqual(paused['state'],'interrupted');self.assertEqual(paused['stage'],'market_paused')
+        resumed=self.store.submit(self.request('job.resume',{'job_id':job['job_id']},'resume-market'))
+        self.assertEqual(resumed['state'],'queued');self.assertEqual(resumed['result']['snapshot_id'],identity)
     def test_admitted_wallet_is_visible_and_replay_repairs_registration(self):
         request=self.request('wallet.add',{'address':OTHER,'tag':'Exact label'})
         job=self.store.submit(request)
@@ -214,13 +257,33 @@ class WorkerProcessTest(JobFixtures, unittest.TestCase):
         env={k:v for k,v in os.environ.items() if not k.startswith(('KIRA_','ALCHEMY_'))}
         env.update(KIRA_DATA_DIR=str(self.root),KIRA_CONFIG=str(self.root/'.kira.local.json'))
         return subprocess.Popen([sys.executable,str(Path(__file__).parent/'fixtures/jobs/worker.py'),str(self.root),case],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-    def wait_for(self,condition):
+    def wait_for(self,condition,seconds=6):
         import time
-        deadline=time.monotonic()+6
+        deadline=time.monotonic()+seconds
         while time.monotonic()<deadline:
             if condition():return
             time.sleep(.03)
         self.fail('Synthetic process did not reach its expected state.')
+    def test_short_settings_and_prices_preempt_enrichment_then_it_resumes(self):
+        parent=self.store.submit(self.request());self.publish(parent)
+        result=json.loads((self.root/parent['checkpoint']/'results.json').read_text());result['pipeline']={'phase':'baseline'};atomic(self.root/parent['checkpoint']/'results.json',result)
+        parent.update(state='partial',result=self.store.publication(parent));self.store.save(parent);self.store.continue_research()
+        child=self.store.get(self.store.get(parent['job_id'])['continuation_id']);worker=self.worker_process('wait')
+        try:
+            self.wait_for(lambda:self.store.get(child['job_id'])['state']=='running')
+            setting=self.store.submit(self.request('settings.provider',{'provider':'public','key_env':'TEST_KEY'},'short-setting'))
+            self.wait_for(lambda:self.store.get(setting['job_id'])['state']=='succeeded',12)
+            self.wait_for(lambda:self.store.get(child['job_id'])['attempt']==2)
+            price=self.store.submit(self.request('prices.refresh',{'wallet':ADDRESS},'short-price'))
+            self.wait_for(lambda:self.store.get(price['job_id'])['state']=='running',12)
+            self.assertEqual(self.store.get(child['job_id'])['state'],'queued')
+            self.store.submit(self.request('job.cancel',{'job_id':price['job_id']},'stop-price'))
+            self.wait_for(lambda:self.store.get(child['job_id'])['attempt']==3,12)
+            self.store.submit(self.request('job.cancel',{'job_id':child['job_id']},'stop-detail'))
+            worker.wait(timeout=12)
+            self.assertEqual(self.store.get(child['job_id'])['state'],'cancelled')
+        finally:
+            if worker.poll() is None:worker.terminate();worker.wait(timeout=12)
     def test_supervisor_restart_waits_for_engine_lease(self):
         job=self.store.submit(self.request());first=self.worker_process('publish');second=None
         try:

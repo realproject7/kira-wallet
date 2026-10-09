@@ -12,11 +12,14 @@ import re
 import subprocess
 import sys
 import time
+import threading
 
 import research as h
 from kira_config import ASSETS, data_root, load_config
 
 ROOT = data_root()
+class MarketPause(ValueError):
+    """A resumable time budget, distinct from provider failure."""
 ALCHEMY = {1:'eth-mainnet',8453:'base-mainnet',81457:'blast-mainnet',10:'opt-mainnet',42161:'arb-mainnet',
     43114:'avax-mainnet',137:'polygon-mainnet',56:'bnb-mainnet',130:'unichain-mainnet',7777777:'zora-mainnet',
     33139:'apechain-mainnet',4663:'robinhood-mainnet',11155111:'eth-sepolia',84532:'base-sepolia',
@@ -60,14 +63,21 @@ def event(stage, **data):
     print(json.dumps({'stage':stage, **data}, ensure_ascii=False), flush=True)
 
 
-def fetch(url, body=None):
+def fetch(url, body=None, deadline=None):
     for attempt in range(3):
-        response = h.fetch(url, body, timeout=25)
+        remaining=deadline-time.monotonic() if deadline is not None else 25
+        if remaining<=0:return {'research_pending':True}
+        if deadline is None:response=h.fetch(url,body,timeout=25)
+        else:
+            from public_discovery import fetch_bounded
+            response=fetch_bounded(url,min(25,remaining),body)
+            if isinstance(response,dict) and response.get('error',{}).get('code')=='deadline' and time.monotonic()>=deadline:return {'research_pending':True}
+            if isinstance(response,dict) and response.get('error'):response={'transport_error':{'message':'Provider response unavailable within the read limit.'}}
         error = response.get('transport_error') if isinstance(response, dict) else None
         if not error or (error.get('status') not in (429,500,502,503,504) and 'status' in error):
             return response
         if attempt < 2:
-            time.sleep(attempt+1)
+            time.sleep(min(attempt+1,max(0,deadline-time.monotonic())) if deadline is not None else attempt+1)
     return response
 
 
@@ -190,8 +200,12 @@ def discover(wallet, n, folder, budget=None):
     return row
 
 
-def run_node(mode, source, destination, on_chain=None):
+def run_node(mode, source, destination, on_chain=None, deadline=None):
     child=subprocess.Popen(['node',str(ASSETS/'pipeline-onchain.cjs'),mode,str(source),str(destination)],cwd=ASSETS,stdout=subprocess.PIPE,text=True)
+    timer=None
+    if deadline is not None:
+        timer=threading.Timer(max(0,deadline-time.monotonic()),lambda:child.terminate() if child.poll() is None else None)
+        timer.daemon=True;timer.start()
     try:
         for line in child.stdout:
             try: message=json.loads(line)
@@ -199,8 +213,11 @@ def run_node(mode, source, destination, on_chain=None):
             if not isinstance(message,dict):continue
             print(json.dumps(message),flush=True)
             if on_chain and message.get('stage')=='chain':on_chain(message)
-        if child.wait():raise ValueError('On-chain research stopped before completing this phase.')
+        if child.wait():
+            if deadline is not None and time.monotonic()>=deadline:raise MarketPause('Market verification time budget reached. Resume saved checks in Activity.')
+            raise ValueError('On-chain research stopped before completing this phase.')
     finally:
+        if timer:timer.cancel()
         child.stdout.close()
         if child.poll() is None:child.terminate();child.wait()
 
@@ -282,7 +299,7 @@ def source_check(networks, folder):
     atomic(folder/'mintclub-support.json',{'observed_at':h.now(),'source':CONTRACT_SOURCE,'networks_verified':len(networks),'bond_deployments':configured})
 
 
-def dex_fetch(t, folder):
+def dex_fetch(t, folder, deadline=None):
     chain=DEX.get(t['chain_id'])
     if not chain or t.get('token_type')=='ERC1155':
         return {'chain_id':t['chain_id'],'token_address':t['token_address'],'response':[], 'observed_at':None, 'status':'outside_dex_indexer_scope'}
@@ -291,7 +308,10 @@ def dex_fetch(t, folder):
         old=read(folder/name)
         if isinstance(old.get('response'),list):return old
     url='https://api.dexscreener.com/token-pairs/v1/'+chain+'/'+t['token_address']
-    row={'chain_id':t['chain_id'],'token_address':t['token_address'],'source':url,'observed_at':h.now(),'response':fetch(url)}
+    response=fetch(url,deadline=deadline)
+    if deadline is not None and time.monotonic()>=deadline:
+        return {'chain_id':t['chain_id'],'token_address':t['token_address'],'response':[], 'observed_at':None,'status':'pending'}
+    row={'chain_id':t['chain_id'],'token_address':t['token_address'],'source':url,'observed_at':h.now(),'response':response}
     atomic(folder/name,row)
     return row
 
@@ -304,11 +324,15 @@ def pool_row(p, observed):
 
 
 def finish(wallet, folder, networks, discovered):
+    deadline=time.monotonic()+180
+    checkpoint_folder=folder
     raw=read(folder/'onchain-summary.json')
     tokens=[t for c in raw['chains'] for t in c['tokens']]
     event('dex_discovery', tokens=len(tokens))
     with ThreadPoolExecutor(max_workers=5) as executor:
-        responses=list(executor.map(lambda t:dex_fetch(t,folder),tokens))
+        responses=[]
+        for response in executor.map(lambda t:dex_fetch(t,folder,deadline),tokens):
+            responses.append(response);event('onchain_progress',operation='markets',checked=len(responses),total=len(tokens))
     for t,r in zip(tokens,responses):
         if isinstance(r['response'],list):
             t['dex_pools']=[pool_row(p,r.get('observed_at')) for p in r['response'] if p.get('chainId')==DEX.get(t['chain_id']) and
@@ -316,20 +340,17 @@ def finish(wallet, folder, networks, discovered):
             t['dex_discovery_status']='queried' if r.get('status') is None else r['status']
         else:
             t['dex_discovery_status']='provider_error'
-    atomic(folder/'dex-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':tokens})
+    atomic(folder/'dex-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':tokens,'market_budget_ms':max(0,int((deadline-time.monotonic())*1000))})
     run_node('dex',folder/'dex-input.json',folder/'dex-verified.json')
-    tokens=read(folder/'dex-verified.json')['tokens']
+    verified=read(folder/'dex-verified.json');tokens=verified['tokens'];market_pending=verified.get('market_pending',False)
     for t in tokens:
         t['dex_liquidity_found']=any((p.get('reported_liquidity') or {}).get('usd',0)>0 or
             (p.get('factory_measurement') or {}).get('active_liquidity_verified',False) for p in t['dex_pools'])
         if t['dex_liquidity_found']:t['dex_discovery_status']='pool_liquidity_found'
     minted=[t for t in tokens if t.get('mintclub')]
-    # The API supplies supplementary metadata. On-chain bond reserves determine liquidity.
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        api=list(executor.map(lambda t:{'chain_id':t['chain_id'],'token_address':t['token_address'],'observed_at':h.now(),
-            'source':f"https://mint.club/api/tokens/byAddress/{t['chain_id']}/{t['token_address']}",
-            'response':fetch(f"https://mint.club/api/tokens/byAddress/{t['chain_id']}/{t['token_address']}")},minted))
-    atomic(folder/'mintclub-held-api.json',api)
+    # Supplementary API metadata is not consumed by the report. Keep on-chain
+    # names and bond facts without letting unused metadata block publication.
+    market_pending=market_pending or time.monotonic()>=deadline
     coverage=[]
     by_discovery={d['chain_id']:d for d in discovered}
     by_raw={d['chain_id']:d for d in raw['chains']}
@@ -359,12 +380,21 @@ def finish(wallet, folder, networks, discovered):
             price=next((p for p in t.get('tokenPrices',[]) if p.get('currency')=='usd' and p.get('value') is not None),None)
             if price:refs[symbol+'_USD']={'value':price['value'],'observed_at':price.get('lastUpdatedAt'),'source':'Alchemy Portfolio Tokens By Wallet'}
     from native_assets import market_metadata
-    native_market=market_metadata(coverage)
+    if market_pending:native_market={'evidence':[],'prices':{},'images':{}}
+    elif (folder/'native-market.json').exists():
+        from datetime import datetime
+        previous=read(folder/'native-market.json')
+        try:observed=datetime.fromisoformat(previous['observed_at'])
+        except (KeyError,TypeError,ValueError):observed=None
+        native_market=market_metadata(coverage,fetch=lambda url:previous['response'],observed=observed) if observed is not None and isinstance(previous.get('response'),list) else market_metadata(coverage,fetch=lambda url:fetch(url,deadline=deadline))
+    else:native_market=market_metadata(coverage,fetch=lambda url:fetch(url,deadline=deadline))
+    market_pending=market_pending or time.monotonic()>=deadline
     if native_market['evidence']:atomic(folder/'native-market.json',native_market['evidence'])
     for key,price in native_market['prices'].items():refs.setdefault(key,price)
     # Obtain prices of reserve assets separately, including tokens not held by the wallet.
     reserve_candidates={(t['chain_id'],t['mintclub']['reserve_token'].lower()):{'chain_id':t['chain_id'],'token_address':t['mintclub']['reserve_token'],'token_type':'ERC20'} for t in minted}
-    reserve_rows=list(ThreadPoolExecutor(max_workers=5).map(lambda t:dex_fetch(t,folder),reserve_candidates.values()))
+    reserve_rows=[] if market_pending else list(ThreadPoolExecutor(max_workers=5).map(lambda t:dex_fetch(t,folder,deadline),reserve_candidates.values()))
+    market_pending=market_pending or time.monotonic()>=deadline
     sys.path.insert(0,str(ASSETS/'viewer'))
     from model import dex_price
     reserve_prices=[]
@@ -380,7 +410,7 @@ def finish(wallet, folder, networks, discovered):
             'dex_tokens_with_liquidity_evidence':sum(t['dex_liquidity_found'] for t in tokens),'mintclub_tokens':len(minted),
             'mintclub_tokens_with_nonzero_reserve':sum(t['mintclub']['funded'] for t in minted),
             'mintclub_registry_assets_checked':sum(c.get('mintclub_registry_scan',{}).get('checked',0) if c.get('mintclub_registry_scan') else 0 for c in coverage)}
-    gaps=any(not c['indexer_complete'] or not (c.get('mintclub_registry_scan') or {}).get('complete') or c['rpc_status']!='available' or c['candidate_balance_errors'] for c in coverage)
+    gaps=market_pending or any(t.get('dex_verification_error') for t in tokens) or any(not c['indexer_complete'] or not (c.get('mintclub_registry_scan') or {}).get('complete') or c['rpc_status']!='available' or c['candidate_balance_errors'] for c in coverage)
     result={'schema_version':1,'wallet_address':wallet['address'],'tags':wallet['tags'],'compiled_at':h.now(),'status':'completed_with_coverage_gaps' if gaps else 'completed',
         'scope':'Direct ERC20, registered Mint Club ERC1155 and native holdings across all configured Mint Club EVM networks. Testnets are separate.',
         'counts':counts,'coverage':coverage,'tokens':tokens,'nested_curve_independent_redemption_estimates':[], 'price_references':refs,
@@ -391,7 +421,7 @@ def finish(wallet, folder, networks, discovered):
             'Full-wallet burn quotes subtract the recorded creator royalty and exclude gas. Nested reserve backing overlaps and must not be summed as independent cash reserves.',
             'Testnet assets are excluded from USD totals. Missing prices stay unknown.'],
         'actions':{'paid_provider_calls':None,'provider_billing':'Not determined; provider allowance can be consumed.','signatures':0,'approvals':0,'swaps':0,'transfers':0,'rpc_read_only':True},
-        'pipeline':{'version':1,'entrypoint':'wallet.py','resumable':True,'registry_cache':'Shared append-only asset identity cache. Wallet balances are not reused between wallets.'},
+        'pipeline':{'version':1,'entrypoint':'wallet.py','resumable':True,'market_pending':market_pending,'registry_cache':'Shared append-only asset identity cache. Wallet balances are not reused between wallets.'},
         'evidence_files':[f.name for f in sorted(folder.glob('*.json')) if f.name not in ('results.json','market-prices.json')]}
     atomic(folder/'results.json',result)
     prices=[]
@@ -403,13 +433,30 @@ def finish(wallet, folder, networks, discovered):
             'source':p.get('source'),'asset_id':p.get('asset_id'),'basis':p.get('basis','Market index')} for k,p in refs.items()},
         'tokens':prices+reserve_prices,'note':'DEX and reserve prices observed during this run. Curve spot prices use recorded on-chain state. Unknown prices remain null.'})
     from curve_pricing import enrich
-    atomic(folder/'market-prices.json',enrich(result,read(folder/'market-prices.json'),folder))
+    if not market_pending:
+        try:atomic(folder/'market-prices.json',enrich(result,read(folder/'market-prices.json'),folder,deadline=deadline))
+        except MarketPause:market_pending=True
     from token_images import refresh_catalog
-    try:event('token_images',**refresh_catalog([result],ROOT,native_images=native_market['images']))
+    try:
+        if not market_pending and time.monotonic()<deadline:
+            event('token_images',tokens=len(tokens))
+            event('token_images',**refresh_catalog([result],ROOT,native_images=native_market['images'],fetch=lambda url:fetch(url,deadline=deadline)))
     except (OSError,ValueError):event('token_images',status='unavailable')
     result['evidence_files']=[f.name for f in sorted(folder.glob('*.json')) if f.name not in ('results.json','market-prices.json')]
     atomic(folder/'results.json',result)
     report(result,folder)
+    if market_pending:
+        result['pipeline']['market_pending']=True;result['status']='completed_with_coverage_gaps'
+        index=1
+        while (checkpoint_folder/f'market-initial-{index:04d}').exists():index+=1
+        previous_folder=folder;folder=checkpoint_folder/f'market-initial-{index:04d}';folder.mkdir(parents=True)
+        atomic(folder/'market-prices.json',read(previous_folder/'market-prices.json'))
+        result['evidence_files']=['market-prices.json']
+        result['limitations'].append('Market verification reached its time budget. Recorded balances and completed registry checks remain available. Remaining pool checks are pending, not verified absent. Resume this job in Activity to continue saved checks.')
+        atomic(folder/'results.json',result);report(result,folder);publish_snapshot(wallet,folder,result)
+        event('first_evidence',snapshot=str(folder.relative_to(ROOT)))
+        event('market_paused')
+        raise MarketPause('Market verification paused at its time budget. Saved balances and market checkpoints are available to resume in Activity.')
     return result
 
 
@@ -523,7 +570,7 @@ def main():
             event('published',snapshot=relative,counts=result['counts'],status=result['status'],viewer='http://127.0.0.1:8765')
         except Exception as error:
             atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'failed_at':h.now(),'status':'failed','error':h.redact(str(error))})
-            event('failed',error=h.redact(str(error)),resume=str(folder.relative_to(ROOT)))
+            event('market_paused' if isinstance(error,MarketPause) else 'failed',error=h.redact(str(error)),resume=str(folder.relative_to(ROOT)))
             raise SystemExit(1)
 
 

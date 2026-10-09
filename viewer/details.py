@@ -33,6 +33,7 @@ def coverage_for(wallet, chain_id):
 def coverage_status(wallet, coverage):
     if not wallet.get('analysed_at'): return 'Awaiting analysis'
     if not coverage: return 'Not researched'
+    if coverage.get('rpc_pending') or coverage.get('rpc_status') == 'pending': return 'Research pending'
     if not coverage.get('rpc_available'): return 'RPC unavailable'
     if not coverage.get('complete'): return 'Incomplete discovery'
     return 'Researched'

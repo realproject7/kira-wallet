@@ -4,7 +4,7 @@ from decimal import Decimal
 from pathlib import Path
 import tempfile
 import unittest
-from details import project_details, total_balance
+from details import project_details, total_balance, coverage_status
 
 
 class DetailTests(unittest.TestCase):
@@ -16,6 +16,12 @@ class DetailTests(unittest.TestCase):
                        {'id':84532,'name':'Base Sepolia','environment':'testnet','complete':True,'rpc_available':True}]
 
     def tearDown(self): self.temp.cleanup()
+
+    def test_pending_research_is_not_an_rpc_outage(self):
+        wallet={'analysed_at':'2026-10-09T00:00:00Z'}
+        self.assertEqual(coverage_status(wallet,{'rpc_available':False,'rpc_pending':True}),'Research pending')
+        self.assertEqual(coverage_status(wallet,{'rpc_available':False,'rpc_status':'pending'}),'Research pending')
+        self.assertEqual(coverage_status(wallet,{'rpc_available':False,'rpc_status':'unavailable'}),'RPC unavailable')
 
     def asset(self, chain=8453, balance='1', value=5, environment='mainnet'):
         address = '0x' + '1' * 40

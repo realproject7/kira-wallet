@@ -145,3 +145,27 @@ Normalized wallet `complete` concerns general token discovery. Registry coverage
 candidate failures, deferred candidates and pending RPC reads are separate facts.
 These flags do not prove exhaustive holdings. First results can be read while
 background work remains active.
+
+## Responsive research in 0.1.8
+
+Queued initial reports, prices.refresh and settings operations can preempt
+enrichment. The single writer remains exclusive. Successful balance batches
+are checkpointed per job, wallet, candidate fingerprint and fixed block hash.
+Fresh holdings research never reuses another job's quantities. Completed pool
+checks and RPC prefixes also survive a resume at their original market block.
+
+The market phase has a 180-second budget including DEX indexer discovery and
+official pool verification. Progress reports completed discovery items,
+factory-query counts and pool-check counts. At the budget boundary, the engine
+publishes a new immutable market-initial-NNNN snapshot with recorded balances,
+actual registry coverage and market_pending. It pauses in interrupted state
+with market_budget and an explicit Resume action. A resume continues saved
+checks and never overwrites an earlier interim snapshot. Pending pools remain
+unknown. This budget is distinct from failed provider reads.
+
+settings.importEnv is a CLI-created request containing import_id and key_env.
+The environment file path stays in a private local reference record. The job
+worker applies it under the writer lock and records a settings receipt. No
+secret value is copied into the request, receipt, viewer or model context.
+Explicit cancellation survives recovery and exception boundaries as stopped.
+A completed publication receipt still wins a cancellation race.

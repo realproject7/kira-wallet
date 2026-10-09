@@ -180,7 +180,11 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             'exit_route': 'mintclub_burn' if t.get('mintclub') else 'dex_unquoted' if t.get('dex_liquidity_found') or any(pool_has_liquidity(pool) for pool in t.get('dex_pools',[])) else 'unverified',
             'image_url':image_for(images,t['chain_id'],t['token_address'],mint=bool(t.get('mintclub'))),
             'curve_reserve': {'amount':market_token.get('curve_reserve',t['mintclub']['reserve_balance']),'symbol':t['mintclub']['reserve_symbol']} if t.get('mintclub') else None})
+        if t.get('mintclub'):
+            mint=t['mintclub']
+            assets[-1]['curve_state']={k:mint.get(k) for k in ('reserve_token','reserve_symbol','reserve_balance','current_supply','price_for_next_mint_in_reserve_token','burn_royalty_bps','block_number','observed_at')}
     coverage=snapshot.get('coverage',[])
+    market_pending=(snapshot.get('pipeline') or {}).get('market_pending') is True
     for c in coverage:
         raw=c.get('native_balance');quantity=number(raw)
         if quantity is None or quantity<=0:continue
@@ -213,6 +217,9 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             'registry_complete':(c.get('mintclub_registry_scan') or {}).get('complete') is True,
             'registry_phase':(c.get('mintclub_registry_scan') or {}).get('phase'),
             'rpc_pending':c.get('rpc_status')=='pending',
+            'rpc_status':c.get('rpc_status','unknown'),
+            'market_pending':market_pending,
+            'market_errors':sum(bool(t.get('dex_verification_error')) for t in tokens if t['chain_id']==c['chain_id']),
             'registry_errors':(c.get('mintclub_registry_scan') or {}).get('registry_errors',0),
             'balance_errors':(c.get('mintclub_registry_scan') or {}).get('balance_errors',0),
             'candidate_balance_errors':failed_balances,
@@ -225,6 +232,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
     values=[a['value_usd'] for a in assets if a['environment']=='mainnet' and a['value_usd'] is not None]
     total=sum(values) if values else None
     return {'address':entry['address'],'key':entry['address_key'],'tags':entry.get('tags',[]),
+        'snapshot_id':(entry.get('latest_snapshot') or {}).get('directory'),
         'name':(entry.get('tags') or [entry['address'][:10]])[0],'analysed_at':snapshot.get('compiled_at'),
         'prices_at':price_time,'balance_observed_at':max((t.get('balance_observed_at','') for t in tokens),default=snapshot.get('compiled_at')),
         'known_value_usd':total,'unpriced_count':sum(a['value_usd'] is None for a in assets),
