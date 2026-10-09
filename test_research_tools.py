@@ -39,6 +39,26 @@ class ResearchToolsTest(unittest.TestCase):
             with self.assertRaises(JobError):ResearchTools(self.root,config).call('portfolio_read',{},str(uuid.uuid4()))
         for name in ('wallet_read','snapshots_list','holdings_refresh'):
             with self.assertRaises(JobError):self.call(name,{'wallet':self.other})
+    def test_comparison_chain_counts_cover_full_inventory_on_every_page(self):
+        before=self.first['latest_snapshot']['directory'];file=self.root/self.first['latest_snapshot']['result']
+        template=json.loads(file.read_text())
+        template['coverage'].append({**template['coverage'][0],'chain_id':1,'network':'ethereum','name':'Ethereum'})
+        def tokens(cid,count):
+            return [{'chain_id':cid,'token_address':'0x'+format(i+1,'040x'),'token_type':'ERC20',
+                'symbol':'SYNTHETIC','wallet_balance':'1','wallet_balance_raw':'1','decimals':0,
+                'dex_pools':[],'mintclub':None,'indexer_price_references':[]} for i in range(count)]
+        atomic(file,{**template,'tokens':tokens(1,11)+tokens(8453,2)})
+        after='snapshots/comparison-after';atomic(self.root/after/'results.json',{**template,'tokens':tokens(1,25)+tokens(8453,122)})
+        registry=json.loads((self.root/'wallets.json').read_text())
+        registry.setdefault('research_runs',[]).append({'address_key':self.first['address_key'],'snapshot':after});atomic(self.root/'wallets.json',registry)
+        pages=[self.call('snapshots_compare',{'before':before,'after':after,'offset':offset,'limit':100}) for offset in (0,100)]
+        summary=pages[0]['comparison_summary']
+        self.assertEqual(pages[1]['comparison_summary'],summary)
+        self.assertEqual([len(p['positions']) for p in pages],[100,47])
+        self.assertEqual(summary['totals']['position_count'],147)
+        self.assertEqual(summary['totals']['missing_before_balance_count'],134)
+        self.assertEqual(summary['totals']['unchanged_observation_count'],13)
+        self.assertEqual([(r['chain_id'],r['missing_before_balance_count']) for r in summary['chains']],[(1,14),(8453,120)])
         with self.assertRaises(JobError):self.call('snapshot_read',{'snapshot_id':'snapshots/foreign'})
         with self.assertRaises(JobError):self.call('shell',{'command':'read secrets'})
         with self.assertRaises(JobError):self.call('token_read',{'chain_id':True,'address':'native'})

@@ -30,6 +30,7 @@ SYSTEM = ('You are Kira, a careful wallet research partner. Answer in the langua
     'A bounded summary is not contradictory new evidence. pools_omitted means recorded pool details were left out of this response, not absent from the record. '
     'Use token_read before judging or retracting market details when pools are omitted. Testnet assets are excluded from portfolio valuation; do not infer a zero market price. '
     'assets_omitted and next_offset describe a page, not missing holdings. Use wallet_read with offset and limit for more holdings, and token_read for detailed evidence. '
+    'Compact pages defer exit_quote and curve details. exit_quote_recorded true means a validated historical quote exists in the record even if its output is omitted here. Use token_read before judging execution evidence or claiming that a quote is absent. False means no validated quote in this snapshot, not that no exit route exists. '
     'For a complete inventory or portfolio comparison, follow next_offset for each approved wallet using limit 100. If the tool budget prevents this, state which pages remain unread. Inventory pages defer curve and exit details to token_read. '
     'rpc_pending or rpc_status pending means research has not reached that network. It is not an RPC outage. Only an explicit unavailable status proves a failed RPC check. '
     'Compare curve state only for the same chain and contract using comparable reserve, supply, next-mint price and royalty fields. A newer block or different wallet-sized burn output alone does not prove the curve moved. If comparable fields are unchanged, say no change was demonstrated; if missing, say the comparison is unknown. '
@@ -49,6 +50,10 @@ SYSTEM = ('You are Kira, a careful wallet research partner. Answer in the langua
     'In normalized wallet facts, chain complete means general ERC20 discovery was checked. In job chains, status complete means an on-chain checkpoint finished. These are different stages. Neither flag alone proves all holdings are known. registry_complete and candidate_balance_errors describe separate read coverage. An indexer check and unavailable RPC are separate coverage facts, not conflicting records. '
     'An explicit chains.native_balance of zero is an observed native balance at its recorded time and block; null is unknown. Empty positive-holding inventories do not erase these observations. '
     'For saved-analysis comparisons, use snapshots_compare and read both snapshots. coverage_changed compares full evidence, including times and blocks, not just network status flags. price_references_changed may include changed reference values or times, not balances. '
+    'comparison_summary gives exact full-comparison totals and per-chain counts before pagination. Use these counts instead of manually counting position pages. It covers recorded non-native tokens, not native balances, transfer history or unobserved discovery candidates. '
+    'A newly visible or absent token record is not a receipt or disposal. If either balance observation is missing, the change and its cause are unknown. Broader discovery can explain visibility but cannot establish or rule out receipts, transfers or intervening activity. Even equal observed balances do not prove no intervening transfers. '
+    'recorded_valuation covers all recorded mainnet positions of a wallet, including positions omitted from this page. Its all_priced_positions total includes native assets, Mint Club assets and other priced tokens. Use the exact category total and denominator for category exposure or concentration, never relabel a whole-wallet sum as Mint Club exposure. '
+    'These are estimated recorded priced subsets at their separate price observation times. Missing prices, stale prices and indicative curve spot prices mean the sum is not a floor, minimum wealth, lower bound on current value or guaranteed sale proceeds. Do not sum independent burn quotes as cash proceeds. '
     'Snapshot reads are normalized evidence. Compare chain observations and snapshot_price_references; never claim these are the only raw fields that changed. '
     'Your personality is a sharp, composed crypto analyst: concise, quietly confident, practical and a little dry. '
     'Talk like a knowledgeable person sitting beside the user. Lead with the actual finding or decision. '
@@ -115,6 +120,7 @@ def projection(root, config, *, token_id=None, limit=12, offset=0, wallet_key=No
     if config['scope'] == 'wallet':
         wallets = [w for w in wallets if w['key'] == config['wallet']]
         if len(wallets) != 1: raise JobError('wallet_missing','The approved wallet is no longer registered. Review your context settings.')
+    wallets=[{**w,'recorded_valuation':recorded_valuation(w['assets'])} for w in wallets]
     if token_id is not None:
         wallets=[{**wallet,'assets':[a for a in wallet['assets'] if a['id']==token_id]} for wallet in wallets]
     if wallet_key is not None: wallets=[w for w in wallets if w['key']==wallet_key]
@@ -141,10 +147,35 @@ def projection(root, config, *, token_id=None, limit=12, offset=0, wallet_key=No
     return result
 
 def compact_wallet_facts(rows):
-    asset_fields=('id','chain_id','address','symbol','name','environment','balance','is_native','value_usd','balance_observed_at','price','pools','pools_recorded','pools_omitted')
+    asset_fields=('id','chain_id','address','symbol','name','environment','balance','is_native','value_usd','balance_observed_at','price','pools','pools_recorded','pools_omitted','exit_quote_recorded')
     return [{**row,'assets':[{key:asset[key] for key in asset_fields if key in asset and
                            (asset[key] is not None or key in ('value_usd','price'))}
                           for asset in row['assets']]} for row in rows]
+
+def recorded_valuation(assets):
+    """Explicit disjoint categories over the full recorded inventory, before paging."""
+    from decimal import Decimal, InvalidOperation, localcontext
+    groups={'native':[], 'mintclub':[], 'other_tokens':[]}
+    unpriced=0
+    for asset in assets:
+        if asset.get('environment')!='mainnet':continue
+        try:value=Decimal(str(asset.get('value_usd')))
+        except InvalidOperation:unpriced+=1;continue
+        if not value.is_finite() or value<0:unpriced+=1;continue
+        category='native' if asset.get('is_native') else 'mintclub' if asset.get('curve_state') or asset.get('exit_route')=='mintclub_burn' else 'other_tokens'
+        groups[category].append((value,(asset.get('price') or {}).get('observed_at')))
+    def summarize(rows):
+        times=[time for _,time in rows if time]
+        with localcontext() as context:
+            context.prec=100
+            value=format(sum((value for value,_ in rows),Decimal(0)),'f') if rows else None
+        return {'estimated_value_usd':value,'priced_position_count':len(rows),
+                'price_observed_at':{'from':min(times,default=None),'to':max(times,default=None)},
+                'price_time_unknown_count':sum(time is None for _,time in rows)}
+    return {'scope':'Full recorded mainnet inventory, before pagination. Categories are disjoint.',
+            'all_priced_positions':summarize([row for rows in groups.values() for row in rows]),
+            'categories':{name:summarize(rows) for name,rows in groups.items()},'unpriced_mainnet_count':unpriced,
+            'interpretation':'Estimated recorded priced subset at separate observation times. Not a floor on current wealth or realizable proceeds. Missing values remain unknown; indicative prices are not executable quotes.'}
 
 def wallet_facts(wallets, *, pool_budget=40_000):
     def pick(value, names): return {k:value.get(k) for k in names}
@@ -152,6 +183,7 @@ def wallet_facts(wallets, *, pool_budget=40_000):
     for wallet in wallets:
         row = pick(wallet,('address','tags','name','snapshot_id','analysed_at','prices_at','balance_observed_at','known_value_usd','unpriced_count','status'))
         if not wallet.get('analysed_at'): row['known_value_usd']=None
+        row['recorded_valuation']=wallet.get('recorded_valuation') or recorded_valuation(wallet['assets'])
         row['chains'] = [pick(c,('id','name','environment','complete','rpc_available','rpc_status','market_pending','market_errors','native_symbol','native_balance','native_observed_at','native_block_number','registry_block_number','discovery_status','registry_complete','registry_phase','rpc_pending','candidate_balance_errors','candidate_deferred')) for c in wallet['chains']]
         row['snapshot_price_references'] = wallet.get('snapshot_price_references',{})
         row['assets'] = []
@@ -159,6 +191,7 @@ def wallet_facts(wallets, *, pool_budget=40_000):
             item = pick(asset,('id','chain_id','address','symbol','name','environment','balance','is_native','value_usd','balance_observed_at'))
             item['price'] = pick(asset['price'],('usd','basis','quality','observed_at')) if asset.get('price') else None
             item['exit_quote'] = asset.get('exit_quote')
+            item['exit_quote_recorded'] = asset.get('exit_quote') is not None
             item['exit_route'] = asset.get('exit_route')
             item['markets'] = asset.get('links',[])
             pools=asset.get('market_pools',[]);item['pools']=[];item['pools_recorded']=len(pools)

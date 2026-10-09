@@ -364,17 +364,34 @@ class JobStore:
             if a is not None and b is not None and a.get('wallet_balance') is not None and b.get('wallet_balance') is not None:
                 try:
                     with localcontext() as context:
-                        context.prec=100;delta=str(Decimal(b['wallet_balance'])-Decimal(a['wallet_balance']))
+                        context.prec=100
+                        first,last=Decimal(a['wallet_balance']),Decimal(b['wallet_balance'])
+                        if first.is_finite() and last.is_finite():delta=str(last-first)
                 except InvalidOperation:pass
             changes.append({'chain_id':identity[0],'address':identity[1],'token_id':identity[2],
                 'symbol':(b or a).get('symbol'),'before_balance':a.get('wallet_balance') if a else None,
                 'after_balance':b.get('wallet_balance') if b else None,'balance_delta':delta,
+                'balance_comparison':'unknown' if delta is None else 'unchanged_observations' if Decimal(delta)==0 else 'different_observations',
+                'activity_cause':'unknown_without_transfer_history',
                 'presence':'both' if a and b else 'new_record' if b else 'absent_record',
                 'price_references_changed':(a or {}).get('indexer_price_references')!=(b or {}).get('indexer_price_references'),
                 'valuation_method_changed':bool((a or {}).get('mintclub'))!=bool((b or {}).get('mintclub'))})
+        def counts(rows):
+            return {'position_count':len(rows),
+                'new_record_count':sum(r['presence']=='new_record' for r in rows),
+                'absent_record_count':sum(r['presence']=='absent_record' for r in rows),
+                'missing_before_balance_count':sum(r['before_balance'] is None for r in rows),
+                'missing_after_balance_count':sum(r['after_balance'] is None for r in rows),
+                'unchanged_observation_count':sum(r['balance_comparison']=='unchanged_observations' for r in rows),
+                'different_observation_count':sum(r['balance_comparison']=='different_observations' for r in rows),
+                'unknown_comparison_count':sum(r['balance_comparison']=='unknown' for r in rows)}
+        summary={'scope':'full_recorded_non_native_token_comparison_before_pagination',
+            'totals':counts(changes),
+            'chains':[{'chain_id':cid,**counts([r for r in changes if r['chain_id']==cid])}
+                for cid in sorted({r['chain_id'] for r in changes})]}
         return {'schema_version':1,'before':before,'after':after,'wallet':new['wallet_address'],
             'coverage_changed':old.get('coverage')!=new.get('coverage'),'price_references_changed':old.get('price_references')!=new.get('price_references'),
-            'positions':changes,'note':'Absent records are unknown, not zero. Price overlays have separate observations and are not balance changes. Coverage changes compare full evidence, including observation times and blocks; this alone does not prove the set of checked networks changed. Positions compare direct token records. Read both snapshots to compare native balances.'}
+            'comparison_summary':summary,'positions':changes,'note':'Absent records are unknown, not zero. Missing prior or later observations cannot establish or rule out receipts, disposals or transfers. Broader discovery can explain visibility, but activity and its cause remain unknown without transfer history. Even equal observed balances do not exclude intervening activity. Price overlays have separate observations and are not balance changes. Coverage changes compare full evidence, including observation times and blocks; this alone does not prove the set of checked networks changed. Positions compare direct token records. Read both snapshots to compare native balances.'}
 
     def snapshots(self, wallet):
         key = self.wallet(wallet)['address_key']
