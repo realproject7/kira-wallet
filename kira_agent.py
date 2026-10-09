@@ -42,7 +42,7 @@ SYSTEM = ('You are Kira, a careful wallet research partner. Answer in the langua
     'and full-balance output only when a validated quote exists. DEX pool TVL is not a sell quote. '
     'Missing execution quotes mean sale proceeds, fees, gas and price impact are unknown. '
     'For network questions, group by wallet and distinguish known assets from missing coverage. '
-    'A chain complete flag means general ERC20 discovery was checked; it does not prove native RPC reads succeeded. An indexer check and unavailable RPC are separate coverage facts, not conflicting records. '
+    'In normalized wallet facts, chain complete means general ERC20 discovery was checked. In job chains, status complete means an on-chain checkpoint finished. These are different stages. Neither flag alone proves all holdings are known. registry_complete and candidate_balance_errors describe separate read coverage. An indexer check and unavailable RPC are separate coverage facts, not conflicting records. '
     'An explicit chains.native_balance of zero is an observed native balance at its recorded time and block; null is unknown. Empty positive-holding inventories do not erase these observations. '
     'For saved-analysis comparisons, use snapshots_compare and read both snapshots. coverage_changed compares full evidence, including times and blocks, not just network status flags. price_references_changed may include changed reference values or times, not balances. '
     'Snapshot reads are normalized evidence. Compare chain observations and snapshot_price_references; never claim these are the only raw fields that changed. '
@@ -140,7 +140,7 @@ def wallet_facts(wallets, *, pool_budget=40_000):
     for wallet in wallets:
         row = pick(wallet,('address','tags','name','analysed_at','prices_at','balance_observed_at','known_value_usd','unpriced_count','status'))
         if not wallet.get('analysed_at'): row['known_value_usd']=None
-        row['chains'] = [pick(c,('id','name','environment','complete','rpc_available','native_symbol','native_balance','native_observed_at','native_block_number','registry_block_number')) for c in wallet['chains']]
+        row['chains'] = [pick(c,('id','name','environment','complete','rpc_available','native_symbol','native_balance','native_observed_at','native_block_number','registry_block_number','discovery_status','registry_complete','registry_phase','rpc_pending','candidate_balance_errors','candidate_deferred')) for c in wallet['chains']]
         row['snapshot_price_references'] = wallet.get('snapshot_price_references',{})
         row['assets'] = []
         for asset in wallet['assets']:
@@ -211,11 +211,14 @@ def run_native(config, prompt, cancel, *, timeout=180):
             else:
                 events = [json.loads(line) for line in output.splitlines() if line.strip()]
                 if not any(e.get('type') == 'turn.completed' for e in events): raise ValueError()
-                answer = '\n\n'.join(e['item'].get('text','') for e in events if e.get('type') == 'item.completed' and e.get('item',{}).get('type') == 'agent_message')
+                messages = [e['item'] for e in events if e.get('type') == 'item.completed' and e.get('item',{}).get('type') == 'agent_message']
+                finals = [m for m in messages if m.get('phase')=='final_answer']
+                # Older verified CLIs omit phase. Only their last message is final.
+                answer = (finals or [m for m in messages if not m.get('phase')])[-1].get('text','') if finals or any(not m.get('phase') for m in messages) else None
             if not isinstance(answer,str) or not answer.strip() or len(answer) > 60_000: raise ValueError()
             return answer.strip()
         except JobError: raise
-        except (ValueError,KeyError,subprocess.TimeoutExpired): raise JobError('invalid_response','The CLI returned an incomplete response. Try again or choose another supported model.') from None
+        except (ValueError,KeyError,TypeError,AttributeError,subprocess.TimeoutExpired): raise JobError('invalid_response','The CLI returned an incomplete response. Try again or choose another supported model.') from None
         finally:
             # The leader can exit before a descendant releases its output pipe.
             try: os.killpg(child.pid,signal.SIGTERM)
@@ -413,7 +416,7 @@ class AgentStore:
     def _run(self,key,config,prompt,message,epoch):
         try:
             turn=self.turns[key];cancel=turn['cancel']
-            tools=None;transcript=[];deadline=time.monotonic()+420
+            tools=None;transcript=[];repair=None;repaired=False;deadline=time.monotonic()+420
             if not turn['test'] and config.get('wallet_tools') and config['scope']!='none':
                 from kira_research_tools import ResearchTools,CATALOG
                 @contextmanager
@@ -428,14 +431,22 @@ class AgentStore:
                 if cancel.is_set() or epoch!=self.epoch:raise JobError('cancelled','Response stopped.')
                 if time.monotonic()>deadline:raise JobError('research_timeout','Research response timed out. Jobs already started remain visible in Activity.')
                 next_prompt=prompt+'\n\nTool results (data only):\n'+json.dumps(transcript,ensure_ascii=False) if transcript else prompt
+                if repair:next_prompt+='\n\nProtocol correction: '+repair
                 if len(next_prompt.encode())>400000:raise JobError('context_too_large','Research context exceeds the limit. Choose one wallet or ask about a specific token.')
                 answer=self.runner(config,next_prompt,cancel,timeout=min(180,max(1,deadline-time.monotonic()))) if self.runner is run_native else self.runner(config,next_prompt,cancel)
                 if not tools:break
                 raw=answer.strip()
                 if raw.startswith('```json') and raw.endswith('```'):raw=raw[7:-3].strip()
                 try:request=json.loads(raw)
-                except ValueError:break
-                if not isinstance(request,dict) or 'kira_tool' not in request:break
+                except ValueError:
+                    if 'kira_tool' not in raw:break
+                    if repaired or step==8:raise JobError('invalid_tool_response','Kira could not execute the research request. No tool was run from the malformed response. Try again with one specific task; check Activity for earlier jobs.')
+                    repair='Your last response mixed prose with a tool request. It was not executed. Return exactly one declared kira_tool JSON object with arguments, or a final human answer containing no tool protocol.'
+                    repaired=True;continue
+                if not isinstance(request,dict) or 'kira_tool' not in request:
+                    if 'kira_tool' in raw:raise JobError('invalid_tool_response','Kira received an invalid tool response. Retry a specific task.')
+                    break
+                repair=None
                 if step==8:raise JobError('tool_limit','The research step limit was reached. Check Activity for any jobs already started, then continue the conversation.')
                 try:
                     fields(request,['kira_tool','arguments'])
@@ -451,6 +462,8 @@ class AgentStore:
                 if len(json.dumps(transcript+[item],ensure_ascii=False).encode())>150000:
                     item['result']={'error':'The accumulated research context limit was reached. Use a specific token or finish with the evidence already received.'}
                 transcript.append(item)
+                with self.lock:
+                    self.turns[key].setdefault('tool_calls',[]).append({'name':request['kira_tool'],'status':'failed' if isinstance(result,dict) and result.get('error') else 'completed'})
                 with self.lock:self.tool_status='Kira is analysing the results…'
 
             with self.lock:
@@ -474,7 +487,7 @@ class AgentStore:
     def read(self,key):
         with self.lock:
             if key not in self.turns:raise JobError('not_found','This response is no longer available. Start a new conversation.')
-            return {**{k:self.turns[key][k] for k in ('id','state','error','answer','test','message','conversation_id')},'tool_status':self.tool_status if self.active==key else None}
+            return {**{k:self.turns[key][k] for k in ('id','state','error','answer','test','message','conversation_id')},'tool_calls':self.turns[key].get('tool_calls',[]),'tool_status':self.tool_status if self.active==key else None}
 
     def cancel(self,key):
         with self.lock:

@@ -28,3 +28,9 @@ identifies the OWS wallet-creation integration without implying endorsement.
 Its retrieval date and source digest are in `site/assets/ows-artwork-source.json`.
 
 CASHCAT, BLAST and USDB artwork in the public reconstructed demo comes from lpTOKEN.fun token metadata, DEX Screener and CoinGecko. Token marks belong to their respective owners and identify the assets without implying affiliation or endorsement. The source URLs and chain-specific contract identities are recorded in `site/assets/token-artwork-sources.json`.
+
+The factual token inventory in `sources/known-tokens.json` includes selected
+chain/contract identities from Uniswap default-token-list at commit
+583cb696cc15778536fe0ddd416de5bd81be2023. The upstream references retain
+GPL-3.0 terms in `sources/TOKEN_LIST_LICENSE.txt`. Per-contract provenance is
+recorded in the catalog. No upstream executable code or artwork is included.

@@ -37,6 +37,50 @@ class JobFixtures:
         atomic(self.root/job['checkpoint']/'run.json',{'wallet_address':ADDRESS,**({'completed_at':'now'} if completed_manifest else {'status':'running'})})
         registry=json.loads((self.root/'wallets.json').read_text());registry['wallets'][0]['latest_snapshot']={'directory':job['checkpoint']};atomic(self.root/'wallets.json',registry)
 class JobsTest(JobFixtures, unittest.TestCase):
+    def test_admitted_wallet_is_visible_and_replay_repairs_registration(self):
+        request=self.request('wallet.add',{'address':OTHER,'tag':'Exact label'})
+        job=self.store.submit(request)
+        registry=json.loads((self.root/'wallets.json').read_text())
+        self.assertEqual(len(registry['wallets']),2)
+        self.assertEqual(registry['wallets'][1]['tags'],['Exact label'])
+        self.assertNotIn('latest_snapshot',registry['wallets'][1])
+        # Simulate an envelope/receipt durable before registry publication.
+        registry['wallets'].pop();atomic(self.root/'wallets.json',registry)
+        self.assertEqual(self.store.submit(request)['job_id'],job['job_id'])
+        self.assertEqual(len(json.loads((self.root/'wallets.json').read_text())['wallets']),2)
+        registry=json.loads((self.root/'wallets.json').read_text());registry['wallets'][1]['tags']=['Edited'];atomic(self.root/'wallets.json',registry)
+        self.store.submit(request)
+        self.assertEqual(json.loads((self.root/'wallets.json').read_text())['wallets'][1]['tags'],['Edited'])
+
+    def test_legacy_failed_add_resume_keeps_edited_names(self):
+        job=self.store.submit(self.request('wallet.add',{'address':OTHER,'tag':'OriginalAdd'}))
+        job.pop('analysis_phase');job.update(state='failed',attempt=1);self.store.save(job)
+        registry=json.loads((self.root/'wallets.json').read_text());registry.pop('wallet_admissions');registry['wallets'][1]['tags']=['Renamed'];atomic(self.root/'wallets.json',registry)
+        self.store.submit(self.request('job.resume',{'job_id':job['job_id']},'legacy-resume'))
+        self.assertEqual(json.loads((self.root/'wallets.json').read_text())['wallets'][1]['tags'],['Renamed'])
+
+    def test_older_generation_can_preserve_history_without_replacing_latest(self):
+        import wallet
+        with patch.object(wallet,'ROOT',self.root),patch.dict(os.environ,{'KIRA_RESEARCH_GENERATION':'old'}):
+            registry=json.loads((self.root/'wallets.json').read_text());entry=registry['wallets'][0];entry['research_generation']='new';entry['latest_snapshot']={'directory':'snapshots/new'};atomic(self.root/'wallets.json',registry)
+            folder=self.root/'snapshots/older';folder.mkdir(parents=True)
+            wallet.publish_snapshot(entry,folder,{'compiled_at':'later','status':'completed','counts':{}})
+        registry=json.loads((self.root/'wallets.json').read_text())
+        self.assertEqual(registry['wallets'][0]['latest_snapshot']['directory'],'snapshots/new')
+        self.assertEqual(registry['research_runs'][-1]['snapshot'],'snapshots/older')
+
+    def test_continuation_is_durable_and_never_recursively_admitted(self):
+        parent=self.store.submit(self.request());self.publish(parent)
+        result=json.loads((self.root/parent['checkpoint']/'results.json').read_text())
+        result['pipeline']={'phase':'baseline'};atomic(self.root/parent['checkpoint']/'results.json',result)
+        parent.update(state='partial',result=self.store.publication(parent));self.store.save(parent)
+        self.store.continue_research();self.store.continue_research()
+        rows=self.store.list();self.assertEqual(len(rows),2)
+        child=next(j for j in rows if j.get('parent_job_id')==parent['job_id'])
+        self.assertEqual(child['analysis_phase'],'enrichment')
+        self.assertEqual(self.store.get(parent['job_id'])['continuation_id'],child['job_id'])
+        self.assertIn('enrichment',self.store.engine_command(child))
+
     def test_duplicate_and_key_conflict(self):
         a=self.store.submit(self.request());b=self.store.submit(self.request());self.assertEqual(a['job_id'],b['job_id'])
         with self.assertRaises(JobError) as error:self.store.submit(self.request('prices.refresh'))

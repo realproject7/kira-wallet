@@ -10,7 +10,7 @@ npm install -g kira-wallet
 kira setup
 ```
 
-The operator published npm version 0.1.5. Version 0.1.6 is a preparation candidate. GitHub v0.1.3 remains
+The operator published npm version 0.1.6. Version 0.1.7 is a preparation candidate. GitHub v0.1.3 remains
 a draft; the previous archive and checksum are available from the
 [0.1.2 GitHub release](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2).
 Registry publication remains an operator action. The code and original character assets use the MIT license.
@@ -46,7 +46,7 @@ Published 0.1.4 explains limited discovery before wallet registration and beside
 holdings. Missing coverage keeps the portfolio estimate partial. Existing snapshots require a holdings refresh after connecting
 an indexer; a price refresh does not discover missing tokens.
 
-Public RPC checks known assets and Mint Club. For broader ERC20 discovery,
+Free research checks known assets, Mint Club and keyless token candidates on supported networks. Alchemy is optional. For broader ERC20 discovery,
 open Custom RPC & token coverage, select Alchemy and follow its local key guide.
 Published 0.1.5 uses one save for Alchemy RPC and discovery; chain overrides
 remain under Advanced. Never paste the key into the browser. `kira doctor`

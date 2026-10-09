@@ -3,6 +3,9 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import contextlib
+import io
+import sys
 from unittest.mock import patch
 import wallet
 
@@ -28,6 +31,29 @@ class WalletPipelineTests(unittest.TestCase):
         return {'address':self.address,'network':network,'tokenAddress':address,'tokenBalance':'0x1',
                 'tokenMetadata':{'decimals':18,'symbol':'Fixture','name':'Fixture'},'tokenPrices':[]}
 
+    def test_fresh_baseline_publishes_initial_and_final_without_enrichment_gate(self):
+        from kira_cli import initialize
+        initialize(self.folder)
+        token={'chain_id':8453,'network':'base','token_address':'0x'+'2'*40,'token_type':'ERC20',
+               'wallet_balance':'1','symbol':'TEST','mintclub':None,'dex_pools':[],'dex_liquidity_found':False}
+        chain={'chain_id':8453,'rpc_status':'available','native_balance':'1','tokens':[token],
+               'registry_scan':{'checked':0,'registry_count':None,'complete':False,'phase':'deferred'}}
+        def scan(mode,source,destination,on_chain=None):
+            self.assertEqual(mode,'baseline')
+            network_ids=[n['chain_id'] for n in wallet.read(source)['networks']]
+            self.assertEqual(network_ids,[8453,1,81457])
+            wallet.atomic(destination/'baseline-chain-8453.json',chain)
+            on_chain({'stage':'chain','chain_id':8453})
+            wallet.atomic(destination/'onchain-summary.json',{'chains':[chain]})
+        with patch.object(wallet,'ROOT',self.folder),patch.object(wallet,'source_check'),patch.object(wallet,'validate_address',return_value=self.address),patch.object(wallet,'run_node',side_effect=scan),patch.object(wallet,'discover',return_value={'chain_id':8453,'complete':False,'tokens':[]}),patch('native_assets.market_metadata',return_value={'prices':{}}),patch.object(sys,'argv',['wallet.py','add',self.address,'--tag','Fixture','--phase','baseline']),contextlib.redirect_stdout(io.StringIO()):
+            wallet.main()
+        entry=wallet.read(self.folder/'wallets.json')['wallets'][0]
+        folder=self.folder/entry['latest_snapshot']['directory']
+        self.assertIn('completed_at',wallet.read(folder/'run.json'))
+        self.assertEqual(wallet.read(folder/'results.json')['pipeline']['phase'],'baseline')
+        self.assertEqual(wallet.read(folder/'initial/results.json')['tokens'][0]['wallet_balance'],'1')
+        self.assertEqual(len(wallet.read(self.folder/'wallets.json')['research_runs']),2)
+
     def test_partial_200_preserves_candidates_without_claiming_complete(self):
         data={'data':{'tokens':[self.token()]},'error':{'partialErrors':[{'network':'base-mainnet','message':'timeout'}]}}
         with patch.object(wallet,'fetch',return_value=data):
@@ -39,11 +65,11 @@ class WalletPipelineTests(unittest.TestCase):
 
     def test_disabled_and_missing_credentials_record_the_actual_reason(self):
         for provider,secrets,expected in [('none',{},'disabled'),('alchemy',{},'missing_credential')]:
-            with patch.object(wallet,'load_config',return_value={'discovery':{'provider':provider,'explorers':False}}),patch.object(wallet.h,'secrets',return_value=secrets),patch.object(wallet,'fetch') as fetch:
+            with patch.object(wallet,'load_config',return_value={'discovery':{'provider':provider,'explorers':False,'public':False}}),patch.object(wallet.h,'secrets',return_value=secrets),patch.object(wallet,'fetch') as fetch:
                 result=wallet.discover(self.address,self.network,self.folder)
             fetch.assert_not_called();self.assertFalse(result['complete'])
             self.assertEqual(result['discovery_status'],expected)
-        with patch.object(wallet.h,'secrets',side_effect=ValueError('Unreadable secret file')),patch.object(wallet,'fetch') as fetch:
+        with patch.object(wallet,'load_config',return_value={'discovery':{'provider':'alchemy','public':False,'explorers':False}}),patch.object(wallet.h,'secrets',side_effect=ValueError('Unreadable secret file')),patch.object(wallet,'fetch') as fetch:
             result=wallet.discover(self.address,self.network,self.folder)
         fetch.assert_not_called();self.assertEqual(result['discovery_status'],'missing_credential')
 

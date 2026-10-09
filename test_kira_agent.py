@@ -230,6 +230,15 @@ class AgentTest(unittest.TestCase):
             with patch('kira_agent.subprocess.Popen') as model:
                 with self.assertRaises(JobError) as caught:run_native(settings(),'timeout',cancelled)
                 model.assert_not_called();self.assertEqual(caught.exception.code,'cancelled')
+    def test_native_codex_commentary_is_not_a_final_tool_request(self):
+        script=self.root/'synthetic-phase-cli'
+        events=[{'type':'item.completed','item':{'type':'agent_message','phase':'commentary','text':'Working {"kira_tool":"portfolio_read"}'}},
+                {'type':'item.completed','item':{'type':'agent_message','phase':'final_answer','text':'{"kira_tool":"portfolio_read","arguments":{}}'}},
+                {'type':'turn.completed'}]
+        script.write_text('#!/usr/bin/env python3\nimport sys,json\nif "--version" in sys.argv:print("codex-cli 0.158.0")\nelse:\n sys.stdin.read()\n for row in '+repr(events)+':print(json.dumps(row))\n');script.chmod(0o700)
+        with patch('kira_agent.shutil.which',return_value=str(script)):
+            self.assertEqual(json.loads(run_native(settings(),'Hello',threading.Event()))['kira_tool'],'portfolio_read')
+
     def test_exited_leader_descendant_and_cleanup_error_preserve_timeout(self):
         script=self.root/'synthetic-descendant'
         script.write_text('#!/usr/bin/env python3\nimport os,sys,time\nif "--version" in sys.argv: print("codex-cli 0.158.0")\nelse:\n sys.stdin.read()\n if os.fork()==0: time.sleep(20);os._exit(0)\n os._exit(0)\n')

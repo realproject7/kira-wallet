@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict');
 const fs=require('fs'),os=require('os'),path=require('path');
 const h=require('./onchain.cjs');
-const {calls,registry,connect}=require('./pipeline-onchain.cjs');
+const {calls,registry,connect,scanChain}=require('./pipeline-onchain.cjs');
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'wallet-registry-test-'));
 const original=h.root;h.root=root;
 const addresses=['0x0000000000000000000000000000000000000001','0x0000000000000000000000000000000000000002','0x0000000000000000000000000000000000000003'];
@@ -74,5 +74,17 @@ const seed=()=>{fs.mkdirSync(path.dirname(cacheFile),{recursive:true});fs.writeF
     assert.deepEqual(tried,['custom']);
     h.endpoints=()=>[];await assert.rejects(connect({chain_id:8453}),/No RPC endpoint/);
   } finally {h.endpoints=originalEndpoints;h.client=originalClient;}
+  const originalSnapshot=h.snapshotBlock;
+  try {
+    const candidateContracts=Array.from({length:200},(_,i)=>({chain_id:999,address:'0x'+(i+10).toString(16).padStart(40,'0')}));
+    h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:103n,hash});
+    h.client=()=>({getChainId:async()=>999,getBalance:async()=>1n,
+      multicall:async({contracts})=>contracts.map(c=>({status:'success',result:c.functionName==='balanceOf'?1n:c.functionName==='decimals'?18:c.functionName==='exists'?false:'TEST'}))});
+    const row=await scanChain({wallet:addresses[0],candidates:candidateContracts},network,path.join(root,'initial'),true);
+    assert.equal(row.tokens.length,128);assert.equal(row.candidate_scan.total,200);
+    assert.equal(row.candidate_scan.deferred,72);assert.equal(row.candidate_scan.complete,false);
+    assert.equal(row.registry_scan.phase,'deferred');assert.equal(row.registry_scan.complete,false);
+    assert.equal(row.status,'partial');
+  } finally {h.endpoints=originalEndpoints;h.client=originalClient;h.snapshotBlock=originalSnapshot;}
   console.log('Registry cache identity, incremental reads and RPC outage checks passed.');
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>{h.root=original;fs.rmSync(root,{recursive:true,force:true});});

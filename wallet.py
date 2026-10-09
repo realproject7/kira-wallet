@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 import fcntl
 import json
 import os
@@ -47,8 +48,12 @@ def atomic(path, data):
     for secret in values:
         if secret:
             text=text.replace(secret,'[redacted]')
-    temp.write_text(text)
+    with temp.open('w') as stream:
+        stream.write(text);stream.flush();os.fsync(stream.fileno())
     os.replace(temp, path)
+    descriptor=os.open(path.parent,os.O_RDONLY)
+    try:os.fsync(descriptor)
+    finally:os.close(descriptor)
 
 
 def event(stage, **data):
@@ -88,7 +93,7 @@ def register(registry, address, tag):
     return wallet
 
 
-def discover(wallet, n, folder):
+def discover(wallet, n, folder, budget=None):
     cid = n['chain_id']
     evidence = folder/f'discovery-{cid}.json'
     if evidence.exists():
@@ -96,7 +101,7 @@ def discover(wallet, n, folder):
         if cached['wallet'].lower()==wallet.lower() and cached['complete']:
             return cached
     row = {'wallet':wallet,'chain_id':cid,'observed_at':h.now(),'complete':False,'tokens':[],'native':[], 'pages':[],'source':None,'discovery_status':'incomplete'}
-    cfg=load_config()
+    cfg=load_config();deadline=time.monotonic()+budget if budget else None
     try:key=h.secrets().get('ALCHEMY_CUSTOM_APY_KEY') if cfg['discovery']['provider']=='alchemy' else None
     except ValueError:key=None
     if cid in ALCHEMY and key:
@@ -107,7 +112,13 @@ def discover(wallet, n, folder):
               'includeNativeTokens':True,'includeErc20Tokens':True,'includeBlockMetadata':True}
         seen=set()
         for page in range(100):
-            response=fetch(endpoint,body)
+            if deadline:
+                from public_discovery import fetch_page
+                remaining=deadline-time.monotonic()
+                if remaining<=0:
+                    row['error']={'message':'Token discovery time budget reached. Saved candidates remain usable.'};break
+                response=fetch_page(endpoint,min(8,remaining),body)
+            else:response=fetch(endpoint,body)
             row['pages'].append({'observed_at':h.now(),'request':dict(body),'response':response})
             if not isinstance(response,dict) or not isinstance(response.get('data'),dict) or not isinstance(response['data'].get('tokens'),list):
                 row['error']=(response.get('error') or response.get('transport_error')) if isinstance(response,dict) else None
@@ -162,6 +173,9 @@ def discover(wallet, n, folder):
                                           'decimals':int(meta['decimals']) if meta.get('decimals') is not None else None,'prices':[]})
         else:
             row['error']=response
+    elif cfg['discovery'].get('public',True) and n.get('environment')=='mainnet' and not (cfg.get('rpc',{}).get('mode')=='custom' and cfg['rpc'].get('allow_public_fallback') is False):
+        from public_discovery import discover as free_discover
+        row.update(free_discover(wallet,cid))
     else:
         status='disabled' if cfg['discovery']['provider']=='none' else 'missing_credential' if cid in ALCHEMY and not key else 'unsupported'
         row['discovery_status']=status
@@ -170,14 +184,90 @@ def discover(wallet, n, folder):
                   'unsupported':'No general ERC20 indexer is available for this network.'}
         row['error']={'message':messages[status]+' Mint Club registry and native balances are queried independently.'}
     if row['complete']:row['discovery_status']='checked'
-    elif row['source']:row['discovery_status']='provider_error'
+    elif row['source'] and row['discovery_status']=='incomplete':row['discovery_status']='provider_error'
     row['tokens']=list({t['address'].lower():t for t in row['tokens']}.values())
     atomic(evidence,row)
     return row
 
 
-def run_node(mode, source, destination):
-    subprocess.run(['node',str(ASSETS/'pipeline-onchain.cjs'),mode,str(source),str(destination)],cwd=ASSETS,check=True)
+def run_node(mode, source, destination, on_chain=None):
+    child=subprocess.Popen(['node',str(ASSETS/'pipeline-onchain.cjs'),mode,str(source),str(destination)],cwd=ASSETS,stdout=subprocess.PIPE,text=True)
+    try:
+        for line in child.stdout:
+            try: message=json.loads(line)
+            except ValueError: continue
+            if not isinstance(message,dict):continue
+            print(json.dumps(message),flush=True)
+            if on_chain and message.get('stage')=='chain':on_chain(message)
+        if child.wait():raise ValueError('On-chain research stopped before completing this phase.')
+    finally:
+        child.stdout.close()
+        if child.poll() is None:child.terminate();child.wait()
+
+
+@contextmanager
+def registry_locked(root):
+    with (Path(root)/'.registry.lock').open('a') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX)
+        yield
+
+
+def publish_snapshot(wallet, folder, result):
+    relative=str(folder.relative_to(ROOT))
+    with registry_locked(ROOT):
+        registry=read(ROOT/'wallets.json')
+        entry=next(w for w in registry['wallets'] if w['address_key']==wallet['address_key'])
+        generation=os.environ.get('KIRA_RESEARCH_GENERATION')
+        job_id=os.environ.get('KIRA_JOB_ID')
+        if not generation and job_id and (ROOT/'jobs'/f'{job_id}.json').is_file():
+            job=read(ROOT/'jobs'/f'{job_id}.json');generation=job.get('parent_job_id',job_id)
+        if not generation or entry.get('research_generation') in (None,generation):
+            entry['latest_snapshot']={'directory':relative,'result':relative+'/results.json','report':relative+'/report.md','observed_on':time.strftime('%Y-%m-%d'),'status':result['status']}
+        runs=registry.setdefault('research_runs',[])
+        if not any(r['snapshot']==relative for r in runs):
+            runs.append({'address_key':wallet['address_key'],'tags':entry['tags'],'completed_at':result['compiled_at'],'status':result['status'],'snapshot':relative,'counts':result['counts']})
+        atomic(ROOT/'wallets.json',registry)
+
+
+def initial_result(wallet, folder, networks, discovered, chains, *, phase='baseline', prices=False):
+    """Publish recorded partial facts without waiting for registry or market work."""
+    by_chain={c['chain_id']:c for c in chains};by_discovery={d['chain_id']:d for d in discovered}
+    coverage=[];tokens=[{**t,'dex_liquidity_found':t.get('dex_liquidity_found',False)} for c in chains for t in c['tokens']]
+    for n in networks:
+        c=by_chain.get(n['chain_id'],{});d=by_discovery.get(n['chain_id'],{})
+        coverage.append({**{k:v for k,v in n.items() if k not in ('public_rpc','explorer')},
+            'rpc_status':c.get('rpc_status','pending'),'native_symbol':NATIVE.get(n['chain_id'],'ETH'),
+            'native_balance':c.get('native_balance'),'native_observed_at':c.get('observed_at'),
+            'native_block_number':c.get('block_number'),'native_block_hash':c.get('block_hash'),
+            'general_erc20_discovery':'indexer_checked' if d.get('complete') else 'incomplete',
+            'indexer_source':d.get('source'),'indexer_complete':d.get('complete',False),'indexer_pages':len(d.get('pages',[])),
+            'discovery_status':d.get('discovery_status','pending'),'candidate_balance_errors':len(c.get('balance_errors',[])),
+            'candidate_scan':c.get('candidate_scan'),'mintclub_registry_scan':c.get('registry_scan'),
+            'notes':['Initial balances. Remaining candidate balances, full Mint Club enumeration and market enrichment remain pending.']})
+    result={'schema_version':1,'wallet_address':wallet['address'],'tags':wallet['tags'],'compiled_at':h.now(),
+        'status':'completed_with_coverage_gaps','scope':'Recorded initial direct holdings. Unchecked holdings and prices remain unknown.',
+        'tokens':tokens,'coverage':coverage,'price_references':{},'nested_curve_independent_redemption_estimates':[],
+        'counts':{'mainnets_in_scope':sum(n['environment']=='mainnet' for n in networks),'testnets_in_scope':sum(n['environment']=='testnet' for n in networks),
+            'positive_erc20_tokens_discovered':sum(t['token_type']=='ERC20' for t in tokens),'positive_erc1155_tokens_discovered':sum(t['token_type']=='ERC1155' for t in tokens),
+            'mainnets_with_general_indexer':sum(c['environment']=='mainnet' and c['indexer_complete'] for c in coverage),
+            'mintclub_tokens':sum(bool(t.get('mintclub')) for t in tokens),'mintclub_tokens_with_nonzero_reserve':sum(bool((t.get('mintclub') or {}).get('funded')) for t in tokens),
+            'dex_tokens_with_liquidity_evidence':0,'mintclub_registry_assets_checked':0},
+        'limitations':['Initial evidence is partial. Detailed registry and market research continues separately. Missing holdings and prices are unknown, not zero.',
+            'Free candidate discovery and known-token catalogs do not guarantee every arbitrary ERC20 contract.'],
+        'actions':{'signatures':0,'approvals':0,'swaps':0,'transfers':0,'rpc_read_only':True},
+        'pipeline':{'version':2,'phase':phase,'enrichment_pending':True,'resumable':True},'evidence_files':['onchain-summary.json']}
+    refs={}
+    if prices:
+        from native_assets import market_metadata
+        refs=market_metadata(coverage,fetch=lambda url:h.fetch(url,timeout=8))['prices']
+        result['price_references']=refs
+    atomic(folder/'onchain-summary.json',{'wallet':wallet['address'],'chains':chains})
+    atomic(folder/'results.json',result)
+    atomic(folder/'market-prices.json',{'observed_at':result['compiled_at'],'wallet_address':wallet['address'],
+        'native_usd':{k.removesuffix('_USD'):{'usd':float(v['value']),'observed_at':v.get('observed_at'),'basis':v.get('basis'),'source':v.get('source')} for k,v in refs.items()},'tokens':[]})
+    report(result,folder)
+    publish_snapshot(wallet,folder,result)
+    return result
 
 
 def source_check(networks, folder):
@@ -361,7 +451,9 @@ def main():
     sub=parser.add_subparsers(dest='command',required=True)
     add=sub.add_parser('add');add.add_argument('address');add.add_argument('--tag',required=True)
     refresh=sub.add_parser('refresh');refresh.add_argument('wallet',help='Registered address or exact tag')
-    for p in (add,refresh):p.add_argument('--resume',help='Existing snapshot directory relative to the research root')
+    for p in (add,refresh):
+        p.add_argument('--resume',help='Existing snapshot directory relative to the research root')
+        p.add_argument('--phase',choices=('baseline','enrichment','full'),default='full')
     args=parser.parse_args()
     # Serialize shared registry and cache writers for the entire run.
     with (os.fdopen(int(os.environ['KIRA_ANALYSIS_FD']), 'a') if os.environ.get('KIRA_ANALYSIS_FD') else (ROOT/'.analysis.lock').open('a')) as lock:
@@ -371,8 +463,13 @@ def main():
         candidates=read(ASSETS/'sources/rpc-candidates.json')
         networks=[{**n,**next((c for c in candidates if c['chain_id']==n['chain_id']),{})} for n in registered]
         if args.command=='add':
-            address=validate_address(args.address);wallet=register(registry,address,args.tag)
-            atomic(ROOT/'wallets.json',registry)
+            address=validate_address(args.address)
+            with registry_locked(ROOT):
+                registry=read(ROOT/'wallets.json')
+                wallet=next((w for w in registry['wallets'] if w['address_key']==address.lower()),None)
+                admitted=os.environ.get('KIRA_JOB_ID') in registry.get('wallet_admissions',{})
+                if wallet is None or not (args.resume or admitted):wallet=register(registry,address,args.tag)
+                atomic(ROOT/'wallets.json',registry)
         else:
             wallet=next((w for w in registry['wallets'] if w['address_key']==args.wallet.lower() or args.wallet in w['tags']),None)
             if wallet is None:raise SystemExit('No registered wallet matches this address or tag.')
@@ -392,24 +489,36 @@ def main():
                 slug=re.sub(r'[^A-Za-z0-9_-]+','-',wallet['tags'][0] if wallet['tags'] else wallet['address_key']).strip('-')
                 folder=ROOT/'snapshots'/slug/(time.strftime('%Y-%m-%dT%H%M%S')+'-'+wallet['address_key'][2:10])
             folder.mkdir(parents=True,exist_ok=bool(os.environ.get('KIRA_JOB_SNAPSHOT')))
+        relative=str(folder.relative_to(ROOT))
         atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'started_or_resumed_at':h.now(),'status':'running'})
         event('registered',wallet=wallet['address'],tags=wallet['tags'],snapshot=str(folder.relative_to(ROOT)))
         try:
             source_check(networks,folder)
+            # Initial reports cover three active mainnets; the continuation handles
+            # every configured network, exhaustive registry work and markets.
+            initial_networks=[n for cid in (8453,1,81457) for n in networks if n['chain_id']==cid]
+            phase_networks=initial_networks if args.phase=='baseline' else networks
             with ThreadPoolExecutor(max_workers=5) as executor:
-                discovered=list(executor.map(lambda n:discover(wallet['address'],n,folder),networks))
+                discovered=list(executor.map(lambda n:discover(wallet['address'],n,folder,budget=25 if args.phase=='baseline' else 60),phase_networks))
             event('discovery',complete_chains=sum(d['complete'] for d in discovered),candidates=sum(len(d['tokens']) for d in discovered))
             known=read(ASSETS/'sources/known-tokens.json')['tokens']
-            atomic(folder/'scan-input.json',{'wallet':wallet['address'],'networks':networks,'candidates':known+[t for d in discovered for t in d['tokens']]})
-            run_node('scan',folder/'scan-input.json',folder)
-            result=finish(wallet,folder,networks,discovered)
-            # Reload before publication. Preserve all other wallets and historical runs.
-            registry=read(ROOT/'wallets.json')
-            entry=next(w for w in registry['wallets'] if w['address_key']==wallet['address_key'])
-            relative=str(folder.relative_to(ROOT))
-            entry['latest_snapshot']={'directory':relative,'result':relative+'/results.json','report':relative+'/report.md','observed_on':time.strftime('%Y-%m-%d'),'status':result['status']}
-            registry.setdefault('research_runs',[]).append({'address_key':wallet['address_key'],'tags':entry['tags'],'completed_at':result['compiled_at'],'status':result['status'],'snapshot':relative,'counts':result['counts']})
-            atomic(ROOT/'wallets.json',registry)
+            atomic(folder/'scan-input.json',{'wallet':wallet['address'],'networks':phase_networks,'candidates':known+[t for d in discovered for t in d['tokens']]})
+            if args.phase=='baseline':
+                first=folder/'initial'
+                def first_evidence(message):
+                    if (first/'results.json').exists():return
+                    cid=message.get('chain_id');path=folder/f'baseline-chain-{cid}.json'
+                    if not path.exists():return
+                    chain=read(path)
+                    if chain.get('rpc_status')!='available':return
+                    initial_result(wallet,first,networks,discovered,[chain],phase='initial')
+                    event('first_evidence',snapshot=str(first.relative_to(ROOT)),tokens=len(chain['tokens']))
+                run_node('baseline',folder/'scan-input.json',folder,on_chain=first_evidence)
+                result=initial_result(wallet,folder,networks,discovered,read(folder/'onchain-summary.json')['chains'],prices=True)
+            else:
+                run_node('scan',folder/'scan-input.json',folder)
+                result=finish(wallet,folder,networks,discovered)
+            publish_snapshot(wallet,folder,result)
             atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'completed_at':h.now(),'status':result['status']})
             event('published',snapshot=relative,counts=result['counts'],status=result['status'],viewer='http://127.0.0.1:8765')
         except Exception as error:
