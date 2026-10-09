@@ -2,12 +2,13 @@
 let localSession=null, jobList=[], jobsSignature='', localPolling=false;
 let discoverySettingsRevision='';
 const pendingActions=new Set();
-const jobLabels={'wallet.add':'Wallet research','wallet.refresh':'Holdings refresh','prices.refresh':'Price refresh','wallet.setTags':'Wallet names','settings.rpc':'RPC settings','settings.discovery':'Token discovery','settings.provider':'Data provider connection'};
+const jobLabels={'wallet.add':'Wallet research','wallet.refresh':'Holdings refresh','prices.refresh':'Price refresh','wallet.setTags':'Wallet names','settings.rpc':'RPC settings','settings.discovery':'Token discovery','settings.provider':'Data provider connection','settings.importEnv':'Local connection setup'};
 const stageLabels={queued:'Waiting to start',starting:'Opening saved evidence',registered:'Wallet registered',discovery:'Token discovery',chain:'Checking on-chain holdings',onchain_progress:'Reading on-chain records',first_evidence:'First results available',dex_discovery:'Checking markets',token_images:'Preparing token artwork',published:'Evidence saved',failed:'Research stopped',stopped:'Research stopped',interrupted:'Ready for recovery'};
 function researchStage(event) {
+  if(event.stage==='market_paused')return 'Balances saved · resume remaining market checks';
   const label=stageLabels[event.stage]||event.stage;
   if(event.stage!=='onchain_progress')return label;
-  const operations={balances:'Checking token balances',registry:'Discovering Mint Club tokens',metadata:'Reading token details',curves:'Checking curve backing',markets:'Checking markets'};
+  const operations={balances:'Checking token balances',registry:'Discovering Mint Club tokens',metadata:'Reading token details',curves:'Checking curve backing',markets:'Checking markets',reserves:'Checking reserve prices'};
   const counts=event.counts||{},context=event.context||{};
   const chain=(typeof state==='undefined'?[]:state?.wallets||[]).flatMap(w=>w.chains||[]).find(c=>c.id===context.chain_id);
   return (operations[context.operation]||label)+(context.chain_id?' · '+(chain?.name||'network '+context.chain_id):'')+(Number.isFinite(counts.checked)&&Number.isFinite(counts.total)?' · '+counts.checked+' of '+counts.total:'');
@@ -130,7 +131,8 @@ function renderConnectionForm() {
   const available = connectionReadiness?.local_key_available === true && $('discovery-key').value === connectionConfig?.discovery.key_env;
   $('provider-description').textContent = alchemy ? 'Recommended for broader ERC20 coverage on supported networks. Public RPC handles balance reads first; Alchemy backs up failed reads and finds other tokens directly. Advanced read preferences apply. Some tokens or networks can still be missing.' : 'Free research checks native balances, common tokens and Mint Club assets, with keyless token discovery on supported networks. Other tokens may be missing. Connect Alchemy for broader coverage and backup RPC reads.';
   $('provider-save').disabled = settingSaving || (alchemy && !available);
-  $('provider-key-status').textContent = !alchemy ? '' : available ? 'Local key found. Research results will confirm access and chain coverage.' : 'A local Alchemy key is required before this connection can be saved.';
+  const importing = jobList.some(j=>j.operation==='settings.importEnv'&&['queued','running'].includes(j.state));
+  $('provider-key-status').textContent = importing ? 'Local connection setup is queued in Activity. Detailed research pauses safely and resumes afterwards. Recheck when setup finishes.' : !alchemy ? '' : available ? 'Local key found. Research results will confirm access and chain coverage.' : 'A local Alchemy key is required before this connection can be saved.';
   const keyRef = /^[A-Z_][A-Z0-9_]{0,99}$/.test($('discovery-key').value) ? $('discovery-key').value : 'ALCHEMY_API_KEY';
   $('guide-key-entry').textContent = keyRef+'=YOUR_KEY';
   $('guide-import-command').textContent = 'kira config import-env --file ~/.config/kira/alchemy.env --key-env '+keyRef;

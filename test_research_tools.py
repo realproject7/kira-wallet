@@ -9,11 +9,22 @@ import uuid
 from unittest.mock import patch
 from kira_cli import sample
 from kira_jobs import JobStore, JobError, atomic
-from kira_research_tools import ResearchTools
+from kira_research_tools import ResearchTools, compare_curve_states
 from kira_agent import AgentStore
 from test_kira_agent import settings, ready
 
 class ResearchToolsTest(unittest.TestCase):
+    def test_different_blocks_and_wallet_quotes_do_not_prove_curve_movement(self):
+        from copy import deepcopy
+        state={'reserve_token':'0x'+'a'*40,'reserve_balance':'100','current_supply':'10',
+            'price_for_next_mint_in_reserve_token':'2','burn_royalty_bps':100,'block_number':'100'}
+        positions=[{'wallet':'first','asset':{'curve_state':state,'exit_quote':{'output_amount':'1'}}},
+            {'wallet':'second','asset':{'curve_state':{**state,'block_number':'101'},'exit_quote':{'output_amount':'50'}}}]
+        self.assertEqual(compare_curve_states(positions)['comparisons'][0]['status'],'same_recorded_state')
+        different=deepcopy(positions);different[1]['asset']['curve_state']['current_supply']='11'
+        self.assertEqual(compare_curve_states(different)['comparisons'][0]['changed_fields'],['current_supply'])
+        del different[1]['asset']['curve_state']['reserve_balance']
+        self.assertEqual(compare_curve_states(different)['comparisons'][0]['status'],'unknown')
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name);atomic(self.root/'wallets.json',{'schema_version':1,'wallets':[],'research_runs':[]});sample(self.root)
         registry=json.loads((self.root/'wallets.json').read_text());registry.pop('demo',None)
@@ -68,7 +79,13 @@ class ResearchToolsTest(unittest.TestCase):
             asset['market_pools']=[{'venue':'Uniswap','pool':'0x'+'3'*40,'url':'https://example.com/pool/'+str(pool),'liquidity_usd':100,'pair':[]} for pool in range(12)]
             wallet['assets'].append(asset)
         with patch('model.load_state',return_value=(state,stamp,stale)):
-            summary=self.call('wallet_read',{'wallet':self.first['address_key']})
+            summary=self.call('wallet_read',{'wallet':self.first['address_key'],'limit':20})
+            self.assertEqual(summary['asset_count'],100);self.assertEqual(summary['next_offset'],20)
+            pages=[self.call('wallet_read',{'wallet':self.first['address_key'],'offset':offset,'limit':20}) for offset in range(0,100,20)]
+            self.assertEqual([a['id'] for page in pages for a in page['assets']],[a['id'] for a in wallet['assets']])
+            self.assertIsNone(pages[-1]['next_offset'])
+            for invalid in ({'offset':True},{'limit':101},{'limit':0},{'offset':-1}):
+                with self.assertRaises(JobError):self.call('wallet_read',{'wallet':self.first['address_key'],**invalid})
             last=summary['assets'][-1]
             self.assertEqual(last['pools'],[]);self.assertEqual(last['pools_recorded'],12);self.assertEqual(last['pools_omitted'],12)
             self.assertIn('token_read',summary['note'])
@@ -149,3 +166,4 @@ class ResearchToolsTest(unittest.TestCase):
             store._run(key,self.config,'Inspect records.','Inspect records.',store.epoch)
         self.assertEqual(store.turns[key]['error']['code'],'tool_limit');self.assertEqual(len(prompts),9)
         self.assertTrue(all(len(p.encode())<=400000 for p in prompts));self.assertIn('context limit',prompts[1])
+        self.assertTrue(all(row['status']=='failed' for row in store.turns[key]['tool_calls']))

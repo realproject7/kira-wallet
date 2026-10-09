@@ -1,6 +1,7 @@
 """Startup UX and explicit mode boundaries for the local app."""
 import contextlib
 import io
+import json
 import os
 from pathlib import Path
 import sys
@@ -12,6 +13,20 @@ import kira_cli
 
 
 class StartTest(unittest.TestCase):
+    def test_busy_import_is_queued_without_writing_active_configuration(self):
+        import fcntl
+        from kira_jobs import JobStore
+        kira_cli.initialize(self.root)
+        file=self.root/'test.env';file.write_text('TEST_KEY=synthetic-local-value\n')
+        with (self.root/'.analysis.lock').open('a') as writer:
+            fcntl.flock(writer,fcntl.LOCK_EX)
+            output=io.StringIO()
+            with patch.object(sys,'argv',['kira','config','import-env','--file',str(file),'--key-env','TEST_KEY']),patch.object(JobStore,'launch'),contextlib.redirect_stdout(output):kira_cli.main()
+            result=json.loads(output.getvalue());self.assertEqual(result['status'],'configuration_queued')
+            job=JobStore(self.root).get(result['job_id']);self.assertEqual(job['state'],'queued')
+            self.assertNotIn(str(file),json.dumps(job));self.assertNotIn('synthetic-local-value',json.dumps(job))
+            from kira_config import load_config
+            self.assertEqual(load_config()['discovery']['provider'],'none')
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory(prefix='kira-start-test-')
         self.addCleanup(self.directory.cleanup)

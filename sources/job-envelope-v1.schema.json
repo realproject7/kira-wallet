@@ -55,7 +55,8 @@
         "wallet.setTags",
         "settings.rpc",
         "settings.discovery",
-        "settings.provider"
+        "settings.provider",
+        "settings.importEnv"
       ]
     },
     "result": {

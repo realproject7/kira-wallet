@@ -181,6 +181,8 @@ function renderDiscoveryCoverage(w) {
     else if(c.registry_complete===false&&c.rpc_available)reasons.push('Mint Club balances partly unchecked; retry holdings'+(c.registry_errors||c.balance_errors?' ('+(c.registry_errors||0)+' asset checks and '+(c.balance_errors||0)+' balance reads failed)':''));
     if(c.candidate_deferred>0)reasons.push(c.candidate_deferred+' token candidates await balance checks in Activity');
     if(c.candidate_balance_errors>0)reasons.push(c.candidate_balance_errors+' token balance reads failed; missing balances remain unknown');
+    if(c.market_pending)reasons.push('balances saved; remaining market checks paused at the time budget; resume in Activity');
+    if(c.market_errors>0)reasons.push(c.market_errors+' token market checks had failed reads; prices remain unknown where evidence is missing');
     return c.name+': '+reasons.join('; ');
   }).join('\n');
 }
