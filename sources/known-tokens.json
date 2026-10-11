@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_on": "2026-10-09",
+  "reviewed_on": "2026-10-11",
   "coverage": "Selected known contracts only. This is not a complete token inventory.",
   "tokens": [
     {
@@ -401,6 +401,92 @@
       "name": "Wrapped AVAX",
       "symbol": "WAVAX",
       "source_url": "https://github.com/Uniswap/default-token-list/blob/583cb696cc15778536fe0ddd416de5bd81be2023/src/tokens/avalanche.json"
+    },
+    {
+      "chain_id": 1,
+      "address": "0x9AAb071B4129B083B01cB5A0Cb513Ce7ecA26fa5",
+      "name": "HuntToken",
+      "symbol": "HUNT",
+      "decimals": 18,
+      "source_url": "https://github.com/Steemhunt/hunt.town-ai#contracts",
+      "reviewed_on": "2026-10-11",
+      "verification": {
+        "block_number": "26166416",
+        "block_hash": "0x049a17085a5a4c08dd812a22dc794d078e38303a5485422415591aee9b80cdfe",
+        "bytecode_present": true
+      }
+    },
+    {
+      "chain_id": 8453,
+      "address": "0x37f0c2915CeCC7e977183B8543Fc0864d03E064C",
+      "name": "HuntToken",
+      "symbol": "HUNT",
+      "decimals": 18,
+      "source_url": "https://github.com/Steemhunt/hunt.town-ai#contracts",
+      "reviewed_on": "2026-10-11",
+      "verification": {
+        "block_number": "52449372",
+        "block_hash": "0x5624655a32acbdd0af7f3013ef03499c0c8a78dde5824ebed1fbcbbced7d8225",
+        "bytecode_present": true
+      }
+    },
+    {
+      "chain_id": 8453,
+      "address": "0xFf45161474C39cB00699070Dd49582e417b57a7E",
+      "name": "Mint Token",
+      "symbol": "MT",
+      "decimals": 18,
+      "source_url": "https://docs.mint.club/migrate",
+      "reviewed_on": "2026-10-11",
+      "verification": {
+        "block_number": "52449372",
+        "block_hash": "0x5624655a32acbdd0af7f3013ef03499c0c8a78dde5824ebed1fbcbbced7d8225",
+        "bytecode_present": true
+      }
+    },
+    {
+      "chain_id": 137,
+      "address": "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB",
+      "name": "Polymarket USD",
+      "symbol": "pUSD",
+      "decimals": 6,
+      "source_url": "https://docs.polymarket.com/resources/contracts",
+      "reviewed_on": "2026-10-11",
+      "verification": {
+        "block_number": "95321919",
+        "block_hash": "0x03ac04911e764e4596f638bd3b2221f477daaaead390f37834b844bd7f75fb43",
+        "bytecode_present": true
+      }
+    },
+    {
+      "chain_id": 56,
+      "address": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+      "name": "Binance-pegged USDC",
+      "symbol": "USDC",
+      "decimals": 18,
+      "source_url": "https://github.com/pancakeswap/pancakeswap-ai/blob/main/packages/plugins/pancakeswap-driver/skills/swap-integration/SKILL.md",
+      "reviewed_on": "2026-10-11",
+      "verification": {
+        "block_number": "126945157",
+        "block_hash": "0xa88e5b6e4538f6b7af9a215f30a737bbef963a38599c9b8fada9e7d170098adb",
+        "bytecode_present": true
+      },
+      "representation": "Binance Bridge pegged token. Separate from an issuer-native deployment."
+    },
+    {
+      "chain_id": 56,
+      "address": "0x55d398326f99059fF775485246999027B3197955",
+      "name": "Binance-pegged USDT",
+      "symbol": "USDT",
+      "decimals": 18,
+      "source_url": "https://github.com/pancakeswap/pancakeswap-ai/blob/main/packages/plugins/pancakeswap-driver/skills/swap-integration/SKILL.md",
+      "reviewed_on": "2026-10-11",
+      "verification": {
+        "block_number": "126945157",
+        "block_hash": "0xa88e5b6e4538f6b7af9a215f30a737bbef963a38599c9b8fada9e7d170098adb",
+        "bytecode_present": true
+      },
+      "representation": "Binance Bridge pegged token. Separate from an issuer-native deployment."
     }
   ],
   "catalog_source": {

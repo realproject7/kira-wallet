@@ -34,3 +34,12 @@ chain/contract identities from Uniswap default-token-list at commit
 583cb696cc15778536fe0ddd416de5bd81be2023. The upstream references retain
 GPL-3.0 terms in `sources/TOKEN_LIST_LICENSE.txt`. Per-contract provenance is
 recorded in the catalog. No upstream executable code or artwork is included.
+
+
+Free token discovery uses [Etherscan keyless MCP](https://docs.etherscan.io/build-with-ai/mcp)
+and [Routescan](https://routescan.io/docs). Data is provided by those services,
+subject to their availability and usage limits. Their data does not establish
+token safety, current balance, value or an exhaustive inventory. No service SDK
+or credential is distributed. Selected new known identities use issuer documents,
+PancakeSwap integration references and freshly verified on-chain metadata; their
+per-contract provenance is in the catalog.

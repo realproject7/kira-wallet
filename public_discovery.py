@@ -15,14 +15,21 @@ _permit = threading.Lock()
 _last = 0.0
 
 
-def _fetch_body(url, timeout, output, body):
+def _fetch_body(url, timeout, output, body, extra_headers=None, envelope=False):
     # An isolated reader can be stopped even during DNS or a trickling body.
-    request=urllib.request.Request(url,data=json.dumps(body).encode() if body is not None else None,headers={'User-Agent':'KiraWallet (+https://kirawallet.app)','Accept':'application/json','Content-Type':'application/json'})
+    request=urllib.request.Request(url,data=json.dumps(body).encode() if body is not None else None,headers={'User-Agent':'KiraWallet (+https://kirawallet.app)','Accept':'application/json, text/event-stream','Content-Type':'application/json',**(extra_headers or {})})
     try:
         with urllib.request.urlopen(request,timeout=timeout) as response:
-            body=response.read(4_000_001)
+            body=response.read(2_000_001 if envelope else 4_000_001)
+            if envelope:
+                if len(body)>2_000_000:raise ValueError('Response limit')
+                body=json.dumps({'http_status':response.status,'session':response.headers.get('Mcp-Session-Id'), 'body':body.decode('utf-8')}).encode()
         if len(body)>4_000_000:body=b'{"error":{"code":"response_limit"}}'
         output.send_bytes(body)
+    except urllib.error.HTTPError as error:
+        retry=error.headers.get('Retry-After','')
+        output.send_bytes(json.dumps({'error':{'code':'http_error','http_status':error.code,
+            'retry_after':min(3600,int(retry)) if retry.isdigit() else None}}).encode())
     except (OSError,ValueError):
         output.send_bytes(b'{"error":{"code":"provider_unavailable"}}')
     finally:output.close()
@@ -43,19 +50,25 @@ def fetch_page(url, timeout, body=None):
     return fetch_bounded(url,remaining,body)
 
 
-def fetch_bounded(url, timeout, body=None):
+def fetch_bounded(url, timeout, body=None, *, headers=None, envelope=False):
     """An isolated, size-limited reader with a total body deadline, no pacing."""
     end=time.monotonic()+timeout
     if timeout<=0:return {'error':{'code':'deadline'}}
     ctx=multiprocessing.get_context('spawn')
     incoming,outgoing=ctx.Pipe(duplex=False)
-    reader=ctx.Process(target=_fetch_body,args=(url,timeout,outgoing,body),daemon=True)
+    reader=ctx.Process(target=_fetch_body,args=(url,timeout,outgoing,body,headers,envelope),daemon=True)
     try:
         reader.start();outgoing.close()
         if not incoming.poll(max(0,end-time.monotonic())):return {'error':{'code':'deadline'}}
         body=incoming.recv_bytes(4_000_000)
         if time.monotonic()>end:return {'error':{'code':'deadline'}}
-        return json.loads(body)
+        try:return json.loads(body)
+        except ValueError:
+            # Streamable MCP responses contain complete SSE data events. Never
+            # execute provider instructions or follow a provider-supplied URL.
+            events=[line[5:].strip() for line in body.decode('utf-8').splitlines() if line.startswith('data:')]
+            if len(events)!=1:raise ValueError('Invalid event response')
+            return json.loads(events[0])
     except (OSError,ValueError,EOFError):return {'error':{'code':'provider_unavailable'}}
     finally:
         if reader.pid:
@@ -95,7 +108,7 @@ def discover(address, chain_id, *, fetch=fetch_page, budget=25, max_pages=20):
             row['tokens'].append({'chain_id': chain_id, 'address': contract,
                 'name': token.get('tokenName') if isinstance(token.get('tokenName'), str) else None,
                 'symbol': token.get('tokenSymbol') if isinstance(token.get('tokenSymbol'), str) else None,
-                'decimals': decimals if type(decimals) is int and 0 <= decimals <= 255 else None, 'prices': []})
+                'decimals': decimals if type(decimals) is int and 0 <= decimals <= 255 else None, 'prices': [],'suspicious_zero_check':True})
         if invalid:
             row['error'] = {'message': 'Free discovery contained invalid token identities or balances.'}; break
         link = data['link']; next_cursor = link.get('nextToken')

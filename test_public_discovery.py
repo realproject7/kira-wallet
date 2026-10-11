@@ -83,9 +83,9 @@ class PublicDiscoveryTests(unittest.TestCase):
     def test_default_and_custom_only_preserve_distinct_coverage(self):
         config={'discovery':{'provider':'none','public':True,'explorers':False},
                 'rpc':{'mode':'public','allow_public_fallback':True}}
-        with tempfile.TemporaryDirectory() as temp,patch.object(wallet,'load_config',return_value=config),patch.object(wallet.h,'secrets',return_value={}):
+        with tempfile.TemporaryDirectory() as temp,patch.object(wallet,'load_config',return_value=config),patch.object(wallet.h,'secrets',return_value={}),patch('transfer_discovery.discover',return_value={'source':'keyless','complete':False,'tokens':[],'native':[],'pages':[],'discovery_status':'history_pending'}) as transfer:
             row=wallet.discover(ADDRESS,{'chain_id':8453,'environment':'mainnet'},Path(temp))
-            self.assertEqual(row['discovery_status'],'unsupported')
+            self.assertEqual(row['discovery_status'],'history_pending');transfer.assert_called_once()
             config['rpc']={'mode':'custom','allow_public_fallback':False}
             with patch.object(public,'discover') as fetch:
                 row=wallet.discover(ADDRESS,{'chain_id':1,'environment':'mainnet'},Path(temp))

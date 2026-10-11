@@ -174,9 +174,14 @@ function renderDiscoveryCoverage(w) {
   $('discovery-notice').querySelector('details').open=notice.rpcIssues===true;
   $('discovery-network-details').textContent=w.chains.filter(c=>c.environment==='mainnet'&&KiraView.coverageGap(c)).map(c=>{
     const reasons=[];
-    if(c.rpc_pending)reasons.push('not yet checked; follow or resume detailed research in Activity');
+    if(c.lifecycle?.status==='retired')reasons.push('verified retired network; historical records excluded from current value');
+    else if(c.lifecycle?.status==='retirement_reported')reasons.push('retirement reported; no verified official closure notice. RPC failure is not proof of closure');
+    else if(c.rpc_pending)reasons.push('not yet checked; follow or resume detailed research in Activity');
     else if(!c.rpc_available)reasons.push('balance reads failed; retry holdings, then review RPC settings if this continues');
-    if(!c.complete)reasons.push(({disabled:'token discovery off',missing_credential:'indexer credential unavailable',unsupported:'indexer unsupported',provider_error:'indexer request failed'})[c.discovery_status]||'token discovery incomplete');
+    if(c.head_status==='stale')reasons.push('provider returned an old head ('+c.head_age_seconds+' seconds old); this does not establish retirement');
+    if(!c.complete)reasons.push(({disabled:'token discovery off',missing_credential:'indexer credential unavailable',unsupported:'indexer unsupported',provider_error:'indexer request failed',history_pending:'free transfer history unfinished; refresh holdings to continue the saved page'})[c.discovery_status]||'token discovery incomplete');
+    if(c.history_window)reasons.push('history window '+c.history_window.startblock+'–'+c.history_window.endblock+', next page '+c.history_window.page+'; transfer identities are candidates, not balances');
+    if(c.recent_window)reasons.push('newer window '+c.recent_window.startblock+'–'+c.recent_window.endblock+' '+(c.recent_window.complete?'checked':'partly checked')+' while earlier history resumes');
     if(c.registry_phase==='deferred')reasons.push('full Mint Club discovery pending; check or resume it in Activity');
     else if(c.registry_complete===false&&c.rpc_available)reasons.push('Mint Club balances partly unchecked; retry holdings'+(c.registry_errors||c.balance_errors?' ('+(c.registry_errors||0)+' asset checks and '+(c.balance_errors||0)+' balance reads failed)':''));
     if(c.candidate_deferred>0)reasons.push(c.candidate_deferred+' token candidates await balance checks in Activity');
@@ -185,6 +190,12 @@ function renderDiscoveryCoverage(w) {
     if(c.market_errors>0)reasons.push(c.market_errors+' token market checks had failed reads; prices remain unknown where evidence is missing');
     return c.name+': '+reasons.join('; ');
   }).join('\n');
+  for(const c of w.chains.filter(c=>c.lifecycle?.notice_url)){
+    const url=c.lifecycle.notice_url;
+    if(!/^https:\/\/www\.alchemy\.com\/docs\//.test(url))continue;
+    const link=document.createElement('a');link.href=url;link.target='_blank';link.rel='noreferrer';link.textContent='Official notice: '+c.name;
+    $('discovery-network-details').append(document.createElement('br'),link);
+  }
 }
 function icon(asset){
   if(typeof asset.symbol!=='string'||!asset.symbol)return ['', '?'];
@@ -213,7 +224,7 @@ function assetRow(a){
   const links=a.links.filter(l=>l.label!=='Explorer');
   if(!links.length){const e=a.links.find(l=>l.label==='Explorer');if(e)links.push(e);}
   const reserve=a.curve_reserve?`Curve reserve: ${a.curve_reserve.amount} ${a.curve_reserve.symbol}`:'';
-  return `<tr data-asset-id="${escapeHTML(a.id)}" data-value="${a.value_usd ?? ''}"><td><a class="token-name token-link" href="${tokenHref(a.id)}" aria-label="Open ${escapeHTML(a.symbol)} token overview">${coinIcon(a)}<div class="coin-title"><div class="symbol" title="${escapeHTML(a.symbol)}">${escapeHTML(a.symbol)}</div><div class="token-description" title="${escapeHTML((a.address||'Native asset')+' '+reserve)}">${escapeHTML(a.is_native?'Native asset':a.name)}</div></div></a></td><td><span class="mobile-label">Balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span></td><td><span class="mobile-label">Price</span><span class="token-price ${p?.usd==null?'unpriced':''}" title="${escapeHTML(p?.observed_at||'')}">${unitPrice(p?.usd)}</span><div class="price-basis">${escapeHTML(source)}</div></td><td><span class="token-value ${a.value_usd==null?'unpriced':''}">${money(a.value_usd)}</span></td><td><div class="market-links">${marketLinks(links,a)}</div></td></tr>`;
+  return `<tr data-asset-id="${escapeHTML(a.id)}" data-value="${a.value_usd ?? ''}"><td><a class="token-name token-link" href="${tokenHref(a.id)}" aria-label="Open ${escapeHTML(a.symbol)} token overview">${coinIcon(a)}<div class="coin-title"><div class="symbol" title="${escapeHTML(a.symbol)}">${escapeHTML(a.symbol)}</div><div class="token-description" title="${escapeHTML((a.address||'Native asset')+' '+reserve)}">${escapeHTML(a.archived?'Archived observation':a.is_native?'Native asset':a.name)}</div></div></a></td><td><span class="mobile-label">Balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span></td><td><span class="mobile-label">Price</span><span class="token-price ${p?.usd==null?'unpriced':''}" title="${escapeHTML(p?.observed_at||'')}">${unitPrice(p?.usd)}</span><div class="price-basis">${escapeHTML(source)}</div></td><td><span class="token-value ${a.value_usd==null?'unpriced':''}">${money(a.value_usd)}</span>${a.archived?'<div class="price-basis">Archived · historical '+money(a.historical_value_usd)+'</div>':''}</td><td><div class="market-links">${marketLinks(links,a)}</div></td></tr>`;
 }
 function renderHoldings(){
   const w=currentWallet();if(!w)return;
@@ -263,7 +274,7 @@ function accountCard(row,token){
   return `<article class="account-card"><a class="account-card-heading" href="#/wallet/${escapeHTML(row.key)}" aria-label="Open ${escapeHTML(row.name)} holdings"><span class="card-wallet-icon">${walletGlyph}</span><span class="wallet-card-identity"><strong>${escapeHTML(row.name)}</strong><span>${escapeHTML(shortAddress(row.address))}</span></span><span class="account-position"><span class="account-value">${money(value)}</span><span class="account-meta">${meta}</span></span><span class="card-arrow" aria-hidden="true">${arrowGlyph}</span></a>${token&&a?`<dl class="account-facts"><div><dt>Recorded price</dt><dd>${unitPrice(price)} <span>${escapeHTML(token.environment==='testnet'?'Testnet':a.price?.basis||'No price')}</span></dd></div><div><dt>Share of priced holdings</dt><dd>${shareValue}</dd></div></dl>${quote}`:''}<div class="account-footnote"><span>${escapeHTML(row.coverage)}</span><span>Analysis ${stamp(row.analysed_at)}</span>${token&&a?`<span>Price ${a.price?.observed_at?stamp(a.price.observed_at):'not recorded'}</span>`:''}</div></article>`;
 }
 function aggregateRow(a){
-  return `<tr data-asset-id="${escapeHTML(a.id)}"><td><a class="token-name token-link" href="${tokenHref(a.id)}" aria-label="Open ${escapeHTML(a.symbol)} token overview">${coinIcon(a)}<div class="coin-title"><div class="symbol">${escapeHTML(a.symbol)}</div><div class="token-description">${escapeHTML(a.is_native?'Native asset':a.name)}</div></div></a></td><td><span class="mobile-label">Total balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span></td><td><span class="mobile-label">Wallets</span><span class="amount">${a.wallet_count}</span></td><td><span class="token-value">${money(a.value_usd)}</span>${a.unpriced_count?`<div class="price-basis">${a.unpriced_count} unpriced</div>`:''}</td><td><div class="market-links">${marketLinks(a.links.filter(l=>l.label!=='Explorer'),a)}</div></td></tr>`;
+  return `<tr data-asset-id="${escapeHTML(a.id)}"><td><a class="token-name token-link" href="${tokenHref(a.id)}" aria-label="Open ${escapeHTML(a.symbol)} token overview">${coinIcon(a)}<div class="coin-title"><div class="symbol">${escapeHTML(a.symbol)}</div><div class="token-description">${escapeHTML(a.archived?'Archived observation':a.is_native?'Native asset':a.name)}</div></div></a></td><td><span class="mobile-label">Total balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span></td><td><span class="mobile-label">Wallets</span><span class="amount">${a.wallet_count}</span></td><td><span class="token-value">${money(a.value_usd)}</span>${a.unpriced_count?`<div class="price-basis">${a.unpriced_count} unpriced</div>`:''}</td><td><div class="market-links">${marketLinks(a.links.filter(l=>l.label!=='Explorer'),a)}</div></td></tr>`;
 }
 function renderNetworkTokens(network){
   const search=tokenSearch.trim().toLowerCase();

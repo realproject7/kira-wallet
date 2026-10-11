@@ -20,12 +20,50 @@ def ready():
     return [{'id':p,'installed':True,'supported':True,'logged_in':True} for p in ('codex','claude')]
 
 class AgentTest(unittest.TestCase):
+    def test_probe_failure_is_unknown_and_verified_version_is_unsupported(self):
+        from kira_agent import capabilities
+        import subprocess
+        with patch('kira_agent.shutil.which',return_value='/synthetic/cli'),patch('kira_agent.subprocess.run',side_effect=subprocess.TimeoutExpired('cli',8)):
+            rows=capabilities()
+        self.assertEqual(len(rows),2);self.assertTrue(all(r['probe_status']=='unknown' and r['version'] is None for r in rows))
+        with patch('kira_agent.shutil.which',return_value='/synthetic/cli'),patch('kira_agent.subprocess.run',return_value=subprocess.CompletedProcess('cli',0,'0.100.0','')):
+            rows=capabilities()
+        self.assertTrue(all(r['probe_status']=='unsupported' and not r['supported'] for r in rows))
+        replies=[subprocess.CompletedProcess('codex',0,'0.158.0',''),subprocess.CompletedProcess('codex',1,'','Internal error'),subprocess.CompletedProcess('claude',0,'2.1.259',''),subprocess.CompletedProcess('claude',1,'','Internal error')]
+        with patch('kira_agent.shutil.which',return_value='/synthetic/cli'),patch('kira_agent.subprocess.run',side_effect=replies):
+            rows=capabilities()
+        self.assertTrue(all(r['probe_status']=='unknown' and r['supported'] for r in rows))
+    def test_coverage_counts_identity_and_safe_provider_evidence_survive_compaction(self):
+        file=self.root/'snapshots/demo/initial/results.json';result=json.loads(file.read_text())
+        result['coverage'].append({**result['coverage'][0],'chain_id':1,'name':'Ethereum','rpc_status':'pending','environment':'mainnet'})
+        result['coverage'].append({**result['coverage'][0],'chain_id':11155111,'name':'Sepolia','rpc_status':'unavailable','environment':'testnet'})
+        result['coverage'][0]['rpc_routes']=[{'endpoint_class':'public','outcome':'failed','count':1,'http_status':429,'url':'SECRET-MARKER'}, {'endpoint_class':'custom','outcome':'succeeded','count':1}]
+        result['tokens'][0]['token_address']='0x538DCE05786fceffC46032f9873589D424dBe0f8';atomic(file,result)
+        context=projection(self.root,settings(scope='portfolio'),inventory=True);row=context['wallets'][0]
+        self.assertEqual(row['coverage_counts']['mainnet']['rpc']['pending'],{'count':1,'chain_ids':[1]})
+        self.assertEqual(row['coverage_counts']['testnet']['rpc']['unavailable']['count'],1)
+        self.assertEqual(row['assets'][0]['display_identity'],'8453:0x538DCE…dBe0f8')
+        self.assertEqual(row['chains'][0]['rpc_routes'][1]['endpoint_class'],'custom');self.assertNotIn('SECRET-MARKER',json.dumps(context))
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
         atomic(self.root/'wallets.json',{'schema_version':1,'wallets':[],'research_runs':[]});sample(self.root)
         self.prompts=[]
         def run(config,prompt,cancel):self.prompts.append(prompt);return 'Kira connection ready.' if 'Generic connection test' in prompt else 'Recorded facts only.'
         self.store=AgentStore(self.root,runner=run,detector=ready)
+
+    def test_retired_records_keep_history_but_leave_current_valuation(self):
+        from chain_lifecycle import lifecycle,retired
+        file=self.root/'snapshots/demo/initial/results.json';result=json.loads(file.read_text())
+        result['coverage'][0].update(chain_id=666666666,name='Degen L3',native_symbol='ETH',rpc_status='available')
+        result['tokens'][0]['chain_id']=666666666;atomic(file,result)
+        context=projection(self.root,settings(scope='portfolio'),inventory=True)
+        wallet=context['wallets'][0];asset=wallet['assets'][0]
+        self.assertTrue(asset['archived']);self.assertIsNone(asset['value_usd']);self.assertIsNotNone(asset['historical_value_usd'])
+        self.assertEqual(wallet['chains'][0]['rpc_status'],'retired')
+        self.assertTrue(retired(666666666));self.assertFalse(retired(8453));self.assertFalse(retired(8217));self.assertFalse(retired(5112))
+        self.assertEqual(lifecycle(5112)['status'],'retirement_reported')
+        self.assertEqual(lifecycle(8217)['provider_notice']['provider'],'The Graph')
+        self.assertEqual(lifecycle(999999)['audit_result'],'not_reviewed')
     def tearDown(self):self.temp.cleanup()
     def done(self,store,turn):
         deadline=time.monotonic()+3

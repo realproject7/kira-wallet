@@ -48,3 +48,10 @@ assert.match(networkEmpty(coverage('RPC unavailable','Researched'),0).message,/u
 assert.match(networkEmpty(coverage('Incomplete discovery'),0).title,/incomplete/);
 assert.match(networkEmpty(coverage('Research pending'),3).title,/filters/);
 assert.equal(networkEmpty(coverage('Research pending'),3).activity,false);
+const completeStale={analysed_at:'2026-10-11T00:00:00Z',chains:[{id:1,name:'Ethereum',environment:'mainnet',complete:true,rpc_available:true,registry_complete:true,head_status:'stale',head_age_seconds:172800}]};
+assert(require('./viewer/static/workspace-model.js').discoveryNotice(completeStale),'A stale successful head must stay visible even when inventory coverage succeeds.');
+const mixed={analysed_at:'2026-10-11T00:00:00Z',chains:[{name:'Ham',environment:'mainnet',complete:false,lifecycle:{status:'retirement_reported'}},{name:'Base',environment:'mainnet',complete:false,rpc_available:true,registry_complete:true,discovery_status:'history_pending'}]};
+const mixedNotice=require('./viewer/static/workspace-model.js').discoveryNotice(mixed);
+assert.equal(mixedNotice.action,'refresh');assert(mixedNotice.message.includes('Ham'));assert(mixedNotice.message.includes('unfinished'));
+const retiredAndTestnet={analysed_at:'2026-10-11T00:00:00Z',chains:[{name:'Degen L3',environment:'mainnet',complete:true,rpc_available:true,lifecycle:{status:'retired'}},{name:'Sepolia',environment:'testnet',complete:false,rpc_pending:true}]};
+assert(require('./viewer/static/workspace-model.js').discoveryNotice(retiredAndTestnet),'Testnet gaps cannot hide a mainnet retirement notice.');
