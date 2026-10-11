@@ -1,8 +1,9 @@
 # Connect Alchemy to Kira
 
 Kira works with free public RPC by default. It checks native assets, selected
-common token contracts and the Mint Club registry. Other ERC20 holdings may
-be missing. For broader token discovery, connect your own Alchemy account.
+common token contracts and the Mint Club registry, and uses keyless transfer
+discovery on supported networks. Unfinished history and other ERC20 holdings
+may still be missing. For broader token discovery, connect your own Alchemy account.
 Kira runs these requests locally and does not operate a hosted relay.
 
 ## Create an Alchemy app

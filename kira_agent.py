@@ -114,14 +114,24 @@ def read_completion(message, receipts, tools):
         snapshot_requested=set(re.findall(r'snapshots/[A-Za-z0-9_./-]+',message))
         actual={r['arguments'].get('snapshot_id') for r in completed if r['name']=='snapshot_read'}
         missing.extend('snapshot_read '+identity for identity in sorted(snapshot_requested-actual))
-    failed=[{'name':r['name'],'arguments':r.get('arguments',{})} for r in expanded if r['status']=='failed' and r['name']!='inventory_page']
     # Literal JSON read plans are checked by argument, including chain identity.
     # This is a bounded parser, not a claim to understand every natural request.
+    from kira_research_tools import CATALOG
+    specifications={row['name']:row for row in CATALOG}
+    specifications['inventory_page']={'arguments':{'wallet':None},'optional_arguments':{'offset':None}}
     def matches(name,wanted,receipt):
         if receipt['name']!=name:return False
-        actual=receipt.get('arguments',{})
+        if not isinstance(wanted,dict) or not isinstance(receipt.get('arguments'),dict):return False
+        spec=specifications.get(name)
+        if spec is None:return False
+        required=set(spec['arguments']);allowed=required|set(spec.get('optional_arguments',{}))
+        if any(not required<=set(args) or set(args)-allowed for args in (wanted,receipt['arguments'])):return False
+        defaults={'offset':0,'limit':100 if name=='wallet_read' else 20} if name in ('wallet_read','snapshot_read','snapshots_compare') else {}
+        if name=='inventory_page':defaults={'offset':0}
+        wanted={**defaults,**wanted};actual={**defaults,**receipt.get('arguments',{})}
+        if set(wanted)!=set(actual):return False
         for key,value in wanted.items():
-            other=actual.get(key,0 if key=='offset' else (100 if name=='wallet_read' else 20 if name in ('snapshot_read','snapshots_compare') else None) if key=='limit' else None)
+            other=actual.get(key)
             if key=='wallet' and tools:
                 try:
                     _,approved=tools.allowed();value=tools.wallet(value,approved);other=tools.wallet(other,approved)
@@ -129,6 +139,11 @@ def read_completion(message, receipts, tools):
             if isinstance(value,str) and key in ('address','wallet'):value=value.lower();other=other.lower() if isinstance(other,str) else other
             if type(value) is not type(other) or value!=other:return False
         return True
+    # A delivered retry fulfils the same request. Keep failed attempts in the
+    # original receipts, but do not call a recovered request incomplete.
+    failed=[{'name':r['name'],'arguments':r.get('arguments',{})} for r in expanded
+            if r['status']=='failed' and r['name']!='inventory_page'
+            and not any(matches(r['name'],r.get('arguments',{}),ok) for ok in completed)]
     missing.extend(name+' '+json.dumps(args,sort_keys=True) for name,args in requested if not any(matches(name,args,r) for r in completed))
     if 'token_read' in names and not any(name=='token_read' for name,_ in requested):
         addresses=set(re.findall(r'0x[0-9a-fA-F]{40}',message))
@@ -143,6 +158,8 @@ def read_completion(message, receipts, tools):
     groups={}
     for r in expanded:
         if r['name'] not in ('wallet_read','snapshot_read','snapshots_compare','inventory_page'):continue
+        if not isinstance(r.get('arguments'),dict):continue
+        if r['status']=='failed' and any(matches(r['name'],r.get('arguments',{}),ok) for ok in completed):continue
         if r['name']=='inventory_page' and not exhaustive:continue
         identity={k:v for k,v in r['arguments'].items() if k not in ('offset','limit')}
         if 'wallet' in identity and tools:
@@ -633,7 +650,7 @@ class AgentStore:
                     delivered=item['result']
                     receipt=read_receipt(request['kira_tool'],request['arguments'],executed_result,not (isinstance(delivered,dict) and delivered.get('error')))
                     if request['kira_tool']=='records_read' and isinstance(executed_result,dict) and 'reads' in executed_result:
-                        receipt.update(completion=executed_result['completion'],reads=[read_receipt(r['name'],r['arguments'],r['result'],receipt['status']=='completed' and r['status']=='completed') for r in executed_result['reads']])
+                        receipt.update(completion=executed_result['completion'] if receipt['status']=='completed' else 'partial',reads=[read_receipt(r['name'],r['arguments'],r['result'],receipt['status']=='completed' and r['status']=='completed') for r in executed_result['reads']])
                     self.turns[key].setdefault('tool_calls',[]).append(receipt)
                 with self.lock:self.tool_status='Kira is analysing the results…'
 

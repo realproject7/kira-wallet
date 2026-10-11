@@ -41,6 +41,41 @@ class ResearchToolsTest(unittest.TestCase):
         del different[1]['asset']['curve_state']['reserve_balance']
         self.assertEqual(compare_curve_states(different)['comparisons'][0]['status'],'unknown')
 
+    def test_delivered_retry_recovers_only_the_same_requested_read(self):
+        from kira_agent import read_completion,read_receipt
+        args={'wallet':self.first['address_key'],'offset':0,'limit':1}
+        failed=read_receipt('wallet_read',args,{'error':'context limit'})
+        message='Run '+json.dumps({'name':'wallet_read','arguments':args})
+        other=read_receipt('wallet_read',{**args,'offset':1},{'assets':[{}],'offset':1,'next_offset':2})
+        self.assertEqual(read_completion(message,[failed,other],self.tools)['status'],'partial')
+        retry=read_receipt('wallet_read',args,{'assets':[{}],'offset':0,'next_offset':1})
+        result=read_completion(message,[failed,retry],self.tools)
+        self.assertEqual(result['status'],'complete');self.assertEqual(result['failed'],[])
+        self.assertEqual(failed['status'],'failed')
+        retry['status']='failed'
+        self.assertEqual(read_completion(message,[failed,retry],self.tools)['status'],'partial')
+        defaults={'wallet':self.first['address_key']}
+        failed=read_receipt('wallet_read',defaults,{'error':'temporary failure'})
+        message='Run '+json.dumps({'name':'wallet_read','arguments':defaults})
+        for changed in ({'offset':100},{'limit':1}):
+            retry=read_receipt('wallet_read',{**defaults,**changed},{'assets':[{}],'offset':changed.get('offset',0),'next_offset':None})
+            self.assertEqual(read_completion(message,[failed,retry],self.tools)['status'],'partial')
+        retry=read_receipt('wallet_read',{**defaults,'offset':0,'limit':100},{'snapshot_id':'snapshots/current','assets':[{}],'offset':0,'next_offset':None})
+        result=read_completion('Run wallet_read for the full inventory.',[failed,retry],self.tools)
+        self.assertEqual(result['status'],'complete');self.assertEqual(result['unread_pages'],[])
+        for malformed in (None,[],7):
+            for name,valid in (('wallet_read',defaults),('token_read',{'chain_id':1,'address':'0x'+'a'*40})):
+                bad=read_receipt(name,malformed,{'error':'invalid arguments'})
+                good=read_receipt(name,valid,{'assets':[],'offset':0,'next_offset':None})
+                result=read_completion('Run '+name+'.',[bad,good],self.tools)
+                self.assertEqual(result['status'],'partial');self.assertEqual(result['failed'][0]['arguments'],malformed)
+        for name,valid in (('wallet_read',defaults),('token_read',{'chain_id':1,'address':'0x'+'a'*40}),('snapshot_read',{'snapshot_id':'snapshots/current'})):
+            for malformed in ({},{'chain_id':1}):
+                bad=read_receipt(name,malformed,{'error':'missing required arguments'})
+                good=read_receipt(name,valid,{'assets':[],'offset':0,'next_offset':None})
+                result=read_completion('Run '+name+'.',[bad,good],self.tools)
+                self.assertEqual(result['status'],'partial');self.assertTrue(result['failed'])
+
     def test_completion_matches_token_arguments_and_contiguous_inventory_pages(self):
         from kira_agent import read_completion,read_receipt
         token='0x'+'a'*40
