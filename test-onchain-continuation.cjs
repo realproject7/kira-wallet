@@ -2,7 +2,7 @@
 // Bounded work, durable holes and chain scheduling. No live provider calls.
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-const h=require('./onchain.cjs'),{registry,balanceReads,scanChain,scanNetworks}=require('./pipeline-onchain.cjs');
+const h=require('./onchain.cjs'),{registry,balanceReads,mintclubMembership,scanChain,scanNetworks}=require('./pipeline-onchain.cjs');
 const HASH='0x'+'a'.repeat(64),WALLET='0x'+'1'.repeat(40);
 const address=i=>'0x'+(i+100).toString(16).padStart(40,'0');
 
@@ -121,4 +121,56 @@ test('retained native balances preserve their original observation time after RP
   assert.equal(row.native_balance,'1');assert.equal(row.observed_at,observed);assert.equal(row.block_number,'7');
   assert.equal(row.native_balance_evidence_retained,true);assert.equal(row.status,'partial');
  }finally{Object.assign(h,originals);fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('wallet candidate mode verifies ID0 membership before balances and never enumerates the registry',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-wallet-candidates-'));
+ const originals={root:h.root,endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock};
+ try{
+  const reads=[],network={chain_id:999,mintclub_bond_address:address(9999)},nft=address(10),foreign=address(11),unknown=address(12);
+  h.root=root;h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:7n,hash:HASH});
+  h.client=()=>({getChainId:async()=>999,getBalance:async()=>0n,
+   readContract:async()=>{throw new Error('No registry calls permitted in wallet candidate mode.');},
+   multicall:async({contracts,blockNumber})=>{assert.equal(blockNumber,7n);return contracts.map(c=>{
+    reads.push(c);
+    if(c.functionName==='exists')return c.args[0]===unknown?{status:'failure',error:new Error('synthetic outage')}:{status:'success',result:c.args[0]===nft};
+    if(c.functionName==='decimals')return {status:'success',result:c.address===nft?0:18};
+    if(c.functionName==='balanceOf'){assert(![foreign,unknown].includes(c.address));if(c.address===nft)assert.deepEqual(c.args,[WALLET,0n]);return {status:'success',result:9n};}
+    if(['name','symbol'].includes(c.functionName))return {status:'success',result:'TEST'};
+    return {status:'failure',error:new Error('synthetic curve unavailable')};
+   });}});
+  const input={wallet:WALLET,inventory_policy:'wallet_candidates_v1',candidates:[{chain_id:999,address:address(1)}],
+   mintclub_id0_candidates:[nft,foreign,unknown].map(address=>({chain_id:999,address,token_type:'ERC1155',token_id:'0'}))};
+  const row=await scanChain(input,network,root);
+  assert.equal(row.registry_scan.phase,'not_requested');assert.equal(row.registry_scan.registry_count,null);assert.equal(row.registry_scan.complete,false);
+  assert.equal(row.mintclub_membership_scan.id0_registered,1);assert.equal(row.mintclub_membership_scan.id0_outside_scope,1);assert.equal(row.mintclub_membership_scan.id0_unknown,1);
+  assert.equal(row.tokens.find(t=>t.token_address===nft).wallet_balance_raw,9n);assert.equal(row.tokens.find(t=>t.token_address===nft).token_type,'ERC1155');
+  assert.equal(row.research_pending,true);assert.equal(row.status,'partial');
+  const before=reads.filter(c=>c.functionName==='balanceOf').length;
+  await scanChain(input,network,root);
+  assert.equal(reads.filter(c=>c.functionName==='balanceOf').length,before);
+  const checkpoint=JSON.parse(fs.readFileSync(path.join(root,'balance-checkpoint-999.json')));
+  assert.equal(checkpoint.block_hash,HASH);assert.equal(checkpoint.balances[nft+':ERC1155'],'9');
+  const bytes=fs.readFileSync(path.join(root,'chain-999.json'));
+  await assert.rejects(scanChain({...input,inventory_policy:'full_registry'},network,root),/inventory scope mismatch/);
+  assert.deepEqual(fs.readFileSync(path.join(root,'chain-999.json')),bytes);
+ }finally{Object.assign(h,originals);fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('bounded membership retries cannot starve unread candidates and successful facts survive restart',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-membership-frontier-'));
+ try{
+  const tokens=Array.from({length:129},(_,i)=>({address:address(i),token_type:'ERC1155'})),file=path.join(root,'checkpoint.json');
+  let checkpoint={balances:{},block_hash:HASH},seen=[];
+  const client={multicall:async({contracts,blockNumber})=>{assert.equal(blockNumber,7n);assert(contracts.length<=128);return contracts.map(c=>{
+   if(c.functionName==='decimals')return {status:'success',result:0};
+   seen.push(c.args[0]);return c.args[0]===address(0)?{status:'failure',error:new Error('synthetic failure')}:{status:'success',result:true};
+  });}};
+  let rows=await mintclubMembership(client,{chain_id:999,mintclub_bond_address:address(999)},tokens,7n,checkpoint,file,{maxBatches:1});
+  assert.equal(rows.filter(r=>r.status==='success').length,127);
+  checkpoint=JSON.parse(fs.readFileSync(file));
+  rows=await mintclubMembership(client,{chain_id:999,mintclub_bond_address:address(999)},tokens,7n,checkpoint,file,{maxBatches:1});
+  assert.equal(seen[128],address(128));assert.equal(rows[128].registered,true);assert.equal(rows[0].status,'failure');
+  assert.equal(rows.filter(r=>r.status==='success').length,128);assert.equal(new Set(seen).size,129);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
 });

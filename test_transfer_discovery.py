@@ -151,5 +151,40 @@ class TransferTests(unittest.TestCase):
             row=discovery.discover(WALLET,8453,state=saved[-1],request=self.request([[]],[]),continue_only=True)
         self.assertTrue(row['complete'])
 
+    def test_id0_history_filters_other_ids_and_owns_a_distinct_frontier(self):
+        saved=[];calls=[]
+        row=discovery.discover(WALLET,8453,standard='erc1155',request=self.request(['10',[
+            self.transfer(tokenID='7'),self.transfer(tokenID='0',contractAddress='0x'+'4'*40)]],calls),
+            save=lambda state:saved.append(copy.deepcopy(state)))
+        self.assertTrue(row['complete']);self.assertFalse(row['complete_inventory_guaranteed'])
+        self.assertEqual(calls[-1]['arguments']['standard'],'erc1155')
+        self.assertEqual(row['tokens'],[{'chain_id':8453,'address':'0x'+'4'*40,'prices':[],
+            'token_type':'ERC1155','token_id':'0','requires_mintclub_membership':True}])
+        self.assertTrue(discovery.valid_state(saved[-1],WALLET,8453,'erc1155'))
+        self.assertFalse(discovery.valid_state(saved[-1],WALLET,8453,'erc20'))
+        with patch.object(discovery,'fetch') as fetch:
+            other=discovery.discover(WALLET,8453,state=saved[-1],request=fetch)
+        fetch.assert_not_called();self.assertEqual(other['discovery_status'],'checkpoint_error')
+        for token_id in (None,'00','-1',str(2**256)):
+            state=[]
+            bad=discovery.discover(WALLET,8453,standard='erc1155',request=self.request(['10',[self.transfer(tokenID=token_id)]],[]),save=lambda s:state.append(copy.deepcopy(s)))
+            self.assertFalse(bad['complete']);self.assertEqual(bad['discovery_status'],'provider_error')
+            self.assertEqual(state[-1]['pending_ranges'][0]['page'],1)
+
+    def test_nonzero_id_pages_advance_and_id0_quota_resumes_without_replaying(self):
+        saved=[];calls=[]
+        row=discovery.discover(WALLET,8453,standard='erc1155',request=self.request(['10',[self.transfer(tokenID='9')]*100],calls),
+            save=lambda s:saved.append(copy.deepcopy(s)),max_pages=1)
+        self.assertEqual(row['tokens'],[]);self.assertEqual(saved[-1]['pending_ranges'][0]['page'],2)
+        with patch.object(discovery.time,'time',return_value=1000):
+            row=discovery.discover(WALLET,8453,standard='erc1155',state=saved[-1],continue_only=True,
+                request=lambda *args:{'error':{'http_status':429,'retry_after':120}},save=lambda s:saved.append(copy.deepcopy(s)))
+        self.assertEqual(row['discovery_status'],'throttled')
+        with patch.object(discovery.time,'time',return_value=1121):
+            row=discovery.discover(WALLET,8453,standard='erc1155',state=saved[-1],continue_only=True,
+                request=self.request([[self.transfer(tokenID='0')]],calls))
+        self.assertTrue(row['complete']);self.assertEqual(calls[-1]['arguments']['page'],2)
+        self.assertEqual(len(row['tokens']),1)
+
 
 if __name__=='__main__':unittest.main()

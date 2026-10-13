@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import re
 
-CRITERIA = {'version': 1, 'minimum_quoted_usd': '1', 'mintclub_redemption_included': True,
+CRITERIA = {'version': 2, 'minimum_quoted_usd': '1', 'mintclub_redemption_included': True,
             'gas_included': False, 'execution_verified': False,
             'scope': 'Recorded amount-specific routes only; unindexed and unsupported routes remain unknown.'}
 ADDRESS = re.compile(r'0x[0-9a-fA-F]{40}')
@@ -44,6 +44,39 @@ def output_price(chain_id, address, market):
     return None
 
 
+def valid_path(token, quote, block, block_hash):
+    """Validate each liquidation amount, identity, pin and funded curve leg."""
+    legs=quote.get('legs')
+    if not isinstance(legs,list) or not 1<=len(legs)<=4:return False
+    address=token.get('token_address');available=decimal(token.get('wallet_balance_raw'))
+    seen={str(address).lower()};pools=set()
+    for index,leg in enumerate(legs):
+        if not isinstance(leg,dict):return False
+        used,out=decimal(leg.get('input_amount_raw')),decimal(leg.get('output_amount_raw'))
+        decimals=leg.get('output_decimals');output=leg.get('output_address')
+        if (not isinstance(address,str) or not ADDRESS.fullmatch(address) or
+                not isinstance(leg.get('input_address'),str) or leg['input_address'].lower()!=address.lower() or
+                used is None or not 0<used<=available or used!=used.to_integral_value() or decimal(leg.get('holding_amount_raw'))!=available or
+                out is None or not 0<out<2**256 or out!=out.to_integral_value() or
+                type(decimals) is not int or not 0<=decimals<=255 or not isinstance(output,str) or not ADDRESS.fullmatch(output) or
+                output.lower() in seen or str(leg.get('block_number'))!=block or leg.get('block_hash')!=block_hash or
+                leg.get('route_fees_included') is not True or leg.get('price_impact_included') is not True or
+                leg.get('gas_included') is not False or not leg.get('observed_at') or
+                leg.get('kind') not in ('mintclub_burn','uniswap_v2_reserves','uniswap_v3_quoter','aerodrome_pool')):return False
+        with localcontext() as context:
+            context.prec=800
+            if decimal(leg.get('output_amount'))!=out/(Decimal(10)**decimals):return False
+        if index==0 and used!=decimal(quote.get('input_amount_raw')):return False
+        if leg['kind']=='mintclub_burn':
+            backing=decimal(leg.get('reserve_balance_raw'))
+            if leg.get('funded') is not True or backing is None or out>backing:return False
+        elif not isinstance(leg.get('pool'),str) or not ADDRESS.fullmatch(leg['pool']) or leg['pool'].lower() in pools:return False
+        if leg.get('pool'):pools.add(leg['pool'].lower())
+        seen.add(output.lower());address=output;available=out
+    return (str(quote.get('output_address')).lower()==address.lower() and decimal(quote.get('output_amount_raw'))==available
+            and decimal(quote.get('output_amount'))==decimal(legs[-1].get('output_amount')))
+
+
 def classify(token, market, *, environment='mainnet'):
     result = {'criteria_version': CRITERIA['version'], 'minimum_quoted_usd': '1',
               'status': 'unknown', 'gas_included': False, 'execution_verified': False,
@@ -58,7 +91,8 @@ def classify(token, market, *, environment='mainnet'):
             or not isinstance(block_hash, str) or not HASH.fullmatch(block_hash)):
         result['reason'] = 'Pinned holding identity unavailable.'
         return result
-    routes = [p.get('cashout_quote') for p in token.get('dex_pools', [])]
+    routes = [p.get('cashout_quote') for p in token.get('dex_pools', [])]+token.get('liquidation_routes',[])
+    result['unknown_routes'].extend(token.get('liquidation_unknown_routes',[]))
     mint = token.get('mintclub') or {}
     full = mint.get('wallet_full_burn')
     if full and not mint.get('wallet_full_burn_error'):
@@ -90,6 +124,9 @@ def classify(token, market, *, environment='mainnet'):
             if quote.get('funded') is not True or backing is None or output > backing:
                 result['unknown_routes'].append('Funded redemption backing not established.')
                 continue
+        if quote.get('kind')=='liquidation_path' and not valid_path(token,quote,block,block_hash):
+            result['unknown_routes'].append('Liquidation legs do not link to the pinned holding, funded backing and net outputs.')
+            continue
         price = output_price(token['chain_id'], quote.get('output_address'), market)
         if price is None:
             result['unknown_routes'].append('Terminal output USD price unavailable; another liquidation leg or nested curve spot is not cash proceeds.')
@@ -103,6 +140,7 @@ def classify(token, market, *, environment='mainnet'):
                                  'block_number': block, 'block_hash': block_hash, 'observed_at': quote['observed_at'],
                                  'output_price': price, 'partial_input': amount < holding,
                                  'transfer_tax_included': quote.get('transfer_tax_included'),
+                                 **({'legs':quote['legs']} if quote.get('kind')=='liquidation_path' else {}),
                                  'execution_verified': False, 'gas_included': False})
     if any(q['qualifies'] for q in result['quotes']):
         result['status'] = 'quoted_at_least_1_usd'

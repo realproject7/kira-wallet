@@ -224,9 +224,19 @@ bounded no-progress detection. The non-default key import guide selects the
 saved key reference explicitly. General NFT IDs and DeFi positions are outside
 this release scope.
 
-This is not a frozen release candidate. Required review, exact-package wallet
-acceptance, independent pinned balance comparisons and the authorized 48-hour
-stability run must finish before release readiness. Keep source-discovery,
+The operator revised the target to USD 1 amount-specific liquidation candidates,
+including funded Mint Club burns, and removed 48-hour stability from this task.
+Fresh research uses wallet history and prior positive identities rather than
+blanket registry balances. It retains full inventory as an explicit mode and
+records unsupported discovery and liquidation paths as unknown. Same-block
+quotes compose supported DEX and nested funded-burn outputs into terminal assets;
+spot reserve prices alone do not establish cash proceeds.
+
+This is not a frozen release candidate. Fresh exact-package wallet acceptance
+and independent scoped pinned comparisons remain pending. One required review
+covered the earlier discovery implementation and its fixes; the cash-out and
+wallet-candidate additions have not been independently reviewed. Additional
+review not selected. Keep source-discovery,
 balance and price completion separate. An unavailable or unsupported scope stays
 unknown. The known inherited history-author finding is still reported by the
 privacy check; it is not a passing scan or permission to rewrite history.

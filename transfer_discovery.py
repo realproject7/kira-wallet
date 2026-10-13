@@ -10,6 +10,9 @@ from public_discovery import fetch_bounded
 # Added routes were admitted with keyless block and transfer response probes.
 # Provider support, including Robinhood's keyless tier, remains best effort.
 CHAINS={1,8453,10,42161,137,56,130,33139,4663,11155111,84532,43113}
+# Individually admitted keyless ERC1155 first-page access and shape on 2026-10-13.
+# Only ID0 candidates are retained; bond membership and balances are independent.
+ERC1155_CHAINS={1,10,56,130,137,4663,8453,33139,42161,43113,84532,11155111}
 ENDPOINT='https://mcp-keyless.etherscan.io/mcp'
 DOCS='https://docs.etherscan.io/build-with-ai/mcp'
 ADDRESS=re.compile(r'0x[0-9a-fA-F]{40}')
@@ -111,15 +114,21 @@ def valid_range(window, *, pending=False):
             and all(isinstance(digest,str) and re.fullmatch(r'[0-9a-f]{64}',digest) for digest in window.get('seen_page_hashes',[])))
 
 
-def valid_state(state, address, chain_id):
+def provider_for(standard):
+    if standard not in ('erc20','erc1155'):raise ValueError('Unsupported candidate standard')
+    return 'etherscan_keyless' if standard=='erc20' else 'etherscan_keyless_erc1155_id0'
+
+
+def valid_state(state, address, chain_id, standard='erc20'):
+    provider=provider_for(standard)
     if (not isinstance(state,dict) or type(state.get('schema_version')) is not int or state['schema_version'] not in (1,2)
             or state.get('wallet')!=address.lower() or type(state.get('chain_id')) is not int or state['chain_id']!=chain_id
-            or state.get('provider','etherscan_keyless')!='etherscan_keyless' or not valid_range(state)
+            or state.get('provider','etherscan_keyless')!=provider or state.get('standard','erc20')!=standard or not valid_range(state)
             or type(state.get('complete')) is not bool or not isinstance(state.get('contracts'),list)
             or not all(isinstance(a,str) and ADDRESS.fullmatch(a) for a in state['contracts'])):return False
     if 'retry_not_before' in state and (type(state['retry_not_before']) is not int or state['retry_not_before']<0):return False
     if state['schema_version']==1:
-        return (type(state.get('page')) is int and 1<=state['page']<=101
+        return (standard=='erc20' and type(state.get('page')) is int and 1<=state['page']<=101
                 and all(k not in state or type(state[k]) is int and state[k]>=0 for k in ('records','started_at'))
                 and (state['complete'] or valid_range(state,pending=True)))
     if not all(type(state.get(k)) is int and state[k]>=0 for k in ('records','started_at','pages_checked')):return False
@@ -178,7 +187,8 @@ def split_limit(current):
                                   {'startblock':lo,'endblock':mid,'page':1,'seen_page_hashes':[]}]
 
 
-def admit(transfers, address, startblock, endblock, contracts):
+def admit(transfers, address, startblock, endblock, contracts, standard='erc20'):
+    provider_for(standard)
     if not isinstance(transfers,list) or len(transfers)>100:raise ValueError('Invalid transfer page')
     contracts=set(contracts);previous=None
     for transfer in transfers:
@@ -188,20 +198,27 @@ def admit(transfers, address, startblock, endblock, contracts):
         block=int(block)
         if not startblock<=block<=endblock or previous is not None and block>previous:raise ValueError('Invalid page window')
         if not any(isinstance(transfer.get(side),str) and transfer[side].lower()==address.lower() for side in ('from','to')):raise ValueError('Foreign wallet record')
-        previous=block;contracts.add(contract.lower())
+        previous=block
+        if standard=='erc1155':
+            token_id=transfer.get('tokenID')
+            if not isinstance(token_id,str) or not re.fullmatch(r'0|[1-9][0-9]{0,77}',token_id) or int(token_id)>=2**256:
+                raise ValueError('Invalid ERC1155 token ID')
+            if token_id!='0':continue
+        contracts.add(contract.lower())
     return sorted(contracts)
 
 
-def discover(address, chain_id, *, state=None, save=lambda value:None, request=fetch, budget=25, max_pages=3, continue_only=False):
-    row={'chain_id':chain_id,'source':DOCS,'provider':'etherscan_keyless','tokens':[],'native':[],
+def discover(address, chain_id, *, state=None, save=lambda value:None, request=fetch, budget=25, max_pages=3, continue_only=False, standard='erc20'):
+    provider=provider_for(standard)
+    row={'chain_id':chain_id,'source':DOCS,'provider':provider,'standard':standard,'tokens':[],'native':[],
          'pages':[],'complete':False,'discovery_status':'unsupported','error':None,
-         'candidate_basis':'ERC20 transfer identities only. RPC verifies balances independently.',
+         'candidate_basis':'ERC20 transfer identities only. RPC verifies balances independently.' if standard=='erc20' else 'ERC1155 ID0 transfer identities only. Mint Club bond membership and wallet balances must be verified independently.',
          'completion_scope':'Validated provider pages within the recorded block ranges only.',
          'complete_inventory_guaranteed':False,
          'filters':{'spam_filter':False,'minimum_value':None,'minimum_liquidity':None}}
-    if chain_id not in CHAINS:return row
+    if chain_id not in (CHAINS if standard=='erc20' else ERC1155_CHAINS):return row
     if not isinstance(address,str) or not ADDRESS.fullmatch(address):raise ValueError('Invalid wallet')
-    if state is not None and not valid_state(state,address,chain_id):
+    if state is not None and not valid_state(state,address,chain_id,standard):
         row.update(discovery_status='checkpoint_error',error={'message':'Transfer checkpoint is invalid. Saved evidence was preserved.'})
         return row
     deadline=time.monotonic()+budget
@@ -219,7 +236,7 @@ def discover(address, chain_id, *, state=None, save=lambda value:None, request=f
             if current is None or current['complete'] and not continue_only:
                 endblock=height();startblock=max(0,current['endblock']-2048) if current else 0
                 if current and endblock<current['endblock']:raise ValueError('Indexer height moved backward')
-                current={'schema_version':2,'provider':'etherscan_keyless','wallet':address.lower(),'chain_id':chain_id,
+                current={'schema_version':2,'provider':provider,'standard':standard,'wallet':address.lower(),'chain_id':chain_id,
                          'startblock':startblock,'endblock':endblock,'contracts':current['contracts'] if current else [],
                          'complete':False,'records':0,'pages_checked':0,'started_at':int(time.time()),
                          'pending_ranges':[{'startblock':startblock,'endblock':endblock,'page':1,'seen_page_hashes':[]}],
@@ -238,8 +255,8 @@ def discover(address, chain_id, *, state=None, save=lambda value:None, request=f
                 if window['page']>100:
                     split_limit(current);save(current);continue
                 args={k:window[k] for k in ('startblock','endblock','page')}
-                transfers=call('get_token_transfers',{'chainid':str(chain_id),'address':address,'standard':'erc20','offset':100,'sort':'desc',**args},deadline,request)
-                contracts=admit(transfers,address,window['startblock'],window['endblock'],current['contracts'])
+                transfers=call('get_token_transfers',{'chainid':str(chain_id),'address':address,'standard':standard,'offset':100,'sort':'desc',**args},deadline,request)
+                contracts=admit(transfers,address,window['startblock'],window['endblock'],current['contracts'],standard)
                 if transfers and window.get('last_block') is not None and int(transfers[0]['blockNumber'])>window['last_block']:
                     raise ValueError('Transfer pagination moved backward')
                 digest=hashlib.sha256(json.dumps(transfers,sort_keys=True).encode()).hexdigest()
@@ -276,7 +293,7 @@ def discover(address, chain_id, *, state=None, save=lambda value:None, request=f
                   'history_pending':'Transfer history has saved unfinished ranges. Saved candidates remain usable.'}
         row['error']={'message':messages[row['discovery_status']]}
     if current:
-        row['tokens']=[{'chain_id':chain_id,'address':contract,'prices':[]} for contract in current['contracts']]
+        row['tokens']=[{'chain_id':chain_id,'address':contract,'prices':[],**({'token_type':'ERC1155','token_id':'0','requires_mintclub_membership':True} if standard=='erc1155' else {})} for contract in current['contracts']]
         pending=current['pending_ranges']
         row['history_window']={k:current[k] for k in ('startblock','endblock','records','started_at','pages_checked')}
         row['history_window'].update(page=pending[0]['page'] if pending else 0,complete=row['complete'],

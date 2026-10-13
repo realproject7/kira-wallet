@@ -77,13 +77,23 @@ execution. Output prices remain observed estimates, including peg risk.
 below that threshold, unknown routes and testnets outside USD scope. None of
 these finite route checks establishes that an asset has no other qualifying
 route. Failed, unsupported and unindexed routes remain unknown. Existing
-holdings stay in the snapshot. This quote foundation does not yet change the
-inventory-first scan order or establish market-first latency or completeness.
+holdings stay in the snapshot. Liquidation paths can compose up to four distinct
+amount-specific DEX or funded burn legs, including ordinary and nested curve
+reserves. Each next input is no greater than the preceding net output, and all
+legs share the holding's block hash. Cycles and reused pools are not composed
+from unchanged state. A saved frontier resumes after a market time budget.
+The search admits at most 32 nodes and four branches per node; omitted,
+unsupported and failed paths stay unknown. These bounds do not establish
+exhaustive qualifying-asset coverage or benchmarked latency.
 
 ## Default token inventory
 
-Native balances and the selected issuer/deployment-backed contracts in
-`sources/known-tokens.json` are checked before cold Mint Club enumeration.
+Fresh research defaults to wallet candidates (`--inventory market`). Native
+balances, prior positive identities, selected issuer/deployment-backed contracts
+and admitted wallet transfer identities are checked without a cold full-registry
+wallet balance scan. `wallet.py ... --inventory full` retains full Mint Club
+enumeration. Resuming a run preserves its saved inventory policy; legacy runs
+retain full enumeration, and a scope change requires a new analysis.
 The catalog has 63 chain/contract identities on eight mainnets. Issuer references
 and selected Uniswap token-list records retain per-contract provenance. The
 upstream list commit and its license are bundled; no untrusted runtime list is
@@ -104,7 +114,7 @@ Explicit keyless opt-outs and custom-only preferences remain respected.
 Initial reports check Base, Ethereum and Blast, up to 128 candidates per chain.
 Selected common contracts take priority. Remaining candidates and networks are
 explicitly pending. A durable background continuation scans every configured
-network, the full Mint Club registry and markets. Pinned registry counts,
+network, its recorded inventory policy and markets. In full mode, pinned registry counts,
 successful identities, failed indices and the next index are saved after each
 batch. Each chain receives at most four registry and four balance batches per
 category in a scheduling round before unfinished chains receive another turn.
@@ -115,6 +125,19 @@ verified payload limits. Three consecutive unchanged rounds leave work explicitl
 incomplete. Registry identities can be reused; wallet balances stay wallet-specific.
 New initial work takes priority over detailed research. Older same-wallet
 continuations cannot replace newer evidence.
+
+Wallet candidate mode has a separate Etherscan ERC1155 frontier on Ethereum,
+Optimism, BNB, Unichain, Polygon, Robinhood, Base, ApeChain, Arbitrum, Avalanche
+Fuji, Base Sepolia and Ethereum Sepolia. First-page live access and response
+shape were individually admitted on 2026-10-13. Only token ID 0 is retained.
+Pinned bond `exists(address)` and decimals 0 must succeed before any ID0 balance
+query. Non-member NFTs are outside this scope; membership failures remain
+unknown. ERC20 candidates independently undergo membership checks for burn
+routes. Successful membership and balance facts survive restart, and failed
+membership calls cannot starve unread candidates. Full registry coverage is
+recorded as `not_requested`, with a null registry count and `complete: false`.
+Provider page completion never establishes exhaustive holdings. Other chains
+remain unsupported for ID0 history, and public opt-outs remain respected.
 
 Public RPC cannot enumerate all arbitrary ERC20 contracts. Alchemy is an
 optional broader candidate source and backup RPC. Discovery calls made through

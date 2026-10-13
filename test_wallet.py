@@ -41,6 +41,27 @@ class WalletPipelineTests(unittest.TestCase):
             third=wallet.continuation_checkpoint(folder,discovery,True)
             self.assertNotEqual(first['fingerprint'],third['fingerprint']);self.assertEqual(third['not_before'],0)
 
+    def test_inventory_resume_preserves_old_scope_and_rejects_policy_changes(self):
+        self.assertEqual(wallet.inventory_policy(),'wallet_candidates_v1')
+        self.assertEqual(wallet.inventory_policy('full'),'full_registry')
+        self.assertEqual(wallet.inventory_policy(manifest={}), 'full_registry')
+        self.assertEqual(wallet.inventory_policy(manifest={'inventory_policy':'wallet_candidates_v1'}),'wallet_candidates_v1')
+        with self.assertRaisesRegex(ValueError,'scope mismatch'):wallet.inventory_policy('market',{})
+        with self.assertRaisesRegex(ValueError,'Invalid saved'):wallet.inventory_policy(manifest={'inventory_policy':'unexpected'})
+
+    def test_id0_source_respects_public_optout_and_continuation_counts_its_frontier(self):
+        with patch.object(wallet,'load_config',return_value={'discovery':{'public':False}}),patch('transfer_discovery.discover') as discover:
+            row=wallet.discover_mintclub_id0(self.address,self.network,self.folder)
+        discover.assert_not_called();self.assertEqual(row['discovery_status'],'disabled')
+        discovered=[{'chain_id':8453,'tokens':[],'complete':True,'mintclub_id0_discovery':{
+            'tokens':[],'provider':'etherscan_keyless_erc1155_id0','complete':False,'discovery_status':'throttled','retry_not_before':1234,
+            'history_window':{'page':2}}}]
+        first=wallet.continuation_checkpoint(self.folder,discovered,False)
+        self.assertEqual(first['not_before'],1234)
+        discovered[0]['mintclub_id0_discovery']['tokens']=[{'address':'0x'+'2'*40}]
+        second=wallet.continuation_checkpoint(self.folder,discovered,False)
+        self.assertNotEqual(first['fingerprint'],second['fingerprint'])
+
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory()
         self.folder=Path(self.temp.name)
@@ -173,7 +194,7 @@ class WalletPipelineTests(unittest.TestCase):
             'native_balance':'1','observed_at':'2026-10-04T12:00:00Z','rpc_status':'available','registry_scan':{'complete':True,'checked':0,'registry_count':0}}]})
         metadata={'prices':{'ETH_USD':{'value':2000,'observed_at':'2026-10-04T12:00:00Z','source':'https://api.coingecko.com','asset_id':'ethereum'}},
             'images':{'ethereum':{'image_url':'https://coin-images.coingecko.com/eth.png'}},'evidence':{'source':'https://api.coingecko.com','response':[]}}
-        def node(command,input_path,output_path):wallet.atomic(output_path,{'tokens':[]})
+        def node(command,input_path,output_path):wallet.atomic(output_path,{'tokens':[],'market_pending':False})
         with patch.object(wallet,'run_node',side_effect=node),patch.object(wallet,'event'),\
              patch('native_assets.market_metadata',return_value=metadata) as native,\
              patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder,**kwargs:market),\
@@ -200,7 +221,7 @@ class WalletPipelineTests(unittest.TestCase):
             'native_balance':'0','observed_at':'2026-10-04T12:00:00Z','rpc_status':'available',
             'registry_scan':{'complete':True,'checked':0,'registry_count':0},
             'balance_errors':[{'error':{'message':'PRIVATE-DIAGNOSTIC'}}]}]})
-        def node(command,input_path,output_path):wallet.atomic(output_path,{'tokens':[]})
+        def node(command,input_path,output_path):wallet.atomic(output_path,{'tokens':[],'market_pending':False})
         with patch.object(wallet,'run_node',side_effect=node),patch.object(wallet,'event'),\
              patch('native_assets.market_metadata',return_value={'prices':{},'images':{},'evidence':None}),\
              patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder,**kwargs:market),\

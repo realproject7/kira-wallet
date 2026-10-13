@@ -239,11 +239,18 @@ def prior_candidates(wallet):
         if previous_path.is_relative_to(ROOT/'snapshots') and previous_path.is_file():
             old=read(previous_path)
             if old.get('wallet_address','').lower()==wallet['address_key']:
-                prior += [{'chain_id':t.get('chain_id'),'address':t.get('token_address')} for t in old.get('tokens',[]) if t.get('token_type')=='ERC20']
+                prior += [{'chain_id':t.get('chain_id'),'address':t.get('token_address'),
+                           **({'token_type':'ERC1155','token_id':'0'} if t.get('token_type')=='ERC1155' else {})}
+                          for t in old.get('tokens',[]) if t.get('token_type')=='ERC20' or
+                          t.get('token_type')=='ERC1155' and str(t.get('token_id'))=='0' and t.get('mintclub')]
     candidates={}
     for token in prior if isinstance(prior,list) else []:
         if isinstance(token,dict) and type(token.get('chain_id')) is int and token['chain_id']>0 and isinstance(token.get('address'),str) and re.fullmatch(r'0x[0-9a-fA-F]{40}',token['address']):
-            identity=(token['chain_id'],token['address'].lower());candidates[identity]={'chain_id':identity[0],'address':identity[1],'suspicious_zero_check':True,'prices':[]}
+            kind=token.get('token_type','ERC20')
+            if kind not in ('ERC20','ERC1155') or kind=='ERC1155' and str(token.get('token_id'))!='0':continue
+            identity=(token['chain_id'],token['address'].lower(),kind)
+            candidates[identity]={'chain_id':identity[0],'address':identity[1],'suspicious_zero_check':True,'prices':[],
+                                  **({'token_type':'ERC1155','token_id':'0','requires_mintclub_membership':True} if kind=='ERC1155' else {})}
     atomic(cache,{'wallet':wallet['address_key'],'candidates':list(candidates.values())})
     return list(candidates.values())
 
@@ -255,6 +262,54 @@ def merge_candidates(prior, known, discovered):
         merged[key]={**previous,**{k:v for k,v in token.items() if v is not None},
             'suspicious_zero_check':previous.get('suspicious_zero_check',False) or token.get('suspicious_zero_check',False)}
     return list(merged.values())
+
+
+def inventory_policy(requested=None, manifest=None):
+    """A resume never reinterprets checkpoints under a different inventory scope."""
+    saved=manifest.get('inventory_policy','full_registry') if manifest is not None else None
+    chosen={'market':'wallet_candidates_v1','full':'full_registry'}.get(requested)
+    if manifest is not None and chosen is not None and chosen!=saved:
+        raise ValueError('Resume inventory scope mismatch. Start a new holdings analysis.')
+    policy=saved or chosen or 'wallet_candidates_v1'
+    if policy not in ('wallet_candidates_v1','full_registry'):raise ValueError('Invalid saved inventory scope.')
+    return policy
+
+
+def discover_mintclub_id0(wallet, n, folder, budget=15, *, continue_only=False):
+    """Separate ID0 frontier. Provider identities are never NFT balance evidence."""
+    import discovery_state
+    import transfer_discovery
+    cid=n['chain_id'];provider=transfer_discovery.provider_for('erc1155')
+    evidence=folder/f'discovery-erc1155-id0-{cid}.json'
+    if evidence.exists():
+        cached=read(evidence)
+        if cached.get('wallet','').lower()==wallet.lower() and cached.get('complete') and cached.get('coverage_version')==1:return cached
+    row={'wallet':wallet,'chain_id':cid,'observed_at':h.now(),'provider':provider,'tokens':[],
+         'complete':False,'pages':[],'source':transfer_discovery.DOCS,'discovery_status':'disabled',
+         'complete_inventory_guaranteed':False,'completion_scope':'Validated ERC1155 ID0 transfer pages only; Mint Club membership and balances are separate.'}
+    cfg=load_config()
+    permitted=cfg['discovery'].get('public',True) and not (cfg.get('rpc',{}).get('mode')=='custom' and cfg['rpc'].get('allow_public_fallback') is False)
+    if permitted and n.get('environment') in ('mainnet','testnet'):
+        frontier=ROOT/'cache/free-discovery'/wallet.lower()/f'erc1155-id0-{cid}.json'
+        try:
+            state=discovery_state.load(frontier,wallet,cid,provider)
+            row.update(transfer_discovery.discover(wallet,cid,standard='erc1155',state=state,budget=budget,continue_only=continue_only,
+                save=lambda value:discovery_state.save(frontier,value,wallet,cid,provider)))
+        except (OSError,ValueError,KeyError,TypeError):
+            row.update(discovery_status='checkpoint_error',error={'message':'ID0 discovery checkpoint could not be read or saved. Existing evidence was preserved.'})
+    else:row['error']={'message':'Public ID0 candidate discovery is disabled by configuration. Mint Club holdings remain unknown.'}
+    row['coverage_version']=1;atomic(evidence,row)
+    return row
+
+
+def discovery_sources(row):
+    sources=list(row.get('sources') or [row])
+    if row.get('mintclub_id0_discovery'):sources.append(row['mintclub_id0_discovery'])
+    return sources
+
+
+def id0_coverage(row):
+    return {key:value for key,value in (row.get('mintclub_id0_discovery') or {}).items() if key not in ('wallet','tokens','pages','native')}
 
 
 def run_node(mode, source, destination, on_chain=None, deadline=None):
@@ -321,7 +376,9 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
             'discovery_provider':d.get('provider'), 'history_window':d.get('history_window'), 'recent_window':d.get('recent_window'), 'discovery_filters':d.get('filters'),
             'discovery_sources':d.get('sources',[]),'discovery_completion_scope':d.get('completion_scope'),'complete_inventory_guaranteed':False,
             'candidate_scan':c.get('candidate_scan'),'mintclub_registry_scan':c.get('registry_scan'),
-            'notes':['Initial balances. Remaining candidate balances, full Mint Club enumeration and market enrichment remain pending.']})
+            'inventory_policy':c.get('inventory_policy','full_registry'),'mintclub_wallet_discovery':id0_coverage(d),
+            'mintclub_membership_scan':c.get('mintclub_membership_scan'),
+            'notes':['Initial balances. Remaining wallet candidate balances and market enrichment remain pending. Inventory scope is recorded separately.']})
     result={'schema_version':1,'wallet_address':wallet['address'],'tags':wallet['tags'],'compiled_at':h.now(),
         'status':'completed_with_coverage_gaps','scope':'Recorded initial direct holdings. Unchecked holdings and prices remain unknown.',
         'tokens':tokens,'coverage':coverage,'price_references':{},'nested_curve_independent_redemption_estimates':[],
@@ -330,7 +387,7 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
             'mainnets_with_general_indexer':sum(c['environment']=='mainnet' and c['indexer_complete'] for c in coverage),
             'mintclub_tokens':sum(bool(t.get('mintclub')) for t in tokens),'mintclub_tokens_with_nonzero_reserve':sum(bool((t.get('mintclub') or {}).get('funded')) for t in tokens),
             'dex_tokens_with_liquidity_evidence':0,'mintclub_registry_assets_checked':0},
-        'limitations':['Initial evidence is partial. Detailed registry and market research continues separately. Missing holdings and prices are unknown, not zero.',
+        'limitations':['Initial evidence is partial. Detailed candidate and market research continues separately under the recorded inventory policy. Missing holdings and prices are unknown, not zero.',
             'Free candidate discovery and known-token catalogs do not guarantee every arbitrary ERC20 contract.'],
         'actions':{'signatures':0,'approvals':0,'swaps':0,'transfers':0,'rpc_read_only':True},
         'pipeline':{'version':2,'phase':phase,'enrichment_pending':True,'resumable':True},'evidence_files':['onchain-summary.json']}
@@ -388,15 +445,16 @@ def continuation_checkpoint(folder, discovered, market_pending):
     """Persist substantive progress, excluding timestamps and repeated failures."""
     progress={};pending=[]
     for discovery in discovered:
-        for source in discovery.get('sources') or [discovery]:
+        for source in discovery_sources(discovery):
             if not source.get('complete') and source.get('discovery_status') in ('history_pending','throttled'):pending.append(source)
         progress['discovery-'+str(discovery['chain_id'])]={
             'contracts':sorted(t['address'].lower() for t in discovery.get('tokens',[])),
-            'sources':[{k:s.get(k) for k in ('provider','complete','history_window','pagination')} for s in discovery.get('sources') or [discovery]]}
-    for pattern in ('balance-checkpoint-*.json','registry-checkpoint-*.json','market-checkpoint-*.json','reserve-checkpoint-*.json'):
+            'id0_contracts':sorted(t['address'].lower() for t in discovery.get('mintclub_id0_discovery',{}).get('tokens',[])),
+            'sources':[{k:s.get(k) for k in ('provider','complete','history_window','pagination')} for s in discovery_sources(discovery)]}
+    for pattern in ('balance-checkpoint-*.json','registry-checkpoint-*.json','market-checkpoint-*.json','reserve-checkpoint-*.json','cashout-checkpoint-*.json','route-market-checkpoint-*.json'):
         for path in sorted(folder.glob(pattern)):
             saved=read(path)
-            progress[path.name]={k:saved[k] for k in ('balances','entries','next_index','requests','completed_pools','nodes') if k in saved}
+            progress[path.name]={k:saved[k] for k in ('balances','entries','next_index','requests','completed_pools','nodes','mintclub_membership') if k in saved}
     # Only successful evidence counts. Strip observation timestamps recursively
     # so a failed retry cannot disguise a stalled frontier as new work.
     def stable(value):
@@ -415,7 +473,7 @@ def finish(wallet, folder, networks, discovered):
     deadline=time.monotonic()+180
     checkpoint_folder=folder
     raw=read(folder/'onchain-summary.json')
-    research_pending=any(d.get('discovery_status') in ('history_pending','throttled') for d in discovered) or any(c.get('research_pending') and not c.get('continuation_stalled') for c in raw['chains'])
+    research_pending=any(s.get('discovery_status') in ('history_pending','throttled') for d in discovered for s in discovery_sources(d)) or any(c.get('research_pending') and not c.get('continuation_stalled') for c in raw['chains'])
     tokens=[t for c in raw['chains'] for t in c['tokens']]
     event('dex_discovery', tokens=len(tokens))
     with ThreadPoolExecutor(max_workers=5) as executor:
@@ -432,6 +490,11 @@ def finish(wallet, folder, networks, discovered):
     atomic(folder/'dex-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':tokens,'market_budget_ms':max(0,int((deadline-time.monotonic())*1000))})
     run_node('dex',folder/'dex-input.json',folder/'dex-verified.json')
     verified=read(folder/'dex-verified.json');tokens=verified['tokens'];market_pending=verified.get('market_pending',False)
+    if not market_pending:
+        atomic(folder/'cashout-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':tokens,'market_chain_names':DEX,
+            'market_budget_ms':max(0,int((deadline-time.monotonic())*1000))})
+        run_node('liquidate',folder/'cashout-input.json',folder/'liquidation-verified.json')
+        liquidation=read(folder/'liquidation-verified.json');tokens=liquidation['tokens'];market_pending=liquidation['market_pending']
     for t in tokens:
         t['dex_liquidity_found']=any((p.get('reported_liquidity') or {}).get('usd',0)>0 or
             (p.get('factory_measurement') or {}).get('active_liquidity_verified',False) for p in t['dex_pools'])
@@ -459,9 +522,14 @@ def finish(wallet, folder, networks, discovered):
             'discovery_sources':d.get('sources',[]),'discovery_completion_scope':d.get('completion_scope'),'complete_inventory_guaranteed':False,
              'candidate_balance_errors':len(c.get('balance_errors',[])),
              'positive_erc20_count_discovered':sum(t['chain_id']==n['chain_id'] and t['token_type']=='ERC20' for t in tokens),
-             'mintclub_inventory_scan':None,'mintclub_registry_scan':c.get('registry_scan'),'notes':[]}
+             'mintclub_inventory_scan':None,'mintclub_registry_scan':c.get('registry_scan'),
+             'inventory_policy':c.get('inventory_policy','full_registry'),'mintclub_wallet_discovery':id0_coverage(d),
+             'mintclub_membership_scan':c.get('mintclub_membership_scan'),'candidate_scan':c.get('candidate_scan'),'notes':[]}
         if not d['complete']:row['notes'].append('General token discovery incomplete. See discovery evidence; this is not proof of no holdings.')
-        if not c.get('registry_scan',{}).get('complete'):row['notes'].append('Mint Club registry scan incomplete. Unchecked balances remain unknown.')
+        if c.get('inventory_policy')=='wallet_candidates_v1':
+            row['notes'].append('Mint Club candidates come from wallet transfer history and prior positive identities. Full registry enumeration is not requested and exhaustive holdings remain unknown.')
+            if not d.get('mintclub_id0_discovery',{}).get('complete'):row['notes'].append('Mint Club ID0 transfer discovery is unavailable or unfinished. This is not proof of no holdings.')
+        elif not c.get('registry_scan',{}).get('complete'):row['notes'].append('Mint Club registry scan incomplete. Unchecked balances remain unknown.')
         if c.get('balance_errors'):row['notes'].append(f"{len(c['balance_errors'])} candidate token balances could not be read.")
         coverage.append(row)
     refs={}
@@ -494,6 +562,9 @@ def finish(wallet, folder, networks, discovered):
             if quote.get('status')=='quoted':
                 address=quote['output_address']
                 reserve_candidates.setdefault((token['chain_id'],address.lower()),{'chain_id':token['chain_id'],'token_address':address,'token_type':'ERC20'})
+        for quote in token.get('liquidation_routes',[]):
+            address=quote['output_address']
+            reserve_candidates.setdefault((token['chain_id'],address.lower()),{'chain_id':token['chain_id'],'token_address':address,'token_type':'ERC20'})
     reserve_rows=[] if market_pending else list(ThreadPoolExecutor(max_workers=5).map(lambda t:dex_fetch(t,folder,deadline),reserve_candidates.values()))
     market_pending=market_pending or time.monotonic()>=deadline
     sys.path.insert(0,str(ASSETS/'viewer'))
@@ -516,7 +587,7 @@ def finish(wallet, folder, networks, discovered):
         'scope':'Direct ERC20, registered Mint Club ERC1155 and native holdings across all configured Mint Club EVM networks. Testnets are separate.',
         'counts':counts,'coverage':coverage,'tokens':tokens,'nested_curve_independent_redemption_estimates':[], 'price_references':refs,
         'limitations':['General indexers can omit arbitrary ERC20 assets. Failed or incomplete discovery is never interpreted as no holdings.',
-            'Mint Club registry enumeration includes all reachable deployed bond assets, including ERC1155 token ID 0. Deposits or stakes held by other contracts are outside direct wallet balances.',
+            'Mint Club wallet candidate mode verifies bond membership before ID0 balances and does not enumerate the full registry. Full inventory mode separately enumerates reachable bond assets. Neither completed provider pages nor a finite route search proves exhaustive holdings or cash-out coverage. Deposits and stakes are outside direct wallet balances.',
             'DEX discovery combines DEX Screener and supplemental Base WETH/USDC factory queries. Other quote assets, custom fee tiers and unindexed pools can be missed.',
             'DEX TVL and curve reserves describe the entire pool or curve. Spot wallet values are estimates, distinct from executable cash-out value.',
             'Full-wallet burn quotes subtract the recorded creator royalty and exclude gas. Nested reserve backing overlaps and must not be summed as independent cash reserves.',
@@ -608,6 +679,7 @@ def main():
     for p in (add,refresh):
         p.add_argument('--resume',help='Existing snapshot directory relative to the research root')
         p.add_argument('--phase',choices=('baseline','enrichment','full'),default='full')
+        p.add_argument('--inventory',choices=('market','full'),help='Wallet-history candidates (fresh default), or full Mint Club registry. A resume retains its saved scope.')
     args=parser.parse_args()
     # Serialize shared registry and cache writers for the entire run.
     with (os.fdopen(int(os.environ['KIRA_ANALYSIS_FD']), 'a') if os.environ.get('KIRA_ANALYSIS_FD') else (ROOT/'.analysis.lock').open('a')) as lock:
@@ -628,6 +700,7 @@ def main():
         else:
             wallet=next((w for w in registry['wallets'] if w['address_key']==args.wallet.lower() or args.wallet in w['tags']),None)
             if wallet is None:raise SystemExit('No registered wallet matches this address or tag.')
+        manifest=None
         if args.resume:
             folder=(ROOT/args.resume).resolve()
             if not folder.is_relative_to(ROOT/'snapshots'):raise ValueError('Resume path must be within snapshots/.')
@@ -636,7 +709,9 @@ def main():
             relative=str(folder.relative_to(ROOT))
             published=any(w.get('latest_snapshot',{}).get('directory')==relative for w in registry['wallets']) or any(r.get('snapshot')==relative for r in registry.get('research_runs',[]))
             if manifest.get('completed_at') or published:raise ValueError('Published snapshots are immutable. Use refresh without --resume for a new analysis.')
+            policy=inventory_policy(args.inventory,manifest)
         else:
+            policy=inventory_policy(args.inventory)
             if os.environ.get('KIRA_JOB_SNAPSHOT'):
                 folder=(ROOT/os.environ['KIRA_JOB_SNAPSHOT']).resolve()
                 if not folder.is_relative_to(ROOT/'snapshots'):raise ValueError('Job path must be within snapshots/.')
@@ -645,21 +720,28 @@ def main():
                 folder=ROOT/'snapshots'/slug/(time.strftime('%Y-%m-%dT%H%M%S')+'-'+wallet['address_key'][2:10])
             folder.mkdir(parents=True,exist_ok=bool(os.environ.get('KIRA_JOB_SNAPSHOT')))
         relative=str(folder.relative_to(ROOT))
-        atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'started_or_resumed_at':h.now(),'status':'running'})
+        atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,'started_or_resumed_at':h.now(),'status':'running'})
         event('registered',wallet=wallet['address'],tags=wallet['tags'],snapshot=str(folder.relative_to(ROOT)))
         try:
             source_check(networks,folder)
             # Initial reports cover three active mainnets; the continuation handles
-            # every configured network, exhaustive registry work and markets.
+            # every configured network, saved inventory scope and markets.
             initial_networks=[n for cid in (8453,1,81457) for n in networks if n['chain_id']==cid]
             phase_networks=initial_networks if args.phase=='baseline' else networks
             with ThreadPoolExecutor(max_workers=5) as executor:
-                discovered=list(executor.map(lambda n:discover(wallet['address'],n,folder,budget=25 if args.phase=='baseline' else 60,continue_only=bool(args.resume)),phase_networks))
+                def acquire(n):
+                    market=policy=='wallet_candidates_v1' and args.phase!='baseline'
+                    row=discover(wallet['address'],n,folder,budget=25 if args.phase=='baseline' else 45 if market else 60,continue_only=bool(args.resume))
+                    if market:row['mintclub_id0_discovery']=discover_mintclub_id0(wallet['address'],n,folder,continue_only=bool(args.resume))
+                    return row
+                discovered=list(executor.map(acquire,phase_networks))
             event('discovery',complete_chains=sum(d['complete'] for d in discovered),candidates=sum(len(d['tokens']) for d in discovered))
             known=read(ASSETS/'sources/known-tokens.json')['tokens']
             # Earlier positive identities are candidates, never reused balances.
             prior=prior_candidates(wallet)
-            atomic(folder/'scan-input.json',{'wallet':wallet['address'],'networks':phase_networks,'candidates':merge_candidates(prior,known,[t for d in discovered for t in d['tokens']])})
+            atomic(folder/'scan-input.json',{'wallet':wallet['address'],'networks':phase_networks,'inventory_policy':policy,
+                'candidates':merge_candidates([t for t in prior if t.get('token_type','ERC20')=='ERC20'],known,[t for d in discovered for t in d['tokens']]),
+                'mintclub_id0_candidates':merge_candidates([t for t in prior if t.get('token_type')=='ERC1155'],[],[t for d in discovered for t in d.get('mintclub_id0_discovery',{}).get('tokens',[])])})
             if args.phase=='baseline':
                 first=folder/'initial'
                 def first_evidence(message):
@@ -676,10 +758,10 @@ def main():
                 run_node('scan',folder/'scan-input.json',folder)
                 result=finish(wallet,folder,networks,discovered)
             publish_snapshot(wallet,folder,result)
-            atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'completed_at':h.now(),'status':result['status']})
+            atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,'completed_at':h.now(),'status':result['status']})
             event('published',snapshot=relative,counts=result['counts'],status=result['status'],viewer='http://127.0.0.1:8765')
         except Exception as error:
-            atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'failed_at':h.now(),'status':'failed','error':h.redact(str(error))})
+            atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,'failed_at':h.now(),'status':'failed','error':h.redact(str(error))})
             event('market_paused' if isinstance(error,MarketPause) else 'research_paused' if isinstance(error,ResearchPause) else 'failed',error=h.redact(str(error)),resume=str(folder.relative_to(ROOT)))
             raise SystemExit(1)
 

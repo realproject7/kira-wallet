@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const h = require('./onchain.cjs');
 const v = h.viem;
 const {quotePool}=require('./cashout-quotes.cjs');
+const {expandRoutes}=require('./cashout-routes.cjs');
 const MULTICALL = '0xcA11bde05977b3631167028862bE2a173976CA11';
 const erc20 = v.parseAbi([
   'function balanceOf(address) view returns (uint256)',
@@ -195,28 +196,66 @@ async function registry(c, n, block, {file,blockHash,maxBatches=Infinity}={}) {
     errors:state.failures.length+(state.next_index<state.count?1:0),next_index:state.next_index,
     deferred:state.next_index<state.count,pending:state.next_index<state.count||!!state.failures.length};
 }
+async function mintclubMembership(c,n,tokens,block,checkpoint,file,{maxBatches=Infinity}={}) {
+  // Typed membership is pinned to the balance checkpoint. ID0 histories never
+  // authorize arbitrary NFT reads. Failed calls remain unknown and retryable.
+  const key=t=>t.address.toLowerCase()+':'+t.token_type;
+  checkpoint.mintclub_membership=checkpoint.mintclub_membership||{};
+  checkpoint.membership_attempts=checkpoint.membership_attempts||{};
+  if(typeof checkpoint.mintclub_membership!=='object'||Array.isArray(checkpoint.mintclub_membership)
+      ||Object.entries(checkpoint.mintclub_membership).some(([identity,r])=>!/^0x[0-9a-f]{40}:ERC(20|1155)$/.test(identity)||!r||typeof r.registered!=='boolean'||r.registered&&r.decimals!==(identity.endsWith(':ERC1155')?0:18))
+      ||typeof checkpoint.membership_attempts!=='object'||Array.isArray(checkpoint.membership_attempts)
+      ||Object.values(checkpoint.membership_attempts).some(value=>!Number.isSafeInteger(value)||value<0))throw new Error('Invalid saved Mint Club membership frontier.');
+  const pending=tokens.filter(t=>!checkpoint.mintclub_membership[key(t)])
+    .sort((a,b)=>(checkpoint.membership_attempts[key(a)]||0)-(checkpoint.membership_attempts[key(b)]||0));
+  const failures=new Map();
+  for(let start=0;start<pending.length&&start/128<maxBatches;start+=128){
+    const plan=pending.slice(start,start+128);
+    const exists=await calls(c,plan.map(t=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'exists',args:[t.address]})),block);
+    const registered=plan.filter((t,i)=>exists[i].status==='success'&&exists[i].result===true);
+    const decimals=await calls(c,registered.map(t=>({address:t.address,abi:erc20,functionName:'decimals'})),block);
+    const byAddress=new Map(registered.map((t,i)=>[t.address.toLowerCase(),decimals[i]]));
+    plan.forEach((t,i)=>{
+      checkpoint.membership_attempts[key(t)]=(checkpoint.membership_attempts[key(t)]||0)+1;
+      const row=exists[i],meta=byAddress.get(t.address.toLowerCase()),expected=t.token_type==='ERC1155'?0:18;
+      if(row.status==='success'&&row.result===false)checkpoint.mintclub_membership[key(t)]={registered:false};
+      else if(row.status==='success'&&row.result===true&&meta?.status==='success'&&meta.result===expected)
+        checkpoint.mintclub_membership[key(t)]={registered:true,decimals:expected};
+      else failures.set(key(t),{status:'failure',error:row.error||meta?.error||new Error('Mint Club token standard could not be verified.')});
+    });
+    write(file,checkpoint);emitProgress(n,'mintclub_membership',Object.keys(checkpoint.mintclub_membership).length,tokens.length);
+  }
+  return tokens.map(t=>checkpoint.mintclub_membership[key(t)]?{status:'success',...checkpoint.mintclub_membership[key(t)]}:failures.get(key(t))||{status:'pending'});
+}
 async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}={}) {
   const file = path.join(output,`${baseline?'baseline-':''}chain-${n.chain_id}.json`);
+  const policy=input.inventory_policy||'full_registry',market=policy==='wallet_candidates_v1';
+  if(!['full_registry','wallet_candidates_v1'].includes(policy))throw new Error('Invalid inventory scope.');
+  if(market&&!v.isAddress(n.mintclub_bond_address))throw new Error('Mint Club bond identity required for wallet candidate scope.');
   const candidates=input.candidates.filter(t=>t.chain_id===n.chain_id).map(t=>t.address.toLowerCase()).sort();
-  const fingerprint=crypto.createHash('sha256').update(h.serialize([n.mintclub_bond_address,candidates])).digest('hex');
+  const id0Candidates=market?(input.mintclub_id0_candidates||[]).filter(t=>t.chain_id===n.chain_id):[];
+  if(id0Candidates.some(t=>!v.isAddress(t.address)||t.token_type!=='ERC1155'||String(t.token_id)!=='0'))throw new Error('Invalid Mint Club ID0 candidate.');
+  const id0Identities=[...new Set(id0Candidates.map(t=>t.address.toLowerCase()))].sort();
+  const fingerprint=crypto.createHash('sha256').update(h.serialize(market?[n.mintclub_bond_address,policy,candidates,id0Identities]:[n.mintclub_bond_address,candidates])).digest('hex');
   // A resumed run retains its fixed-block completed evidence, never wallet-independent balances.
   let previous;
   if (fs.existsSync(file)) {
     previous = JSON.parse(fs.readFileSync(file));
+    if((previous.inventory_policy||'full_registry')!==policy)throw new Error('Saved chain inventory scope mismatch. Start a new holdings analysis.');
     if (previous.wallet.toLowerCase()===input.wallet.toLowerCase() && previous.candidate_fingerprint===fingerprint && (previous.status==='complete'||baseline&&previous.phase==='baseline')) {emitChain(previous);return previous;}
   }
-  const row = {wallet:input.wallet,chain_id:n.chain_id,network:n.network,phase:baseline?'baseline':'enrichment',observed_at:stamp(),status:'unavailable',tokens:[],native_balance:null};
+  const row = {wallet:input.wallet,chain_id:n.chain_id,network:n.network,inventory_policy:policy,phase:baseline?'baseline':'enrichment',observed_at:stamp(),status:'unavailable',tokens:[],native_balance:null};
   emitProgress(n,'balances',0,null);
   let rpcClient;
   try {
     const checkpointFile=path.join(output,`${baseline?'baseline-':''}balance-checkpoint-${n.chain_id}.json`);
     let checkpoint=fs.existsSync(checkpointFile)?JSON.parse(fs.readFileSync(checkpointFile)):null;
     const resumedCheckpoint=!!checkpoint;
-    if(checkpoint&&(checkpoint.wallet!==input.wallet.toLowerCase()||checkpoint.chain_id!==n.chain_id||checkpoint.fingerprint!==fingerprint&&(!checkpoint.candidates||checkpoint.candidates.some(a=>!candidates.includes(a)))))
+    if(checkpoint&&((checkpoint.inventory_policy||'full_registry')!==policy||market&&checkpoint.bond_address!==n.mintclub_bond_address.toLowerCase()||checkpoint.wallet!==input.wallet.toLowerCase()||checkpoint.chain_id!==n.chain_id||checkpoint.fingerprint!==fingerprint&&(!checkpoint.candidates||checkpoint.candidates.some(a=>!candidates.includes(a))||(checkpoint.id0_candidates||[]).some(a=>!id0Identities.includes(a)))))
       throw new Error('Saved balance checkpoint does not match this research request. Start a new holdings analysis.');
     const c = await connect(n,c=>{rpcClient=c;}), snapshot = await h.snapshotBlock(c,checkpoint),block=snapshot.number;
     checkpoint=checkpoint||{wallet:input.wallet.toLowerCase(),chain_id:n.chain_id,block_number:block.toString(),block_hash:snapshot.hash,observed_at:stamp(),balances:{}};
-    checkpoint.fingerprint=fingerprint;checkpoint.candidates=candidates;row.candidate_fingerprint=fingerprint;
+    checkpoint.inventory_policy=policy;checkpoint.bond_address=n.mintclub_bond_address?.toLowerCase();checkpoint.fingerprint=fingerprint;checkpoint.candidates=candidates;checkpoint.id0_candidates=id0Identities;row.candidate_fingerprint=fingerprint;
     row.preferred_endpoint_index=endpointIdentity.get(c);
     row.block_number = block;
     row.block_hash = snapshot.hash;
@@ -226,7 +265,13 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
     row.native_balance=checkpoint.native_balance;row.observed_at=checkpoint.observed_at;write(checkpointFile,checkpoint);
     row.rpc_status = 'available';
     // Check discovered and built-in candidates before expensive cold registry work.
+    let id0Membership=[];
+    const id0Plan=[...new Map(id0Candidates.map(t=>[t.address.toLowerCase(),{...t,token_type:'ERC1155'}])).values()];
+    if(id0Plan.length)id0Membership=await mintclubMembership(c,n,id0Plan,block,checkpoint,checkpointFile,{maxBatches});
+    // ERC20 candidates have their own admission path. An ID0-only identity
+    // never enters this map until its bond membership and standard are verified.
     const initial=new Map(input.candidates.filter(t=>t.chain_id===n.chain_id).map(t=>[t.address.toLowerCase(),{...t,token_type:'ERC20'}]));
+    id0Plan.forEach((t,i)=>{if(id0Membership[i].status==='success'&&id0Membership[i].registered)initial.set(t.address.toLowerCase(),{...t,decimals:0,registered_mintclub:true});});
     const allCandidates=[...initial.values()];
     const initialTokens=baseline?allCandidates.slice(0,128):allCandidates;
     if(baseline){initial.clear();for(const t of initialTokens)initial.set(t.address.toLowerCase(),t);}
@@ -234,8 +279,8 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
     const firstReads=new Map(initialTokens.map((t,i)=>[t.address.toLowerCase(),initialBalances[i]]));
     let reg;
     try {
-      reg = baseline?{count:null,entries:[],errors:0,cache_reused:0}:await registry(c,n,block,{file:path.join(output,`registry-checkpoint-${n.chain_id}.json`),blockHash:snapshot.hash,maxBatches});
-      if(!baseline){checkpoint.registry=reg;write(checkpointFile,checkpoint);}
+      reg = baseline||market?{count:null,entries:[],errors:0,cache_reused:0}:await registry(c,n,block,{file:path.join(output,`registry-checkpoint-${n.chain_id}.json`),blockHash:snapshot.hash,maxBatches});
+      if(!baseline&&!market){checkpoint.registry=reg;write(checkpointFile,checkpoint);}
     } catch (e) {
       row.registry_error = h.safeError(e);
       reg = checkpoint.registry?{...checkpoint.registry,errors:Math.max(1,checkpoint.registry.errors),retained:true}:{count:null,entries:[],errors:1,cache_reused:0};
@@ -246,7 +291,7 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
       plans.set(t.address.toLowerCase(),{...plans.get(t.address.toLowerCase()),...t,registered_mintclub:true});
     }
     const tokens = [...plans.values()];
-    const remaining=tokens.filter(t=>!firstReads.has(t.address.toLowerCase())||t.token_type==='ERC1155');
+    const remaining=tokens.filter(t=>!firstReads.has(t.address.toLowerCase())||!market&&t.token_type==='ERC1155');
     if(remaining.length)emitProgress(n,'balances',0,remaining.length);
     const later=await balanceReads(c,remaining,input.wallet,block,checkpoint,checkpointFile,n,{maxBatches});
     remaining.forEach((t,i)=>firstReads.set(t.address.toLowerCase(),later[i]));
@@ -260,17 +305,29 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
       if (t.registered_mintclub) {checked++; if(t.token_type==='ERC20')erc20Checked++;else erc1155Checked++;}
       if (r.result>0n) held.push({...t,balance_raw:r.result});
     });
-    row.candidate_scan={total:allCandidates.length,deferred:allCandidates.length-initialTokens.length,checked:initialBalances.filter(r=>r.status==='success').length,complete:initialTokens.length===allCandidates.length&&initialBalances.every(r=>r.status==='success')};
-    if(baseline&&held.length){
+    row.candidate_scan={total:allCandidates.length,deferred:allCandidates.length-initialTokens.length,checked:initialBalances.filter(r=>r.status==='success').length,
+      complete:initialTokens.length===allCandidates.length&&initialBalances.every(r=>r.status==='success')&&id0Membership.every(r=>r.status==='success')};
+    let heldMembership=[];
+    if(market&&held.length){
+      heldMembership=await mintclubMembership(c,n,held,block,checkpoint,checkpointFile,{maxBatches});
+      held.forEach((t,i)=>{const membership=heldMembership[i];t.registered_mintclub=membership.status==='success'&&membership.registered;
+        if(membership.status!=='success')t.mintclub_membership_unknown=true;});
+    }else if(baseline&&held.length){
       const exists=await batches(c,held.map(t=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'exists',args:[t.address]})),block);
       held.forEach((t,i)=>{t.registered_mintclub=exists[i].status==='success'&&exists[i].result===true;});
     }
     const balancesPending=initialBalances.some(r=>r.status==='pending'||r.deferred)||balances.some(r=>r.status==='pending'||r.deferred);
-    const workPending=!!reg.pending||balancesPending,deferDetails=!!reg.deferred||balancesPending;
+    const membershipPending=[...id0Membership,...heldMembership].some(r=>r.status!=='success');
+    const workPending=!!reg.pending||balancesPending||membershipPending,deferDetails=!!reg.deferred||balancesPending;
+    if(market)row.mintclub_membership_scan={id0_candidates:id0Plan.length,id0_registered:id0Membership.filter(r=>r.status==='success'&&r.registered).length,
+      id0_outside_scope:id0Membership.filter(r=>r.status==='success'&&!r.registered).length,
+      id0_unknown:id0Membership.filter(r=>r.status!=='success').length,held_unknown:heldMembership.filter(r=>r.status!=='success').length,
+      block_number:block,block_hash:snapshot.hash,complete:!membershipPending,source:'Pinned bond exists(address) and registered token decimals; ERC1155 ID0 only.'};
     row.research_pending=workPending;
     row.work_progress={registry_entries:reg.entries.filter(t=>t.address&&!t.error).length,registry_scheduled:reg.next_index||0,
       balances:Object.keys(checkpoint.balances).length,balance_attempted:Object.keys(checkpoint.balance_attempts).length,
-      zero_attempted:Object.keys(checkpoint.zero_attempts).length};
+      zero_attempted:Object.keys(checkpoint.zero_attempts).length,membership_checked:Object.keys(checkpoint.mintclub_membership||{}).length,
+      membership_attempted:Object.keys(checkpoint.membership_attempts||{}).length};
     const metadata=deferDetails?held.flatMap(()=>Array.from({length:3},()=>({status:'pending'}))):await batches(c,held.flatMap(t=>['decimals','symbol','name'].map(functionName=>({address:t.address,abi:erc20,functionName}))),block,128,(checked,total)=>emitProgress(n,'metadata',checked,total));
     const curves=held.filter(t=>t.registered_mintclub);
     const details=deferDetails?curves.map(()=>({status:'pending'})):await batches(c,curves.map(t=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getDetail',args:[t.address]})),block,128,(checked)=>emitProgress(n,'curves',checked,curves.length*2));
@@ -278,8 +335,8 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
     const curveRows=new Map(curves.map((t,i)=>[t.address.toLowerCase(),{detail:details[i],refund:refunds[i]}]));
     row.registry_scan = {registry_count:reg.count,registry_errors:reg.errors,checked,erc20_checked:erc20Checked,erc1155_checked:erc1155Checked,
       cache_reused:reg.cache_reused,balance_errors:errors.filter(t=>t.registered_mintclub).length,
-      positive_balances:held.filter(t=>t.registered_mintclub).length,block_number:block,complete:!baseline && reg.errors===0 && checked===reg.count,phase:baseline||workPending?'deferred':'checked',enumerated:reg.entries.filter(t=>t.address&&!t.error).length,next_index:reg.next_index??null,
-      source:'On-chain Mint Club bond tokenCount()/tokens(index), then direct wallet balance calls',bond_address:n.mintclub_bond_address};
+      positive_balances:held.filter(t=>t.registered_mintclub).length,block_number:block,complete:!baseline && !market && reg.errors===0 && checked===reg.count,phase:market?'not_requested':baseline||workPending?'deferred':'checked',enumerated:reg.entries.filter(t=>t.address&&!t.error).length,next_index:reg.next_index??null,
+      source:market?'Wallet-history candidates; full registry enumeration not requested.':'On-chain Mint Club bond tokenCount()/tokens(index), then direct wallet balance calls',bond_address:n.mintclub_bond_address};
     row.registry_scan.error_examples=reg.entries.filter(t=>t.error||!t.address).slice(0,5).map(t=>({index:t.index,error:t.error||{message:'Registry address unavailable'}}));
     row.balance_errors = errors;
     row.zero_verification=checkpoint.zero_checks||{};
@@ -292,6 +349,7 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
       item.symbol = meta[1].status==='success'?meta[1].result:t.symbol||t.address.slice(0,10);
       item.name = meta[2].status==='success'?meta[2].result:t.name||item.symbol;
       item.wallet_balance = Number.isInteger(item.decimals)?v.formatUnits(t.balance_raw,item.decimals):null;
+      if(t.mintclub_membership_unknown)item.mintclub_membership_status='unknown';
       if (item.wallet_balance===null) item.metadata_error = 'Token decimals unavailable; quantity remains unknown.';
       if(deferDetails)item.metadata_pending=true;
       if (t.registered_mintclub&&deferDetails)item.mintclub_pending=true;
@@ -314,6 +372,7 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
       row.tokens.push(item);
     }
     row.status = !workPending && row.registry_scan.complete && errors.length===0?'complete':'partial';
+    if(market)row.candidate_scan.completion_scope='Recorded wallet candidates only. Exhaustive inventory and qualifying cash-out assets remain unproven.';
   } catch(e) {row.error=h.safeError(e);}
   // A failed reread must not erase successful observations from this same
   // research folder. Preserve their original blocks and timestamps, including
@@ -365,10 +424,10 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000}={})
   const pinned=tokens.find(t=>t.balance_block_hash&&t.balance_block_number!=null);
   const holdingBlock=pinned?{block_number:String(pinned.balance_block_number),block_hash:pinned.balance_block_hash}:null;
   const client=await boundedMarket(connect(n),deadline),snapshot=await boundedMarket(h.snapshotBlock(client,cache||holdingBlock),deadline),block=snapshot.number;
-  cache=cache||{wallet:wallet.toLowerCase(),chain_id:n.chain_id,fingerprint,block_number:block.toString(),block_hash:snapshot.hash,requests:{},completed_pools:[],tokens:cacheEncode(tokens),quote_schema_version:1};
+  cache=cache||{wallet:wallet.toLowerCase(),chain_id:n.chain_id,fingerprint,block_number:block.toString(),block_hash:snapshot.hash,requests:{},completed_pools:[],tokens:cacheEncode(tokens),quote_schema_version:2};
   // Legacy completed pool checks predate amount-specific quotes. Preserve their
   // cached reads and fixed block, but revisit the pools to record quote status.
-  if(cache.quote_schema_version!==1){cache.completed_pools=[];cache.quote_schema_version=1;}
+  if(cache.quote_schema_version!==2){cache.completed_pools=[];cache.quote_schema_version=2;}
   const saved=cacheDecode(cache.tokens);
   for(const token of tokens){
     const previous=saved.find(t=>identity(t)===identity(token));
@@ -513,6 +572,84 @@ async function reserveChain(n,input,outputPath,deadline=Date.now()+180_000) {
   }catch(e){if(e.code==='market_budget'){save();return {tokens:rows,market_pending:true};}rows.push({chain_id:n.chain_id,error:h.safeError(e)});}
   return {tokens:rows,market_pending:false};
 }
+let nextRouteDiscovery=0;
+async function routePools(chain,address,deadline) {
+  if(!chain)return {pools:[],unknown:'DEX discovery does not admit this network.'};
+  const wait=Math.max(0,nextRouteDiscovery-Date.now());nextRouteDiscovery=Math.max(Date.now(),nextRouteDiscovery)+300;
+  if(wait)await boundedMarket(new Promise(resolve=>setTimeout(resolve,wait)),deadline);
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),Math.min(8000,Math.max(1,deadline-Date.now())));
+  try{
+    const response=await boundedMarket(fetch(`https://api.dexscreener.com/token-pairs/v1/${encodeURIComponent(chain)}/${address}`,{signal:controller.signal}),deadline);
+    if(!response.ok)return {pools:[],unknown:'DEX route discovery unavailable or rate limited.'};
+    const reader=response.body.getReader();let size=0,chunks=[];
+    for(;;){const row=await boundedMarket(reader.read(),deadline);if(row.done)break;size+=row.value.length;if(size>2_000_000){await reader.cancel();return {pools:[],unknown:'DEX route discovery response exceeded the recorded bound.'};}chunks.push(Buffer.from(row.value));}
+    const body=JSON.parse(Buffer.concat(chunks).toString());
+    if(!Array.isArray(body))return {pools:[],unknown:'DEX route discovery shape unavailable.'};
+    const observed=stamp();
+    return {pools:body.filter(p=>p.chainId===chain&&typeof p.pairAddress==='string'&&[p.baseToken,p.quoteToken].some(t=>t?.address?.toLowerCase()===address.toLowerCase()))
+      .map(p=>({pool:p.pairAddress,venue:p.dexId,version_labels:Array.isArray(p.labels)?p.labels:[],paired_tokens:[p.baseToken,p.quoteToken],
+        reported_liquidity:p.liquidity,reported_price_usd:p.priceUsd,source_url:p.url,observed_at:observed})),unknown:null};
+  }catch(error){if(error.code==='market_budget')throw error;return {pools:[],unknown:'DEX route discovery failed; unindexed paths remain unknown.'};}
+  finally{clearTimeout(timeout);controller.abort();}
+}
+async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) {
+  const tokens=input.tokens.filter(t=>t.chain_id===n.chain_id),file=path.join(path.dirname(outputPath),`cashout-checkpoint-${n.chain_id}.json`);
+  if(n.environment!=='mainnet')return {tokens,market_pending:false};
+  let cache=fs.existsSync(file)?JSON.parse(fs.readFileSync(file)):null;
+  const save=()=>{if(cache)write(file,cache);};
+  try{
+    const pinned=tokens.find(t=>t.balance_block_hash&&t.balance_block_number!=null);
+    if(!pinned)throw new Error('Pinned holding unavailable for liquidation paths.');
+    if(cache&&(cache.schema_version!==1||cache.wallet!==input.wallet.toLowerCase()||cache.chain_id!==n.chain_id||cache.bond!==n.mintclub_bond_address.toLowerCase()
+        ||cache.block_number!==String(pinned.balance_block_number)||cache.block_hash!==pinned.balance_block_hash))throw new Error('Liquidation checkpoint does not match this request.');
+    const client=await boundedMarket(connect(n),deadline),snapshot=await boundedMarket(h.snapshotBlock(client,cache||{block_number:String(pinned.balance_block_number),block_hash:pinned.balance_block_hash}),deadline),block=snapshot.number;
+    cache=cache||{schema_version:1,wallet:input.wallet.toLowerCase(),chain_id:n.chain_id,bond:n.mintclub_bond_address.toLowerCase(),block_number:block.toString(),block_hash:snapshot.hash,requests:{},asset_pools:{},nodes:{}};save();
+    const read=async args=>{
+      const query={...args,blockNumber:block},key=crypto.createHash('sha256').update(h.serialize(query)).digest('hex');
+      if(cache.requests[key]!==undefined)return cacheDecode(cache.requests[key]);
+      const value=await boundedMarket(client.readContract(query),deadline);cache.requests[key]=cacheEncode(value);save();return value;
+    };
+    const quoteAsset=async(address,amount)=>{
+      const quotes=[];
+      try{
+        const exists=await read({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'exists',args:[address]});
+        if(exists===true){
+          const detail=await read({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getDetail',args:[address]}),info=detail.info;
+          const refund=await read({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getRefundForTokens',args:[address,amount]});
+          quotes.push({status:'quoted',kind:'mintclub_burn',input_address:address,input_amount_raw:amount.toString(),holding_amount_raw:amount.toString(),
+            output_address:info.reserveToken,output_amount_raw:refund[0].toString(),output_amount:v.formatUnits(refund[0],info.reserveDecimals),output_decimals:info.reserveDecimals,
+            block_number:block.toString(),block_hash:snapshot.hash,observed_at:stamp(),funded:info.reserveBalance>0n,reserve_balance_raw:info.reserveBalance.toString(),royalty_raw:refund[1].toString(),
+            route_fees_included:true,price_impact_included:true,gas_included:false,execution_verified:false,transfer_tax_included:false,source_url:`https://mint.club/token/${n.network}/${address}`});
+        }else if(exists!==false)quotes.push({status:'unknown',reason:'Mint Club membership unavailable.'});
+      }catch(error){if(error.code==='market_budget')throw error;quotes.push({status:'unknown',reason:'Amount-specific Mint Club redemption unavailable.'});}
+      const key=address.toLowerCase();
+      if(!cache.asset_pools[key]){cache.asset_pools[key]=await routePools(input.market_chain_names?.[n.chain_id],address,deadline);save();}
+      const catalog=cache.asset_pools[key];
+      if(catalog.unknown)quotes.push({status:'unknown',reason:catalog.unknown});
+      const shadow={chain_id:n.chain_id,token_address:address,token_type:'ERC20',wallet_balance_raw:amount,
+        balance_block_number:block,balance_block_hash:snapshot.hash,quantity_basis:'Prior amount-specific route output, not an observed wallet holding.',dex_pools:structuredClone(catalog.pools)};
+      const identity=crypto.createHash('sha256').update(h.serialize([address.toLowerCase(),amount])).digest('hex');
+      const [verified]=await dexChain(n,[shadow],{file:path.join(path.dirname(outputPath),`route-market-checkpoint-${n.chain_id}-${identity}.json`),wallet:input.wallet,deadline});
+      if(verified.market_pending)throw new MarketBudget();
+      for(const pool of verified.dex_pools)quotes.push(pool.cashout_quote||{status:'unknown',reason:'Pool adapter or quote unavailable.'});
+      return quotes;
+    };
+    for(const token of tokens){
+      const key=token.token_address.toLowerCase()+':'+token.token_type;
+      const state=await expandRoutes(token,quoteAsset,{state:cache.nodes[key],save:state=>{cache.nodes[key]=state;save();}});
+      token.liquidation_routes=state.routes;token.liquidation_unknown_routes=state.unknown;delete token.cashout_pending;
+      emitProgress(n,'cashout_routes',Object.values(cache.nodes).filter(node=>!node.pending.length).length,tokens.length);
+    }
+    return {tokens,market_pending:false};
+  }catch(error){
+    const pending=error.code==='market_budget';
+    for(const token of tokens){const state=cache?.nodes[token.token_address.toLowerCase()+':'+token.token_type];
+      token.liquidation_routes=state?.routes||[];token.liquidation_unknown_routes=state?.unknown||[];
+      if(pending&&(!state||state.pending.length))token.cashout_pending=true;
+      if(!pending)token.liquidation_unknown_routes.push('Liquidation path reads unavailable or checkpoint mismatch.');}
+    if(pending)save();return {tokens,market_pending:pending};
+  }
+}
 async function scanNetworks(input,output,baseline=false,{maxBatches=4,scan=scanChain}={}) {
   const results=new Map(),lastProgress=new Map(),stalls=new Map();
   let queue=input.networks;
@@ -548,6 +685,12 @@ async function main() {
     write(outputPath,{wallet:input.wallet,observed_at:stamp(),tokens,market_pending:pending});
     // End outstanding timed-out HTTP handles after the durable result is saved.
     if(pending)process.exit(0);
+  }else if(mode==='liquidate') {
+    const deadline=Date.now()+Math.min(180_000,Math.max(0,input.market_budget_ms??180_000));
+    const rows=await parallel(input.networks.filter(n=>input.tokens.some(t=>t.chain_id===n.chain_id)),2,n=>liquidationChain(n,input,outputPath,deadline));
+    const pending=rows.some(row=>row.market_pending);
+    write(outputPath,{wallet:input.wallet,observed_at:stamp(),tokens:rows.flatMap(row=>row.tokens),market_pending:pending});
+    if(pending)process.exit(0);
   }else if(mode==='reserves') {
     const deadline=Date.now()+Math.min(180_000,Math.max(0,input.market_budget_ms??180_000));
     const result=await parallel(input.networks.filter(n=>input.tokens.some(t=>t.chain_id===n.chain_id&&t.mintclub)),2,n=>reserveChain(n,input,outputPath,deadline));
@@ -557,4 +700,4 @@ async function main() {
   }else throw new Error('Expected scan or dex mode');
 }
 if(require.main===module)main().catch(e=>{console.error(h.serialize(h.safeError(e)));process.exitCode=1;});
-module.exports={scanNetworks,parallel,calls,registry,connect,scanChain,batches,balanceReads,dexChain,reserveChain,boundedMarket,MarketBudget};
+module.exports={scanNetworks,parallel,calls,registry,connect,scanChain,batches,balanceReads,mintclubMembership,dexChain,reserveChain,liquidationChain,routePools,boundedMarket,MarketBudget};

@@ -59,7 +59,8 @@ async function quotePool(client,network,token,pool,block,blockHash,deployments) 
     if(result===null){failures++;continue;}
     if(result>0n)return {status:'quoted',kind,input_amount_raw:amount.toString(),input_amount_is_maximum:kind==='uniswap_v3_quoter',
       holding_amount_raw:balance.toString(),output_amount_raw:result.toString(),output_amount:formatUnits(result,measured.quote_decimals),
-      output_address:output.toLowerCase(),output_symbol:measured.quote_symbol,block_number:String(block),block_hash:blockHash,
+      input_address:token.token_address.toLowerCase(),pool:pool.pool,output_address:output.toLowerCase(),output_symbol:measured.quote_symbol,
+      output_decimals:measured.quote_decimals,block_number:String(block),block_hash:blockHash,
       observed_at:new Date().toISOString(),route_fees_included:true,price_impact_included:true,gas_included:false,
       execution_verified:false,transfer_tax_included:false,partial_input:amount<balance,source_url:pool.source_url};
   }

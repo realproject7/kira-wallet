@@ -84,5 +84,24 @@ class CashoutTests(unittest.TestCase):
         snapshot['coverage']=[];annotate(snapshot,self.market)
         self.assertEqual(self.token['cashout_eligibility']['status'],'outside_usd_scope')
 
+    def test_nested_cashout_requires_every_amount_pin_fee_and_funded_leg(self):
+        reserve='0x'+'2'*40
+        def leg(input,output,amount,out,decimals=0):
+            return {'status':'quoted','kind':'mintclub_burn','input_address':input,'input_amount_raw':amount,'holding_amount_raw':'200' if input==reserve else '100',
+                    'output_address':output,'output_amount_raw':out,'output_decimals':decimals,
+                    'output_amount':'1' if decimals==6 else out,'block_number':'7','block_hash':HASH,
+                    'observed_at':'2026-10-13T06:00:00Z','funded':True,'reserve_balance_raw':'9999999',
+                    'route_fees_included':True,'price_impact_included':True,'gas_included':False}
+        path={**self.quote,'kind':'liquidation_path','output_amount_raw':'1000000','output_decimals':6,
+              'legs':[leg(TOKEN,reserve,'100','200'),leg(reserve,OUTPUT,'150','1000000',6)]}
+        self.token['dex_pools']=[];self.token['liquidation_routes']=[path]
+        self.assertEqual(classify(self.token,self.market)['status'],'quoted_at_least_1_usd')
+        for field,value in [('input_amount_raw','201'),('input_address',TOKEN),('funded',False),('block_hash','0x'+'b'*64),
+                            ('output_amount','2'),('reserve_balance_raw','999999'),('route_fees_included',False)]:
+            token=deepcopy(self.token);token['liquidation_routes'][0]['legs'][1][field]=value
+            with self.subTest(field=field):self.assertEqual(classify(token,self.market)['status'],'unknown')
+        self.token['liquidation_routes'][0]['output_amount_raw']='999999'
+        self.assertEqual(classify(self.token,self.market)['status'],'unknown')
+
 
 if __name__=='__main__':unittest.main()
