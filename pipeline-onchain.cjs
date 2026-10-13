@@ -92,7 +92,15 @@ async function batches(c, contracts, block, size=128, progress=null) {
 async function balanceReads(c,tokens,wallet,block,checkpoint,file,n,{maxBatches=Infinity}={}) {
   checkpoint.balance_times=checkpoint.balance_times||{};
   const key=t=>t.address.toLowerCase()+':'+t.token_type;
-  const pending=tokens.filter(t=>checkpoint.balances[key(t)]===undefined||t.token_type==='ERC20'&&t.suspicious_zero_check&&checkpoint.balances[key(t)]==='0'&&checkpoint.zero_checks?.[key(t)]?.outcome!=='agreed');
+  for(const field of ['balance_attempts','zero_attempts']) {
+    checkpoint[field]=checkpoint[field]||{};
+    if(typeof checkpoint[field]!=='object'||Array.isArray(checkpoint[field])||Object.values(checkpoint[field]).some(n=>!Number.isSafeInteger(n)||n<0))throw new Error('Invalid saved balance attempt frontier.');
+  }
+  // Prefer never-read identities, then rotate retry holes. Verification has
+  // its own frontier so eight failing suspicious zeros cannot block the rest.
+  const pending=tokens.filter(t=>checkpoint.balances[key(t)]===undefined||t.token_type==='ERC20'&&t.suspicious_zero_check&&checkpoint.balances[key(t)]==='0'&&checkpoint.zero_checks?.[key(t)]?.outcome!=='agreed')
+    .sort((a,b)=>(checkpoint.balance_attempts[key(a)]||0)-(checkpoint.balance_attempts[key(b)]||0)
+      ||(checkpoint.zero_attempts[key(a)]||0)-(checkpoint.zero_attempts[key(b)]||0));
   for(const token of pending){delete checkpoint.balances[key(token)];delete checkpoint.balance_times[key(token)];}
   let checked=tokens.length-pending.length;
   emitProgress(n,'balances',checked,tokens.length);
@@ -105,11 +113,13 @@ async function balanceReads(c,tokens,wallet,block,checkpoint,file,n,{maxBatches=
     const plan=pending.slice(start,start+128);
     const rows=await calls(c,plan.map(t=>({address:t.address,abi:t.token_type==='ERC1155'?erc1155:erc20,
       functionName:'balanceOf',args:t.token_type==='ERC1155'?[wallet,0n]:[wallet]})),block);
+    for(const token of plan)checkpoint.balance_attempts[key(token)]=(checkpoint.balance_attempts[key(token)]||0)+1;
     for(let i=0;i<plan.length;i++){
       const token=plan[i],r=rows[i];
       if(r.status!=='success'||r.result!==0n||!token.suspicious_zero_check||token.token_type!=='ERC20')continue;
       if(verified>=8){rows[i]={status:'failure',deferred:true,error:new Error('Targeted zero verification budget reached. Balance remains unknown.')};continue;}
       verified++;
+      checkpoint.zero_attempts[key(token)]=(checkpoint.zero_attempts[key(token)]||0)+1;
       try{
         const query={address:token.address,abi:erc20,functionName:'balanceOf',args:[wallet],blockNumber:block};
         const verifier=h.verificationClient(c)||c;
@@ -257,7 +267,9 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
     const balancesPending=initialBalances.some(r=>r.status==='pending'||r.deferred)||balances.some(r=>r.status==='pending'||r.deferred);
     const workPending=!!reg.pending||balancesPending,deferDetails=!!reg.deferred||balancesPending;
     row.research_pending=workPending;
-    row.work_progress={registry_entries:reg.entries.filter(t=>t.address&&!t.error).length,balances:Object.keys(checkpoint.balances).length};
+    row.work_progress={registry_entries:reg.entries.filter(t=>t.address&&!t.error).length,registry_scheduled:reg.next_index||0,
+      balances:Object.keys(checkpoint.balances).length,balance_attempted:Object.keys(checkpoint.balance_attempts).length,
+      zero_attempted:Object.keys(checkpoint.zero_attempts).length};
     const metadata=deferDetails?held.flatMap(()=>Array.from({length:3},()=>({status:'pending'}))):await batches(c,held.flatMap(t=>['decimals','symbol','name'].map(functionName=>({address:t.address,abi:erc20,functionName}))),block,128,(checked,total)=>emitProgress(n,'metadata',checked,total));
     const curves=held.filter(t=>t.registered_mintclub);
     const details=deferDetails?curves.map(()=>({status:'pending'})):await batches(c,curves.map(t=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getDetail',args:[t.address]})),block,128,(checked)=>emitProgress(n,'curves',checked,curves.length*2));
@@ -312,7 +324,7 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
     if(retained.length||row.native_balance===null&&previous.native_balance!==null){
       row.tokens.push(...retained.map(t=>({...t,balance_evidence_retained:true})));
       row.retained_balance_observations=retained.length;
-      if(row.native_balance===null){row.native_balance=previous.native_balance;row.native_balance_evidence_retained=true;}
+      if(row.native_balance===null){row.native_balance=previous.native_balance;row.observed_at=previous.observed_at;row.native_balance_evidence_retained=true;}
       row.status='partial';row.block_number??=previous.block_number;row.block_hash??=previous.block_hash;
     }
   }

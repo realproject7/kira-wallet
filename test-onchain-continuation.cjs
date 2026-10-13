@@ -2,7 +2,7 @@
 // Bounded work, durable holes and chain scheduling. No live provider calls.
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-const h=require('./onchain.cjs'),{registry,balanceReads,scanNetworks}=require('./pipeline-onchain.cjs');
+const h=require('./onchain.cjs'),{registry,balanceReads,scanChain,scanNetworks}=require('./pipeline-onchain.cjs');
 const HASH='0x'+'a'.repeat(64),WALLET='0x'+'1'.repeat(40);
 const address=i=>'0x'+(i+100).toString(16).padStart(40,'0');
 
@@ -70,4 +70,55 @@ test('all chains receive a slice before a large chain resumes and unchanged work
   }});
   assert.equal(stalledCalls,4);assert.equal(stalled[0].continuation_stalled,true);assert.equal(stalled[0].status,'partial');
  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('persistent failed batches cannot starve unread balances before no-progress detection',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-balance-frontier-'));
+ const originals={root:h.root,endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock};
+ try{
+  const candidates=Array.from({length:2049},(_,i)=>({chain_id:999,address:address(i)})),seen=new Set();
+  h.root=root;h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:7n,hash:HASH});
+  h.client=()=>({getChainId:async()=>999,getBalance:async()=>0n,readContract:async()=>0n,
+   multicall:async({contracts})=>contracts.map(c=>{
+    if(c.functionName==='balanceOf'){
+     seen.add(c.address);return c.address===address(2048)?{status:'success',result:9n}:{status:'failure',error:new Error('synthetic persistent revert')};
+    }
+    return {status:'success',result:c.functionName==='decimals'?18:'TEST'};
+   })});
+  const [row]=await scanNetworks({wallet:WALLET,candidates,networks:[{chain_id:999,mintclub_bond_address:address(9999)}]},root);
+  assert.equal(seen.size,2049);assert.equal(row.tokens.find(t=>t.token_address===address(2048)).wallet_balance_raw,9n);
+  assert.equal(row.continuation_stalled,true);assert.equal(row.work_progress.balance_attempted,2049);
+  assert.equal(row.candidate_scan.complete,false);assert.equal(row.status,'partial');
+ }finally{Object.assign(h,originals);fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('suspicious-zero retry holes rotate after restart without blocking later evidence',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-zero-frontier-'));
+ const originals={peerClient:h.peerClient,snapshotBlock:h.snapshotBlock};
+ try{
+  const tokens=Array.from({length:9},(_,i)=>({address:address(i),token_type:'ERC20',suspicious_zero_check:true}));
+  const file=path.join(root,'balances.json'),seen=[];
+  const client={multicall:async({contracts})=>contracts.map(()=>({status:'success',result:0n})),
+   readContract:async query=>{seen.push(query.address);if(query.address!==address(8))throw new Error('synthetic verification failure');return 9n;}};
+  h.peerClient=()=>({readContract:async()=>9n});h.snapshotBlock=async()=>({number:7n,hash:HASH});
+  await balanceReads(client,tokens,WALLET,7n,{balances:{},block_hash:HASH},file,{chain_id:999});
+  assert.equal(seen.length,8);assert(!seen.includes(address(8)));
+  const checkpoint=JSON.parse(fs.readFileSync(file));
+  const rows=await balanceReads(client,tokens,WALLET,7n,checkpoint,file,{chain_id:999});
+  assert.equal(rows[8].status,'success');assert.equal(rows[8].result,9n);assert.equal(seen[8],address(8));
+  assert.equal(Object.keys(checkpoint.zero_attempts).length,9);assert.equal(rows.filter(r=>r.status==='failure').length,8);
+ }finally{Object.assign(h,originals);fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('retained native balances preserve their original observation time after RPC failure',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-native-retention-'));
+ const originals={endpoints:h.endpoints,client:h.client};
+ try{
+  const observed='2020-01-01T00:00:00.000Z';
+  fs.writeFileSync(path.join(root,'chain-999.json'),JSON.stringify({wallet:WALLET,chain_id:999,status:'partial',tokens:[],native_balance:'1',block_number:'7',block_hash:HASH,observed_at:observed}));
+  h.endpoints=()=>['synthetic'];h.client=()=>({getChainId:async()=>{throw new Error('synthetic RPC outage');}});
+  const row=await scanChain({wallet:WALLET,candidates:[{chain_id:999,address:address(1)}]},{chain_id:999,mintclub_bond_address:address(999)},root);
+  assert.equal(row.native_balance,'1');assert.equal(row.observed_at,observed);assert.equal(row.block_number,'7');
+  assert.equal(row.native_balance_evidence_retained,true);assert.equal(row.status,'partial');
+ }finally{Object.assign(h,originals);fs.rmSync(root,{recursive:true,force:true});}
 });
