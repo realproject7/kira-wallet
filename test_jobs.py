@@ -37,6 +37,59 @@ class JobFixtures:
         atomic(self.root/job['checkpoint']/'run.json',{'wallet_address':ADDRESS,**({'completed_at':'now'} if completed_manifest else {'status':'running'})})
         registry=json.loads((self.root/'wallets.json').read_text());registry['wallets'][0]['latest_snapshot']={'directory':job['checkpoint']};atomic(self.root/'wallets.json',registry)
 class JobsTest(JobFixtures, unittest.TestCase):
+    def test_automatic_continuation_preserves_backoff_and_stops_unchanged_work(self):
+        job=self.running();job['analysis_phase']='enrichment'
+        checkpoint=self.root/job['checkpoint']/'continuation.json'
+        atomic(checkpoint,{'fingerprint':'a'*64,'not_before':1120})
+        error=JobError('research_pending','Saved range boundary')
+        with patch('kira_jobs.time.time',return_value=1000):
+            self.store.queue_continuation(job,error);self.store.save(job)
+            saved=self.store.get(job['job_id'])
+            self.assertEqual(saved['state'],'queued');self.assertEqual(saved['stage'],'waiting')
+            self.assertEqual(saved['continuation']['not_before'],1120)
+            for expected in range(1,4):
+                self.store.queue_continuation(saved,error)
+                self.assertEqual(saved['continuation']['unchanged_turns'],expected)
+        self.assertEqual(saved['state'],'interrupted');self.assertEqual(saved['errors'][0]['code'],'no_progress')
+        self.store.save(saved)
+        resumed=self.store.submit(self.request('job.resume',{'job_id':job['job_id']},'explicit-retry'))
+        self.assertEqual(resumed['state'],'queued');self.assertNotIn('continuation',resumed)
+        atomic(checkpoint,{'fingerprint':'b'*64,'not_before':0})
+        self.store.queue_continuation(resumed,error)
+        self.assertEqual(resumed['continuation']['unchanged_turns'],0)
+        checkpoint.write_text('{broken')
+        self.store.queue_continuation(resumed,error)
+        self.assertEqual(resumed['state'],'interrupted');self.assertEqual(resumed['errors'][0]['code'],'invalid_envelope')
+
+    def test_cancel_racing_a_normal_slice_does_not_resurrect_the_job(self):
+        job=self.store.submit(self.request(),phase='enrichment')
+        atomic(self.root/job['checkpoint']/'continuation.json',{'fingerprint':'a'*64,'not_before':0})
+        calls=[]
+        def paused(*args):
+            calls.append(1)
+            self.store.submit(self.request('job.cancel',{'job_id':job['job_id']},'cancel-boundary'))
+            raise JobError('market_budget','Synthetic normal boundary')
+        with patch.object(self.store,'execute',side_effect=paused):self.store.worker()
+        self.assertEqual(len(calls),1);self.assertEqual(self.store.get(job['job_id'])['state'],'cancelled')
+
+    def test_waiting_work_releases_writer_and_allows_short_jobs_then_cancellation(self):
+        import time
+        delayed=self.store.submit(self.request(),phase='enrichment')
+        delayed['continuation']={'fingerprint':'a'*64,'not_before':int(time.time())+120,'unchanged_turns':0}
+        self.store.save(delayed)
+        short=self.store.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Changed']},'short-job'))
+        executed=[]
+        original=self.store.execute
+        def execute(job,*args):
+            executed.append(job['job_id']);return original(job,*args)
+        def waiting(_):
+            # The worker waits outside its writer and envelope locks.
+            import fcntl
+            with (self.root/'.analysis.lock').open('a') as writer:fcntl.flock(writer,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            self.store.submit(self.request('job.cancel',{'job_id':delayed['job_id']},'cancel-wait'))
+        with patch.object(self.store,'execute',side_effect=execute),patch('kira_jobs.time.sleep',side_effect=waiting):self.store.worker()
+        self.assertEqual(executed,[short['job_id']]);self.assertEqual(self.store.get(delayed['job_id'])['state'],'cancelled')
+
     def test_exited_process_group_permission_requires_no_live_writer(self):
         from kira_jobs import signal_process_group
         import signal

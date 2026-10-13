@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 import os
+import shlex
 from pathlib import Path
 import tempfile
 import sys
@@ -24,6 +25,24 @@ class ConfigurationTests(unittest.TestCase):
         for provider in ('none','alchemy'):
             with contextlib.redirect_stdout(io.StringIO()),patch.object(sys,'argv',['kira','discovery',provider]):self.assertEqual(kira_cli.main(),0)
             self.assertFalse(config.load_config()['discovery']['public'])
+
+    def test_import_guide_selects_the_saved_reference_through_the_cli(self):
+        for key_env in ('ALCHEMY_API_KEY','ALCHEMY_CUSTOM_APY_KEY'):
+            cfg=config.default_config();cfg['discovery'].update(provider='alchemy',key_env=key_env)
+            self.save(cfg)
+            status=config.public_status()
+            self.assertFalse(status['discovery_key_available'])
+            self.assertIn('--key-env '+key_env,status['guide'])
+            secret_file=self.root/'fixture.env';secret_file.write_text(key_env+'=synthetic-guide-fixture\n')
+            command=shlex.split(status['import_command'])
+            command[command.index('PATH')]=str(secret_file)
+            with contextlib.redirect_stdout(io.StringIO()),patch.object(sys,'argv',command):
+                self.assertEqual(kira_cli.main(),0)
+            actual=config.public_status()
+            self.assertEqual(actual['key_env'],key_env)
+            self.assertTrue(actual['discovery_key_available'])
+            self.assertNotIn('synthetic-guide-fixture',json.dumps(actual))
+            self.assertNotIn(str(secret_file),json.dumps(actual))
 
     def test_public_without_secrets_has_incomplete_discovery(self):
         self.assertEqual(config.endpoints(self.network),['https://public.example']);self.assertFalse(config.secret_values())

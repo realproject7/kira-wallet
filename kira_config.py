@@ -62,11 +62,13 @@ def public_status(root=None):
     except ValueError:return {'status':'unavailable','note':'Review local data connection settings.'}
     rpc=cfg['rpc'];discovery=cfg['discovery']
     public=rpc['mode']=='public' or rpc['allow_public_fallback']
+    import_command=f"kira config import-env --file PATH --key-env {discovery['key_env']}"
     return {'status':'configured','rpc_mode':rpc['mode'],'read_order':rpc.get('priority','public_first') if public else 'custom_only',
             'custom_chain_count':len(rpc['chains']) if rpc['mode']=='custom' else 0,
             'discovery_provider':discovery['provider'],'discovery_key_available':discovery['provider']=='alchemy' and available,
             'key_env':discovery['key_env'],'public_discovery':public and discovery.get('public',True),
-            'guide':'Workspace settings > Manage data connection > Alchemy. Add the key to a private local environment file, then run kira config import-env --file PATH. In the browser enter only the environment variable name, check availability and save. Refresh holdings to test API access. Never enter or request a key in chat.',
+            'import_command':import_command,
+            'guide':f'Workspace settings > Manage data connection > Alchemy. Add the key to a private local environment file, then run {import_command}. In the browser enter only the environment variable name, check availability and save. A saved reference does not establish that the key is available or that API access works. Refresh holdings to test API access. Never enter or request a key in chat.',
             'keyless_providers':['etherscan_keyless','routescan'], 'complete_inventory_guaranteed':False}
 
 def secret_values(cfg=None):

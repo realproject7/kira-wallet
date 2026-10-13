@@ -99,6 +99,33 @@ const seed=()=>{fs.mkdirSync(path.dirname(cacheFile),{recursive:true});fs.writeF
     assert.equal(more.tokens[0].balance_observed_at,observed);
   } finally {h.endpoints=originalEndpoints;h.client=originalClient;h.snapshotBlock=originalSnapshot;}
   const balanceFile=path.join(root,'balance-prefix.json'),checkpoint={balances:{}};
+  try {
+    let unavailable=false;
+    h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:103n,hash});
+    h.client=()=>({getChainId:async()=>999,getBalance:async()=>1n,
+      readContract:async()=>{if(unavailable)throw new Error('synthetic registry outage');return 1n;},
+      multicall:async({contracts})=>contracts.map(c=>c.functionName==='tokens'?{status:'success',result:addresses[0]}:
+        c.functionName==='balanceOf'?{status:'success',result:3n}:c.functionName==='decimals'?{status:'success',result:0}:
+        c.functionName==='symbol'||c.functionName==='name'?{status:'success',result:'TEST'}:{status:'failure',error:new Error('synthetic curve unavailable')})});
+    fs.rmSync(cacheFile,{force:true});
+    const output=path.join(root,'registry-reread');
+    const first=await scanChain({wallet:addresses[2],candidates:[]},network,output);
+    assert.equal(first.tokens[0].token_type,'ERC1155');assert.equal(first.tokens[0].wallet_balance_raw,3n);
+    const observed=first.tokens[0].balance_observed_at;
+    unavailable=true;
+    const next=await scanChain({wallet:addresses[2],candidates:[{chain_id:999,address:addresses[1]}]},network,output);
+    assert.equal(next.status,'complete');assert.equal(next.registry_scan.registry_count,1);assert.equal(next.registry_scan.checked,1);
+    assert.equal(next.tokens.find(t=>t.token_type==='ERC1155').balance_observed_at,observed);
+    // Legacy 0.1.10 checkpoints lack registry identities but still retain their
+    // immutable positive observation when the resumed tokenCount call fails.
+    const checkpointFile=path.join(output,'balance-checkpoint-999.json');
+    const saved=JSON.parse(fs.readFileSync(checkpointFile));delete saved.registry;fs.writeFileSync(checkpointFile,JSON.stringify(saved));
+    fs.rmSync(path.join(output,'registry-checkpoint-999.json'));
+    const legacy=await scanChain({wallet:addresses[2],candidates:[{chain_id:999,address:addresses[1]},{chain_id:999,address:addresses[2]}]},network,output);
+    const retained=legacy.tokens.find(t=>t.token_type==='ERC1155');
+    assert.equal(retained.wallet_balance_raw,'3');assert.equal(retained.balance_evidence_retained,true);
+    assert.equal(retained.balance_observed_at,observed);assert.equal(legacy.status,'partial');
+  } finally {h.endpoints=originalEndpoints;h.client=originalClient;h.snapshotBlock=originalSnapshot;}
   const plans=Array.from({length:257},(_,i)=>({address:'0x'+(i+100).toString(16).padStart(40,'0'),token_type:'ERC20'}));
   let balanceCalls=0;
   const interrupted={multicall:async({contracts,blockNumber})=>{assert.equal(blockNumber,103n);if(++balanceCalls===2)throw new MarketBudget();return contracts.map(()=>({status:'success',result:7n}));}};
@@ -128,6 +155,17 @@ const seed=()=>{fs.mkdirSync(path.dirname(cacheFile),{recursive:true});fs.writeF
     const finished=await dexChain(network,marketTokens(),{file:marketFile,wallet:addresses[0],deadline:Date.now()+1000});
     assert.equal(finished[0].market_pending,undefined);assert.equal(marketCalls,1);assert.equal(savedBlocks.at(-1),'103');
     assert.equal(finished[0].dex_pools[0].rpc_verification.verification,'unverified');
+    // New discovery identities and reordered inputs retain completed requests
+    // at the same market block. Changed wallet, balance or block still reject.
+    const expanded=[{...marketTokens()[0],token_address:addresses[2],dex_pools:[]},...marketTokens()];
+    marketCalls=0;
+    const grew=await dexChain(network,expanded,{file:marketFile,wallet:addresses[0],deadline:Date.now()+1000});
+    assert.equal(grew.length,2);assert.equal(marketCalls,0);
+    await dexChain(network,[...expanded].reverse(),{file:marketFile,wallet:addresses[0],deadline:Date.now()+1000});
+    assert.equal(marketCalls,0);
+    for(const change of [{wallet_balance_raw:'8'},{balance_block_number:'104'},{token_type:'ERC1155',token_id:'0'}]){
+      await assert.rejects(dexChain(network,expanded.map(t=>t.token_address===addresses[0]?{...t,...change}:t),{file:marketFile,wallet:addresses[0]}),/does not match/);
+    }
     await assert.rejects(dexChain(network,marketTokens(),{file:marketFile,wallet:addresses[1]}),/does not match/);
     assert(!fs.readFileSync(marketFile,'utf8').includes('synthetic'));
     // A transient failed pool is retried after a different pool hits the budget.

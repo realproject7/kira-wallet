@@ -158,10 +158,24 @@ The market phase has a 180-second budget including DEX indexer discovery and
 official pool verification. Progress reports completed discovery items,
 factory-query counts and pool-check counts. At the budget boundary, the engine
 publishes a new immutable market-initial-NNNN snapshot with recorded balances,
-actual registry coverage and market_pending. It pauses in interrupted state
-with market_budget and an explicit Resume action. A resume continues saved
-checks and never overwrites an earlier interim snapshot. Pending pools remain
-unknown. This budget is distinct from failed provider reads.
+actual registry coverage and market_pending. Unfinished discovery ranges use
+the same immutable interim publication with research_pending. An enrichment
+job queues the next slice automatically. Its optional `continuation` envelope
+records a progress fingerprint, not_before Unix time and unchanged_turns count.
+Observation timestamps and repeated errors are excluded from progress.
+Three consecutive unchanged continuations interrupt the job with no_progress;
+an explicit Resume clears the counter. Corrupt or legacy boundaries without a
+valid continuation receipt require explicit recovery. Provider quota deadlines
+survive process restarts, and the worker releases the writer lock while waiting.
+Other ready jobs and new initial analyses retain priority. Explicit cancellation
+and supersession prevent a queued slice from returning to running state.
+Every continuation preserves earlier interim snapshots. Pending pools remain
+unknown. A time budget is distinct from failed provider reads.
+
+Market checkpoints accept added identities and input reordering only when each
+previous token retains its chain, type, token ID, balance block and raw balance.
+Changed quantities or blocks require a new analysis. Registry and balance
+checkpoints preserve successful observations when a later provider call fails.
 
 settings.importEnv is a CLI-created request containing import_id and key_env.
 The environment file path stays in a private local reference record. The job

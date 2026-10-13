@@ -94,12 +94,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.10.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.11.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.10.tgz --access public
+npm publish ./dist/kira-wallet-0.1.11.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
@@ -195,9 +195,9 @@ sums as wealth floors. Private wallets, financial screenshots and local tickets
 stay outside the package and public review.
 
 
-## Next candidate: 0.1.10
+## Published 0.1.10
 
-This candidate adds saved keyless ERC20 transfer discovery on six core chains,
+Published 0.1.10 adds saved keyless ERC20 transfer discovery on six core chains,
 canonical RPC balance verification and explicit unfinished-history feedback.
 It fixes public-first cold qualification budgeting, exposes sanitized saved
 provider routes and authoritative coverage counts to native tools, and adds
@@ -208,6 +208,26 @@ suspicious-zero checks preserve unknown and historical observations.
 Publication is operator-only. Prepare the archive from the final reviewed clean
 commit, run the required install and public checks, and test that exact archive
 in isolated public-only and Alchemy auxiliary workspaces. The personal published
-0.1.9 app and archive remain intact. The final release manifest records the
+0.1.10 app and archive remain intact. The final release manifest records the
 candidate source commit, digest and package members. Do not publish an
 unreviewed development pack.
+
+## Development candidate: 0.1.11
+
+This branch adds durable, segmented discovery frontiers, block-range splitting
+past provider page limits, source-specific cursor and quota recovery, and a
+union of admitted free candidate sources. Pinned registry and balance batches
+receive bounded scheduling turns. Resumes accept added market candidates while
+rejecting changed quantities or blocks, preserve saved positive observations
+through failed registry rereads, and continue normal slice boundaries with
+bounded no-progress detection. The non-default key import guide selects the
+saved key reference explicitly. General NFT IDs and DeFi positions are outside
+this release scope.
+
+This is not a frozen release candidate. Required review, exact-package wallet
+acceptance, independent pinned balance comparisons and the authorized 48-hour
+stability run must finish before release readiness. Keep source-discovery,
+balance and price completion separate. An unavailable or unsupported scope stays
+unknown. The known inherited history-author finding is still reported by the
+privacy check; it is not a passing scan or permission to rewrite history.
+Registry publication remains operator-only.

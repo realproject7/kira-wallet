@@ -55,7 +55,7 @@ Registry identity caching remains separate from balances.
 
 Native balances and the selected issuer/deployment-backed contracts in
 `sources/known-tokens.json` are checked before cold Mint Club enumeration.
-The catalog has 57 chain/contract identities on eight mainnets. Issuer references
+The catalog has 63 chain/contract identities on eight mainnets. Issuer references
 and selected Uniswap token-list records retain per-contract provenance. The
 upstream list commit and its license are bundled; no untrusted runtime list is
 loaded. Decimals and quantities come from on-chain reads. This remains a bounded
@@ -64,8 +64,9 @@ inventory, not a claim to discover every wrapped or arbitrary token.
 Default research also uses Routescan without a key on individually verified
 Ethereum, Avalanche and Blast routes. Its documented free access is limited to
 two requests per second and 10,000 calls per day. Kira starts at most one call
-per second, reads at most 20 pages of 100 candidates per chain and spends at most
-25 seconds per enumeration. An isolated HTTP reader enforces a total deadline,
+per second and reads at most 20 pages of 100 candidates per invocation. Its
+cursor, candidate segments and quota retry deadline survive process restarts.
+The standalone adapter defaults to a 25-second budget. An isolated HTTP reader enforces a total deadline,
 including DNS and response bodies. Unsafe pagination, outages, malformed data
 and limits keep coverage partial. Provider quantities and prices never replace
 RPC-verified balances. Other Routescan chains are not presumed supported.
@@ -74,9 +75,15 @@ Explicit keyless opt-outs and custom-only preferences remain respected.
 Initial reports check Base, Ethereum and Blast, up to 128 candidates per chain.
 Selected common contracts take priority. Remaining candidates and networks are
 explicitly pending. A durable background continuation scans every configured
-network, the full Mint Club registry and markets. Registry identity prefixes
-are saved incrementally; balances are never shared between wallets. Batches
-contain at most 128 reads, with splitting only for verified payload limits.
+network, the full Mint Club registry and markets. Pinned registry counts,
+successful identities, failed indices and the next index are saved after each
+batch. Each chain receives at most four registry and four balance batches per
+category in a scheduling round before unfinished chains receive another turn.
+Successful balances retain their original block and observation time. A failed
+registry reread cannot remove a previously saved positive observation from the
+same research run. Batches contain at most 128 reads, with splitting only for
+verified payload limits. Three consecutive unchanged rounds leave work explicitly
+incomplete. Registry identities can be reused; wallet balances stay wallet-specific.
 New initial work takes priority over detailed research. Older same-wallet
 continuations cannot replace newer evidence.
 
@@ -149,11 +156,24 @@ Sources: [Shib network setup](https://docs.shib.io/get-started/deploy-contracts)
 ## Keyless transfer candidates
 
 Kira uses [Etherscan keyless MCP](https://docs.etherscan.io/build-with-ai/mcp)
-for ERC20 transfer identities on Ethereum, Base, Optimism, Arbitrum, Polygon
-and BNB Smart Chain. This backend adapter needs no model MCP configuration,
+for ERC20 transfer identities on Ethereum, Base, Optimism, Arbitrum, Polygon,
+BNB Smart Chain, Unichain, ApeChain, Robinhood, Sepolia, Base Sepolia and Fuji.
+This backend adapter needs no model MCP configuration,
 API key, paid relay or shared credentials. Routescan remains available on
-Avalanche and Blast. Standard RPC verifies each candidate at a canonical
+Ethereum, Avalanche and Blast. Where sources overlap, candidates are unioned
+and each source keeps its own completion evidence and checkpoint. Standard RPC verifies each candidate at a canonical
 pinned block. Transfer amounts never become wallet balances.
+
+The optional `explorers` setting adds paginated hosted explorer reads for
+Shibarium, Cyber, HashKey and Puppynet, using their admitted official hosts.
+It remains off by default and respects custom-only preferences. Per-instance
+Blockscout APIs are deprecated upstream, so these paths remain best effort.
+Ham, Over, Zora, Kaia, Blast Sepolia and Cyber testnet have no admitted keyless
+general-token route in this catalog. Their native and Mint Club RPC checks are
+independent. An empty accepted page does not prove representative asset coverage.
+Robinhood's ordinary API has a published October 16, 2026 paid-tier change;
+its effect on keyless MCP remains unconfirmed. This adapter does not promise
+permanent free access or silently switch to paid credentials.
 
 Each request scans at most three 100-record pages within the research budget.
 A window ends at a block before a timestamp two minutes behind the local clock,
@@ -161,15 +181,21 @@ allowing for explorer indexing lag. Its block bounds and next page are saved
 per wallet and chain. A later refresh continues unfinished history. Once a
 window finishes, subsequent refreshes recheck a 2,048-block overlap, scan new
 blocks and retain earlier candidate identities. A deeper reorg or older indexer
-backfill can still omit identities. While older history is pending, one fresh
-bounded page can find new receipts without replacing its saved frontier.
-A 100-page or 10,000-contract safety limit remains
-explicitly incomplete. Provider backfills, history limits, indexing lag and
+backfill can still omit identities. Fresh intervals discovered while older
+history is pending are also saved as unfinished ranges. A continuation can keep
+the existing window fixed instead of continually chasing a new chain head.
+At 100 full pages, an unfinished range splits into two inclusive, disjoint block
+ranges. Both children must finish; parent candidates are deduplicated by contract.
+A single block that exceeds the page limit remains explicitly unresolved.
+Candidate segments contain at most 512 identities and are durable before the
+frontier manifest advances. The former 10,000-contract limit no longer prevents
+large histories from finishing. Provider backfills, history limits, indexing lag and
 unsupported networks can still omit tokens. A finished window is not proof
 of a complete inventory. No majority-coverage promise is made.
 
 The shared local request lane conservatively paces tool calls every two seconds.
-HTTP 429 pauses that lane. It does not rotate accounts or evade provider limits.
+HTTP 429 pauses that lane and saves its retry deadline with an established
+frontier. It does not rotate accounts or evade provider limits.
 Sessions stay in process memory. Saved evidence contains candidate contracts
 and window facts, never MCP session IDs, credentials or transfer-derived balances.
 No liquidity or dollar-value filter removes candidate identities. Spam transfers
@@ -177,7 +203,8 @@ can introduce irrelevant candidates. Only positive RPC balances enter holdings.
 
 Earlier positive holdings, common known contracts and Mint Club identities
 supplement candidate discovery. Targeted suspicious zeros receive up to eight
-direct and qualified peer checks per chain, at the same pinned hash. Conflicting
+direct and qualified peer checks per chain slice, at the same pinned hash. Saved
+successful checks do not consume the next slice's allowance. Conflicting
 or unavailable checks remain unknown. Ordinary zero-heavy registry scans do
 not receive an unbounded peer fan-out.
 

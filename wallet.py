@@ -5,6 +5,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -18,15 +19,13 @@ import research as h
 from kira_config import ASSETS, data_root, load_config
 
 ROOT = data_root()
-class MarketPause(ValueError):
-    """A resumable time budget, distinct from provider failure."""
+ResearchPause=h.ResearchPause
+MarketPause=h.MarketPause
 ALCHEMY = {1:'eth-mainnet',8453:'base-mainnet',81457:'blast-mainnet',10:'opt-mainnet',42161:'arb-mainnet',
     43114:'avax-mainnet',137:'polygon-mainnet',56:'bnb-mainnet',130:'unichain-mainnet',7777777:'zora-mainnet',
     33139:'apechain-mainnet',4663:'robinhood-mainnet',11155111:'eth-sepolia',84532:'base-sepolia',
     168587773:'blast-sepolia',43113:'avax-fuji'}
 PORTFOLIO = {**ALCHEMY,137:'matic-mainnet'}
-EXPLORERS = {109:'https://shibariumscan.io',7560:'https://cyberscan.co',177:'https://hashkey.blockscout.com',
-    5112:'https://explorer.ham.fun'}
 DEX = {1:'ethereum',8453:'base',81457:'blast',10:'optimism',42161:'arbitrum',43114:'avalanche',137:'polygon',
     56:'bsc',109:'shibarium',7560:'cyber',8217:'kaia',130:'unichain',7777777:'zora',33139:'apechain',177:'hashkey',4663:'robinhood'}
 NATIVE = {137:'POL',56:'BNB',43114:'AVAX',109:'BONE',8217:'KAIA',33139:'APE',177:'HSK',54176:'OVER',157:'BONE',43113:'AVAX'}
@@ -103,12 +102,50 @@ def register(registry, address, tag):
     return wallet
 
 
-def discover(wallet, n, folder, budget=None):
+def free_sources(wallet, cid, budget, *, continue_only=False, public=True, explorers=False):
+    """Union admitted keyless sources; each source owns a separate frontier."""
+    import discovery_state
+    import transfer_discovery
+    import public_discovery
+    import explorer_discovery
+    sources=[]
+    if public and cid in transfer_discovery.CHAINS:sources.append(('etherscan_keyless',f'{cid}.json',transfer_discovery.discover,transfer_discovery.DOCS))
+    if public and cid in public_discovery.CHAINS:sources.append(('routescan',f'routescan-{cid}.json',public_discovery.discover,public_discovery.DOCS))
+    if explorers and cid in explorer_discovery.CHAINS:sources.append(('explorer',f'explorer-{cid}.json',explorer_discovery.discover,explorer_discovery.DOCS))
+    rows=[]
+    for provider,name,adapter,source in sources:
+        frontier=ROOT/'cache/free-discovery'/wallet.lower()/name
+        try:
+            state=discovery_state.load(frontier,wallet,cid,provider)
+            row=adapter(wallet,cid,state=state,budget=budget/len(sources),continue_only=continue_only,
+                save=lambda value:discovery_state.save(frontier,value,wallet,cid,provider))
+        except (OSError,ValueError,KeyError,TypeError):
+            row={'source':source,'provider':provider,'complete':False,'tokens':[],'pages':[],
+                 'discovery_status':'checkpoint_error','error':{'message':'Discovery checkpoint could not be read or saved. Existing evidence was preserved.'}}
+        row.setdefault('provider',provider)
+        rows.append(row)
+    if not rows:
+        return {'source':None,'provider':None,'complete':False,'tokens':[],'pages':[],
+                'discovery_status':'unsupported','error':{'message':'No admitted keyless ERC20 discovery route is available for this network.'}}
+    complete=all(row['complete'] for row in rows)
+    status='checked' if complete else next((label for label in ('history_pending','throttled','checkpoint_error','provider_error','source_limited')
+                                           if any(row['discovery_status']==label for row in rows)),'incomplete')
+    merged={**rows[0],'complete':complete,'discovery_status':status,'complete_inventory_guaranteed':False,
+            'provider':rows[0]['provider'] if len(rows)==1 else 'multiple',
+            'source':'; '.join(row['source'] for row in rows),'native':[],
+            'tokens':merge_candidates([],[],[token for row in rows for token in row['tokens']]),
+            'pages':[dict(page,provider=row['provider']) for row in rows for page in row['pages']],
+            'sources':[{key:value for key,value in row.items() if key not in ('tokens','native','pages')} for row in rows]}
+    merged['error']=None if complete else {'message':'At least one discovery source has unfinished or unavailable evidence. Completed source pages do not establish a complete inventory.'}
+    return merged
+
+
+def discover(wallet, n, folder, budget=None, *, continue_only=False):
     cid = n['chain_id']
     evidence = folder/f'discovery-{cid}.json'
     if evidence.exists():
         cached=read(evidence)
-        if cached['wallet'].lower()==wallet.lower() and cached['complete']:
+        if cached['wallet'].lower()==wallet.lower() and cached['complete'] and cached.get('coverage_version')==2:
             return cached
     row = {'wallet':wallet,'chain_id':cid,'observed_at':h.now(),'complete':False,'tokens':[],'native':[], 'pages':[],'source':None,'discovery_status':'incomplete'}
     cfg=load_config();deadline=time.monotonic()+budget if budget else None
@@ -170,29 +207,9 @@ def discover(wallet, n, folder, budget=None):
             body['pageKey']=cursor
         else:
             row['error']={'message':'Pagination safety limit reached; discovery incomplete'}
-    elif cid in EXPLORERS and cfg['discovery'].get('explorers'):
-        row['source']=EXPLORERS[cid]+'/api/v2/addresses/'+wallet+'/token-balances'
-        response=fetch(row['source'])
-        row['pages'].append({'observed_at':h.now(),'response':response})
-        if isinstance(response,list):
-            row['complete']=True
-            for t in response:
-                meta=t.get('token') or {}
-                if meta.get('type')=='ERC-20' and int(t.get('value') or 0)>0:
-                    row['tokens'].append({'chain_id':cid,'address':meta['address_hash'],'name':meta.get('name'),'symbol':meta.get('symbol'),
-                                          'decimals':int(meta['decimals']) if meta.get('decimals') is not None else None,'prices':[]})
-        else:
-            row['error']=response
-    elif cfg['discovery'].get('public',True) and n.get('environment')=='mainnet' and not (cfg.get('rpc',{}).get('mode')=='custom' and cfg['rpc'].get('allow_public_fallback') is False):
-        from transfer_discovery import CHAINS, discover as transfer_discover
-        if cid in CHAINS:
-            frontier=ROOT/'cache/free-discovery'/wallet.lower()/f'{cid}.json'
-            try:state=read(frontier) if frontier.is_file() and frontier.stat().st_size<=1000000 else None
-            except (OSError,ValueError):state=None
-            row.update(transfer_discover(wallet,cid,state=state,save=lambda value:atomic(frontier,value),budget=budget or 25))
-        else:
-            from public_discovery import discover as free_discover
-            row.update(free_discover(wallet,cid,budget=budget or 25))
+    elif n.get('environment') in ('mainnet','testnet') and (cfg['discovery'].get('public',True) or cfg['discovery'].get('explorers')) and not (cfg.get('rpc',{}).get('mode')=='custom' and cfg['rpc'].get('allow_public_fallback') is False):
+        row.update(free_sources(wallet,cid,budget or 25,continue_only=continue_only,
+                               public=cfg['discovery'].get('public',True),explorers=cfg['discovery'].get('explorers',False)))
     else:
         status='disabled' if cfg['discovery']['provider']=='none' else 'missing_credential' if cid in ALCHEMY and not key else 'unsupported'
         row['discovery_status']=status
@@ -203,6 +220,7 @@ def discover(wallet, n, folder, budget=None):
     if row['complete']:row['discovery_status']='checked'
     elif row['source'] and row['discovery_status']=='incomplete':row['discovery_status']='provider_error'
     row['tokens']=list({t['address'].lower():t for t in row['tokens']}.values())
+    row['coverage_version']=2
     atomic(evidence,row)
     return row
 
@@ -301,6 +319,7 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
             'indexer_source':d.get('source'),'indexer_complete':d.get('complete',False),'indexer_pages':len(d.get('pages',[])),
             'discovery_status':d.get('discovery_status','pending'),'candidate_balance_errors':len(c.get('balance_errors',[])),
             'discovery_provider':d.get('provider'), 'history_window':d.get('history_window'), 'recent_window':d.get('recent_window'), 'discovery_filters':d.get('filters'),
+            'discovery_sources':d.get('sources',[]),'discovery_completion_scope':d.get('completion_scope'),'complete_inventory_guaranteed':False,
             'candidate_scan':c.get('candidate_scan'),'mintclub_registry_scan':c.get('registry_scan'),
             'notes':['Initial balances. Remaining candidate balances, full Mint Club enumeration and market enrichment remain pending.']})
     result={'schema_version':1,'wallet_address':wallet['address'],'tags':wallet['tags'],'compiled_at':h.now(),
@@ -365,10 +384,38 @@ def pool_row(p, observed):
             'observed_at':observed,'source_url':p['url'],'rpc_verification':None,'factory_measurement':None}
 
 
+def continuation_checkpoint(folder, discovered, market_pending):
+    """Persist substantive progress, excluding timestamps and repeated failures."""
+    progress={};pending=[]
+    for discovery in discovered:
+        for source in discovery.get('sources') or [discovery]:
+            if not source.get('complete') and source.get('discovery_status') in ('history_pending','throttled'):pending.append(source)
+        progress['discovery-'+str(discovery['chain_id'])]={
+            'contracts':sorted(t['address'].lower() for t in discovery.get('tokens',[])),
+            'sources':[{k:s.get(k) for k in ('provider','complete','history_window','pagination')} for s in discovery.get('sources') or [discovery]]}
+    for pattern in ('balance-checkpoint-*.json','registry-checkpoint-*.json','market-checkpoint-*.json','reserve-checkpoint-*.json'):
+        for path in sorted(folder.glob(pattern)):
+            saved=read(path)
+            progress[path.name]={k:saved[k] for k in ('balances','entries','next_index','requests','completed_pools','nodes') if k in saved}
+    # Only successful evidence counts. Strip observation timestamps recursively
+    # so a failed retry cannot disguise a stalled frontier as new work.
+    def stable(value):
+        if isinstance(value,dict):return {k:stable(v) for k,v in value.items() if k not in ('observed_at','started_at','rpc_routes','balance_observed_at','error')}
+        if isinstance(value,list):return [stable(v) for v in value]
+        return value
+    encoded=json.dumps(stable(progress),sort_keys=True,separators=(',',':')).encode()
+    waiting=not market_pending and pending and all(s.get('discovery_status')=='throttled' for s in pending)
+    deadline=min((s.get('retry_not_before',0) for s in pending),default=0) if waiting else 0
+    value={'fingerprint':hashlib.sha256(encoded).hexdigest(),'not_before':max(0,int(deadline))}
+    atomic(folder/'continuation.json',value)
+    return value
+
+
 def finish(wallet, folder, networks, discovered):
     deadline=time.monotonic()+180
     checkpoint_folder=folder
     raw=read(folder/'onchain-summary.json')
+    research_pending=any(d.get('discovery_status') in ('history_pending','throttled') for d in discovered) or any(c.get('research_pending') and not c.get('continuation_stalled') for c in raw['chains'])
     tokens=[t for c in raw['chains'] for t in c['tokens']]
     event('dex_discovery', tokens=len(tokens))
     with ThreadPoolExecutor(max_workers=5) as executor:
@@ -409,6 +456,7 @@ def finish(wallet, folder, networks, discovered):
              'indexer_source':d['source'],'indexer_pages':len(d['pages']),'indexer_complete':d['complete'],
              'discovery_status':d.get('discovery_status','checked' if d['complete'] else 'incomplete'),
              'discovery_provider':d.get('provider'), 'history_window':d.get('history_window'), 'recent_window':d.get('recent_window'), 'discovery_filters':d.get('filters'),
+            'discovery_sources':d.get('sources',[]),'discovery_completion_scope':d.get('completion_scope'),'complete_inventory_guaranteed':False,
              'candidate_balance_errors':len(c.get('balance_errors',[])),
              'positive_erc20_count_discovered':sum(t['chain_id']==n['chain_id'] and t['token_type']=='ERC20' for t in tokens),
              'mintclub_inventory_scan':None,'mintclub_registry_scan':c.get('registry_scan'),'notes':[]}
@@ -490,18 +538,22 @@ def finish(wallet, folder, networks, discovered):
     result['evidence_files']=[f.name for f in sorted(folder.glob('*.json')) if f.name not in ('results.json','market-prices.json')]
     atomic(folder/'results.json',result)
     report(result,folder)
-    if market_pending:
-        result['pipeline']['market_pending']=True;result['status']='completed_with_coverage_gaps'
+    if market_pending or research_pending:
+        continuation_checkpoint(checkpoint_folder,discovered,market_pending)
+        result['pipeline']['market_pending']=market_pending
+        result['pipeline']['research_pending']=research_pending
+        result['status']='completed_with_coverage_gaps'
         index=1
         while (checkpoint_folder/f'market-initial-{index:04d}').exists():index+=1
         previous_folder=folder;folder=checkpoint_folder/f'market-initial-{index:04d}';folder.mkdir(parents=True)
         atomic(folder/'market-prices.json',read(previous_folder/'market-prices.json'))
         result['evidence_files']=['market-prices.json']
-        result['limitations'].append('Market verification reached its time budget. Recorded balances and completed registry checks remain available. Remaining pool checks are pending, not verified absent. Resume this job in Activity to continue saved checks.')
+        result['limitations'].append('Research has saved unfinished work. Recorded balances and completed checks remain available. Pending discovery ranges and market checks are not verified absent. Background jobs continue automatically unless cancelled or stalled.')
         atomic(folder/'results.json',result);report(result,folder);publish_snapshot(wallet,folder,result)
         event('first_evidence',snapshot=str(folder.relative_to(ROOT)))
-        event('market_paused')
-        raise MarketPause('Market verification paused at its time budget. Saved balances and market checkpoints are available to resume in Activity.')
+        event('market_paused' if market_pending else 'research_paused')
+        if market_pending:raise MarketPause('Market verification paused at its time budget. Saved checks are ready for continuation.')
+        raise ResearchPause('Discovery has saved unfinished ranges. Saved checks are ready for continuation.')
     return result
 
 
@@ -592,7 +644,7 @@ def main():
             initial_networks=[n for cid in (8453,1,81457) for n in networks if n['chain_id']==cid]
             phase_networks=initial_networks if args.phase=='baseline' else networks
             with ThreadPoolExecutor(max_workers=5) as executor:
-                discovered=list(executor.map(lambda n:discover(wallet['address'],n,folder,budget=25 if args.phase=='baseline' else 60),phase_networks))
+                discovered=list(executor.map(lambda n:discover(wallet['address'],n,folder,budget=25 if args.phase=='baseline' else 60,continue_only=bool(args.resume)),phase_networks))
             event('discovery',complete_chains=sum(d['complete'] for d in discovered),candidates=sum(len(d['tokens']) for d in discovered))
             known=read(ASSETS/'sources/known-tokens.json')['tokens']
             # Earlier positive identities are candidates, never reused balances.
@@ -618,7 +670,7 @@ def main():
             event('published',snapshot=relative,counts=result['counts'],status=result['status'],viewer='http://127.0.0.1:8765')
         except Exception as error:
             atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'failed_at':h.now(),'status':'failed','error':h.redact(str(error))})
-            event('market_paused' if isinstance(error,MarketPause) else 'failed',error=h.redact(str(error)),resume=str(folder.relative_to(ROOT)))
+            event('market_paused' if isinstance(error,MarketPause) else 'research_paused' if isinstance(error,ResearchPause) else 'failed',error=h.redact(str(error)),resume=str(folder.relative_to(ROOT)))
             raise SystemExit(1)
 
 

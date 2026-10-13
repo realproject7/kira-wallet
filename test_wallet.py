@@ -5,6 +5,7 @@ import tempfile
 import unittest
 import contextlib
 import io
+import runpy
 import sys
 from unittest.mock import patch
 import wallet
@@ -14,6 +15,31 @@ sys.path.insert(0,str(wallet.ASSETS/'viewer'))
 class WalletPipelineTests(unittest.TestCase):
     address='0x0000000000000000000000000000000000000011'
     network={'chain_id':8453,'environment':'mainnet'}
+
+    def test_script_and_imported_engine_share_the_same_pause_exception(self):
+        namespace=runpy.run_path(wallet.__file__,run_name='synthetic_entrypoint')
+        self.assertIs(namespace['MarketPause'],wallet.MarketPause)
+        self.assertIs(namespace['ResearchPause'],wallet.ResearchPause)
+        with self.assertRaises(namespace['MarketPause']):
+            raise wallet.MarketPause('Synthetic reserve budget')
+
+    def test_continuation_progress_ignores_timestamps_but_counts_new_evidence_and_quota(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder=Path(temp)
+            checkpoint={'balances':{'token:ERC20':'7'},'balance_times':{'token:ERC20':'first'},'observed_at':'first'}
+            wallet.atomic(folder/'balance-checkpoint-1.json',checkpoint)
+            discovery=[{'chain_id':1,'tokens':[],'discovery_status':'throttled','retry_not_before':1120,
+                        'history_window':{'page':2,'started_at':1}}]
+            first=wallet.continuation_checkpoint(folder,discovery,False)
+            self.assertEqual(first['not_before'],1120)
+            checkpoint['observed_at']='later';checkpoint['balance_times']['token:ERC20']='later'
+            wallet.atomic(folder/'balance-checkpoint-1.json',checkpoint)
+            discovery[0]['history_window']['started_at']=2
+            second=wallet.continuation_checkpoint(folder,discovery,False)
+            self.assertEqual(first['fingerprint'],second['fingerprint'])
+            checkpoint['balances']['other:ERC1155']='3';wallet.atomic(folder/'balance-checkpoint-1.json',checkpoint)
+            third=wallet.continuation_checkpoint(folder,discovery,True)
+            self.assertNotEqual(first['fingerprint'],third['fingerprint']);self.assertEqual(third['not_before'],0)
 
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory()

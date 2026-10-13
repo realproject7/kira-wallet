@@ -45,6 +45,10 @@ test('zero-heavy registries do not fan out and targeted checks share a fixed cap
   assert.equal(extra,0);assert(rows.every(r=>r.result===0n));
   rows=await balanceReads(client,tokens.map(t=>({...t,suspicious_zero_check:true})),WALLET,7n,{balances:{},block_hash:HASH},path.join(root,'hinted.json'),{chain_id:1});
   assert.equal(extra,16);assert.equal(rows.filter(r=>r.status==='success').length,8);assert.equal(rows.filter(r=>r.status==='failure').length,292);
+  const checkpoint=JSON.parse(fs.readFileSync(path.join(root,'hinted.json')));
+  const resumed=await balanceReads(client,tokens.map(t=>({...t,suspicious_zero_check:true})),WALLET,7n,checkpoint,path.join(root,'hinted.json'),{chain_id:1});
+  assert.equal(extra,32);assert.equal(resumed.filter(r=>r.status==='success').length,16);
+  assert.equal(Object.keys(checkpoint.balances).length,16);
  }finally{h.peerClient=originalPeer;h.snapshotBlock=originalBlock;fs.rmSync(root,{recursive:true,force:true});}
 });
 test('verification bypasses a cached balance after another request changes endpoint provenance',async()=>{

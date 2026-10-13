@@ -60,6 +60,22 @@ class ViewerTests(unittest.TestCase):
         self.assertEqual(wallet['chains'][1]['discovery_status'],'incomplete')
         self.assertNotIn('SECRET-MARKER',json.dumps(wallet))
 
+    def test_source_completion_and_unresolved_ranges_are_projected_independently(self):
+        first=self.snapshot['coverage'][0]
+        first.update(discovery_provider='multiple',discovery_status='source_limited',general_erc20_discovery='incomplete',
+                     history_window={'startblock':0,'endblock':100,'pending_ranges':0,'blocked_ranges':1,'debug':'SECRET-MARKER'},
+                     discovery_sources=[{'provider':'etherscan_keyless','complete':False,'discovery_status':'source_limited','error':'SECRET-MARKER'},
+                                        {'provider':'routescan','complete':True,'discovery_status':'checked'},
+                                        {'provider':'SECRET-MARKER','complete':True}])
+        self.snapshot['coverage'][1]['discovery_sources']=None
+        projected=model.project_wallet(self.entry,self.snapshot,self.root)
+        chain=projected['chains'][0]
+        self.assertFalse(chain['complete']);self.assertEqual(chain['discovery_status'],'source_limited')
+        self.assertEqual(chain['history_window']['blocked_ranges'],1)
+        self.assertEqual(len(chain['discovery_sources']),2);self.assertTrue(chain['discovery_sources'][1]['complete'])
+        self.assertEqual(projected['chains'][1]['discovery_sources'],[])
+        self.assertNotIn('SECRET-MARKER',json.dumps(projected))
+
     def test_legacy_balance_failure_count_is_safe_without_rewriting_snapshot(self):
         first=self.snapshot['coverage'][0]
         first['notes']=['4 candidate token balances could not be read.','SECRET-MARKER']
