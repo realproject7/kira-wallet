@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const h = require('./onchain.cjs');
 const v = h.viem;
+const {quotePool}=require('./cashout-quotes.cjs');
 const MULTICALL = '0xcA11bde05977b3631167028862bE2a173976CA11';
 const erc20 = v.parseAbi([
   'function balanceOf(address) view returns (uint256)',
@@ -284,7 +285,7 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
     row.zero_verification=checkpoint.zero_checks||{};
     for (const [heldIndex,t] of held.entries()) {
       const item = {chain_id:n.chain_id,network:n.network,token_address:t.address,token_type:t.token_type,token_id:t.token_type==='ERC1155'?'0':null,
-        wallet_balance_raw:t.balance_raw,balance_block_number:block,balance_observed_at:firstReads.get(t.address.toLowerCase())?.observed_at||checkpoint.observed_at,indexer_price_references:t.prices||[],mintclub:null,dex_pools:[]};
+        wallet_balance_raw:t.balance_raw,balance_block_number:block,balance_block_hash:snapshot.hash,balance_observed_at:firstReads.get(t.address.toLowerCase())?.observed_at||checkpoint.observed_at,indexer_price_references:t.prices||[],mintclub:null,dex_pools:[]};
       const meta=metadata.slice(heldIndex*3,heldIndex*3+3);
       item.decimals = meta[0].status==='success'?meta[0].result:t.decimals;
       item.dex_liquidity_found=false;
@@ -307,7 +308,7 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
             price_for_next_mint_in_reserve_token:v.formatUnits(info.priceForNextMint,info.reserveDecimals),current_supply:v.formatUnits(info.currentSupply,item.decimals),
             burn_royalty_bps:detail.burnRoyalty,wallet_full_burn:refund?{net_refund_raw:refund[0],net_refund:v.formatUnits(refund[0],info.reserveDecimals),
               royalty_raw:refund[1],royalty:v.formatUnits(refund[1],info.reserveDecimals),asset:info.reserveSymbol,gas_included:false}:null,
-            wallet_full_burn_error:quoteError,block_number:block,observed_at:stamp(),source_url:`https://mint.club/token/${n.network}/${t.address}`};
+            wallet_full_burn_error:quoteError,block_number:block,block_hash:snapshot.hash,observed_at:stamp(),source_url:`https://mint.club/token/${n.network}/${t.address}`};
         } catch(e) {item.mintclub_error=h.safeError(e);}
       }
       row.tokens.push(item);
@@ -361,8 +362,13 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000}={})
   const save=()=>{if(file)write(file,cache);};
   try {
   if(Date.now()>=deadline)throw new MarketBudget();
-  const client=await boundedMarket(connect(n),deadline),snapshot=await boundedMarket(h.snapshotBlock(client,cache),deadline),block=snapshot.number;
-  cache=cache||{wallet:wallet.toLowerCase(),chain_id:n.chain_id,fingerprint,block_number:block.toString(),block_hash:snapshot.hash,requests:{},completed_pools:[],tokens:cacheEncode(tokens)};
+  const pinned=tokens.find(t=>t.balance_block_hash&&t.balance_block_number!=null);
+  const holdingBlock=pinned?{block_number:String(pinned.balance_block_number),block_hash:pinned.balance_block_hash}:null;
+  const client=await boundedMarket(connect(n),deadline),snapshot=await boundedMarket(h.snapshotBlock(client,cache||holdingBlock),deadline),block=snapshot.number;
+  cache=cache||{wallet:wallet.toLowerCase(),chain_id:n.chain_id,fingerprint,block_number:block.toString(),block_hash:snapshot.hash,requests:{},completed_pools:[],tokens:cacheEncode(tokens),quote_schema_version:1};
+  // Legacy completed pool checks predate amount-specific quotes. Preserve their
+  // cached reads and fixed block, but revisit the pools to record quote status.
+  if(cache.quote_schema_version!==1){cache.completed_pools=[];cache.quote_schema_version=1;}
   const saved=cacheDecode(cache.tokens);
   for(const token of tokens){
     const previous=saved.find(t=>identity(t)===identity(token));
@@ -436,7 +442,7 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000}={})
       if(recognized&&state.token0&&state.token1) {
         let check;
         if(p.version_labels?.includes('v3')) {
-          const fee=await c.readContract({address:p.pool,abi:v.parseAbi(['function fee() view returns (uint24)']),functionName:'fee',blockNumber:block});
+          const fee=await c.readContract({address:p.pool,abi:v.parseAbi(['function fee() view returns (uint24)']),functionName:'fee',blockNumber:block});state.fee=fee;
           check={address:factory,abi:poolAbi,functionName:'getPool',args:[state.token0,state.token1,fee]};
         } else if(p.venue==='aerodrome') {
           const stable=await c.readContract({address:p.pool,abi:v.parseAbi(['function stable() view returns (bool)']),functionName:'stable',blockNumber:block});
@@ -452,7 +458,9 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000}={})
         const quote=[state.token0,state.token1].find(a=>a.toLowerCase()!==t.token_address.toLowerCase());
         const q=await calls(c,[{address:quote,abi:erc20,functionName:'balanceOf',args:[p.pool]},{address:quote,abi:erc20,functionName:'decimals'},{address:quote,abi:erc20,functionName:'symbol'}],block);
         if(q.some(x=>x.status==='failure'))retry=true;
-        if(q.every(x=>x.status==='success')) Object.assign(p.factory_measurement,{quote_token:quote,quote_symbol:q[2].result,quote_balance:v.formatUnits(q[0].result,q[1].result)});
+        if(q.every(x=>x.status==='success')) Object.assign(p.factory_measurement,{quote_token:quote,quote_symbol:q[2].result,quote_decimals:q[1].result,quote_balance:v.formatUnits(q[0].result,q[1].result)});
+        p.cashout_quote=await quotePool(c,n,t,p,block,snapshot.hash,deployments);
+        if(p.cashout_quote.status==='unknown'&&p.cashout_quote.reason.startsWith('Pool quote failed'))retry=true;
       }
     }catch(e){if(e.code==='market_budget'){paused=true;throw e;}retry=true;p.rpc_verification={verification:'unverified',error:h.safeError(e)};}
     finally{

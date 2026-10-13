@@ -486,6 +486,14 @@ def finish(wallet, folder, networks, discovered):
     for key,price in native_market['prices'].items():refs.setdefault(key,price)
     # Obtain prices of reserve assets separately, including tokens not held by the wallet.
     reserve_candidates={(t['chain_id'],t['mintclub']['reserve_token'].lower()):{'chain_id':t['chain_id'],'token_address':t['mintclub']['reserve_token'],'token_type':'ERC20'} for t in minted}
+    # Quote-side prices value actual route outputs, not the input token's spot
+    # price. Reuse one observed reference per output asset across held tokens.
+    for token in tokens:
+        for pool in token.get('dex_pools',[]):
+            quote=pool.get('cashout_quote') or {}
+            if quote.get('status')=='quoted':
+                address=quote['output_address']
+                reserve_candidates.setdefault((token['chain_id'],address.lower()),{'chain_id':token['chain_id'],'token_address':address,'token_type':'ERC20'})
     reserve_rows=[] if market_pending else list(ThreadPoolExecutor(max_workers=5).map(lambda t:dex_fetch(t,folder,deadline),reserve_candidates.values()))
     market_pending=market_pending or time.monotonic()>=deadline
     sys.path.insert(0,str(ASSETS/'viewer'))
@@ -535,6 +543,8 @@ def finish(wallet, folder, networks, discovered):
             event('token_images',tokens=len(tokens))
             event('token_images',**refresh_catalog([result],ROOT,native_images=native_market['images'],fetch=lambda url:fetch(url,deadline=deadline)))
     except (OSError,ValueError):event('token_images',status='unavailable')
+    from cashout import annotate
+    annotate(result,read(folder/'market-prices.json'))
     result['evidence_files']=[f.name for f in sorted(folder.glob('*.json')) if f.name not in ('results.json','market-prices.json')]
     atomic(folder/'results.json',result)
     report(result,folder)

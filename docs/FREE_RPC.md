@@ -51,6 +51,35 @@ including the wallet address. Failed reads are evicted and never become zero.
 Wallet balances are not reused across wallets or new research processes.
 Registry identity caching remains separate from balances.
 
+## Recorded cash-out candidates
+
+The operator's market target is at least USD 1 quoted from an amount no greater
+than the holding. Funded Mint Club redemption qualifies without a DEX pool.
+This is separate from pool TVL and spot wallet value. Current source records
+amount-specific quotes for verified canonical Uniswap V2/V3 and Base Aerodrome
+pools at the holding's block hash, with route fees and price impact. V2 uses the
+[canonical reserve formula](https://github.com/Uniswap/v2-periphery/blob/master/contracts/libraries/UniswapV2Library.sol).
+V3 calls [QuoterV2](https://github.com/Uniswap/v3-periphery/blob/main/contracts/interfaces/IQuoterV2.sol)
+through `eth_call`. Aerodrome calls its verified pool's
+[`getAmountOut`](https://github.com/aerodrome-finance/contracts/blob/main/contracts/interfaces/IPool.sol).
+These calls neither approve nor execute a swap.
+
+The eligibility projection uses the output asset's observed USD reference.
+It accepts only reviewed stablecoin or wrapped-native identities as terminal
+outputs. An ordinary token or another curve received on redemption needs a
+further amount-specific liquidation leg; its spot price does not establish
+cash proceeds. A smaller input can establish a qualifying quote after a full
+input reverts. Transport failures do not fan out into smaller-input retries.
+Quotes exclude gas and do not verify transfer taxes, trading restrictions or
+execution. Output prices remain observed estimates, including peg risk.
+
+`cashout_eligibility` distinguishes quotes at or above USD 1, recorded quotes
+below that threshold, unknown routes and testnets outside USD scope. None of
+these finite route checks establishes that an asset has no other qualifying
+route. Failed, unsupported and unindexed routes remain unknown. Existing
+holdings stay in the snapshot. This quote foundation does not yet change the
+inventory-first scan order or establish market-first latency or completeness.
+
 ## Default token inventory
 
 Native balances and the selected issuer/deployment-backed contracts in
