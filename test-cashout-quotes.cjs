@@ -61,3 +61,31 @@ test('unrecognized factories, token mismatches and stale block hashes cannot pro
  pool.factory_measurement.state.factory=FACTORY;pool.factory_measurement.state.token0=QUOTER;
  assert.equal((await quotePool({}, {chain_id:1},token,pool,7n,HASH,deployments)).status,'unknown');
 });
+
+test('market pipeline pins quotes to holdings and reuses the durable quote after restart',async()=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+ const h=require('./onchain.cjs'),{dexChain}=require('./pipeline-onchain.cjs');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-cashout-resume-'));
+ const original={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock};
+ try {
+  const deployed=JSON.parse(fs.readFileSync(path.join(__dirname,'sources/uniswap-deployments.json'))).records;
+  const factory=deployed.find(d=>d.chainId===1&&d.contract==='UniswapV2Factory').address;
+  const poolAddress='0x'+'5'.repeat(40),wallet='0x'+'6'.repeat(40),file=path.join(root,'market.json');
+  let reads=0;
+  const client={getChainId:async()=>1,multicall:async({contracts,blockNumber})=>{
+   assert.equal(blockNumber,7n);reads++;
+   return contracts.map(c=>({status:'success',result:{factory,token0:TOKEN,token1:OUTPUT,getReserves:[1000n,1000n,0],balanceOf:1000n,decimals:0,symbol:'USD'}[c.functionName]}));
+  },readContract:async request=>{assert.equal(request.blockNumber,7n);assert.equal(request.functionName,'getPair');reads++;return poolAddress;}};
+  h.endpoints=()=>['synthetic'];h.client=()=>client;
+  h.snapshotBlock=async(c,saved)=>{assert.equal(saved.block_number,'7');assert.equal(saved.block_hash,HASH);return {number:7n,hash:HASH};};
+  const token={chain_id:1,token_address:TOKEN,token_type:'ERC20',wallet_balance_raw:'100',balance_block_number:'7',balance_block_hash:HASH,
+   dex_pools:[{pool:poolAddress,venue:'uniswap',version_labels:['v2'],source_url:'https://example.com/pool'}]};
+  const first=await dexChain({chain_id:1},[token],{file,wallet});
+  assert.equal(first[0].dex_pools[0].cashout_quote.output_amount,'90');
+  const saved=JSON.parse(fs.readFileSync(file));assert.equal(saved.block_hash,HASH);assert.equal(saved.completed_pools.length,1);
+  const before=reads;
+  const fresh={...token,dex_pools:[{pool:poolAddress,venue:'uniswap',version_labels:['v2'],source_url:'https://example.com/pool'}]};
+  const resumed=await dexChain({chain_id:1},[fresh],{file,wallet});
+  assert.equal(reads,before);assert.deepEqual(resumed[0].dex_pools[0].cashout_quote,first[0].dex_pools[0].cashout_quote);
+ }finally{Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
+});
