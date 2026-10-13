@@ -145,10 +145,10 @@ const seed=()=>{fs.mkdirSync(path.dirname(cacheFile),{recursive:true});fs.writeF
     h.endpoints=()=>['synthetic'];h.snapshotBlock=async(c,saved)=>{savedBlocks.push(saved?.block_number||null);return {number:103n,hash};};
     h.client=()=>({getChainId:async()=>999,multicall:async({contracts,blockNumber})=>{
       assert.equal(blockNumber,103n);marketCalls++;
-      if(slow&&marketCalls===2)await new Promise(resolve=>setTimeout(resolve,100));
+      if(slow&&marketCalls===2)throw new MarketBudget();
       return contracts.map(c=>({status:'success',result:c.functionName==='getReserves'?[1n,1n,0]:c.functionName==='token0'?addresses[0]:c.functionName==='token1'?addresses[1]:'0x'+'f'.repeat(40)}));
     }});
-    const partial=await dexChain(network,marketTokens(),{file:marketFile,wallet:addresses[0],deadline:Date.now()+30});
+    const partial=await dexChain(network,marketTokens(),{file:marketFile,wallet:addresses[0],deadline:Date.now()+10000});
     assert.equal(partial[0].market_pending,true);
     assert.equal(JSON.parse(fs.readFileSync(marketFile)).completed_pools.length,1);
     slow=false;marketCalls=0;
@@ -172,7 +172,7 @@ const seed=()=>{fs.mkdirSync(path.dirname(cacheFile),{recursive:true});fs.writeF
     const failureFile=path.join(root,'transient-prefix.json');marketCalls=0;slow=true;
     const make=h.client;
     h.client=()=>{const client=make();const multi=client.multicall;client.multicall=async args=>{if(marketCalls===0){marketCalls++;return args.contracts.map(()=>({status:'failure',error:{message:'HTTP 503'}}));}return multi(args);};return client;};
-    await dexChain(network,marketTokens(),{file:failureFile,wallet:addresses[0],deadline:Date.now()+30});
+    await dexChain(network,marketTokens(),{file:failureFile,wallet:addresses[0],deadline:Date.now()+10000});
     assert.equal(JSON.parse(fs.readFileSync(failureFile)).completed_pools.length,0);
     h.client=make;slow=false;marketCalls=0;
     const retried=await dexChain(network,marketTokens(),{file:failureFile,wallet:addresses[0],deadline:Date.now()+1000});

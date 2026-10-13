@@ -28,9 +28,10 @@ class PriorTests(unittest.TestCase):
             atomic(Path(tmp)/entry['latest_snapshot']['result'],{'wallet_address':address,'tokens':[
                 {'chain_id':8453,'token_type':'ERC1155','token_address':token,'token_id':'0','wallet_balance_raw':'999','mintclub':{'funded':True}},
                 {'chain_id':8453,'token_type':'ERC1155','token_address':'0x'+'3'*40,'token_id':'7','mintclub':{'funded':True}},
-                {'chain_id':8453,'token_type':'ERC1155','token_address':'0x'+'4'*40,'token_id':'0','mintclub':None}]})
+                {'chain_id':8453,'token_type':'ERC1155','token_address':'0x'+'4'*40,'token_id':'0','mintclub':None},
+                {'chain_id':8453,'token_type':'ERC1155','token_address':'0x'+'5'*40,'token_id':'0','mintclub':None,'mintclub_membership_status':'verified','mintclub_error':{'message':'Details unavailable'}}]})
             candidates=wallet.prior_candidates(entry)
-            self.assertEqual(len(candidates),1);self.assertEqual(candidates[0]['token_id'],'0')
+            self.assertEqual(len(candidates),2);self.assertEqual(candidates[0]['token_id'],'0')
             self.assertTrue(candidates[0]['requires_mintclub_membership']);self.assertNotIn('999',json.dumps(candidates))
             entry.pop('latest_snapshot');self.assertEqual(wallet.prior_candidates(entry),candidates)
 if __name__=='__main__':unittest.main()

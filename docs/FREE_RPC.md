@@ -85,6 +85,9 @@ from unchanged state. A saved frontier resumes after a market time budget.
 The search admits at most 32 nodes and four branches per node; omitted,
 unsupported and failed paths stay unknown. These bounds do not establish
 exhaustive qualifying-asset coverage or benchmarked latency.
+Market pool attempts have a durable frontier: unread pools receive a turn before
+failed retry holes. Repeated failures cannot continuously consume the budget
+ahead of the same untested pools, and retries alone do not count as new evidence.
 
 ## Default token inventory
 

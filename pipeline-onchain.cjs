@@ -349,7 +349,8 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
       item.symbol = meta[1].status==='success'?meta[1].result:t.symbol||t.address.slice(0,10);
       item.name = meta[2].status==='success'?meta[2].result:t.name||item.symbol;
       item.wallet_balance = Number.isInteger(item.decimals)?v.formatUnits(t.balance_raw,item.decimals):null;
-      if(t.mintclub_membership_unknown)item.mintclub_membership_status='unknown';
+      if(t.registered_mintclub)item.mintclub_membership_status='verified';
+      else if(t.mintclub_membership_unknown)item.mintclub_membership_status='unknown';
       if (item.wallet_balance===null) item.metadata_error = 'Token decimals unavailable; quantity remains unknown.';
       if(deferDetails)item.metadata_pending=true;
       if (t.registered_mintclub&&deferDetails)item.mintclub_pending=true;
@@ -428,6 +429,8 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000}={})
   // Legacy completed pool checks predate amount-specific quotes. Preserve their
   // cached reads and fixed block, but revisit the pools to record quote status.
   if(cache.quote_schema_version!==2){cache.completed_pools=[];cache.quote_schema_version=2;}
+  cache.pool_attempts=cache.pool_attempts||{};
+  if(typeof cache.pool_attempts!=='object'||Array.isArray(cache.pool_attempts)||Object.values(cache.pool_attempts).some(value=>!Number.isSafeInteger(value)||value<0))throw new Error('Invalid saved market attempt frontier.');
   const saved=cacheDecode(cache.tokens);
   for(const token of tokens){
     const previous=saved.find(t=>identity(t)===identity(token));
@@ -475,10 +478,15 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000}={})
   }
   const poolTotal=tokens.reduce((sum,t)=>sum+t.dex_pools.filter(p=>['uniswap','aerodrome'].includes(p.venue)).length,0);
   let poolChecked=0;emitProgress(n,'markets',0,poolTotal);
-  for(const t of tokens) for(const p of t.dex_pools) {
+  const poolKey=(t,p)=>t.token_address.toLowerCase()+':'+p.pool.toLowerCase();
+  const poolQueue=tokens.flatMap(t=>t.dex_pools.filter(p=>['uniswap','aerodrome'].includes(p.venue)).map(p=>({t,p})))
+    .sort((a,b)=>(cache.pool_attempts[poolKey(a.t,a.p)]||0)-(cache.pool_attempts[poolKey(b.t,b.p)]||0));
+  for(const {t,p} of poolQueue) {
     if(!['uniswap','aerodrome'].includes(p.venue))continue;
-    const identity=t.token_address.toLowerCase()+':'+p.pool.toLowerCase();
+    const identity=poolKey(t,p);
     if(cache.completed_pools.includes(identity)){emitProgress(n,'markets',++poolChecked,poolTotal);continue;}
+    if(Date.now()>=deadline)throw new MarketBudget();
+    cache.pool_attempts[identity]=(cache.pool_attempts[identity]||0)+1;
     let retry=false,paused=false;
     try {
       if(p.pool.length===66) {

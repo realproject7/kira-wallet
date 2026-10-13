@@ -145,6 +145,7 @@ test('wallet candidate mode verifies ID0 membership before balances and never en
   assert.equal(row.registry_scan.phase,'not_requested');assert.equal(row.registry_scan.registry_count,null);assert.equal(row.registry_scan.complete,false);
   assert.equal(row.mintclub_membership_scan.id0_registered,1);assert.equal(row.mintclub_membership_scan.id0_outside_scope,1);assert.equal(row.mintclub_membership_scan.id0_unknown,1);
   assert.equal(row.tokens.find(t=>t.token_address===nft).wallet_balance_raw,9n);assert.equal(row.tokens.find(t=>t.token_address===nft).token_type,'ERC1155');
+  assert.equal(row.tokens.find(t=>t.token_address===nft).mintclub_membership_status,'verified');assert(row.tokens.find(t=>t.token_address===nft).mintclub_error);
   assert.equal(row.research_pending,true);assert.equal(row.status,'partial');
   const before=reads.filter(c=>c.functionName==='balanceOf').length;
   await scanChain(input,network,root);

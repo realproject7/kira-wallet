@@ -89,3 +89,31 @@ test('market pipeline pins quotes to holdings and reuses the durable quote after
   assert.equal(reads,before);assert.deepEqual(resumed[0].dex_pools[0].cashout_quote,first[0].dex_pools[0].cashout_quote);
  }finally{Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('a failed market pool cannot repeatedly starve an unread qualifying pool after a budget pause',async()=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+ const h=require('./onchain.cjs'),{dexChain}=require('./pipeline-onchain.cjs');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-market-retry-frontier-'));
+ const original={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock},now=Date.now;
+ try{
+  const factory=require('./sources/uniswap-deployments.json').records.find(d=>d.chainId===1&&d.contract==='UniswapV2Factory').address;
+  const bad='0x'+'5'.repeat(40),good='0x'+'6'.repeat(40),wallet='0x'+'7'.repeat(40),file=path.join(root,'market.json');
+  let clock=0;const reads=[];Date.now=()=>clock;
+  h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:7n,hash:HASH});
+  h.client=()=>({getChainId:async()=>1,multicall:async({contracts})=>{
+   const address=contracts[0].address;reads.push(address);
+   if(address===bad){clock=20;return contracts.map(()=>({status:'failure',error:new Error('persistent synthetic pool outage')}));}
+   return contracts.map(c=>({status:'success',result:{factory,token0:TOKEN,token1:OUTPUT,getReserves:[1000n,1000n,0],balanceOf:1000n,decimals:0,symbol:'USD'}[c.functionName]}));
+  },readContract:async query=>{assert.equal(query.functionName,'getPair');return good;}});
+  const create=()=>({chain_id:1,token_address:TOKEN,token_type:'ERC20',wallet_balance_raw:'100',balance_block_number:'7',balance_block_hash:HASH,
+   dex_pools:[bad,good].map(pool=>({pool,venue:'uniswap',version_labels:['v2'],source_url:'https://example.com/pool'}))});
+  const first=await dexChain({chain_id:1},[create()],{file,wallet,deadline:10});
+  assert.equal(first[0].market_pending,true);assert.deepEqual(reads,[bad]);
+  const saved=JSON.parse(fs.readFileSync(file));assert.equal(saved.pool_attempts[TOKEN.toLowerCase()+':'+bad],1);
+  clock=0;const start=reads.length;
+  const second=await dexChain({chain_id:1},[create()],{file,wallet,deadline:10});
+  assert.equal(reads[start],good);assert.equal(second[0].dex_pools.find(p=>p.pool===good).cashout_quote.output_amount,'90');
+  assert.equal(second[0].dex_pools.find(p=>p.pool===bad).cashout_quote,undefined);
+  assert(JSON.parse(fs.readFileSync(file)).completed_pools.includes(TOKEN.toLowerCase()+':'+good));
+ }finally{Date.now=now;Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
+});

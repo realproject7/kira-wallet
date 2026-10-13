@@ -242,7 +242,7 @@ def prior_candidates(wallet):
                 prior += [{'chain_id':t.get('chain_id'),'address':t.get('token_address'),
                            **({'token_type':'ERC1155','token_id':'0'} if t.get('token_type')=='ERC1155' else {})}
                           for t in old.get('tokens',[]) if t.get('token_type')=='ERC20' or
-                          t.get('token_type')=='ERC1155' and str(t.get('token_id'))=='0' and t.get('mintclub')]
+                          t.get('token_type')=='ERC1155' and str(t.get('token_id'))=='0' and (t.get('mintclub') or t.get('mintclub_membership_status')=='verified')]
     candidates={}
     for token in prior if isinstance(prior,list) else []:
         if isinstance(token,dict) and type(token.get('chain_id')) is int and token['chain_id']>0 and isinstance(token.get('address'),str) and re.fullmatch(r'0x[0-9a-fA-F]{40}',token['address']):
@@ -455,6 +455,7 @@ def continuation_checkpoint(folder, discovered, market_pending):
         for path in sorted(folder.glob(pattern)):
             saved=read(path)
             progress[path.name]={k:saved[k] for k in ('balances','entries','next_index','requests','completed_pools','nodes','mintclub_membership') if k in saved}
+            if 'pool_attempts' in saved:progress[path.name]['pools_attempted']=sorted(saved['pool_attempts'])
     # Only successful evidence counts. Strip observation timestamps recursively
     # so a failed retry cannot disguise a stalled frontier as new work.
     def stable(value):
