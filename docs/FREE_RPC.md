@@ -177,10 +177,12 @@ individual, pinned root-quote recovery before general market scans. Successful
 reads and routes are retained; failed recovery stays pending without multiplying
 requests by splitting a transport failure. Amount quotes do not verify execution.
 The early pass records root quotes before intermediate venue work. Later passes
-expand at most two nodes per asset per turn and allow at most six seconds of
+expand at most two nodes per asset per turn and allow at most eighteen seconds of
 reads per asset within the existing overall market deadline. Saved attempt
 counts rotate unread assets ahead of retries. A slow route keeps its prefixes
 and pending nodes without preventing other held assets from receiving a turn.
+This turn budget includes the existing two-second shared RPC-family pacing and
+concurrent-chain queue waits; the provider interval is never shortened.
 Recovery reads the pinned `tokenBond` reserve identity/balance, reserve-token
 decimals and `getRefundForTokens` output. It does not require names, symbols or
 the full `getDetail` curve. A root's verified same-block membership is reused;

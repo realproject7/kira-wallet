@@ -165,3 +165,24 @@ test('one slow root preserves its pending work and lets another held asset recei
   assert.equal(result.market_pending,false);assert(result.tokens.every(t=>t.liquidation_routes.length===1));
  }finally{Object.assign(h,originals);fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('normal paced root reads fit the asset turn instead of expiring at the third call',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-paced-root-'));
+ const originals={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock},originalNow=Date.now;
+ try{
+  let clock=originalNow(),reads=0;Date.now=()=>clock;
+  const network={chain_id:8453,network:'base',environment:'mainnet',mintclub_bond_address:'0x'+'9'.repeat(40)};
+  h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:7n,hash:HASH});
+  h.client=()=>({getChainId:async()=>8453,readContract:async query=>{
+   reads++;clock+=3000; // Queue plus provider-family pacing, no wall-clock sleep.
+   if(query.functionName==='tokenBond')return [TOKEN,100,100,0,USD,5000000n];
+   if(query.functionName==='decimals')return 6;
+   if(query.functionName==='getRefundForTokens')return [1000000n,10000n];
+   assert.fail('Verified membership should be reused');
+  }});
+  const held={...token(),dex_pools:[],mintclub_membership_status:'verified'};
+  const result=await liquidationChain(network,{wallet:TOKEN,tokens:[held],cashout_root_only:true},path.join(root,'result.json'),clock+45000);
+  assert.equal(reads,3);assert.equal(result.market_pending,false);
+  assert.equal(result.tokens[0].liquidation_routes[0].output_amount,'1');
+ }finally{Date.now=originalNow;Object.assign(h,originals);fs.rmSync(root,{recursive:true,force:true});}
+});

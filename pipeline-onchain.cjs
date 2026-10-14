@@ -666,7 +666,10 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
     for(const token of [...tokens].sort((a,b)=>(cache[attemptsKey][tokenKey(a)]||0)-(cache[attemptsKey][tokenKey(b)]||0)||Number(!!b.mintclub?.funded)-Number(!!a.mintclub?.funded)||Number(b.mintclub_membership_status==='verified')-Number(a.mintclub_membership_status==='verified'))){
       const key=token.token_address.toLowerCase()+':'+token.token_type;
       if(Date.now()>=deadline)throw new MarketBudget();
-      assetDeadline=Math.min(deadline,Date.now()+6000);
+      // Three root reads or four intermediate reads must fit the shared
+      // two-second family lane while two chains are active. Keep the overall
+      // deadline authoritative and retain incomplete work at a turn boundary.
+      assetDeadline=Math.min(deadline,Date.now()+18000);
       cache[attemptsKey][key]=(cache[attemptsKey][key]||0)+1;save();
       let state;
       try{state=await expandRoutes(token,quoteAsset,{state:cache.nodes[key],rootOnly,maxSteps:2,save:state=>{cache.nodes[key]=state;save();}});}
