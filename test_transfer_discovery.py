@@ -189,7 +189,9 @@ class TransferTests(unittest.TestCase):
         discovery.discover(WALLET,8453,request=self.request(['10',[self.transfer()]*100],[]),save=lambda s:saved.append(copy.deepcopy(s)),max_pages=1)
         clock=[100.0]
         def timed_out(body,timeout):
-            clock[0]=102.0
+            # The shared lane may reject a call that cannot fit before its
+            # deadline while a fraction of the invocation budget remains.
+            clock[0]=100.5
             return {'error':{'code':'deadline'}}
         with patch.object(discovery.time,'monotonic',side_effect=lambda:clock[0]):
             row=discovery.discover(WALLET,8453,state=saved[-1],request=timed_out,budget=1,continue_only=True)

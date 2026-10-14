@@ -78,6 +78,10 @@ def pause_quota(response):
         _cooldown=time.monotonic()+max(60,min(3600,retry) if type(retry) is int else 60)
 
 
+class BudgetEnded(ValueError):
+    """This invocation cannot fit another call in its shared provider lane."""
+
+
 class RetryLater(ValueError):
     def __init__(self, seconds):
         super().__init__('Provider quota interval')
@@ -88,6 +92,7 @@ def call(name, arguments, deadline, request=fetch):
     payload={'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':name,'arguments':arguments}}
     response=request(payload,max(0,deadline-time.monotonic()))
     error=response.get('error') if isinstance(response,dict) else None
+    if isinstance(error,dict) and error.get('code')=='deadline':raise BudgetEnded('Discovery time budget reached')
     if isinstance(error,dict) and (error.get('http_status')==429 or error.get('code')=='throttled'):
         raise RetryLater(error.get('retry_after'))
     if not isinstance(response,dict) or response.get('id')!=1 or response.get('error'):raise ValueError('Provider unavailable')
@@ -283,6 +288,8 @@ def discover(address, chain_id, *, state=None, save=lambda value:None, request=f
                 save(current);row['pages'].append({**args,'records':len(transfers)})
             row['complete']=current['complete']
             row['discovery_status']='checked' if row['complete'] else 'history_pending' if current['pending_ranges'] else 'source_limited'
+    except BudgetEnded:
+        row['discovery_status']='history_pending'
     except RetryLater as error:
         row.update(discovery_status='throttled',retry_not_before=error.retry_not_before)
         if current:
