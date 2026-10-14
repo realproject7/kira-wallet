@@ -465,7 +465,7 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000}={})
         }
       }
     }
-    const found=await batches(c,queries.map(q=>q.call),block,60,(checked,total)=>emitProgress(n,'markets',checked,total));
+    const found=await batches(c,queries.map(q=>q.call),block,60,(checked,total)=>emitProgress(n,'factory_queries',checked,total));
     queries.forEach((q,i)=>{
       const r=found[i];
       if(r.status==='success' && r.result!==v.zeroAddress && !q.t.dex_pools.some(p=>p.pool.toLowerCase()===r.result.toLowerCase())) {
@@ -477,14 +477,14 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000}={})
     for(const t of tokens)t.factory_discovery={candidate_count:queries.filter(q=>q.t===t).length,errors:queries.filter((q,i)=>q.t===t&&found[i].status==='failure').length,block_number:block};
   }
   const poolTotal=tokens.reduce((sum,t)=>sum+t.dex_pools.filter(p=>['uniswap','aerodrome'].includes(p.venue)).length,0);
-  let poolChecked=0;emitProgress(n,'markets',0,poolTotal);
+  let poolChecked=0;emitProgress(n,'pool_checks',0,poolTotal);
   const poolKey=(t,p)=>t.token_address.toLowerCase()+':'+p.pool.toLowerCase();
   const poolQueue=tokens.flatMap(t=>t.dex_pools.filter(p=>['uniswap','aerodrome'].includes(p.venue)).map(p=>({t,p})))
     .sort((a,b)=>(cache.pool_attempts[poolKey(a.t,a.p)]||0)-(cache.pool_attempts[poolKey(b.t,b.p)]||0));
   for(const {t,p} of poolQueue) {
     if(!['uniswap','aerodrome'].includes(p.venue))continue;
     const identity=poolKey(t,p);
-    if(cache.completed_pools.includes(identity)){emitProgress(n,'markets',++poolChecked,poolTotal);continue;}
+    if(cache.completed_pools.includes(identity)){emitProgress(n,'pool_checks',++poolChecked,poolTotal);continue;}
     if(Date.now()>=deadline)throw new MarketBudget();
     cache.pool_attempts[identity]=(cache.pool_attempts[identity]||0)+1;
     let retry=false,paused=false;
@@ -535,7 +535,7 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000}={})
       // unfinished pool as verified or as a provider failure.
       if(!paused&&Date.now()<deadline){if(!retry)cache.completed_pools.push(identity);poolChecked++;}
       if(retry)p.rpc_verification={...p.rpc_verification,error:{message:'Some pool reads failed. Remaining price and execution details are unknown.'}};
-      cache.tokens=cacheEncode(tokens);save();emitProgress(n,'markets',poolChecked,poolTotal);
+      cache.tokens=cacheEncode(tokens);save();emitProgress(n,'pool_checks',poolChecked,poolTotal);
     }
   }
   if(Date.now()>=deadline)throw new MarketBudget();
@@ -630,6 +630,12 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
             route_fees_included:true,price_impact_included:true,gas_included:false,execution_verified:false,transfer_tax_included:false,source_url:`https://mint.club/token/${n.network}/${address}`});
         }else if(exists!==false)quotes.push({status:'unknown',reason:'Mint Club membership unavailable.'});
       }catch(error){if(error.code==='market_budget')throw error;quotes.push({status:'unknown',reason:'Amount-specific Mint Club redemption unavailable.'});}
+      // Publish a usable funded redemption before exploring alternate venues.
+      // The alternative DEX scope remains unknown, never verified absent.
+      if(quotes.some(q=>q.status==='quoted'&&q.funded===true&&BigInt(q.output_amount_raw)>0n&&BigInt(q.reserve_balance_raw)>=BigInt(q.output_amount_raw))){
+        quotes.push({status:'unknown',reason:'Alternate intermediate DEX venues have not been searched after a funded Mint Club quote.'});
+        return quotes;
+      }
       const key=address.toLowerCase();
       if(!cache.asset_pools[key]){cache.asset_pools[key]=await routePools(input.market_chain_names?.[n.chain_id],address,deadline);save();}
       const catalog=cache.asset_pools[key];
@@ -642,11 +648,11 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
       for(const pool of verified.dex_pools)quotes.push(pool.cashout_quote||{status:'unknown',reason:'Pool adapter or quote unavailable.'});
       return quotes;
     };
-    for(const token of tokens){
+    for(const token of [...tokens].sort((a,b)=>Number(!!b.mintclub?.funded)-Number(!!a.mintclub?.funded))){
       const key=token.token_address.toLowerCase()+':'+token.token_type;
       const state=await expandRoutes(token,quoteAsset,{state:cache.nodes[key],save:state=>{cache.nodes[key]=state;save();}});
       token.liquidation_routes=state.routes;token.liquidation_unknown_routes=state.unknown;delete token.cashout_pending;
-      emitProgress(n,'cashout_routes',Object.values(cache.nodes).filter(node=>!node.pending.length).length,tokens.length);
+      emitProgress(n,'cashout_routes',tokens.filter(t=>cache.nodes[t.token_address.toLowerCase()+':'+t.token_type]?.pending.length===0).length,tokens.length);
     }
     return {tokens,market_pending:false};
   }catch(error){

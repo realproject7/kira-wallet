@@ -36,6 +36,20 @@ assert.equal(jobPresentation({ ...job, state: 'queued', started_at: '2026-10-03T
 assert.equal(jobPresentation({ ...job, cancel_requested: true }, time).label, 'Stopping');
 assert.equal(jobPresentation({ ...job, created_at: 'invalid' }, time).elapsed, null);
 assert.equal(duration(3661), '1h 1m 1s');
+const {jobProgress}=require('./viewer/static/workspace-model.js');
+const progressEvent=(checked,second,extra={})=>({stage:'onchain_progress',observed_at:new Date(time-30000+second*1000).toISOString(),
+ counts:{checked,total:100},context:{operation:'balances',chain_id:8453,attempt:2},...extra});
+const measured={...job,attempt:2,result:{status:'completed_with_coverage_gaps'},events:[progressEvent(10,0),progressEvent(20,10),progressEvent(30,20)]};
+assert.match(jobProgress(measured,time).eta,/Current step estimate/);
+assert.equal(jobProgress(measured,time).count,'30 / 100 balances');
+assert.match(jobProgress(measured,time).saved,/Saved results/);
+assert.match(jobProgress(measured,time+60000).eta,/unknown/);
+assert.match(jobProgress(measured,time,false).eta,/unknown/);
+assert.match(jobProgress({...measured,attempt:3},time).eta,/unknown/);
+assert.match(jobProgress({...measured,events:[progressEvent(10,0),progressEvent(20,10),progressEvent(5,20)]},time).eta,/unknown/);
+assert.match(jobProgress({...measured,events:[{...progressEvent(4,20),counts:{checked:4,pending_ranges:3},context:{operation:'history',attempt:2}}]},time).count,/history pages checked including saved work/);
+assert.match(jobProgress({...measured,state:'queued',continuation:{not_before:time/1000+60}},time).eta,/Provider retry in 1m 0s/);
+assert.equal(jobProgress({...measured,state:'partial'},time).eta,'');
 console.log('Workspace catalog and job-state checks passed with 5,002 synthetic tokens.');
 
 const {networkEmpty}=require('./viewer/static/workspace-model.js');

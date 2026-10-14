@@ -126,6 +126,7 @@ def valid_state(state, address, chain_id, standard='erc20'):
             or state.get('provider','etherscan_keyless')!=provider or state.get('standard','erc20')!=standard or not valid_range(state)
             or type(state.get('complete')) is not bool or not isinstance(state.get('contracts'),list)
             or not all(isinstance(a,str) and ADDRESS.fullmatch(a) for a in state['contracts'])):return False
+    if state.get('history_strategy','linear_pages_v1') not in ('linear_pages_v1','balanced_ranges_v1'):return False
     if 'retry_not_before' in state and (type(state['retry_not_before']) is not int or state['retry_not_before']<0):return False
     if state['schema_version']==1:
         return (standard=='erc20' and type(state.get('page')) is int and 1<=state['page']<=101
@@ -174,7 +175,7 @@ def finish_range(current, window):
     current['completed_ranges']=merged
 
 
-def split_limit(current):
+def split_limit(current, *, balanced=False):
     window=current['pending_ranges'].pop(0)
     lo,hi=window['startblock'],window['endblock']
     if lo==hi:
@@ -183,8 +184,10 @@ def split_limit(current):
     mid=(lo+hi)//2
     # Inclusive, disjoint ranges. Re-reading the limited parent is intentional;
     # contract identities are a set and every child must finish independently.
-    current['pending_ranges'][0:0]=[{'startblock':mid+1,'endblock':hi,'page':1,'seen_page_hashes':[]},
-                                  {'startblock':lo,'endblock':mid,'page':1,'seen_page_hashes':[]}]
+    older={'startblock':lo,'endblock':mid,'page':1,'seen_page_hashes':[]}
+    newer={'startblock':mid+1,'endblock':hi,'page':1,'seen_page_hashes':[]}
+    if balanced:current['pending_ranges'].extend([older,newer])
+    else:current['pending_ranges'][0:0]=[newer,older]
 
 
 def admit(transfers, address, startblock, endblock, contracts, standard='erc20'):
@@ -208,7 +211,7 @@ def admit(transfers, address, startblock, endblock, contracts, standard='erc20')
     return sorted(contracts)
 
 
-def discover(address, chain_id, *, state=None, save=lambda value:None, request=fetch, budget=25, max_pages=3, continue_only=False, standard='erc20'):
+def discover(address, chain_id, *, state=None, save=lambda value:None, request=fetch, budget=25, max_pages=3, continue_only=False, standard='erc20', history_strategy=None):
     provider=provider_for(standard)
     row={'chain_id':chain_id,'source':DOCS,'provider':provider,'standard':standard,'tokens':[],'native':[],
          'pages':[],'complete':False,'discovery_status':'unsupported','error':None,
@@ -218,11 +221,15 @@ def discover(address, chain_id, *, state=None, save=lambda value:None, request=f
          'filters':{'spam_filter':False,'minimum_value':None,'minimum_liquidity':None}}
     if chain_id not in (CHAINS if standard=='erc20' else ERC1155_CHAINS):return row
     if not isinstance(address,str) or not ADDRESS.fullmatch(address):raise ValueError('Invalid wallet')
+    if history_strategy not in (None,'linear_pages_v1','balanced_ranges_v1'):raise ValueError('Unsupported history strategy')
     if state is not None and not valid_state(state,address,chain_id,standard):
         row.update(discovery_status='checkpoint_error',error={'message':'Transfer checkpoint is invalid. Saved evidence was preserved.'})
         return row
     deadline=time.monotonic()+budget
     current=migrate(state) if state is not None else None
+    # Existing frontiers keep their exact traversal policy. New wallet runs can
+    # explore old ranges early without labelling sampled ranges complete.
+    strategy=current.get('history_strategy','linear_pages_v1') if current else history_strategy or 'linear_pages_v1'
     def height():
         value=call('get_block_by_timestamp',{'chainid':str(chain_id),'timestamp':max(0,int(time.time())-120),'closest':'before'},deadline,request)
         if not isinstance(value,str) or not re.fullmatch(r'\d{1,16}',value):raise ValueError('Invalid window boundary')
@@ -236,7 +243,7 @@ def discover(address, chain_id, *, state=None, save=lambda value:None, request=f
             if current is None or current['complete'] and not continue_only:
                 endblock=height();startblock=max(0,current['endblock']-2048) if current else 0
                 if current and endblock<current['endblock']:raise ValueError('Indexer height moved backward')
-                current={'schema_version':2,'provider':provider,'standard':standard,'wallet':address.lower(),'chain_id':chain_id,
+                current={'schema_version':2,'provider':provider,'standard':standard,'history_strategy':strategy,'wallet':address.lower(),'chain_id':chain_id,
                          'startblock':startblock,'endblock':endblock,'contracts':current['contracts'] if current else [],
                          'complete':False,'records':0,'pages_checked':0,'started_at':int(time.time()),
                          'pending_ranges':[{'startblock':startblock,'endblock':endblock,'page':1,'seen_page_hashes':[]}],
@@ -253,7 +260,7 @@ def discover(address, chain_id, *, state=None, save=lambda value:None, request=f
             while current['pending_ranges'] and len(row['pages'])<max_pages and time.monotonic()<deadline:
                 window=current['pending_ranges'][0]
                 if window['page']>100:
-                    split_limit(current);save(current);continue
+                    split_limit(current,balanced=strategy=='balanced_ranges_v1');save(current);continue
                 args={k:window[k] for k in ('startblock','endblock','page')}
                 transfers=call('get_token_transfers',{'chainid':str(chain_id),'address':address,'standard':standard,'offset':100,'sort':'desc',**args},deadline,request)
                 contracts=admit(transfers,address,window['startblock'],window['endblock'],current['contracts'],standard)
@@ -269,7 +276,8 @@ def discover(address, chain_id, *, state=None, save=lambda value:None, request=f
                 else:
                     window.update(page=window['page']+1,last_block=int(transfers[-1]['blockNumber']))
                     window['seen_page_hashes'].append(digest)
-                    if window['page']>100:split_limit(current)
+                    if window['page']>100 or strategy=='balanced_ranges_v1' and window['page']>3 and window['startblock']<window['endblock']:
+                        split_limit(current,balanced=strategy=='balanced_ranges_v1')
                 current['complete']=not current['pending_ranges'] and not current['blocked_ranges']
                 current.pop('retry_not_before',None)
                 save(current);row['pages'].append({**args,'records':len(transfers)})

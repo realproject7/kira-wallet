@@ -37,6 +37,16 @@ class JobFixtures:
         atomic(self.root/job['checkpoint']/'run.json',{'wallet_address':ADDRESS,**({'completed_at':'now'} if completed_manifest else {'status':'running'})})
         registry=json.loads((self.root/'wallets.json').read_text());registry['wallets'][0]['latest_snapshot']={'directory':job['checkpoint']};atomic(self.root/'wallets.json',registry)
 class JobsTest(JobFixtures, unittest.TestCase):
+    def test_progress_retains_units_scope_and_attempt_without_provider_diagnostics(self):
+        job=self.running()
+        for operation in ('factory_queries','pool_checks','cashout_routes','history','market_discovery'):
+            self.store.event(job['job_id'],{'stage':'onchain_progress','operation':operation,'chain_id':8453,'checked':3,
+                'total':10,'pending_ranges':2,'provider':'etherscan_keyless','url':'PRIVATE-DIAGNOSTIC'})
+            event=self.store.get(job['job_id'])['events'][-1]
+            self.assertEqual(event['context']['operation'],operation);self.assertEqual(event['context']['attempt'],1)
+            self.assertEqual(event['counts']['pending_ranges'],2)
+            self.assertNotIn('PRIVATE-DIAGNOSTIC',json.dumps(event))
+
     def test_automatic_continuation_preserves_backoff_and_stops_unchanged_work(self):
         job=self.running();job['analysis_phase']='enrichment'
         checkpoint=self.root/job['checkpoint']/'continuation.json'

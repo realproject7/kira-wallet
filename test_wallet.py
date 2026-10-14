@@ -216,6 +216,36 @@ class WalletPipelineTests(unittest.TestCase):
         self.assertEqual(result['price_references']['ETH_USD']['value'],'2100')
         self.assertEqual(result['price_references']['ETH_USD']['source'],'Alchemy Portfolio Tokens By Wallet')
 
+    def test_republished_holdings_price_links_to_the_cached_raw_observation(self):
+        address='0x4200000000000000000000000000000000000006'
+        observed='2026-10-14T05:06:00Z'
+        token={'chain_id':8453,'network':'base','token_address':address,'token_type':'ERC20',
+               'symbol':'WETH','name':'Wrapped Ether','wallet_balance':'1','wallet_balance_raw':str(10**18),
+               'mintclub':None,'dex_pools':[],'dex_liquidity_found':False}
+        pair={'chainId':'base','pairAddress':'0x'+'3'*40,'dexId':'uniswap',
+              'baseToken':{'address':address,'symbol':'WETH'},'quoteToken':{'address':'0x'+'4'*40,'symbol':'QUOTE'},
+              'liquidity':{'usd':10000,'base':2},'priceUsd':'2000','url':'https://example.com/pool'}
+        wallet.atomic(self.folder/f'dex-8453-{address}.json',{'chain_id':8453,'token_address':address,
+            'source':f'https://api.dexscreener.com/token-pairs/v1/base/{address}',
+            'observed_at':observed,'response':[pair]})
+        wallet.atomic(self.folder/'onchain-summary.json',{'chains':[{'chain_id':8453,'tokens':[token],
+            'native_balance':'0','observed_at':observed,'rpc_status':'available',
+            'registry_scan':{'complete':True,'checked':0,'registry_count':0}}]})
+        def node(command,input_path,output_path):
+            wallet.atomic(output_path,{'tokens':wallet.read(input_path)['tokens'],'market_pending':False})
+        with patch.object(wallet,'run_node',side_effect=node),patch.object(wallet,'event'),\
+             patch.object(wallet.h,'now',return_value='2026-10-14T05:20:00Z'),\
+             patch('native_assets.market_metadata',return_value={'prices':{},'images':{},'evidence':None}),\
+             patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder,**kwargs:market),\
+             patch('token_images.refresh_catalog',return_value={}):
+            result=wallet.finish({'address':self.address,'tags':['Fixture']},self.folder,
+                [{**self.network,'name':'Base','mintclub_network':'base'}],
+                [{'chain_id':8453,'complete':True,'source':None,'pages':[],'native':[]}])
+        prices=wallet.read(self.folder/'market-prices.json')
+        self.assertEqual(result['compiled_at'],'2026-10-14T05:20:00Z')
+        self.assertEqual(prices['tokens'][0]['observed_at'],observed)
+        self.assertEqual(prices['tokens'][0]['usd'],2000)
+
     def test_candidate_balance_errors_keep_successful_discovery_partial(self):
         wallet.atomic(self.folder/'onchain-summary.json',{'chains':[{'chain_id':8453,'tokens':[],
             'native_balance':'0','observed_at':'2026-10-04T12:00:00Z','rpc_status':'available',
@@ -243,7 +273,7 @@ class WalletPipelineTests(unittest.TestCase):
         network={**self.network,'name':'Base','mintclub_network':'base'}
         discovery=[{'chain_id':8453,'complete':True,'source':None,'pages':[],'native':[]}]
         with patch.object(wallet,'ROOT',self.folder),patch.object(wallet,'run_node',side_effect=node),patch.object(wallet,'event') as events,\
-             patch('native_assets.market_metadata') as native,patch('curve_pricing.enrich') as enrich,patch('token_images.refresh_catalog') as images:
+             patch('native_assets.market_metadata',return_value={'prices':{},'images':{},'evidence':None}) as native,patch('curve_pricing.enrich') as enrich,patch('token_images.refresh_catalog') as images:
             with self.assertRaises(wallet.MarketPause):wallet.finish(entry,folder,[network],discovery)
             first=folder/'market-initial-0001'/'results.json';original=first.read_bytes();result=json.loads(original)
             self.assertEqual(result['coverage'][0]['native_balance'],'1')
@@ -252,11 +282,34 @@ class WalletPipelineTests(unittest.TestCase):
             self.assertEqual(result['coverage'][0]['mintclub_registry_scan']['phase'],'checked')
             self.assertTrue(result['pipeline']['market_pending'])
             self.assertEqual(result['status'],'completed_with_coverage_gaps')
-            native.assert_not_called();enrich.assert_not_called();images.assert_not_called()
+            native.assert_called_once();enrich.assert_not_called();images.assert_not_called()
             self.assertEqual(events.call_args.args[0],'market_paused')
             with self.assertRaises(wallet.MarketPause):wallet.finish(entry,folder,[network],discovery)
             self.assertEqual(first.read_bytes(),original)
             self.assertTrue((folder/'market-initial-0002'/'results.json').exists())
+
+    def test_funded_routes_and_output_prices_run_even_when_general_pools_are_pending(self):
+        folder=self.folder/'snapshots'/'job';entry={'address':self.address,'address_key':self.address.lower(),'tags':['Fixture']}
+        wallet.atomic(self.folder/'wallets.json',{'wallets':[entry],'research_runs':[]})
+        reserve='0x4200000000000000000000000000000000000006'
+        token={'chain_id':8453,'token_address':'0x'+'8'*40,'token_type':'ERC20','symbol':'SYNTHETIC',
+            'wallet_balance':'1','wallet_balance_raw':'1','dex_pools':[],
+            'mintclub':{'funded':True,'reserve_token':reserve}}
+        wallet.atomic(folder/'onchain-summary.json',{'chains':[{'chain_id':8453,'tokens':[token],
+            'native_balance':'0','observed_at':'2026-10-14T01:00:00Z','rpc_status':'available','registry_scan':{'complete':False}}]})
+        calls=[];fetches=[]
+        def node(command,input_path,output_path):
+            calls.append((command,wallet.read(input_path)['market_budget_ms']))
+            wallet.atomic(output_path,{'tokens':wallet.read(input_path)['tokens'],'market_pending':command=='dex'})
+        def dex(t,folder,deadline):
+            fetches.append(t['token_address']);return {'response':[],'observed_at':'2026-10-14T01:00:00Z'}
+        with patch.object(wallet,'ROOT',self.folder),patch.object(wallet,'run_node',side_effect=node),patch.object(wallet,'dex_fetch',side_effect=dex),\
+             patch.object(wallet,'event'),patch.object(wallet,'report'),patch('native_assets.market_metadata',return_value={'prices':{},'images':{},'evidence':None}),\
+             patch('curve_pricing.enrich') as enrich,patch('token_images.refresh_catalog'):
+            with self.assertRaises(wallet.MarketPause):wallet.finish(entry,folder,[{**self.network,'name':'Base'}],[{'chain_id':8453,'complete':True,'source':None,'pages':[],'native':[]}])
+        self.assertEqual([command for command,_ in calls],['liquidate','dex','liquidate'])
+        self.assertLessEqual(calls[1][1],60000);self.assertIn(reserve,fetches)
+        enrich.assert_not_called()
 
 
 if __name__=='__main__':unittest.main()

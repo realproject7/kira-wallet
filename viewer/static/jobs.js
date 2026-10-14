@@ -5,13 +5,14 @@ const pendingActions=new Set();
 const jobLabels={'wallet.add':'Wallet research','wallet.refresh':'Holdings refresh','prices.refresh':'Price refresh','wallet.setTags':'Wallet names','settings.rpc':'RPC settings','settings.discovery':'Token discovery','settings.provider':'Data provider connection','settings.importEnv':'Local connection setup'};
 const stageLabels={queued:'Waiting to start',starting:'Opening saved evidence',registered:'Wallet registered',discovery:'Token discovery',chain:'Checking on-chain holdings',onchain_progress:'Reading on-chain records',first_evidence:'First results available',dex_discovery:'Checking markets',token_images:'Preparing token artwork',published:'Evidence saved',failed:'Research stopped',stopped:'Research stopped',interrupted:'Ready for recovery'};
 function researchStage(event) {
-  if(event.stage==='market_paused')return 'Balances saved · resume remaining market checks';
+  if(event.stage==='market_paused')return 'Balances saved · market checks continue';
+  if(event.stage==='research_paused')return 'Partial results saved · research continues';
   const label=stageLabels[event.stage]||event.stage;
   if(event.stage!=='onchain_progress')return label;
-  const operations={balances:'Checking token balances',registry:'Discovering Mint Club tokens',metadata:'Reading token details',curves:'Checking curve backing',markets:'Checking markets',reserves:'Checking reserve prices'};
+  const operations={balances:'Checking token balances',registry:'Discovering Mint Club tokens',metadata:'Reading token details',curves:'Checking curve backing',markets:'Checking markets',reserves:'Checking reserve prices',mintclub_membership:'Checking Mint Club membership',history:'Discovering transfer history',market_discovery:'Finding token markets',factory_queries:'Finding pools',pool_checks:'Verifying pools',cashout_routes:'Checking cash-out routes'};
   const counts=event.counts||{},context=event.context||{};
   const chain=(typeof state==='undefined'?[]:state?.wallets||[]).flatMap(w=>w.chains||[]).find(c=>c.id===context.chain_id);
-  return (operations[context.operation]||label)+(context.chain_id?' · '+(chain?.name||'network '+context.chain_id):'')+(Number.isFinite(counts.checked)&&Number.isFinite(counts.total)?' · '+counts.checked+' of '+counts.total:'');
+  return (operations[context.operation]||label)+(context.chain_id?' · '+(chain?.name||'network '+context.chain_id):'')+(context.provider==='etherscan_keyless_erc1155_id0'?' · ERC1155 ID0':'');
 }
 function jobStage(job) {
   const event=job.events?.at(-1);
@@ -61,27 +62,28 @@ function renderJobs(){
   $('jobs-page').textContent=jobsPage+' / '+pages;$('jobs-prev').disabled=jobsPage===1;$('jobs-next').disabled=jobsPage===pages;
   const rows=filtered.slice((jobsPage-1)*20,jobsPage*20);
   $('jobs-list').innerHTML=rows.map(j=>{
-    const presentation=KiraView.jobPresentation(j,Date.now(),jobsConnected);
+    const presentation=KiraView.jobPresentation(j,Date.now(),jobsConnected),progress=KiraView.jobProgress(j,Date.now(),jobsConnected);
     const counts=j.events?.at(-1)?.counts||{},context=j.events?.at(-1)?.context;
-    const evidence=[...Object.entries(counts).filter(([name])=>name!=='block_number').map(([name,count])=>`${name.replaceAll('_',' ')} ${count}`),...(context?.block_number?['block '+context.block_number]:[])].join(' · ');
+    const evidence=progress.count?(Number.isSafeInteger(counts.pending_ranges)?counts.pending_ranges+' block ranges still pending':''):[...Object.entries(counts).filter(([name])=>name!=='block_number').map(([name,count])=>`${name.replaceAll('_',' ')} ${count}`),...(context?.block_number?['block '+context.block_number]:[])].join(' · ');
     const controls=KiraView.active(j)?`<button class="quiet-button" data-job-action="cancel" data-job-id="${escapeHTML(j.job_id)}" ${j.cancel_requested?'disabled':''}>${j.cancel_requested?'Stopping…':'Stop'}</button>`:['interrupted','failed','cancelled'].includes(j.state)?`<button class="quiet-button" data-job-action="resume" data-job-id="${escapeHTML(j.job_id)}">Resume saved work</button>`:'';
     const link=j.input.wallet||j.input.address;
     const name=state?.wallets.find(w=>w.key===link?.toLowerCase())?.name||(j.operation==='wallet.add'?j.input.tag:null);
     const recorded=(j.events||[]).map(event=>{const context=event.context;const detail=Object.entries(event.counts||{}).filter(([name])=>name!=='block_number').map(([name,value])=>name.replaceAll('_',' ')+': '+value).join(' · ');return `<li><strong>${escapeHTML(researchStage(event))}</strong><span>${stamp(event.observed_at)} · ${escapeHTML(detail)}${context?.block_number?' · block '+escapeHTML(context.block_number):''}</span></li>`;}).join('');
     const stages=recorded?`<details class="job-stages"><summary>Recorded stages · ${j.events.length}</summary><ol>${recorded}</ol></details>`:'';
-    return `<article class="job-row"><div class="job-identity"><span class="job-state ${escapeHTML(j.state)}">${presentation.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(presentation.label)}</span><strong>${escapeHTML(jobLabels[j.operation]||j.operation)}</strong>${link?`<a href="#/wallet/${escapeHTML(link.toLowerCase())}">${escapeHTML(name||shortAddress(link))}</a>`:''}<p>${escapeHTML(jobStage(j))}${j.state==='partial'?' · coverage gaps remain':''}</p><p class="job-timer" data-job-timer="${escapeHTML(j.job_id)}">${presentation.timerLabel} ${KiraView.duration(presentation.elapsed)}</p>${evidence?`<p class="job-evidence">${escapeHTML(evidence)}</p>`:''}${presentation.freshness?`<p class="job-freshness">${escapeHTML(presentation.freshness)}</p>`:''}${j.errors?.length?`<p class="job-error">${escapeHTML(j.errors[0].message)}</p>`:''}${stages}<small>Last update ${stamp(j.updated_at)} · attempt ${j.attempt} · ${escapeHTML(j.job_id.slice(0,8))}</small></div><div class="job-actions">${controls}</div></article>`;
+    return `<article class="job-row"><div class="job-identity"><span class="job-state ${escapeHTML(j.state)}">${presentation.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(presentation.label)}</span><strong>${escapeHTML(jobLabels[j.operation]||j.operation)}</strong>${link?`<a href="#/wallet/${escapeHTML(link.toLowerCase())}">${escapeHTML(name||shortAddress(link))}</a>`:''}<p>${escapeHTML(jobStage(j))}${j.state==='partial'?' · coverage gaps remain':''}</p><p class="job-timer" data-job-timer="${escapeHTML(j.job_id)}">${presentation.timerLabel} ${KiraView.duration(presentation.elapsed)}${j.attempt>1?' · since request '+KiraView.duration(progress.totalElapsed):''}</p>${progress.count?`<p class="job-progress">${escapeHTML(progress.count)}</p>`:''}<p class="job-estimate" data-job-estimate="${escapeHTML(j.job_id)}">${escapeHTML(progress.eta)}</p>${progress.saved?`<p class="job-saved">${escapeHTML(progress.saved)}</p>`:''}${evidence?`<p class="job-evidence">${escapeHTML(evidence)}</p>`:''}${presentation.freshness?`<p class="job-freshness">${escapeHTML(presentation.freshness)}</p>`:''}${j.errors?.length?`<p class="job-error">${escapeHTML(j.errors[0].message)}</p>`:''}${stages}<small>Last update ${stamp(j.updated_at)} · attempt ${j.attempt} · ${escapeHTML(j.job_id.slice(0,8))}</small></div><div class="job-actions">${controls}</div></article>`;
   }).join('')||'<div class="empty"><h3>'+(!localSession?.controls?'Activity is not available in this session':'No jobs in this view')+'</h3><p>Research jobs appear here when a local action starts.</p></div>';
   $('active-work').hidden=active.length===0||selectedView==='activity';
   $('active-work').innerHTML=active.slice(0,2).map(j=>{
-    const p=KiraView.jobPresentation(j,Date.now(),jobsConnected);
-    return `<div><a href="#/activity"><strong>${p.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(p.label)} · ${escapeHTML(jobLabels[j.operation]||j.operation)}</strong><small data-job-timer="${escapeHTML(j.job_id)}">${p.timerLabel} ${KiraView.duration(p.elapsed)}</small></a><p>${escapeHTML(jobStage(j))}${p.freshness?' · '+escapeHTML(p.freshness):''}</p></div>`;
+    const p=KiraView.jobPresentation(j,Date.now(),jobsConnected),progress=KiraView.jobProgress(j,Date.now(),jobsConnected);
+    return `<div><a href="#/activity"><strong>${p.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(p.label)} · ${escapeHTML(jobLabels[j.operation]||j.operation)}</strong><small data-job-timer="${escapeHTML(j.job_id)}">${p.timerLabel} ${KiraView.duration(p.elapsed)}</small></a><p>${escapeHTML(jobStage(j))}${p.freshness?' · '+escapeHTML(p.freshness):''}</p>${progress.count?`<p>${escapeHTML(progress.count)}</p>`:''}<p data-job-estimate="${escapeHTML(j.job_id)}">${escapeHTML(progress.eta)}</p>${progress.saved?`<p>${escapeHTML(progress.saved)}</p>`:''}</div>`;
   }).join('')+(active.length>2?'<small>'+ (active.length-2)+' more jobs in Activity</small>':'');
   if(typeof renderBriefing==='function')renderBriefing();
   if(typeof renderWallets==='function'&&state)renderWallets();
 }
 function tickJobTimers(){
   if(document.hidden)return;
-  document.querySelectorAll('[data-job-timer]').forEach(node=>{const job=jobList.find(j=>j.job_id===node.dataset.jobTimer);if(!job)return;const p=KiraView.jobPresentation(job,Date.now(),jobsConnected);node.textContent=p.timerLabel+' '+KiraView.duration(p.elapsed);});
+  document.querySelectorAll('[data-job-timer]').forEach(node=>{const job=jobList.find(j=>j.job_id===node.dataset.jobTimer);if(!job)return;const p=KiraView.jobPresentation(job,Date.now(),jobsConnected);node.textContent=p.timerLabel+' '+KiraView.duration(p.elapsed)+(job.attempt>1?' · since request '+KiraView.duration(KiraView.jobProgress(job).totalElapsed):'');});
+  document.querySelectorAll('[data-job-estimate]').forEach(node=>{const job=jobList.find(j=>j.job_id===node.dataset.jobEstimate);if(job)node.textContent=KiraView.jobProgress(job,Date.now(),jobsConnected).eta;});
 }
 $('job-filter').addEventListener('change',()=>{jobsPage=1;renderJobs();});
 $('jobs-prev').addEventListener('click',()=>{jobsPage--;renderJobs();});

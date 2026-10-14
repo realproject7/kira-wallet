@@ -456,7 +456,7 @@ class JobStore:
         if event.get('stage') not in allowed: return
         with self.locked():
             job = self.get(job_id)
-            counts = {k: v for k, v in event.items() if k in {'complete_chains', 'candidates', 'tokens','chain_id','registry','checked','held','block_number','total'} and type(v) is int and v >= 0}
+            counts = {k: v for k, v in event.items() if k in {'complete_chains', 'candidates', 'tokens','chain_id','registry','checked','held','block_number','total','pending_ranges'} and type(v) is int and v >= 0}
             job['stage'] = event['stage']
             if event['stage']=='chain' and type(event.get('chain_id')) is int:
                 block=event.get('block_number');block=str(block) if type(block) is int and block>=0 else block
@@ -464,8 +464,10 @@ class JobStore:
                     'endpoint_index':event.get('endpoint_index') if type(event.get('endpoint_index')) is int else None,
                     'status':event.get('status') if event.get('status') in ('complete','partial','unavailable') else 'unknown'}
             job['events'].append({'stage': event['stage'], 'observed_at': now(), 'counts': counts})
-            if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets','reserves'):
-                job['events'][-1]['context']={'operation':event['operation'],'chain_id':counts.get('chain_id')}
+            if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets','reserves','history','market_discovery','factory_queries','pool_checks','cashout_routes','mintclub_membership'):
+                context={'operation':event['operation'],'chain_id':counts.get('chain_id'),'attempt':job['attempt']}
+                if event.get('provider') in ('etherscan_keyless','etherscan_keyless_erc1155_id0'):context['provider']=event['provider']
+                job['events'][-1]['context']=context
             if event['stage']=='first_evidence' and isinstance(event.get('snapshot'),str) and (event['snapshot']==job['checkpoint']+'/initial' or re.fullmatch(re.escape(job['checkpoint'])+r'/market-initial-[0-9]{4}',event['snapshot'])):
                 saved=self.snapshot(event['snapshot'])
                 wallet=job['input'].get('wallet') or job['input'].get('address')

@@ -130,6 +130,39 @@ class TransferTests(unittest.TestCase):
             again=discovery.discover(WALLET,8453,state=saved[-1],continue_only=True,request=fetch)
         fetch.assert_not_called();self.assertEqual(again['discovery_status'],'source_limited')
 
+    def test_balanced_history_finds_old_identity_early_and_finishes_all_ranges(self):
+        old='0x'+'8'*40
+        data=[self.transfer(blockNumber=str(i),contractAddress='0x'+format(i+1,'040x')) for i in range(600,1200)]
+        data.append(self.transfer(blockNumber='10',contractAddress=old))
+        saved=[];calls=[]
+        def request(body,timeout):
+            args=body['params']['arguments']
+            if body['params']['name']=='get_block_by_timestamp':return result('1200')
+            calls.append(args)
+            rows=sorted((r for r in data if args['startblock']<=int(r['blockNumber'])<=args['endblock']),key=lambda r:int(r['blockNumber']),reverse=True)
+            return result(rows[(args['page']-1)*100:args['page']*100])
+        def save(state):
+            self.assertTrue(discovery.valid_state(state,WALLET,8453));saved.append(copy.deepcopy(state))
+        row=discovery.discover(WALLET,8453,request=request,save=save,max_pages=4,history_strategy='balanced_ranges_v1')
+        self.assertIn(old,{t['address'] for t in row['tokens']})
+        self.assertFalse(row['complete']);self.assertTrue(saved[-1]['pending_ranges'])
+        for _ in range(20):
+            row=discovery.discover(WALLET,8453,state=saved[-1],request=request,save=save,max_pages=4,continue_only=True)
+            if row['complete']:break
+        self.assertTrue(row['complete']);self.assertEqual({t['address'] for t in row['tokens']},{r['contractAddress'] for r in data})
+        self.assertEqual(saved[-1]['completed_ranges'],[{'startblock':0,'endblock':1200}])
+
+    def test_existing_linear_frontier_does_not_silently_change_traversal(self):
+        saved=[]
+        discovery.discover(WALLET,8453,request=self.request(['100',[self.transfer(blockNumber='99')]*100],[]),save=lambda s:saved.append(copy.deepcopy(s)),max_pages=1)
+        calls=[]
+        discovery.discover(WALLET,8453,state=saved[-1],request=self.request([[self.transfer(blockNumber='98')]*100],calls),save=lambda s:saved.append(copy.deepcopy(s)),max_pages=1,continue_only=True,history_strategy='balanced_ranges_v1')
+        self.assertEqual(calls[-1]['arguments']['page'],2)
+        self.assertEqual(saved[-1]['history_strategy'],'linear_pages_v1')
+        saved[-1]['history_strategy']='invalid'
+        row=discovery.discover(WALLET,8453,state=saved[-1],request=lambda *a:self.fail('Invalid checkpoint queried'),save=lambda s:self.fail('Invalid checkpoint overwritten'))
+        self.assertEqual(row['discovery_status'],'checkpoint_error')
+
     def test_corrupt_partition_does_not_restart_or_overwrite_prior_frontier(self):
         saved=[]
         discovery.discover(WALLET,8453,request=self.request(['10',[]],[]),save=lambda s:saved.append(copy.deepcopy(s)))

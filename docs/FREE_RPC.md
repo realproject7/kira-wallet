@@ -89,6 +89,16 @@ Market pool attempts have a durable frontier: unread pools receive a turn before
 failed retry holes. Repeated failures cannot continuously consume the budget
 ahead of the same untested pools, and retries alone do not count as new evidence.
 
+Each market publication slice has a 180-second budget. It expands already
+funded Mint Club burns first, then budgets general market discovery and pool
+verification separately, reserving time for output prices. Unfinished pool
+checks cannot block every completed burn from being valued. A usable funded
+intermediate burn is processed before alternate DEX venues; those alternatives
+remain explicitly unsearched. New verified root quotes reopen an earlier route
+frontier. Reusing cached prices keeps their original provider observation time,
+including an unknown time when older evidence did not record one. Compilation
+time never makes a cached price newly observed.
+
 ## Default token inventory
 
 Fresh research defaults to wallet candidates (`--inventory market`). Native
@@ -142,10 +152,19 @@ recorded as `not_requested`, with a null registry count and `complete: false`.
 Provider page completion never establishes exhaustive holdings. Other chains
 remain unsupported for ID0 history, and public opt-outs remain respected.
 
+Fresh Etherscan ERC20 and ID0 history frontiers use balanced block ranges. After
+three full pages in a range, Kira queues disjoint older and newer halves behind
+other pending ranges. It retains every admitted identity and independently
+finishes each child before declaring provider-page completion. Dense single
+blocks retain the provider's 100-page unresolved limit. Older frontiers keep
+their saved linear traversal. Initial ERC20 discovery retains its three-page
+cap; detailed discovery and ID0 discovery can use up to 20 pages within their
+time budget. Shared pacing and quota backoff still apply.
+
 Public RPC cannot enumerate all arbitrary ERC20 contracts. Alchemy is an
 optional broader candidate source and backup RPC. Discovery calls made through
-the wallet engine have a 25-second initial or 60-second detailed per-chain
-budget. Native balances, free candidates and Mint Club research remain usable
+the wallet engine have a 25-second initial, 45-second detailed market candidate
+or 60-second explicit full-inventory per-chain budget. Native balances, free candidates and Mint Club research remain usable
 without it. Missing or deferred evidence stays unknown. Persistent coverage
 notices distinguish pending work from failed reads and offer retry or optional
 [Alchemy setup](ALCHEMY_SETUP.md).

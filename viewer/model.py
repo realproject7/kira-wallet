@@ -83,7 +83,11 @@ def exit_quote(token):
             'gas_included': False}
 
 def dex_price(token, observed):
-    """Reject an extreme one-sided TVL as a USD price reference. Keep its evidence."""
+    """Use the selected source observation, never a later publication clock.
+
+    observed is an optional raw-response timestamp for callers normalizing a
+    response. Snapshot callers pass None when original source time is unknown.
+    """
     candidates=[]; suspect=False
     for p in token.get('dex_pools',[]):
         price=number(p.get('reported_price_usd'))
@@ -98,7 +102,7 @@ def dex_price(token, observed):
         if tvl and pool_has_liquidity(p): candidates.append((tvl,price,p))
     if candidates:
         _,price,p=max(candidates,key=lambda v:v[0])
-        return {'usd':price,'basis':'DEX market','source':p['source_url'],'observed_at':observed,'quality':'estimated'}
+        return {'usd':price,'basis':'DEX market','source':p['source_url'],'observed_at':p.get('observed_at') or observed,'quality':'estimated'}
     if suspect:return {'usd':None,'basis':'Thin quote side','quality':'unreliable','observed_at':observed}
     for p in token.get('indexer_price_references',[]):
         price=number(p.get('value'))
@@ -150,7 +154,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
                    'quality':'estimated' if funded else 'unfunded'}
                 if not funded:p['usd']=None
                 cache[k]=p;return p
-        p=dex_price(t,snapshot.get('compiled_at'))
+        p=dex_price(t,None)
         cache[k]=p;return p
 
     assets=[]
@@ -179,7 +183,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
                              'image_url':image_for(images,t['chain_id'],coin.get('address'))})
             market_pools.append({'venue':label_venue,'pool':pool.get('pool'),'url':pool['source_url'],
                 'pair':pair,'liquidity_usd':number((pool.get('reported_liquidity') or {}).get('usd')),
-                'price_usd':number(pool.get('reported_price_usd')),'observed_at':pool.get('observed_at') or snapshot.get('compiled_at')})
+                'price_usd':number(pool.get('reported_price_usd')),'observed_at':pool.get('observed_at')})
         market_pools.sort(key=lambda row:-(row['liquidity_usd'] or 0))
         links += [{'label':k,'url':v[1]} for k,v in found.items()]
         explorer=EXPLORERS.get(t['chain_id'])

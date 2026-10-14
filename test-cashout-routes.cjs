@@ -37,6 +37,18 @@ test('cycles and finite depth leave explicit unknown scopes',async()=>{
  state=await expandRoutes(token(),async()=>[],{maxLegs:1});
  assert.equal(state.routes.length,0);assert(state.unknown.some(reason=>reason.includes('leg limit')));
 });
+test('new verified root quotes reopen an earlier empty frontier without refreshing source clocks',async()=>{
+ const held={...token(),dex_pools:[]};
+ let state=await expandRoutes(held,async()=>[]);
+ assert.equal(state.routes.length,0);
+ held.dex_pools=[{cashout_quote:leg(TOKEN,USD)}];
+ state=await expandRoutes(held,async()=>assert.fail('Terminal quote expanded'),{state});
+ assert.equal(state.routes.length,1);
+ const expanded=state.expanded;
+ held.dex_pools[0].cashout_quote.observed_at='2026-10-14T01:00:00Z';
+ state=await expandRoutes(held,async()=>assert.fail('Unchanged amount reread'),{state});
+ assert.equal(state.expanded,expanded);assert.equal(state.routes.length,1);
+});
 test('installed pipeline composes funded nested burns at the holding block and retains paths on restart',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-nested-liquidation-'));
  const originals={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock};
@@ -54,7 +66,7 @@ test('installed pipeline composes funded nested burns at the holding block and r
    if(query.functionName==='getDetail')return {info:{reserveToken:USD,reserveDecimals:6,reserveBalance:5000000n}};
    if(query.functionName==='getRefundForTokens'){assert.deepEqual(query.args,[RESERVE,200n]);refundReads++;return [1000000n,10000n];}
    throw new Error('Unexpected synthetic query');
-  },multicall:async({contracts})=>contracts.map(()=>({status:'success',result:h.viem.zeroAddress}))});
+  },multicall:async()=>assert.fail('Funded redemption blocked by alternate DEX lookup')});
   const input={wallet:TOKEN,tokens:[held],market_chain_names:{}};
   let result=await liquidationChain(network,input,path.join(root,'result.json'));
   assert.equal(result.market_pending,false);assert.equal(result.tokens[0].liquidation_routes[0].output_amount,'1');

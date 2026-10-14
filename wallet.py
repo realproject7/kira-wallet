@@ -117,8 +117,13 @@ def free_sources(wallet, cid, budget, *, continue_only=False, public=True, explo
         frontier=ROOT/'cache/free-discovery'/wallet.lower()/name
         try:
             state=discovery_state.load(frontier,wallet,cid,provider)
+            options={'history_strategy':'balanced_ranges_v1','max_pages':20 if budget>25 else 3} if provider=='etherscan_keyless' else {}
+            def save(value):
+                discovery_state.save(frontier,value,wallet,cid,provider)
+                if provider=='etherscan_keyless':event('onchain_progress',operation='history',chain_id=cid,provider=provider,
+                    checked=value.get('pages_checked',0),pending_ranges=len(value.get('pending_ranges',[])),candidates=len(value.get('contracts',[])))
             row=adapter(wallet,cid,state=state,budget=budget/len(sources),continue_only=continue_only,
-                save=lambda value:discovery_state.save(frontier,value,wallet,cid,provider))
+                save=save,**options)
         except (OSError,ValueError,KeyError,TypeError):
             row={'source':source,'provider':provider,'complete':False,'tokens':[],'pages':[],
                  'discovery_status':'checkpoint_error','error':{'message':'Discovery checkpoint could not be read or saved. Existing evidence was preserved.'}}
@@ -293,8 +298,13 @@ def discover_mintclub_id0(wallet, n, folder, budget=15, *, continue_only=False):
         frontier=ROOT/'cache/free-discovery'/wallet.lower()/f'erc1155-id0-{cid}.json'
         try:
             state=discovery_state.load(frontier,wallet,cid,provider)
+            def save(value):
+                discovery_state.save(frontier,value,wallet,cid,provider)
+                event('onchain_progress',operation='history',chain_id=cid,provider=provider,
+                    checked=value.get('pages_checked',0),pending_ranges=len(value.get('pending_ranges',[])),candidates=len(value.get('contracts',[])))
             row.update(transfer_discovery.discover(wallet,cid,standard='erc1155',state=state,budget=budget,continue_only=continue_only,
-                save=lambda value:discovery_state.save(frontier,value,wallet,cid,provider)))
+                history_strategy='balanced_ranges_v1',max_pages=20,
+                save=save))
         except (OSError,ValueError,KeyError,TypeError):
             row.update(discovery_status='checkpoint_error',error={'message':'ID0 discovery checkpoint could not be read or saved. Existing evidence was preserved.'})
     else:row['error']={'message':'Public ID0 candidate discovery is disabled by configuration. Mint Club holdings remain unknown.'}
@@ -476,11 +486,21 @@ def finish(wallet, folder, networks, discovered):
     raw=read(folder/'onchain-summary.json')
     research_pending=any(s.get('discovery_status') in ('history_pending','throttled') for d in discovered for s in discovery_sources(d)) or any(c.get('research_pending') and not c.get('continuation_stalled') for c in raw['chains'])
     tokens=[t for c in raw['chains'] for t in c['tokens']]
+    # A slow general pool scan must not consume the entire publication slice.
+    # Funded burns already have pinned amount quotes, so expand those first.
+    early=[t for t in tokens if (t.get('mintclub') or {}).get('funded')]
+    if early:
+        atomic(folder/'cashout-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':early,'market_chain_names':DEX,'market_budget_ms':45000})
+        run_node('liquidate',folder/'cashout-input.json',folder/'liquidation-verified.json')
+        enriched=read(folder/'liquidation-verified.json')['tokens']
+        by_asset={(t['chain_id'],t['token_address'].lower(),t['token_type']):t for t in enriched}
+        tokens=[by_asset.get((t['chain_id'],t['token_address'].lower(),t['token_type']),t) for t in tokens]
     event('dex_discovery', tokens=len(tokens))
+    discovery_deadline=min(deadline-25,time.monotonic()+30)
     with ThreadPoolExecutor(max_workers=5) as executor:
         responses=[]
-        for response in executor.map(lambda t:dex_fetch(t,folder,deadline),tokens):
-            responses.append(response);event('onchain_progress',operation='markets',checked=len(responses),total=len(tokens))
+        for response in executor.map(lambda t:dex_fetch(t,folder,discovery_deadline),tokens):
+            responses.append(response);event('onchain_progress',operation='market_discovery',checked=len(responses),total=len(tokens))
     for t,r in zip(tokens,responses):
         if isinstance(r['response'],list):
             t['dex_pools']=[pool_row(p,r.get('observed_at')) for p in r['response'] if p.get('chainId')==DEX.get(t['chain_id']) and
@@ -488,14 +508,15 @@ def finish(wallet, folder, networks, discovered):
             t['dex_discovery_status']='queried' if r.get('status') is None else r['status']
         else:
             t['dex_discovery_status']='provider_error'
-    atomic(folder/'dex-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':tokens,'market_budget_ms':max(0,int((deadline-time.monotonic())*1000))})
+    atomic(folder/'dex-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':tokens,'market_budget_ms':max(0,min(60000,int((deadline-time.monotonic()-45)*1000)))})
     run_node('dex',folder/'dex-input.json',folder/'dex-verified.json')
     verified=read(folder/'dex-verified.json');tokens=verified['tokens'];market_pending=verified.get('market_pending',False)
-    if not market_pending:
+    market_pending=market_pending or any(r.get('status')=='pending' for r in responses)
+    if time.monotonic()<deadline-25:
         atomic(folder/'cashout-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':tokens,'market_chain_names':DEX,
-            'market_budget_ms':max(0,int((deadline-time.monotonic())*1000))})
+            'market_budget_ms':max(0,int((deadline-time.monotonic()-25)*1000))})
         run_node('liquidate',folder/'cashout-input.json',folder/'liquidation-verified.json')
-        liquidation=read(folder/'liquidation-verified.json');tokens=liquidation['tokens'];market_pending=liquidation['market_pending']
+        liquidation=read(folder/'liquidation-verified.json');tokens=liquidation['tokens'];market_pending=market_pending or liquidation['market_pending']
     for t in tokens:
         t['dex_liquidity_found']=any((p.get('reported_liquidity') or {}).get('usd',0)>0 or
             (p.get('factory_measurement') or {}).get('active_liquidity_verified',False) for p in t['dex_pools'])
@@ -542,7 +563,7 @@ def finish(wallet, folder, networks, discovered):
             price=next((p for p in t.get('tokenPrices',[]) if p.get('currency')=='usd' and p.get('value') is not None),None)
             if price:refs[symbol+'_USD']={'value':price['value'],'observed_at':price.get('lastUpdatedAt'),'source':'Alchemy Portfolio Tokens By Wallet'}
     from native_assets import market_metadata
-    if market_pending:native_market={'evidence':[],'prices':{},'images':{}}
+    if time.monotonic()>=deadline:native_market={'evidence':[],'prices':{},'images':{}}
     elif (folder/'native-market.json').exists():
         from datetime import datetime
         previous=read(folder/'native-market.json')
@@ -566,7 +587,10 @@ def finish(wallet, folder, networks, discovered):
         for quote in token.get('liquidation_routes',[]):
             address=quote['output_address']
             reserve_candidates.setdefault((token['chain_id'],address.lower()),{'chain_id':token['chain_id'],'token_address':address,'token_type':'ERC20'})
-    reserve_rows=[] if market_pending else list(ThreadPoolExecutor(max_workers=5).map(lambda t:dex_fetch(t,folder,deadline),reserve_candidates.values()))
+    from cashout import TERMINAL_ASSETS
+    reserve_candidates=dict(sorted(reserve_candidates.items(),key=lambda item:item[0] not in TERMINAL_ASSETS))
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        reserve_rows=list(executor.map(lambda t:dex_fetch(t,folder,deadline),reserve_candidates.values()))
     market_pending=market_pending or time.monotonic()>=deadline
     sys.path.insert(0,str(ASSETS/'viewer'))
     from model import dex_price
@@ -599,7 +623,7 @@ def finish(wallet, folder, networks, discovered):
     atomic(folder/'results.json',result)
     prices=[]
     for t in tokens:
-        p=dex_price(t,result['compiled_at'])
+        p=dex_price(t,None)
         if p:prices.append({'chain_id':t['chain_id'],'address':t['token_address'],**p})
     atomic(folder/'market-prices.json',{'observed_at':result['compiled_at'],'wallet_address':wallet['address'],'balance_refresh':True,
         'native_usd':{k.removesuffix('_USD'):{'usd':float(p['value']),'observed_at':p.get('observed_at'),

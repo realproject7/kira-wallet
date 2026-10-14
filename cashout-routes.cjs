@@ -37,13 +37,20 @@ async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNod
   if(state&&state.identity!==identity)throw new Error('Liquidation route checkpoint does not match the pinned holding');
   if(state&&(!Array.isArray(state.pending)||!Array.isArray(state.routes)||!Array.isArray(state.unknown)||!Number.isSafeInteger(state.expanded)||state.expanded<0
       ||state.pending.some(node=>!address(node.address)||!integer(node.amount)||!Array.isArray(node.legs)||node.legs.length>=maxLegs||!Array.isArray(node.visited))))throw new Error('Invalid liquidation route frontier');
+  // Pool verification can add root quotes after an early burn-only pass. A
+  // completed empty frontier must not hide those new amount-specific seeds.
+  const seeds=seedQuotes(token),signature=JSON.stringify(seeds.map(q=>[q.status,q.kind,q.pool?.toLowerCase(),q.input_amount_raw,q.holding_amount_raw,
+    q.output_address?.toLowerCase(),q.output_amount_raw,q.output_decimals,q.output_amount,q.block_number,q.block_hash,q.funded,q.reserve_balance_raw,
+    q.route_fees_included,q.price_impact_included,q.gas_included]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
+  if(state&&state.seed_signature!==signature)state=null;
   state=state||{identity,pending:[{address:token.token_address.toLowerCase(),amount:holding.toString(),legs:[],visited:[token.token_address.toLowerCase()]}],routes:[],unknown:[],expanded:0};
+  state.seed_signature=signature;
   while(state.pending.length){
     const node=state.pending[0];
     if(state.expanded>=maxNodes){state.unknown.push('Bounded route node limit reached; other liquidation paths remain unknown.');state.pending=[];save(state);break;}
     // Leave the current node on the frontier if a time budget interrupts its
     // reads. Successful RPC evidence and earlier route prefixes are retained.
-    const quotes=node.legs.length?await quoteAsset(node.address,BigInt(node.amount)):seedQuotes(token);
+    const quotes=node.legs.length?await quoteAsset(node.address,BigInt(node.amount)):seeds;
     const valid=quotes.filter(q=>validLeg(q,node.address,BigInt(node.amount),block,hash));
     if(valid.length!==quotes.length)state.unknown.push('Some route quotes failed or did not match the pinned amount and fee contract.');
     if(!valid.length)state.unknown.push('No qualified amount-specific route at a recorded asset; absence is unproven.');

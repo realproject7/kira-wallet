@@ -76,16 +76,50 @@
       label: job.cancel_requested && active(job) ? 'Stopping' : labels[job.state] || 'Unknown',
       active: active(job), spinner: connected && job.state === 'running', quiet,
       elapsed: Number.isFinite(elapsed) ? elapsed : null,
-      timerLabel: job.state === 'queued' ? 'Waiting' : job.started_at ? 'Elapsed' : 'Since request',
+      timerLabel: job.state === 'queued' ? 'Waiting' : job.started_at ? job.attempt>1?'Attempt elapsed':'Elapsed' : 'Since request',
       freshness: !connected ? 'Connection lost. Last recorded state shown.' : quiet ? 'Awaiting a new stage update. Still marked running.' : '',
     };
+  }
+  const progressUnits={balances:'balances',registry:'registry entries',metadata:'metadata reads',curves:'curve reads',reserves:'reserve records',mintclub_membership:'membership checks',
+    history:'history pages',market_discovery:'token market lookups',factory_queries:'factory queries',pool_checks:'pool checks',cashout_routes:'held assets'};
+  function jobProgress(job, now=Date.now(), connected=true) {
+    const last=job.events?.at(-1),counts=last?.counts||{},context=last?.context||{},unit=progressUnits[context.operation];
+    const known=context.operation!=='reserves'&&Number.isSafeInteger(counts.total)&&counts.total>0&&Number.isSafeInteger(counts.checked)&&counts.checked<=counts.total;
+    const checked=Number.isSafeInteger(counts.checked)&&counts.checked>=0?counts.checked:null;
+    const count=unit&&checked!=null?(known?checked+' / '+counts.total+' '+unit:checked+' '+unit+' checked')+(context.operation==='history'?' including saved work':''):'';
+    const waiting=job.state==='queued'&&job.continuation?.not_before*1000>now;
+    let eta=waiting?'Provider retry in '+duration(Math.ceil(job.continuation.not_before-now/1000)):'Overall remaining time is unknown.';
+    if(job.state==='running'&&connected&&!job.cancel_requested&&known&&checked<counts.total&&context.attempt===job.attempt&&now-Date.parse(last.observed_at)<=20000){
+      const samples=[];
+      for(const event of job.events||[]){
+        const c=event.context||{},n=event.counts||{},time=Date.parse(event.observed_at);
+        if(c.operation!==context.operation||c.chain_id!==context.chain_id||c.provider!==context.provider||c.attempt!==job.attempt||n.total!==counts.total)continue;
+        if(!Number.isSafeInteger(n.checked)||n.checked<0||n.checked>counts.total||!Number.isFinite(time))continue;
+        const previous=samples.at(-1);
+        if(previous&&(n.checked<previous.checked||time<=previous.time))samples.length=0;
+        if(!samples.length||n.checked>samples.at(-1).checked)samples.push({time,checked:n.checked});
+      }
+      const recent=samples.slice(-5),span=recent.length?(recent.at(-1).time-recent[0].time)/1000:0;
+      if(recent.length>=3&&span>=15){
+        const rates=recent.slice(1).map((s,i)=>(s.checked-recent[i].checked)/((s.time-recent[i].time)/1000));
+        const slow=Math.min(...rates),fast=Math.max(...rates),remaining=counts.total-checked;
+        if(slow>0&&fast/slow<=4){
+          const low=Math.max(15,Math.floor(remaining/fast*.75/15)*15),high=Math.max(low+15,Math.ceil(remaining/slow*1.5/15)*15);
+          eta='Current step estimate: '+duration(low)+' to '+duration(high)+'. Overall time unknown.';
+        }
+      }
+    }
+    if(!active(job))eta='';
+    const age=Math.max(0,Math.floor((now-Date.parse(job.created_at))/1000));
+    const saved=active(job)&&(job.result||job.previous_result)?'Saved results remain available while research continues. Missing holdings and prices are still unknown.':'';
+    return {count,eta,saved,totalElapsed:Number.isFinite(age)?age:null};
   }
   function duration(seconds) {
     if (seconds == null) return 'Unknown';
     const h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = seconds % 60;
     return (h ? h + 'h ' : '') + m + 'm ' + s + 's';
   }
-  const api = { catalog, pageSize, active, jobPresentation, duration, discoveryNotice, coverageGap, networkEmpty };
+  const api = { catalog, pageSize, active, jobPresentation, jobProgress, duration, discoveryNotice, coverageGap, networkEmpty };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KiraView = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

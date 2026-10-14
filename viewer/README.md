@@ -94,6 +94,22 @@ The checks cover reserve price conversion, unknown prices, testnet exclusion, mu
 
 Detail checks also cover exact decimal balance aggregation, shared curve backing exclusion, same-contract separation across networks, and missing or unresearched wallet coverage. The token and network pages are checked at desktop, 390 px and 320 px widths.
 
+## Long-running research progress
+
+Activity and the Kira Chat research tray show the current recorded phase, its
+count units, attempt elapsed time and provider retry wait. Activity also shows
+time since the original request across attempts and access to saved results.
+History page counts include saved work. Factory queries, pool checks and route
+asset counts are distinct. Counts describe checks, not confirmed holdings.
+
+An overall percentage or completion time is not inferred from token counts.
+A current-step estimate appears only for a fixed recorded total with at least
+three advancing samples over fifteen seconds in the same attempt and scope.
+The range uses recent observed throughput, with margin for variation. It expires
+when updates become quiet, a counter resets, or the connection is lost. History
+and dynamically growing reserve searches have no estimated total. Unknown
+holdings and prices remain visible as coverage gaps after partial publication.
+
 ## Design references
 
 [lpTOKEN.fun](https://lptoken.fun) informed the restrained presentation. [Apple](https://www.apple.com) informed typography and spacing. [Selected Lazyweb references](https://www.lazyweb.com/agentic-search/5eed25a9-311b-4741-a717-8e16fb777b35) informed the sidebar and holdings hierarchy.
