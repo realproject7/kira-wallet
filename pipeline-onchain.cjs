@@ -618,16 +618,20 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
       if(cache.requests[key]!==undefined)return cacheDecode(cache.requests[key]);
       const value=await boundedMarket(client.readContract(query),assetDeadline);cache.requests[key]=cacheEncode(value);save();return value;
     };
-    const quoteAsset=async(address,amount,{mintOnly=false}={})=>{
+    const quoteAsset=async(address,amount,{mintOnly=false,knownMember=false}={})=>{
       const quotes=[];
       try{
-        const exists=await read({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'exists',args:[address]});
+        const exists=knownMember||await read({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'exists',args:[address]});
         if(exists===true){
-          const detail=await read({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getDetail',args:[address]}),info=detail.info;
+          // tokenBond returns the exact reserve identity and balance without
+          // calling input metadata or returning the whole bonding curve.
+          const bond=await read({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'tokenBond',args:[address]});
+          const reserveToken=bond[4],reserveBalance=bond[5];
+          const reserveDecimals=await read({address:reserveToken,abi:erc20,functionName:'decimals'});
           const refund=await read({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getRefundForTokens',args:[address,amount]});
           quotes.push({status:'quoted',kind:'mintclub_burn',input_address:address,input_amount_raw:amount.toString(),holding_amount_raw:amount.toString(),
-            output_address:info.reserveToken,output_amount_raw:refund[0].toString(),output_amount:v.formatUnits(refund[0],info.reserveDecimals),output_decimals:info.reserveDecimals,
-            block_number:block.toString(),block_hash:snapshot.hash,observed_at:stamp(),funded:info.reserveBalance>0n,reserve_balance_raw:info.reserveBalance.toString(),royalty_raw:refund[1].toString(),
+            output_address:reserveToken,output_amount_raw:refund[0].toString(),output_amount:v.formatUnits(refund[0],reserveDecimals),output_decimals:reserveDecimals,
+            block_number:block.toString(),block_hash:snapshot.hash,observed_at:stamp(),funded:reserveBalance>0n,reserve_balance_raw:reserveBalance.toString(),royalty_raw:refund[1].toString(),
             route_fees_included:true,price_impact_included:true,gas_included:false,execution_verified:false,transfer_tax_included:false,source_url:`https://mint.club/token/${n.network}/${address}`});
         }else if(exists!==false)quotes.push({status:'unknown',reason:'Mint Club membership unavailable.'});
       }catch(error){if(error.code==='market_budget')throw error;const failure=rpcFailure(error);

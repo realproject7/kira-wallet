@@ -63,7 +63,8 @@ test('installed pipeline composes funded nested burns at the holding block and r
   h.client=()=>({getChainId:async()=>8453,readContract:async query=>{
    assert.equal(query.blockNumber,7n);
    if(query.functionName==='exists')return true;
-   if(query.functionName==='getDetail')return {info:{reserveToken:USD,reserveDecimals:6,reserveBalance:5000000n}};
+   if(query.functionName==='tokenBond')return [TOKEN,100,100,0,USD,5000000n];
+   if(query.functionName==='decimals'){assert.equal(query.address,USD);return 6;}
    if(query.functionName==='getRefundForTokens'){assert.deepEqual(query.args,[RESERVE,200n]);refundReads++;return [1000000n,10000n];}
    throw new Error('Unexpected synthetic query');
   },multicall:async()=>assert.fail('Funded redemption blocked by alternate DEX lookup')});
@@ -80,7 +81,7 @@ test('verified root membership recovers missing bulk quotes and keeps failed rea
  const held={...token(),dex_pools:[],mintclub_membership_status:'verified',mintclub_error:{message:'RPC Request failed.'}};
  let attempts=0;
  let state=await expandRoutes(held,async(address,amount,options)=>{
-  assert.equal(address,TOKEN);assert.equal(amount,100n);assert.equal(options.mintOnly,true);attempts++;
+  assert.equal(address,TOKEN);assert.equal(amount,100n);assert.equal(options.mintOnly,true);assert.equal(options.knownMember,true);attempts++;
   return [{status:'unknown',reason:'Redemption unavailable.',retryable:true,failure_kind:'transport'}];
  });
  assert.equal(state.routes.length,0);assert.equal(state.pending.length,1);assert.equal(state.expanded,0);
@@ -111,10 +112,11 @@ test('pipeline retries failed root detail through pinned individual reads withou
   h.client=()=>({getChainId:async()=>8453,readContract:async query=>{
    assert.equal(query.blockNumber,7n);
    if(query.functionName==='exists'){existsReads++;return true;}
-   if(query.functionName==='getDetail'){
+   if(query.functionName==='tokenBond'){
     if(++detailReads===1){const e=new Error('Synthetic transport unavailable');e.name='HttpRequestError';throw e;}
-    return {info:{reserveToken:USD,reserveDecimals:6,reserveBalance:5000000n}};
+    return [TOKEN,100,100,0,USD,5000000n];
    }
+   if(query.functionName==='decimals')return 6;
    if(query.functionName==='getRefundForTokens'){assert.deepEqual(query.args,[TOKEN,100n]);return [1000000n,10000n];}
    assert.fail('Unexpected recovery query');
   },multicall:async()=>assert.fail('Failed transport caused a request burst')});
@@ -123,7 +125,7 @@ test('pipeline retries failed root detail through pinned individual reads withou
   assert.equal(result.market_pending,true);assert.equal(result.tokens[0].cashout_pending,true);assert.equal(detailReads,1);
   result=await liquidationChain(network,input,output);
   assert.equal(result.market_pending,false);assert.equal(result.tokens[0].liquidation_routes[0].output_amount,'1');
-  assert.equal(detailReads,2);assert.equal(existsReads,1);
+  assert.equal(detailReads,2);assert.equal(existsReads,0);
   await liquidationChain(network,input,output);assert.equal(detailReads,2);
  }finally{Object.assign(h,originals);fs.rmSync(root,{recursive:true,force:true});}
 });
@@ -145,10 +147,11 @@ test('one slow root preserves its pending work and lets another held asset recei
   h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:7n,hash:HASH});
   h.client=()=>({getChainId:async()=>8453,readContract:async query=>{
    if(query.functionName==='exists')return true;
-   if(query.functionName==='getDetail'){
+   if(query.functionName==='tokenBond'){
     if(fail&&query.args[0]===TOKEN){const error=new Error('Synthetic asset budget');error.code='market_budget';throw error;}
-    return {info:{reserveToken:USD,reserveDecimals:6,reserveBalance:5000000n}};
+    return [TOKEN,100,100,0,USD,5000000n];
    }
+   if(query.functionName==='decimals')return 6;
    if(query.functionName==='getRefundForTokens')return [1000000n,10000n];
    assert.fail('Unexpected fair root query');
   }});

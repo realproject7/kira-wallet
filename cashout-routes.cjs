@@ -53,7 +53,7 @@ async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNod
   const recoverRoot=token.mintclub_membership_status==='verified'&&!seeds.some(q=>q.kind==='mintclub_burn'&&validLeg(q,token.token_address,holding,block,hash));
   if(recoverRoot&&!state.root_recovery_done){
     state.root_retry_pending=true;save(state);
-    const recovered=await quoteAsset(token.token_address,holding,{mintOnly:true});
+    const recovered=await quoteAsset(token.token_address,holding,{mintOnly:true,knownMember:true});
     state.root_quotes=recovered.filter(q=>validLeg(q,token.token_address,holding,block,hash));
     state.root_retry_pending=recovered.some(q=>q.retryable===true);
     state.root_recovery_done=!state.root_retry_pending;

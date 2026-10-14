@@ -181,6 +181,11 @@ expand at most two nodes per asset per turn and allow at most six seconds of
 reads per asset within the existing overall market deadline. Saved attempt
 counts rotate unread assets ahead of retries. A slow route keeps its prefixes
 and pending nodes without preventing other held assets from receiving a turn.
+Recovery reads the pinned `tokenBond` reserve identity/balance, reserve-token
+decimals and `getRefundForTokens` output. It does not require names, symbols or
+the full `getDetail` curve. A root's verified same-block membership is reused;
+intermediate assets still require their own membership check. Informational
+curve details can remain unavailable while a valid amount quote is retained.
 
 Public RPC cannot enumerate all arbitrary ERC20 contracts. Alchemy is an
 optional broader candidate source and backup RPC. Discovery calls made through
