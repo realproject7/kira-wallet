@@ -7,6 +7,7 @@ import contextlib
 import io
 import runpy
 import sys
+import threading
 from unittest.mock import patch
 import wallet
 sys.path.insert(0,str(wallet.ASSETS/'viewer'))
@@ -15,6 +16,30 @@ sys.path.insert(0,str(wallet.ASSETS/'viewer'))
 class WalletPipelineTests(unittest.TestCase):
     address='0x0000000000000000000000000000000000000011'
     network={'chain_id':8453,'environment':'mainnet'}
+
+    def test_ready_chain_is_scanned_before_slow_discovery_finishes_with_one_writer(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder=Path(temp);started=threading.Event();order=[]
+            networks=[{'chain_id':1},{'chain_id':8453}]
+            def acquire(n):
+                if n['chain_id']==1:
+                    self.assertTrue(started.wait(2),'Ready chain blocked behind slow discovery')
+                return {'chain_id':n['chain_id'],'tokens':[{'chain_id':n['chain_id'],'address':self.address}],
+                        'mintclub_id0_discovery':{'tokens':[]}}
+            def scan(mode,source,destination):
+                self.assertEqual(mode,'scan-slice')
+                data=wallet.read(source);self.assertEqual(len(data['networks']),1)
+                cid=data['networks'][0]['chain_id'];order.append(cid)
+                if cid==8453:started.set()
+                wallet.atomic(destination/'onchain-summary.json',{'chains':[{'chain_id':cid,'research_pending':True}]})
+            with patch.object(wallet,'run_node',side_effect=scan):
+                discovered=wallet.acquire_candidate_slices(self.address,networks,folder,'wallet_candidates_v1',acquire,[],[])
+            self.assertEqual(order,[8453,1])
+            self.assertEqual([r['chain_id'] for r in discovered],[1,8453])
+            summary=wallet.read(folder/'onchain-summary.json')
+            self.assertEqual([r['chain_id'] for r in summary['chains']],[1,8453])
+            self.assertTrue(all(r['research_pending'] for r in summary['chains']))
+            self.assertEqual(len(wallet.read(folder/'scan-input.json')['candidates']),2)
 
     def test_script_and_imported_engine_share_the_same_pause_exception(self):
         namespace=runpy.run_path(wallet.__file__,run_name='synthetic_entrypoint')

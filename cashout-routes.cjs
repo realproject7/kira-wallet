@@ -36,6 +36,7 @@ async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNod
   const identity=JSON.stringify([token.chain_id,token.token_address.toLowerCase(),token.token_type,holding.toString(),block,hash]);
   if(state&&state.identity!==identity)throw new Error('Liquidation route checkpoint does not match the pinned holding');
   if(state&&(!Array.isArray(state.pending)||!Array.isArray(state.routes)||!Array.isArray(state.unknown)||!Number.isSafeInteger(state.expanded)||state.expanded<0
+      ||state.root_quotes!==undefined&&!Array.isArray(state.root_quotes)
       ||state.pending.some(node=>!address(node.address)||!integer(node.amount)||!Array.isArray(node.legs)||node.legs.length>=maxLegs||!Array.isArray(node.visited))))throw new Error('Invalid liquidation route frontier');
   // Pool verification can add root quotes after an early burn-only pass. A
   // completed empty frontier must not hide those new amount-specific seeds.
@@ -45,25 +46,44 @@ async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNod
   if(state&&state.seed_signature!==signature)state=null;
   state=state||{identity,pending:[{address:token.token_address.toLowerCase(),amount:holding.toString(),legs:[],visited:[token.token_address.toLowerCase()]}],routes:[],unknown:[],expanded:0};
   state.seed_signature=signature;
+  // A verified member can lack a root burn quote after a bulk detail/refund
+  // failure. Recover it through the normal paced, pinned read lane. Existing
+  // routes survive retries and successful root evidence survives restart.
+  const recoverRoot=token.mintclub_membership_status==='verified'&&!seeds.some(q=>q.kind==='mintclub_burn'&&validLeg(q,token.token_address,holding,block,hash));
+  if(recoverRoot&&!state.root_recovery_done){
+    const recovered=await quoteAsset(token.token_address,holding,{mintOnly:true});
+    state.root_quotes=recovered.filter(q=>validLeg(q,token.token_address,holding,block,hash));
+    state.root_retry_pending=recovered.some(q=>q.retryable===true);
+    state.root_recovery_done=!state.root_retry_pending;
+    state.root_error_kind=recovered.find(q=>q.retryable)?.failure_kind||null;
+    if(state.root_quotes.length&&!state.pending.some(node=>node.legs.length===0))
+      state.pending.unshift({address:token.token_address.toLowerCase(),amount:holding.toString(),legs:[],visited:[token.token_address.toLowerCase()]});
+    state.unknown=[...new Set([...state.unknown,...recovered.filter(q=>q.status!=='quoted').map(q=>q.reason).filter(Boolean)])];save(state);
+  }
   while(state.pending.length){
     const node=state.pending[0];
     if(state.expanded>=maxNodes){state.unknown.push('Bounded route node limit reached; other liquidation paths remain unknown.');state.pending=[];save(state);break;}
     // Leave the current node on the frontier if a time budget interrupts its
     // reads. Successful RPC evidence and earlier route prefixes are retained.
-    const quotes=node.legs.length?await quoteAsset(node.address,BigInt(node.amount)):seeds;
+    const quotes=node.legs.length?await quoteAsset(node.address,BigInt(node.amount)):[...seeds,...(state.root_quotes||[])];
     const valid=quotes.filter(q=>validLeg(q,node.address,BigInt(node.amount),block,hash));
     if(valid.length!==quotes.length)state.unknown.push('Some route quotes failed or did not match the pinned amount and fee contract.');
     if(!valid.length)state.unknown.push('No qualified amount-specific route at a recorded asset; absence is unproven.');
+    if(!valid.length&&(node.legs.length===0&&state.root_retry_pending||quotes.some(q=>q.retryable===true))){save(state);break;}
     valid.sort((a,b)=>Number(terminal(token.chain_id,b.output_address))-Number(terminal(token.chain_id,a.output_address)));
     if(valid.length>maxBranches)state.unknown.push('Bounded route branch limit reached; other routes remain unknown.');
     for(const quote of valid.slice(0,maxBranches)){
       const output=quote.output_address.toLowerCase(),legs=[...node.legs,quote];
       const repeatedPool=quote.pool&&node.legs.some(leg=>leg.pool?.toLowerCase()===quote.pool.toLowerCase());
       if(node.visited.includes(output)||repeatedPool){state.unknown.push('Cyclic or reused-pool path not composed from unchanged pool states.');continue;}
-      if(terminal(token.chain_id,output))state.routes.push({status:'quoted',kind:'liquidation_path',input_amount_raw:legs[0].input_amount_raw,
+      if(terminal(token.chain_id,output)){
+        const route={status:'quoted',kind:'liquidation_path',input_amount_raw:legs[0].input_amount_raw,
         holding_amount_raw:holding.toString(),output_address:output,output_amount_raw:quote.output_amount_raw,output_amount:quote.output_amount,
         output_decimals:quote.output_decimals,block_number:block,block_hash:hash,observed_at:quote.observed_at,
-        route_fees_included:true,price_impact_included:true,gas_included:false,execution_verified:false,transfer_tax_included:false,legs});
+        route_fees_included:true,price_impact_included:true,gas_included:false,execution_verified:false,transfer_tax_included:false,legs};
+        const key=r=>JSON.stringify(r.legs.map(q=>[q.kind,q.pool?.toLowerCase(),q.input_address.toLowerCase(),q.input_amount_raw,q.output_address.toLowerCase(),q.output_amount_raw]));
+        if(!state.routes.some(r=>key(r)===key(route)))state.routes.push(route);
+      }
       else if(legs.length>=maxLegs)state.unknown.push('Bounded liquidation leg limit reached; terminal cash proceeds remain unknown.');
       else state.pending.push({address:output,amount:quote.output_amount_raw,legs,visited:[...node.visited,output]});
     }

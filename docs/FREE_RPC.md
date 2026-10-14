@@ -161,6 +161,22 @@ their saved linear traversal. Initial ERC20 discovery retains its three-page
 cap; detailed discovery and ID0 discovery can use up to 20 pages within their
 time budget. Shared pacing and quota backoff still apply.
 
+Fresh Base ERC20 and ID0 frontiers use 1,000 records per page. The keyless tool
+schema permits larger offsets; 1,000-record Base responses and continuation were
+individually checked on October 14, 2026 within the existing response-size limit.
+Other chains retain 100 records. Page size belongs to the saved frontier, so an
+older 100-record checkpoint never changes offset at an existing page number.
+Validation, disjoint ranges, response deadlines and provider pacing are unchanged.
+
+Wallet candidate enrichment consumes each ready chain while other discovery
+reads continue. One serialized RPC writer checks at most one scheduling round
+per chain before market publication; unfinished balances and membership remain
+pending for the next continuation. Explicit full inventory retains full rounds.
+Verified Mint Club members whose bulk detail or refund reads failed receive
+individual, pinned root-quote recovery before general market scans. Successful
+reads and routes are retained; failed recovery stays pending without multiplying
+requests by splitting a transport failure. Amount quotes do not verify execution.
+
 Public RPC cannot enumerate all arbitrary ERC20 contracts. Alchemy is an
 optional broader candidate source and backup RPC. Discovery calls made through
 the wallet engine have a 25-second initial, 45-second detailed market candidate

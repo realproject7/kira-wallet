@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 import fcntl
 import hashlib
@@ -117,7 +117,8 @@ def free_sources(wallet, cid, budget, *, continue_only=False, public=True, explo
         frontier=ROOT/'cache/free-discovery'/wallet.lower()/name
         try:
             state=discovery_state.load(frontier,wallet,cid,provider)
-            options={'history_strategy':'balanced_ranges_v1','max_pages':20 if budget>25 else 3} if provider=='etherscan_keyless' else {}
+            options={'history_strategy':'balanced_ranges_v1','max_pages':20 if budget>25 else 3,
+                     'page_size':1000 if cid==8453 else 100} if provider=='etherscan_keyless' else {}
             def save(value):
                 discovery_state.save(frontier,value,wallet,cid,provider)
                 if provider=='etherscan_keyless':event('onchain_progress',operation='history',chain_id=cid,provider=provider,
@@ -143,6 +144,30 @@ def free_sources(wallet, cid, budget, *, continue_only=False, public=True, explo
             'sources':[{key:value for key,value in row.items() if key not in ('tokens','native','pages')} for row in rows]}
     merged['error']=None if complete else {'message':'At least one discovery source has unfinished or unavailable evidence. Completed source pages do not establish a complete inventory.'}
     return merged
+
+
+def candidate_input(wallet, networks, policy, discovered, prior, known):
+    return {'wallet':wallet,'networks':networks,'inventory_policy':policy,
+            'candidates':merge_candidates([t for t in prior if t.get('token_type','ERC20')=='ERC20'],known,
+                [t for d in discovered for t in d['tokens']]),
+            'mintclub_id0_candidates':merge_candidates([t for t in prior if t.get('token_type')=='ERC1155'],[],
+                [t for d in discovered for t in d.get('mintclub_id0_discovery',{}).get('tokens',[])])}
+
+
+def acquire_candidate_slices(wallet, networks, folder, policy, acquire, prior, known):
+    """Consume each ready chain while other source reads continue, one writer."""
+    discovered={};chains={}
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures={executor.submit(acquire,n):n for n in networks}
+        for future in as_completed(futures):
+            n=futures[future];row=future.result();discovered[n['chain_id']]=row
+            atomic(folder/'scan-slice-input.json',candidate_input(wallet,[n],policy,[row],prior,known))
+            run_node('scan-slice',folder/'scan-slice-input.json',folder)
+            for chain in read(folder/'onchain-summary.json')['chains']:chains[chain['chain_id']]=chain
+    ordered=[discovered[n['chain_id']] for n in networks]
+    atomic(folder/'scan-input.json',candidate_input(wallet,networks,policy,ordered,prior,known))
+    atomic(folder/'onchain-summary.json',{'wallet':wallet,'observed_at':h.now(),'chains':[chains[n['chain_id']] for n in networks]})
+    return ordered
 
 
 def discover(wallet, n, folder, budget=None, *, continue_only=False):
@@ -303,7 +328,7 @@ def discover_mintclub_id0(wallet, n, folder, budget=15, *, continue_only=False):
                 event('onchain_progress',operation='history',chain_id=cid,provider=provider,
                     checked=value.get('pages_checked',0),pending_ranges=len(value.get('pending_ranges',[])),candidates=len(value.get('contracts',[])))
             row.update(transfer_discovery.discover(wallet,cid,standard='erc1155',state=state,budget=budget,continue_only=continue_only,
-                history_strategy='balanced_ranges_v1',max_pages=20,
+                history_strategy='balanced_ranges_v1',max_pages=20,page_size=1000 if cid==8453 else 100,
                 save=save))
         except (OSError,ValueError,KeyError,TypeError):
             row.update(discovery_status='checkpoint_error',error={'message':'ID0 discovery checkpoint could not be read or saved. Existing evidence was preserved.'})
@@ -487,8 +512,8 @@ def finish(wallet, folder, networks, discovered):
     research_pending=any(s.get('discovery_status') in ('history_pending','throttled') for d in discovered for s in discovery_sources(d)) or any(c.get('research_pending') and not c.get('continuation_stalled') for c in raw['chains'])
     tokens=[t for c in raw['chains'] for t in c['tokens']]
     # A slow general pool scan must not consume the entire publication slice.
-    # Funded burns already have pinned amount quotes, so expand those first.
-    early=[t for t in tokens if (t.get('mintclub') or {}).get('funded')]
+    # Expand funded burns and recover missing verified-member quotes first.
+    early=[t for t in tokens if (t.get('mintclub') or {}).get('funded') or t.get('mintclub_membership_status')=='verified']
     if early:
         atomic(folder/'cashout-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':early,'market_chain_names':DEX,'market_budget_ms':45000})
         run_node('liquidate',folder/'cashout-input.json',folder/'liquidation-verified.json')
@@ -753,20 +778,20 @@ def main():
             # every configured network, saved inventory scope and markets.
             initial_networks=[n for cid in (8453,1,81457) for n in networks if n['chain_id']==cid]
             phase_networks=initial_networks if args.phase=='baseline' else networks
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                def acquire(n):
-                    market=policy=='wallet_candidates_v1' and args.phase!='baseline'
-                    row=discover(wallet['address'],n,folder,budget=25 if args.phase=='baseline' else 45 if market else 60,continue_only=bool(args.resume))
-                    if market:row['mintclub_id0_discovery']=discover_mintclub_id0(wallet['address'],n,folder,continue_only=bool(args.resume))
-                    return row
-                discovered=list(executor.map(acquire,phase_networks))
-            event('discovery',complete_chains=sum(d['complete'] for d in discovered),candidates=sum(len(d['tokens']) for d in discovered))
             known=read(ASSETS/'sources/known-tokens.json')['tokens']
             # Earlier positive identities are candidates, never reused balances.
             prior=prior_candidates(wallet)
-            atomic(folder/'scan-input.json',{'wallet':wallet['address'],'networks':phase_networks,'inventory_policy':policy,
-                'candidates':merge_candidates([t for t in prior if t.get('token_type','ERC20')=='ERC20'],known,[t for d in discovered for t in d['tokens']]),
-                'mintclub_id0_candidates':merge_candidates([t for t in prior if t.get('token_type')=='ERC1155'],[],[t for d in discovered for t in d.get('mintclub_id0_discovery',{}).get('tokens',[])])})
+            market=policy=='wallet_candidates_v1' and args.phase!='baseline'
+            def acquire(n):
+                row=discover(wallet['address'],n,folder,budget=25 if args.phase=='baseline' else 45 if market else 60,continue_only=bool(args.resume))
+                if market:row['mintclub_id0_discovery']=discover_mintclub_id0(wallet['address'],n,folder,continue_only=bool(args.resume))
+                return row
+            if market:
+                discovered=acquire_candidate_slices(wallet['address'],phase_networks,folder,policy,acquire,prior,known)
+            else:
+                with ThreadPoolExecutor(max_workers=5) as executor:discovered=list(executor.map(acquire,phase_networks))
+                atomic(folder/'scan-input.json',candidate_input(wallet['address'],phase_networks,policy,discovered,prior,known))
+            event('discovery',complete_chains=sum(d['complete'] for d in discovered),candidates=sum(len(d['tokens']) for d in discovered))
             if args.phase=='baseline':
                 first=folder/'initial'
                 def first_evidence(message):
@@ -780,7 +805,7 @@ def main():
                 run_node('baseline',folder/'scan-input.json',folder,on_chain=first_evidence)
                 result=initial_result(wallet,folder,networks,discovered,read(folder/'onchain-summary.json')['chains'],prices=True)
             else:
-                run_node('scan',folder/'scan-input.json',folder)
+                if not market:run_node('scan',folder/'scan-input.json',folder)
                 result=finish(wallet,folder,networks,discovered)
             publish_snapshot(wallet,folder,result)
             atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,'completed_at':h.now(),'status':result['status']})

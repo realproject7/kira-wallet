@@ -72,6 +72,18 @@ test('all chains receive a slice before a large chain resumes and unchanged work
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 
+test('one-round candidate scan leaves unfinished chain work pending for publication and continuation',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-one-round-'));
+ try{
+  const calls=[];
+  const rows=await scanNetworks({networks:[{chain_id:1},{chain_id:2}]},root,false,{maxRounds:1,scan:async(input,n)=>{
+   calls.push(n.chain_id);return {chain_id:n.chain_id,research_pending:true,work_progress:{balances:128},status:'partial'};
+  }});
+  assert.deepEqual(calls,[1,2]);assert(rows.every(r=>r.research_pending));
+  assert(rows.every(r=>!r.continuation_stalled));
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('persistent failed batches cannot starve unread balances before no-progress detection',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-balance-frontier-'));
  const originals={root:h.root,endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock};

@@ -17,6 +17,37 @@ class TransferTests(unittest.TestCase):
     def request(self, responses, calls):
         def fetch(body,timeout):calls.append(body['params']);return result(responses.pop(0))
         return fetch
+    def test_large_page_finds_a_later_identity_and_resumes_with_the_saved_offset(self):
+        old='0x'+'4'*40
+        first=[self.transfer(blockNumber='9000')]*1000
+        second=[self.transfer(contractAddress=old,blockNumber='8000')]
+        saved=[];calls=[]
+        row=discovery.discover(WALLET,8453,request=self.request(['10000',first],calls),page_size=1000,
+            max_pages=1,save=lambda s:saved.append(copy.deepcopy(s)))
+        self.assertFalse(row['complete']);self.assertEqual(calls[-1]['arguments']['offset'],1000)
+        self.assertEqual(saved[-1]['pending_ranges'][0]['page'],2)
+        row=discovery.discover(WALLET,8453,state=saved[-1],request=self.request([second],calls),continue_only=True,page_size=100)
+        self.assertTrue(row['complete']);self.assertEqual(calls[-1]['arguments']['offset'],1000)
+        self.assertIn(old,{t['address'] for t in row['tokens']})
+        self.assertFalse(discovery.valid_state({**saved[-1],'page_size':True},WALLET,8453))
+
+    def test_new_large_page_setting_cannot_change_an_old_frontier_offset(self):
+        saved=[];calls=[]
+        discovery.discover(WALLET,8453,request=self.request(['10',[self.transfer()]*100],calls),max_pages=1,
+            save=lambda s:saved.append(copy.deepcopy(s)))
+        # Missing field is the installed legacy checkpoint contract.
+        saved[-1].pop('page_size',None)
+        discovery.discover(WALLET,8453,state=saved[-1],request=self.request([[]],calls),continue_only=True,page_size=1000)
+        self.assertEqual(calls[-1]['arguments']['offset'],100)
+        self.assertEqual(calls[-1]['arguments']['page'],2)
+
+    def test_large_pages_preserve_invalid_page_guards(self):
+        for rows in ([self.transfer()]*1001,[self.transfer()]*999+[self.transfer(**{'from':'foreign','to':'foreign'})]):
+            saved=[]
+            row=discovery.discover(WALLET,8453,request=self.request(['10',rows],[]),page_size=1000,
+                save=lambda s:saved.append(copy.deepcopy(s)))
+            self.assertFalse(row['complete']);self.assertEqual(row['discovery_status'],'provider_error')
+            self.assertEqual(saved[-1]['pending_ranges'][0]['page'],1);self.assertEqual(row['tokens'],[])
     def test_partial_page_keeps_fixed_window_and_resumes_without_reusing_balances(self):
         saved=[];calls=[]
         row=discovery.discover(WALLET,8453,request=self.request(['10',[self.transfer()]*100],calls),save=lambda s:saved.append(json.loads(json.dumps(s))),max_pages=1)

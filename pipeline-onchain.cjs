@@ -617,7 +617,7 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
       if(cache.requests[key]!==undefined)return cacheDecode(cache.requests[key]);
       const value=await boundedMarket(client.readContract(query),deadline);cache.requests[key]=cacheEncode(value);save();return value;
     };
-    const quoteAsset=async(address,amount)=>{
+    const quoteAsset=async(address,amount,{mintOnly=false}={})=>{
       const quotes=[];
       try{
         const exists=await read({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'exists',args:[address]});
@@ -629,7 +629,10 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
             block_number:block.toString(),block_hash:snapshot.hash,observed_at:stamp(),funded:info.reserveBalance>0n,reserve_balance_raw:info.reserveBalance.toString(),royalty_raw:refund[1].toString(),
             route_fees_included:true,price_impact_included:true,gas_included:false,execution_verified:false,transfer_tax_included:false,source_url:`https://mint.club/token/${n.network}/${address}`});
         }else if(exists!==false)quotes.push({status:'unknown',reason:'Mint Club membership unavailable.'});
-      }catch(error){if(error.code==='market_budget')throw error;quotes.push({status:'unknown',reason:'Amount-specific Mint Club redemption unavailable.'});}
+      }catch(error){if(error.code==='market_budget')throw error;const failure=rpcFailure(error);
+        quotes.push({status:'unknown',reason:'Amount-specific Mint Club redemption unavailable.',retryable:true,
+          failure_kind:failure.sizeLimit?'payload_limit':failure.transportFailure?'transport':'contract_or_provider'});}
+      if(mintOnly)return quotes;
       // Publish a usable funded redemption before exploring alternate venues.
       // The alternative DEX scope remains unknown, never verified absent.
       if(quotes.some(q=>q.status==='quoted'&&q.funded===true&&BigInt(q.output_amount_raw)>0n&&BigInt(q.reserve_balance_raw)>=BigInt(q.output_amount_raw))){
@@ -648,13 +651,15 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
       for(const pool of verified.dex_pools)quotes.push(pool.cashout_quote||{status:'unknown',reason:'Pool adapter or quote unavailable.'});
       return quotes;
     };
-    for(const token of [...tokens].sort((a,b)=>Number(!!b.mintclub?.funded)-Number(!!a.mintclub?.funded))){
+    let retryPending=false;
+    for(const token of [...tokens].sort((a,b)=>Number(!!b.mintclub?.funded)-Number(!!a.mintclub?.funded)||Number(b.mintclub_membership_status==='verified')-Number(a.mintclub_membership_status==='verified'))){
       const key=token.token_address.toLowerCase()+':'+token.token_type;
       const state=await expandRoutes(token,quoteAsset,{state:cache.nodes[key],save:state=>{cache.nodes[key]=state;save();}});
-      token.liquidation_routes=state.routes;token.liquidation_unknown_routes=state.unknown;delete token.cashout_pending;
+      token.liquidation_routes=state.routes;token.liquidation_unknown_routes=state.unknown;
+      if(state.pending.length||state.root_retry_pending){token.cashout_pending=true;retryPending=true;}else delete token.cashout_pending;
       emitProgress(n,'cashout_routes',tokens.filter(t=>cache.nodes[t.token_address.toLowerCase()+':'+t.token_type]?.pending.length===0).length,tokens.length);
     }
-    return {tokens,market_pending:false};
+    return {tokens,market_pending:retryPending};
   }catch(error){
     const pending=error.code==='market_budget';
     for(const token of tokens){const state=cache?.nodes[token.token_address.toLowerCase()+':'+token.token_type];
@@ -664,10 +669,11 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
     if(pending)save();return {tokens,market_pending:pending};
   }
 }
-async function scanNetworks(input,output,baseline=false,{maxBatches=4,scan=scanChain}={}) {
+async function scanNetworks(input,output,baseline=false,{maxBatches=4,maxRounds=Infinity,scan=scanChain}={}) {
   const results=new Map(),lastProgress=new Map(),stalls=new Map();
   let queue=input.networks;
-  while(queue.length) {
+  let rounds=0;
+  while(queue.length&&rounds++<maxRounds) {
     const rows=await parallel(queue,2,n=>scan(input,n,output,baseline,{maxBatches}));
     const next=[];
     rows.forEach((row,i)=>{
@@ -686,8 +692,8 @@ async function main() {
   const [mode,inputPath,outputPath]=process.argv.slice(2);
   const input=JSON.parse(fs.readFileSync(inputPath));
   if(!v.isAddress(input.wallet))throw new Error('Invalid wallet address');
-  if(mode==='scan'||mode==='baseline') {
-    const rows=await scanNetworks(input,outputPath,mode==='baseline');
+  if(mode==='scan'||mode==='scan-slice'||mode==='baseline') {
+    const rows=await scanNetworks(input,outputPath,mode==='baseline',{maxRounds:mode==='scan-slice'?1:Infinity});
     write(path.join(outputPath,'onchain-summary.json'),{wallet:input.wallet,observed_at:stamp(),chains:rows});
   }else if(mode==='dex') {
     const deadline=Date.now()+Math.min(180_000,Math.max(0,input.market_budget_ms??180_000));

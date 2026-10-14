@@ -132,6 +132,7 @@ def valid_state(state, address, chain_id, standard='erc20'):
             or type(state.get('complete')) is not bool or not isinstance(state.get('contracts'),list)
             or not all(isinstance(a,str) and ADDRESS.fullmatch(a) for a in state['contracts'])):return False
     if state.get('history_strategy','linear_pages_v1') not in ('linear_pages_v1','balanced_ranges_v1'):return False
+    if type(state.get('page_size',100)) is not int or state.get('page_size',100) not in (100,1000):return False
     if 'retry_not_before' in state and (type(state['retry_not_before']) is not int or state['retry_not_before']<0):return False
     if state['schema_version']==1:
         return (standard=='erc20' and type(state.get('page')) is int and 1<=state['page']<=101
@@ -195,9 +196,9 @@ def split_limit(current, *, balanced=False):
     else:current['pending_ranges'][0:0]=[newer,older]
 
 
-def admit(transfers, address, startblock, endblock, contracts, standard='erc20'):
+def admit(transfers, address, startblock, endblock, contracts, standard='erc20', page_size=100):
     provider_for(standard)
-    if not isinstance(transfers,list) or len(transfers)>100:raise ValueError('Invalid transfer page')
+    if page_size not in (100,1000) or not isinstance(transfers,list) or len(transfers)>page_size:raise ValueError('Invalid transfer page')
     contracts=set(contracts);previous=None
     for transfer in transfers:
         if not isinstance(transfer,dict):raise ValueError('Invalid transfer')
@@ -216,7 +217,7 @@ def admit(transfers, address, startblock, endblock, contracts, standard='erc20')
     return sorted(contracts)
 
 
-def discover(address, chain_id, *, state=None, save=lambda value:None, request=fetch, budget=25, max_pages=3, continue_only=False, standard='erc20', history_strategy=None):
+def discover(address, chain_id, *, state=None, save=lambda value:None, request=fetch, budget=25, max_pages=3, continue_only=False, standard='erc20', history_strategy=None, page_size=100):
     provider=provider_for(standard)
     row={'chain_id':chain_id,'source':DOCS,'provider':provider,'standard':standard,'tokens':[],'native':[],
          'pages':[],'complete':False,'discovery_status':'unsupported','error':None,
@@ -227,6 +228,7 @@ def discover(address, chain_id, *, state=None, save=lambda value:None, request=f
     if chain_id not in (CHAINS if standard=='erc20' else ERC1155_CHAINS):return row
     if not isinstance(address,str) or not ADDRESS.fullmatch(address):raise ValueError('Invalid wallet')
     if history_strategy not in (None,'linear_pages_v1','balanced_ranges_v1'):raise ValueError('Unsupported history strategy')
+    if type(page_size) is not int or page_size not in (100,1000):raise ValueError('Unsupported transfer page size')
     if state is not None and not valid_state(state,address,chain_id,standard):
         row.update(discovery_status='checkpoint_error',error={'message':'Transfer checkpoint is invalid. Saved evidence was preserved.'})
         return row
@@ -235,6 +237,9 @@ def discover(address, chain_id, *, state=None, save=lambda value:None, request=f
     # Existing frontiers keep their exact traversal policy. New wallet runs can
     # explore old ranges early without labelling sampled ranges complete.
     strategy=current.get('history_strategy','linear_pages_v1') if current else history_strategy or 'linear_pages_v1'
+    # Changing an offset at page N would skip or repeat a different interval.
+    # Older checkpoints retain their original 100-record paging semantics.
+    page_size=current.get('page_size',100) if current else page_size
     def height():
         value=call('get_block_by_timestamp',{'chainid':str(chain_id),'timestamp':max(0,int(time.time())-120),'closest':'before'},deadline,request)
         if not isinstance(value,str) or not re.fullmatch(r'\d{1,16}',value):raise ValueError('Invalid window boundary')
@@ -248,7 +253,7 @@ def discover(address, chain_id, *, state=None, save=lambda value:None, request=f
             if current is None or current['complete'] and not continue_only:
                 endblock=height();startblock=max(0,current['endblock']-2048) if current else 0
                 if current and endblock<current['endblock']:raise ValueError('Indexer height moved backward')
-                current={'schema_version':2,'provider':provider,'standard':standard,'history_strategy':strategy,'wallet':address.lower(),'chain_id':chain_id,
+                current={'schema_version':2,'provider':provider,'standard':standard,'history_strategy':strategy,'page_size':page_size,'wallet':address.lower(),'chain_id':chain_id,
                          'startblock':startblock,'endblock':endblock,'contracts':current['contracts'] if current else [],
                          'complete':False,'records':0,'pages_checked':0,'started_at':int(time.time()),
                          'pending_ranges':[{'startblock':startblock,'endblock':endblock,'page':1,'seen_page_hashes':[]}],
@@ -267,16 +272,16 @@ def discover(address, chain_id, *, state=None, save=lambda value:None, request=f
                 if window['page']>100:
                     split_limit(current,balanced=strategy=='balanced_ranges_v1');save(current);continue
                 args={k:window[k] for k in ('startblock','endblock','page')}
-                transfers=call('get_token_transfers',{'chainid':str(chain_id),'address':address,'standard':standard,'offset':100,'sort':'desc',**args},deadline,request)
-                contracts=admit(transfers,address,window['startblock'],window['endblock'],current['contracts'],standard)
+                transfers=call('get_token_transfers',{'chainid':str(chain_id),'address':address,'standard':standard,'offset':page_size,'sort':'desc',**args},deadline,request)
+                contracts=admit(transfers,address,window['startblock'],window['endblock'],current['contracts'],standard,page_size)
                 if transfers and window.get('last_block') is not None and int(transfers[0]['blockNumber'])>window['last_block']:
                     raise ValueError('Transfer pagination moved backward')
                 digest=hashlib.sha256(json.dumps(transfers,sort_keys=True).encode()).hexdigest()
                 if transfers and digest in window['seen_page_hashes']:raise ValueError('Repeated transfer page')
                 current['contracts']=contracts;current['records']+=len(transfers);current['pages_checked']+=1
                 if row.get('recent_window',{}).get('startblock')==window['startblock']:
-                    row['recent_window'].update(complete=len(transfers)<100,records=len(transfers))
-                if len(transfers)<100:
+                    row['recent_window'].update(complete=len(transfers)<page_size,records=len(transfers))
+                if len(transfers)<page_size:
                     current['pending_ranges'].pop(0);finish_range(current,window)
                 else:
                     window.update(page=window['page']+1,last_block=int(transfers[-1]['blockNumber']))
@@ -285,7 +290,7 @@ def discover(address, chain_id, *, state=None, save=lambda value:None, request=f
                         split_limit(current,balanced=strategy=='balanced_ranges_v1')
                 current['complete']=not current['pending_ranges'] and not current['blocked_ranges']
                 current.pop('retry_not_before',None)
-                save(current);row['pages'].append({**args,'records':len(transfers)})
+                save(current);row['pages'].append({**args,'page_size':page_size,'records':len(transfers)})
             row['complete']=current['complete']
             row['discovery_status']='checked' if row['complete'] else 'history_pending' if current['pending_ranges'] else 'source_limited'
     except BudgetEnded:
@@ -314,6 +319,7 @@ def discover(address, chain_id, *, state=None, save=lambda value:None, request=f
         pending=current['pending_ranges']
         row['history_window']={k:current[k] for k in ('startblock','endblock','records','started_at','pages_checked')}
         row['history_window'].update(page=pending[0]['page'] if pending else 0,complete=row['complete'],
+            page_size=page_size,
             pending_ranges=len(pending),completed_ranges=len(current['completed_ranges']),blocked_ranges=len(current['blocked_ranges']),
             pagination_limit_reached=bool(current['blocked_ranges']))
         row['continuation']={'pending':bool(pending),'retry_not_before':current.get('retry_not_before',0),
