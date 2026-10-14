@@ -184,6 +184,18 @@ class TransferTests(unittest.TestCase):
             row=discovery.discover(WALLET,8453,state=saved[-1],request=self.request([[]],[]),continue_only=True)
         self.assertTrue(row['complete'])
 
+    def test_own_deadline_keeps_history_eligible_for_continuation(self):
+        saved=[]
+        discovery.discover(WALLET,8453,request=self.request(['10',[self.transfer()]*100],[]),save=lambda s:saved.append(copy.deepcopy(s)),max_pages=1)
+        clock=[100.0]
+        def timed_out(body,timeout):
+            clock[0]=102.0
+            return {'error':{'code':'deadline'}}
+        with patch.object(discovery.time,'monotonic',side_effect=lambda:clock[0]):
+            row=discovery.discover(WALLET,8453,state=saved[-1],request=timed_out,budget=1,continue_only=True)
+        self.assertEqual(row['discovery_status'],'history_pending');self.assertFalse(row['complete'])
+        self.assertEqual(row['history_window']['page'],2);self.assertEqual(len(row['tokens']),1)
+
     def test_id0_history_filters_other_ids_and_owns_a_distinct_frontier(self):
         saved=[];calls=[]
         row=discovery.discover(WALLET,8453,standard='erc1155',request=self.request(['10',[

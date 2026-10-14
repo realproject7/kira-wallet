@@ -292,7 +292,9 @@ def discover(address, chain_id, *, state=None, save=lambda value:None, request=f
     except OSError:
         row['discovery_status']='checkpoint_error'
     except (ValueError,KeyError,TypeError):
-        row['discovery_status']='provider_error'
+        # Exhausting this invocation's deadline leaves resumable history work.
+        # It does not establish provider failure or remove the pending frontier.
+        row['discovery_status']='history_pending' if current and current['pending_ranges'] and time.monotonic()>=deadline else 'provider_error'
     if not row['complete']:
         messages={'source_limited':'A single block exceeded the provider page limit. This range remains explicitly unresolved.',
                   'checkpoint_error':'Transfer checkpoint could not be saved. Existing evidence was preserved.',
