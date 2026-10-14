@@ -612,10 +612,11 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
         ||cache.block_number!==String(pinned.balance_block_number)||cache.block_hash!==pinned.balance_block_hash))throw new Error('Liquidation checkpoint does not match this request.');
     const client=await boundedMarket(connect(n),deadline),snapshot=await boundedMarket(h.snapshotBlock(client,cache||{block_number:String(pinned.balance_block_number),block_hash:pinned.balance_block_hash}),deadline),block=snapshot.number;
     cache=cache||{schema_version:1,wallet:input.wallet.toLowerCase(),chain_id:n.chain_id,bond:n.mintclub_bond_address.toLowerCase(),block_number:block.toString(),block_hash:snapshot.hash,requests:{},asset_pools:{},nodes:{}};save();
+    let assetDeadline=deadline;
     const read=async args=>{
       const query={...args,blockNumber:block},key=crypto.createHash('sha256').update(h.serialize(query)).digest('hex');
       if(cache.requests[key]!==undefined)return cacheDecode(cache.requests[key]);
-      const value=await boundedMarket(client.readContract(query),deadline);cache.requests[key]=cacheEncode(value);save();return value;
+      const value=await boundedMarket(client.readContract(query),assetDeadline);cache.requests[key]=cacheEncode(value);save();return value;
     };
     const quoteAsset=async(address,amount,{mintOnly=false}={})=>{
       const quotes=[];
@@ -640,24 +641,38 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
         return quotes;
       }
       const key=address.toLowerCase();
-      if(!cache.asset_pools[key]){cache.asset_pools[key]=await routePools(input.market_chain_names?.[n.chain_id],address,deadline);save();}
+      if(!cache.asset_pools[key]){cache.asset_pools[key]=await routePools(input.market_chain_names?.[n.chain_id],address,assetDeadline);save();}
       const catalog=cache.asset_pools[key];
       if(catalog.unknown)quotes.push({status:'unknown',reason:catalog.unknown});
       const shadow={chain_id:n.chain_id,token_address:address,token_type:'ERC20',wallet_balance_raw:amount,
         balance_block_number:block,balance_block_hash:snapshot.hash,quantity_basis:'Prior amount-specific route output, not an observed wallet holding.',dex_pools:structuredClone(catalog.pools)};
       const identity=crypto.createHash('sha256').update(h.serialize([address.toLowerCase(),amount])).digest('hex');
-      const [verified]=await dexChain(n,[shadow],{file:path.join(path.dirname(outputPath),`route-market-checkpoint-${n.chain_id}-${identity}.json`),wallet:input.wallet,deadline});
+      const [verified]=await dexChain(n,[shadow],{file:path.join(path.dirname(outputPath),`route-market-checkpoint-${n.chain_id}-${identity}.json`),wallet:input.wallet,deadline:assetDeadline});
       if(verified.market_pending)throw new MarketBudget();
       for(const pool of verified.dex_pools)quotes.push(pool.cashout_quote||{status:'unknown',reason:'Pool adapter or quote unavailable.'});
       return quotes;
     };
     let retryPending=false;
-    for(const token of [...tokens].sort((a,b)=>Number(!!b.mintclub?.funded)-Number(!!a.mintclub?.funded)||Number(b.mintclub_membership_status==='verified')-Number(a.mintclub_membership_status==='verified'))){
+    const rootOnly=input.cashout_root_only===true,attemptsKey=rootOnly?'root_attempts':'route_attempts';
+    cache[attemptsKey]=cache[attemptsKey]||{};
+    if(typeof cache[attemptsKey]!=='object'||Array.isArray(cache[attemptsKey])||Object.values(cache[attemptsKey]).some(n=>!Number.isSafeInteger(n)||n<0))throw new Error('Invalid route attempt checkpoint.');
+    const tokenKey=t=>t.token_address.toLowerCase()+':'+t.token_type;
+    // Unvisited assets receive a turn before retry holes. Attempts are durable
+    // scheduling facts, not successful evidence or a completion percentage.
+    for(const token of [...tokens].sort((a,b)=>(cache[attemptsKey][tokenKey(a)]||0)-(cache[attemptsKey][tokenKey(b)]||0)||Number(!!b.mintclub?.funded)-Number(!!a.mintclub?.funded)||Number(b.mintclub_membership_status==='verified')-Number(a.mintclub_membership_status==='verified'))){
       const key=token.token_address.toLowerCase()+':'+token.token_type;
-      const state=await expandRoutes(token,quoteAsset,{state:cache.nodes[key],save:state=>{cache.nodes[key]=state;save();}});
+      if(Date.now()>=deadline)throw new MarketBudget();
+      assetDeadline=Math.min(deadline,Date.now()+6000);
+      cache[attemptsKey][key]=(cache[attemptsKey][key]||0)+1;save();
+      let state;
+      try{state=await expandRoutes(token,quoteAsset,{state:cache.nodes[key],rootOnly,maxSteps:2,save:state=>{cache.nodes[key]=state;save();}});}
+      catch(error){if(error.code!=='market_budget')throw error;
+        token.cashout_pending=true;retryPending=true;state=cache.nodes[key];
+        if(!state)continue;
+      }
       token.liquidation_routes=state.routes;token.liquidation_unknown_routes=state.unknown;
       if(state.pending.length||state.root_retry_pending){token.cashout_pending=true;retryPending=true;}else delete token.cashout_pending;
-      emitProgress(n,'cashout_routes',tokens.filter(t=>cache.nodes[t.token_address.toLowerCase()+':'+t.token_type]?.pending.length===0).length,tokens.length);
+      emitProgress(n,'cashout_routes',tokens.filter(t=>{const s=cache.nodes[tokenKey(t)];return s?.pending.length===0&&!s.root_retry_pending;}).length,tokens.length);
     }
     return {tokens,market_pending:retryPending};
   }catch(error){

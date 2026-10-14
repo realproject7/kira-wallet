@@ -30,7 +30,7 @@ function seedQuotes(token) {
   return quotes;
 }
 
-async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNodes=32,maxBranches=4}={}) {
+async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNodes=32,maxBranches=4,maxSteps=Infinity,rootOnly=false}={}) {
   const holding=integer(token.wallet_balance_raw),block=String(token.balance_block_number),hash=token.balance_block_hash;
   if(!holding||!address(token.token_address)||!/^0x[0-9a-fA-F]{64}$/.test(hash||''))throw new Error('Pinned route holding unavailable');
   const identity=JSON.stringify([token.chain_id,token.token_address.toLowerCase(),token.token_type,holding.toString(),block,hash]);
@@ -46,11 +46,13 @@ async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNod
   if(state&&state.seed_signature!==signature)state=null;
   state=state||{identity,pending:[{address:token.token_address.toLowerCase(),amount:holding.toString(),legs:[],visited:[token.token_address.toLowerCase()]}],routes:[],unknown:[],expanded:0};
   state.seed_signature=signature;
+  save(state);
   // A verified member can lack a root burn quote after a bulk detail/refund
   // failure. Recover it through the normal paced, pinned read lane. Existing
   // routes survive retries and successful root evidence survives restart.
   const recoverRoot=token.mintclub_membership_status==='verified'&&!seeds.some(q=>q.kind==='mintclub_burn'&&validLeg(q,token.token_address,holding,block,hash));
   if(recoverRoot&&!state.root_recovery_done){
+    state.root_retry_pending=true;save(state);
     const recovered=await quoteAsset(token.token_address,holding,{mintOnly:true});
     state.root_quotes=recovered.filter(q=>validLeg(q,token.token_address,holding,block,hash));
     state.root_retry_pending=recovered.some(q=>q.retryable===true);
@@ -60,8 +62,10 @@ async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNod
       state.pending.unshift({address:token.token_address.toLowerCase(),amount:holding.toString(),legs:[],visited:[token.token_address.toLowerCase()]});
     state.unknown=[...new Set([...state.unknown,...recovered.filter(q=>q.status!=='quoted').map(q=>q.reason).filter(Boolean)])];save(state);
   }
-  while(state.pending.length){
+  let steps=0;
+  while(state.pending.length&&steps<maxSteps){
     const node=state.pending[0];
+    if(rootOnly&&node.legs.length)break;
     if(state.expanded>=maxNodes){state.unknown.push('Bounded route node limit reached; other liquidation paths remain unknown.');state.pending=[];save(state);break;}
     // Leave the current node on the frontier if a time budget interrupts its
     // reads. Successful RPC evidence and earlier route prefixes are retained.
@@ -87,7 +91,7 @@ async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNod
       else if(legs.length>=maxLegs)state.unknown.push('Bounded liquidation leg limit reached; terminal cash proceeds remain unknown.');
       else state.pending.push({address:output,amount:quote.output_amount_raw,legs,visited:[...node.visited,output]});
     }
-    state.pending.shift();state.expanded++;state.unknown=[...new Set(state.unknown)];save(state);
+    state.pending.shift();state.expanded++;steps++;state.unknown=[...new Set(state.unknown)];save(state);
   }
   return state;
 }

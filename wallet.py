@@ -515,7 +515,7 @@ def finish(wallet, folder, networks, discovered):
     # Expand funded burns and recover missing verified-member quotes first.
     early=[t for t in tokens if (t.get('mintclub') or {}).get('funded') or t.get('mintclub_membership_status')=='verified']
     if early:
-        atomic(folder/'cashout-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':early,'market_chain_names':DEX,'market_budget_ms':45000})
+        atomic(folder/'cashout-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':early,'market_chain_names':DEX,'market_budget_ms':45000,'cashout_root_only':True})
         run_node('liquidate',folder/'cashout-input.json',folder/'liquidation-verified.json')
         enriched=read(folder/'liquidation-verified.json')['tokens']
         by_asset={(t['chain_id'],t['token_address'].lower(),t['token_type']):t for t in enriched}

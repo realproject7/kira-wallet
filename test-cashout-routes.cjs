@@ -127,3 +127,38 @@ test('pipeline retries failed root detail through pinned individual reads withou
   await liquidationChain(network,input,output);assert.equal(detailReads,2);
  }finally{Object.assign(h,originals);fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('root-only pass records the burn prefix before any intermediate venue work',async()=>{
+ let state=await expandRoutes(token(),async()=>assert.fail('Intermediate lookup blocked other root quotes'),{rootOnly:true,maxSteps:2});
+ assert.equal(state.expanded,1);assert.equal(state.pending[0].address,RESERVE);assert.equal(state.pending[0].amount,'200');
+ state=await expandRoutes(token(),async()=>[leg(RESERVE,USD,'200','1')],{state,maxSteps:2});
+ assert.equal(state.routes.length,1);assert.equal(state.pending.length,0);
+});
+
+test('one slow root preserves its pending work and lets another held asset receive a quote',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-fair-root-'));
+ const originals={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock};
+ try{
+  const second='0x'+'3'.repeat(40),network={chain_id:8453,network:'base',environment:'mainnet',mintclub_bond_address:'0x'+'9'.repeat(40)};
+  const first={...token(),dex_pools:[],mintclub_membership_status:'verified'},other={...first,token_address:second};
+  let fail=true;
+  h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:7n,hash:HASH});
+  h.client=()=>({getChainId:async()=>8453,readContract:async query=>{
+   if(query.functionName==='exists')return true;
+   if(query.functionName==='getDetail'){
+    if(fail&&query.args[0]===TOKEN){const error=new Error('Synthetic asset budget');error.code='market_budget';throw error;}
+    return {info:{reserveToken:USD,reserveDecimals:6,reserveBalance:5000000n}};
+   }
+   if(query.functionName==='getRefundForTokens')return [1000000n,10000n];
+   assert.fail('Unexpected fair root query');
+  }});
+  const input={wallet:TOKEN,tokens:[first,other],cashout_root_only:true,market_chain_names:{}},output=path.join(root,'result.json');
+  let result=await liquidationChain(network,input,output);
+  assert.equal(result.market_pending,true);assert.equal(result.tokens[0].cashout_pending,true);
+  assert.equal(result.tokens[1].liquidation_routes[0].output_amount,'1');
+  const checkpoint=JSON.parse(fs.readFileSync(path.join(root,'cashout-checkpoint-8453.json')));
+  assert.equal(checkpoint.nodes[TOKEN+':ERC20'].pending.length,1);assert.equal(checkpoint.root_attempts[TOKEN+':ERC20'],1);
+  fail=false;result=await liquidationChain(network,input,output);
+  assert.equal(result.market_pending,false);assert(result.tokens.every(t=>t.liquidation_routes.length===1));
+ }finally{Object.assign(h,originals);fs.rmSync(root,{recursive:true,force:true});}
+});
