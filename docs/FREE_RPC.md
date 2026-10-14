@@ -188,6 +188,12 @@ decimals and `getRefundForTokens` output. It does not require names, symbols or
 the full `getDetail` curve. A root's verified same-block membership is reused;
 intermediate assets still require their own membership check. Informational
 curve details can remain unavailable while a valid amount quote is retained.
+Verified members prefetch those exact getter facts through batches of at most
+32 reads. Shared reserve decimals are deduplicated. Successful cells enter the
+same pinned per-query cache used by individual recovery; failed cells remain
+unknown. A bulk transport failure defers affected getters for the current pass
+instead of spawning individual calls. Verified payload limits alone can split
+a batch. This reduces paced RPC round trips without changing provider pacing.
 
 Public RPC cannot enumerate all arbitrary ERC20 contracts. Alchemy is an
 optional broader candidate source and backup RPC. Discovery calls made through

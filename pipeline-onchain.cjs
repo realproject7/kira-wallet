@@ -54,13 +54,14 @@ async function connect(n, onClient=()=>{}) {
   endpointIdentity.set(c,h.rpcEndpointsUsed(c)[0]??0);return c;
 }
 function rpcFailure(error) {
-  let sizeLimit=false,transportFailure=false;
+  let sizeLimit=false,transportFailure=false,schedulingFailure=false;
   for(let cause=error,depth=0;cause&&depth<10;cause=cause.cause,depth++) {
     if(['HttpRequestError','TimeoutError'].includes(cause.name))transportFailure=true;
+    if(cause.name==='RpcSchedulingTimeout')schedulingFailure=true;
     if(cause.status===413||/\b(batch|payload|response|request body)\b.*\b(large|size|limit|exceed)/i.test(cause.shortMessage||cause.message||'')||/gas.*(cap|limit).*exceed|exceed.*gas.*(cap|limit)/i.test(cause.shortMessage||cause.message||''))sizeLimit=true;
     if(cause.status===429)return {sizeLimit:false,transportFailure:true};
   }
-  return {sizeLimit,transportFailure};
+  return {sizeLimit,transportFailure,schedulingFailure};
 }
 async function calls(c, contracts, block) {
   if (!contracts.length) return [];
@@ -613,11 +614,38 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
     const client=await boundedMarket(connect(n),deadline),snapshot=await boundedMarket(h.snapshotBlock(client,cache||{block_number:String(pinned.balance_block_number),block_hash:pinned.balance_block_hash}),deadline),block=snapshot.number;
     cache=cache||{schema_version:1,wallet:input.wallet.toLowerCase(),chain_id:n.chain_id,bond:n.mintclub_bond_address.toLowerCase(),block_number:block.toString(),block_hash:snapshot.hash,requests:{},asset_pools:{},nodes:{}};save();
     let assetDeadline=deadline;
+    const queryKey=args=>crypto.createHash('sha256').update(h.serialize({...args,blockNumber:block})).digest('hex');
+    const deferred=new Map();
     const read=async args=>{
-      const query={...args,blockNumber:block},key=crypto.createHash('sha256').update(h.serialize(query)).digest('hex');
+      const query={...args,blockNumber:block},key=queryKey(args);
       if(cache.requests[key]!==undefined)return cacheDecode(cache.requests[key]);
+      if(deferred.has(key))throw deferred.get(key);
       const value=await boundedMarket(client.readContract(query),assetDeadline);cache.requests[key]=cacheEncode(value);save();return value;
     };
+    // Warm exact per-query facts with small Multicalls. Rich curve metadata is
+    // unnecessary; a healthy member set needs a few paced RPCs instead of one
+    // paced round trip for every getter of every held asset. Only successful
+    // cells enter the cache. A failed transport is deferred, never fanned out.
+    const prefetch=async plans=>{
+      const pending=[...new Map(plans.map(p=>[queryKey(p),p])).entries()].filter(([key])=>cache.requests[key]===undefined);
+      for(let start=0;start<pending.length;start+=32){
+        if(Date.now()>=deadline)throw new MarketBudget();
+        const group=pending.slice(start,start+32),rows=await boundedMarket(calls(client,group.map(([,p])=>p),block),deadline);
+        rows.forEach((r,i)=>{
+          if(r.status==='success')cache.requests[group[i][0]]=cacheEncode(r.result);
+          else {const failure=rpcFailure(r.error);if(failure.transportFailure||failure.schedulingFailure)deferred.set(group[i][0],r.error);}
+        });save();
+      }
+    };
+    const members=tokens.filter(t=>t.mintclub_membership_status==='verified'&&t.balance_block_hash===snapshot.hash
+      &&cache.nodes[t.token_address.toLowerCase()+':'+t.token_type]?.root_recovery_done!==true&&!t.mintclub?.wallet_full_burn);
+    const bondQuery=t=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'tokenBond',args:[t.token_address]});
+    await prefetch(members.map(bondQuery));
+    const reserves=members.map(t=>cache.requests[queryKey(bondQuery(t))]).filter(v=>v!==undefined).map(cacheDecode)
+      .filter(b=>Array.isArray(b)&&v.isAddress(b[4])&&b[4]!==v.zeroAddress).map(b=>b[4]);
+    await prefetch(reserves.map(address=>({address,abi:erc20,functionName:'decimals'})));
+    await prefetch(members.filter(t=>cache.requests[queryKey(bondQuery(t))]!==undefined).map(t=>({address:n.mintclub_bond_address,abi:h.bondAbi,
+      functionName:'getRefundForTokens',args:[t.token_address,BigInt(t.wallet_balance_raw)]})));
     const quoteAsset=async(address,amount,{mintOnly=false,knownMember=false}={})=>{
       const quotes=[];
       try{
@@ -636,7 +664,7 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
         }else if(exists!==false)quotes.push({status:'unknown',reason:'Mint Club membership unavailable.'});
       }catch(error){if(error.code==='market_budget')throw error;const failure=rpcFailure(error);
         quotes.push({status:'unknown',reason:'Amount-specific Mint Club redemption unavailable.',retryable:true,
-          failure_kind:failure.sizeLimit?'payload_limit':failure.transportFailure?'transport':'contract_or_provider'});}
+          failure_kind:failure.sizeLimit?'payload_limit':failure.schedulingFailure?'rpc_wait':failure.transportFailure?'transport':'contract_or_provider'});}
       if(mintOnly)return quotes;
       // Publish a usable funded redemption before exploring alternate venues.
       // The alternative DEX scope remains unknown, never verified absent.

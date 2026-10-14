@@ -119,7 +119,7 @@ test('pipeline retries failed root detail through pinned individual reads withou
    if(query.functionName==='decimals')return 6;
    if(query.functionName==='getRefundForTokens'){assert.deepEqual(query.args,[TOKEN,100n]);return [1000000n,10000n];}
    assert.fail('Unexpected recovery query');
-  },multicall:async()=>assert.fail('Failed transport caused a request burst')});
+  },multicall:async({contracts})=>contracts.map(()=>({status:'failure',error:new Error('Synthetic individual contract failure')}))});
   const input={wallet:TOKEN,tokens:[held],market_chain_names:{}},output=path.join(root,'result.json');
   let result=await liquidationChain(network,input,output);
   assert.equal(result.market_pending,true);assert.equal(result.tokens[0].cashout_pending,true);assert.equal(detailReads,1);
@@ -185,4 +185,46 @@ test('normal paced root reads fit the asset turn instead of expiring at the thir
   assert.equal(reads,3);assert.equal(result.market_pending,false);
   assert.equal(result.tokens[0].liquidation_routes[0].output_amount,'1');
  }finally{Date.now=originalNow;Object.assign(h,originals);fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('verified member facts are prefetched in bounded batches with one shared reserve decimals read',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-bulk-roots-'));
+ const originals={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock};
+ try{
+  const network={chain_id:8453,network:'base',environment:'mainnet',mintclub_bond_address:'0x'+'9'.repeat(40)},batches=[];
+  const held=Array.from({length:48},(_,i)=>({...token(),token_address:'0x'+(i+100).toString(16).padStart(40,'0'),dex_pools:[],mintclub_membership_status:'verified'}));
+  h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:7n,hash:HASH});
+  h.client=()=>({getChainId:async()=>8453,readContract:async()=>assert.fail('Successful prefetched member getter reread'),multicall:async({contracts,blockNumber})=>{
+   assert.equal(blockNumber,7n);assert(contracts.length<=32);batches.push(contracts);
+   return contracts.map(c=>({status:'success',result:c.functionName==='tokenBond'?[TOKEN,100,100,0,USD,5000000n]:
+    c.functionName==='decimals'?6:c.functionName==='getRefundForTokens'?[1000000n,10000n]:assert.fail('Unexpected bulk getter')}));
+  }});
+  const input={wallet:TOKEN,tokens:held,cashout_root_only:true},output=path.join(root,'result.json');
+  let result=await liquidationChain(network,input,output);
+  assert.equal(result.market_pending,false);assert(result.tokens.every(t=>t.liquidation_routes[0].output_amount==='1'));
+  assert.equal(batches.length,5);assert.equal(batches.filter(b=>b[0].functionName==='decimals').length,1);
+  assert.equal(batches.filter(b=>b[0].functionName==='getRefundForTokens').flat().length,48);
+  await liquidationChain(network,input,output);assert.equal(batches.length,5);
+ }finally{Object.assign(h,originals);fs.rmSync(root,{recursive:true,force:true});}
+});
+
+for(const errorName of ['HttpRequestError','RpcSchedulingTimeout'])test('failed bulk '+errorName+' stays pending without fanout and later restores all member quotes',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-bulk-transport-'));
+ const originals={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock};
+ try{
+  const network={chain_id:8453,network:'base',environment:'mainnet',mintclub_bond_address:'0x'+'9'.repeat(40)};
+  const held=[TOKEN,'0x'+'3'.repeat(40)].map(token_address=>({...token(),token_address,dex_pools:[],mintclub_membership_status:'verified'}));
+  let fail=true,count=0;
+  h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:7n,hash:HASH});
+  h.client=()=>({getChainId:async()=>8453,readContract:async()=>assert.fail('Bulk transport failure caused individual fanout'),multicall:async({contracts})=>{
+   count++;
+   if(fail){const e=new Error('Synthetic read deferred');e.name=errorName;throw e;}
+   return contracts.map(c=>({status:'success',result:c.functionName==='tokenBond'?[TOKEN,100,100,0,USD,5000000n]:c.functionName==='decimals'?6:[1000000n,10000n]}));
+  }});
+  const input={wallet:TOKEN,tokens:held,cashout_root_only:true},output=path.join(root,'result.json');
+  let result=await liquidationChain(network,input,output);
+  assert.equal(count,1);assert.equal(result.market_pending,true);assert(result.tokens.every(t=>t.cashout_pending));
+  fail=false;result=await liquidationChain(network,input,output);
+  assert.equal(count,4);assert.equal(result.market_pending,false);assert(result.tokens.every(t=>t.liquidation_routes.length===1));
+ }finally{Object.assign(h,originals);fs.rmSync(root,{recursive:true,force:true});}
 });
