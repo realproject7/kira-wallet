@@ -17,6 +17,35 @@ class WalletPipelineTests(unittest.TestCase):
     address='0x0000000000000000000000000000000000000011'
     network={'chain_id':8453,'environment':'mainnet'}
 
+    def test_missing_prices_keep_original_dates_but_contrary_reads_invalidate_them(self):
+        old={'chain_id':1,'address':self.address,'usd':2,'quality':'estimated','source':'https://example.org/quote','observed_at':'2026-10-01T00:00:00Z'}
+        saved=wallet.retain_price_evidence({'tokens':[]},{'tokens':[old]})['tokens'][0]
+        self.assertEqual(saved['observed_at'],old['observed_at']);self.assertEqual(saved['source'],old['source'])
+        self.assertTrue(saved['retained_from_previous']);self.assertEqual(saved['latest_price_status'],'unavailable')
+        for fresh in ({**old,'usd':3},{**old,'usd':None,'quality':'unfunded'},{**old,'usd':None,'quality':'unreliable'}):
+            self.assertEqual(wallet.retain_price_evidence({'tokens':[fresh]},{'tokens':[old]})['tokens'][0],fresh)
+        for bad in ({'observed_at':None},{'observed_at':'2026-10-01'},{'usd':'NaN'},{'usd':-1}):
+            self.assertEqual(wallet.retain_price_evidence({'tokens':[]},{'tokens':[{**old,**bad}]}),{'tokens':[]})
+
+    def test_market_discovery_bounds_failures_and_keeps_late_success(self):
+        token={'chain_id':8453,'token_address':self.address,'token_type':'ERC20'}
+        with tempfile.TemporaryDirectory() as temp:
+            folder=Path(temp)
+            with patch.object(wallet,'fetch',return_value={'research_pending':True}) as fetch:
+                self.assertEqual(wallet.dex_fetch(token,folder,attempt_limit=2)['status'],'pending')
+                self.assertEqual(wallet.dex_fetch(token,folder,attempt_limit=2)['status'],'unavailable')
+                self.assertEqual(wallet.dex_fetch(token,folder,attempt_limit=2)['status'],'unavailable')
+                self.assertEqual(fetch.call_count,2)
+            for f in folder.iterdir():f.unlink()
+            with patch.object(wallet,'time') as clock,patch.object(wallet,'fetch',return_value=[{'saved':'successful response'}]) as fetch:
+                clock.monotonic.return_value=10
+                self.assertEqual(wallet.dex_fetch(token,folder,deadline=5,attempt_limit=2)['status'],'pending');fetch.assert_not_called()
+                clock.monotonic.side_effect=[1,10]
+                row=wallet.dex_fetch(token,folder,deadline=5,attempt_limit=2)
+                self.assertIsInstance(row['response'],list)
+                self.assertEqual(wallet.dex_fetch(token,folder,attempt_limit=2),row)
+                self.assertEqual(fetch.call_count,1)
+
     def test_ready_chain_is_scanned_before_slow_discovery_finishes_with_one_writer(self):
         with tempfile.TemporaryDirectory() as temp:
             folder=Path(temp);started=threading.Event();order=[]
@@ -326,7 +355,7 @@ class WalletPipelineTests(unittest.TestCase):
         def node(command,input_path,output_path):
             calls.append((command,wallet.read(input_path)['market_budget_ms']))
             wallet.atomic(output_path,{'tokens':wallet.read(input_path)['tokens'],'market_pending':command=='dex'})
-        def dex(t,folder,deadline):
+        def dex(t,folder,deadline,attempt_limit=None):
             fetches.append(t['token_address']);return {'response':[],'observed_at':'2026-10-14T01:00:00Z'}
         with patch.object(wallet,'ROOT',self.folder),patch.object(wallet,'run_node',side_effect=node),patch.object(wallet,'dex_fetch',side_effect=dex),\
              patch.object(wallet,'event'),patch.object(wallet,'report'),patch('native_assets.market_metadata',return_value={'prices':{},'images':{},'evidence':None}),\

@@ -37,6 +37,20 @@ class JobFixtures:
         atomic(self.root/job['checkpoint']/'run.json',{'wallet_address':ADDRESS,**({'completed_at':'now'} if completed_manifest else {'status':'running'})})
         registry=json.loads((self.root/'wallets.json').read_text());registry['wallets'][0]['latest_snapshot']={'directory':job['checkpoint']};atomic(self.root/'wallets.json',registry)
 class JobsTest(JobFixtures, unittest.TestCase):
+    def test_cumulative_asset_checks_survive_pause_resume_and_step_resets(self):
+        job=self.running();counts={'total':10,'checked':7,'quoted':2,'unknown':5}
+        self.store.event(job['job_id'],{'stage':'onchain_progress','operation':'asset_review','chain_id':8453,**counts})
+        self.store.event(job['job_id'],{'stage':'onchain_progress','operation':'pool_checks','chain_id':1,'checked':0,'total':12})
+        saved=self.store.get(job['job_id']);self.assertEqual(saved['asset_progress'],{'8453':counts})
+        saved.update(state='cancelled',cancel_requested=True);self.store.save(saved)
+        resumed=self.store.submit(self.request('job.resume',{'job_id':job['job_id']},'resume-counts'))
+        self.assertEqual(resumed['asset_progress'],saved['asset_progress'])
+        for bad in ({'quoted':8},{'checked':11},{'unknown':-1},{'total':True}):
+            self.store.event(job['job_id'],{'stage':'onchain_progress','operation':'asset_review','chain_id':8453,**counts,**bad})
+            self.assertEqual(self.store.get(job['job_id'])['asset_progress'],{'8453':counts})
+        resumed['asset_progress']['8453']['quoted']=7;self.store.save(resumed)
+        with self.assertRaises(JobError):self.store.get(job['job_id'])
+
     def test_progress_retains_units_scope_and_attempt_without_provider_diagnostics(self):
         job=self.running()
         for operation in ('factory_queries','pool_checks','cashout_routes','history','market_discovery'):

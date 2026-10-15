@@ -81,7 +81,12 @@
     };
   }
   const progressUnits={balances:'balances',registry:'registry entries',metadata:'metadata reads',curves:'curve reads',reserves:'reserve records',mintclub_membership:'membership checks',
-    history:'history pages',market_discovery:'token market lookups',factory_queries:'factory queries',pool_checks:'pool checks',cashout_routes:'held assets'};
+    history:'history pages',market_discovery:'token market lookups',factory_queries:'factory queries',pool_checks:'pool checks',cashout_routes:'held assets',asset_review:'assets reviewed'};
+  function assetProgress(job) {
+    const rows=Object.values(job.asset_progress||{}).filter(p=>p&&typeof p==='object'&&['total','checked','quoted','unknown'].every(k=>Number.isSafeInteger(p[k])&&p[k]>=0)&&p.checked<=p.total&&p.quoted+p.unknown===p.checked);
+    if(!rows.length)return null;
+    return rows.reduce((sum,p)=>Object.fromEntries(Object.keys(sum).map(k=>[k,sum[k]+p[k]])),{total:0,checked:0,quoted:0,unknown:0});
+  }
   function jobProgress(job, now=Date.now(), connected=true) {
     const last=job.events?.at(-1),counts=last?.counts||{},context=last?.context||{},unit=progressUnits[context.operation];
     const known=context.operation!=='reserves'&&Number.isSafeInteger(counts.total)&&counts.total>0&&Number.isSafeInteger(counts.checked)&&counts.checked<=counts.total;
@@ -90,7 +95,7 @@
     const count=currentScope&&unit&&checked!=null?(known?checked+' / '+counts.total+' '+unit:checked+' '+unit+' checked')+(context.operation==='history'?' including saved work':''):'';
     const waiting=job.state==='queued'&&job.continuation?.not_before*1000>now;
     let eta=waiting?'Next check in '+duration(Math.ceil(job.continuation.not_before-now/1000)):'Overall remaining time is unknown.';
-    if(job.state==='running'&&connected&&!job.cancel_requested&&known&&checked<counts.total&&context.attempt===job.attempt&&now-Date.parse(last.observed_at)<=20000){
+    if(job.state==='running'&&connected&&!job.cancel_requested&&context.operation!=='asset_review'&&known&&checked<counts.total&&context.attempt===job.attempt&&now-Date.parse(last.observed_at)<=20000){
       const samples=[];
       for(const event of job.events||[]){
         const c=event.context||{},n=event.counts||{},time=Date.parse(event.observed_at);
@@ -113,7 +118,7 @@
     if(!active(job))eta='';
     const age=Math.max(0,Math.floor((now-Date.parse(job.created_at))/1000));
     const saved=active(job)&&(job.result||job.previous_result)?'Saved results remain available while research continues. Missing holdings and prices are still unknown.':'';
-    return {count,eta,saved,totalElapsed:Number.isFinite(age)?age:null,
+    return {count,eta,saved,cumulative:context.operation==='asset_review',assets:assetProgress(job),totalElapsed:Number.isFinite(age)?age:null,
       checked:known&&currentScope?checked:null,total:known&&currentScope?counts.total:null,
       lastProgress:job.progress_observed_at||null};
   }
@@ -138,7 +143,7 @@
       if(job.errors?.some(e=>e.code==='superseded'))description='A newer basic scan replaced this work. Open the latest wallet results to continue.';
       else {action='resume';actionLabel=job.state==='failed'||job.errors?.some(e=>e.code==='no_progress')?'Retry saved scan':'Resume '+(isDeep?'deep':'basic')+' scan';}
     }else if(isDeep){
-      mode='saved';title='Deep scan results saved';description='Available checks are saved below. Some tokens, networks or market routes may still be unknown. Saved does not mean every holding or price has been found.';
+      mode='saved';title='Deep scan results saved';description='The asset checks have finished. Available balances, prices and representative sell estimates are saved below. Unresolved assets stay unknown and visible. Other routes and undiscovered tokens may still exist.';
     }else{
       mode='ready';title='Your basic results are ready';description='You can use these results now. A deep scan looks for more tokens across the remaining networks and investigates unpriced holdings. It is optional and may take a while.';
       if(basic?.analysis_phase==='baseline'&&basic.result){action='deepen';actionLabel='Start deep scan';}
@@ -150,7 +155,7 @@
     const h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = seconds % 60;
     return (h ? h + 'h ' : '') + m + 'm ' + s + 's';
   }
-  const api = { catalog, pageSize, active, jobPresentation, jobProgress, researchSession, duration, discoveryNotice, coverageGap, networkEmpty };
+  const api = { catalog, pageSize, active, jobPresentation, jobProgress, assetProgress, researchSession, duration, discoveryNotice, coverageGap, networkEmpty };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KiraView = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

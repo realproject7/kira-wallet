@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const h = require('./onchain.cjs');
 const v = h.viem;
 const {quotePool}=require('./cashout-quotes.cjs');
-const {expandRoutes}=require('./cashout-routes.cjs');
+const {expandRoutes,terminal,validLeg,seedQuotes,representativeQuote}=require('./cashout-routes.cjs');
 const MULTICALL = '0xcA11bde05977b3631167028862bE2a173976CA11';
 const erc20 = v.parseAbi([
   'function balanceOf(address) view returns (uint256)',
@@ -91,6 +91,19 @@ async function batches(c, contracts, block, size=128, progress=null) {
   const results=[];
   for(const plan of plans){results.push(...await calls(c,plan,block));if(progress)progress(results.length,contracts.length);}
   return results;
+}
+async function factReads(c,contracts,block,checkpoint,file,n,operation) {
+  checkpoint.facts=checkpoint.facts||{};
+  if(typeof checkpoint.facts!=='object'||Array.isArray(checkpoint.facts))throw new Error('Invalid pinned detail facts.');
+  const key=q=>crypto.createHash('sha256').update(h.serialize({address:q.address.toLowerCase(),name:q.functionName,args:q.args||[]})).digest('hex');
+  const pending=contracts.filter(q=>checkpoint.facts[key(q)]===undefined);
+  let checked=contracts.length-pending.length;emitProgress(n,operation,checked,contracts.length);
+  for(let start=0;start<pending.length;start+=128){
+    const group=pending.slice(start,start+128),rows=await calls(c,group,block);
+    rows.forEach((row,i)=>{if(row.status==='success')checkpoint.facts[key(group[i])]={value:cacheEncode(row.result),observed_at:stamp()};});
+    write(file,checkpoint);checked+=group.length;emitProgress(n,operation,checked,contracts.length);
+  }
+  return contracts.map(q=>{const fact=checkpoint.facts[key(q)];return fact?{status:'success',result:cacheDecode(fact.value),observed_at:fact.observed_at}:{status:'failure',error:new Error('Pinned token details unavailable.')};});
 }
 async function balanceReads(c,tokens,wallet,block,checkpoint,file,n,{maxBatches=Infinity}={}) {
   checkpoint.balance_times=checkpoint.balance_times||{};
@@ -329,10 +342,10 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
       balances:Object.keys(checkpoint.balances).length,balance_attempted:Object.keys(checkpoint.balance_attempts).length,
       zero_attempted:Object.keys(checkpoint.zero_attempts).length,membership_checked:Object.keys(checkpoint.mintclub_membership||{}).length,
       membership_attempted:Object.keys(checkpoint.membership_attempts||{}).length};
-    const metadata=deferDetails?held.flatMap(()=>Array.from({length:3},()=>({status:'pending'}))):await batches(c,held.flatMap(t=>['decimals','symbol','name'].map(functionName=>({address:t.address,abi:erc20,functionName}))),block,128,(checked,total)=>emitProgress(n,'metadata',checked,total));
+    const metadata=deferDetails?held.flatMap(()=>Array.from({length:3},()=>({status:'pending'}))):await factReads(c,held.flatMap(t=>['decimals','symbol','name'].map(functionName=>({address:t.address,abi:erc20,functionName}))),block,checkpoint,checkpointFile,n,'metadata');
     const curves=held.filter(t=>t.registered_mintclub);
-    const details=deferDetails?curves.map(()=>({status:'pending'})):await batches(c,curves.map(t=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getDetail',args:[t.address]})),block,128,(checked)=>emitProgress(n,'curves',checked,curves.length*2));
-    const refunds=deferDetails?curves.map(()=>({status:'pending'})):await batches(c,curves.map(t=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getRefundForTokens',args:[t.address,t.balance_raw]})),block,128,(checked)=>emitProgress(n,'curves',curves.length+checked,curves.length*2));
+    const details=deferDetails?curves.map(()=>({status:'pending'})):await factReads(c,curves.map(t=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getDetail',args:[t.address]})),block,checkpoint,checkpointFile,n,'curves');
+    const refunds=deferDetails?curves.map(()=>({status:'pending'})):await factReads(c,curves.map(t=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getRefundForTokens',args:[t.address,t.balance_raw]})),block,checkpoint,checkpointFile,n,'curves');
     const curveRows=new Map(curves.map((t,i)=>[t.address.toLowerCase(),{detail:details[i],refund:refunds[i]}]));
     row.registry_scan = {registry_count:reg.count,registry_errors:reg.errors,checked,erc20_checked:erc20Checked,erc1155_checked:erc1155Checked,
       cache_reused:reg.cache_reused,balance_errors:errors.filter(t=>t.registered_mintclub).length,
@@ -368,7 +381,7 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
             price_for_next_mint_in_reserve_token:v.formatUnits(info.priceForNextMint,info.reserveDecimals),current_supply:v.formatUnits(info.currentSupply,item.decimals),
             burn_royalty_bps:detail.burnRoyalty,wallet_full_burn:refund?{net_refund_raw:refund[0],net_refund:v.formatUnits(refund[0],info.reserveDecimals),
               royalty_raw:refund[1],royalty:v.formatUnits(refund[1],info.reserveDecimals),asset:info.reserveSymbol,gas_included:false}:null,
-            wallet_full_burn_error:quoteError,block_number:block,block_hash:snapshot.hash,observed_at:stamp(),source_url:`https://mint.club/token/${n.network}/${t.address}`};
+            wallet_full_burn_error:quoteError,block_number:block,block_hash:snapshot.hash,observed_at:captured.refund.observed_at||captured.detail.observed_at||stamp(),source_url:`https://mint.club/token/${n.network}/${t.address}`};
         } catch(e) {item.mintclub_error=h.safeError(e);}
       }
       row.tokens.push(item);
@@ -381,6 +394,15 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
   // ERC1155 identities absent from a failed registry response on legacy runs.
   if(previous&&previous.wallet.toLowerCase()===input.wallet.toLowerCase()
       &&(row.block_hash===undefined||row.block_hash===previous.block_hash)) {
+    for(const token of row.tokens){
+      const old=previous.tokens.find(t=>t.token_address.toLowerCase()===token.token_address.toLowerCase()&&t.token_type===token.token_type
+        &&String(t.wallet_balance_raw)===String(token.wallet_balance_raw)&&t.balance_block_hash===token.balance_block_hash);
+      if(!old)continue;
+      if(token.wallet_balance===null&&typeof old.wallet_balance==='string'&&Number.isInteger(old.decimals)){
+        Object.assign(token,{decimals:old.decimals,wallet_balance:v.formatUnits(BigInt(token.wallet_balance_raw),old.decimals),symbol:old.symbol,name:old.name,metadata_evidence_retained:true});
+      }
+      if(!token.mintclub&&old.mintclub){token.mintclub=old.mintclub;token.mintclub_evidence_retained=true;}
+    }
     const observed=new Set(row.tokens.map(t=>t.token_address.toLowerCase()+':'+t.token_type));
     const retained=previous.tokens.filter(t=>!observed.has(t.token_address.toLowerCase()+':'+t.token_type));
     if(retained.length||row.native_balance===null&&previous.native_balance!==null){
@@ -411,7 +433,7 @@ async function boundedMarket(promise,deadline) {
   try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new MarketBudget()),deadline-Date.now());})]);}
   finally{clearTimeout(timer);}
 }
-async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000}={}) {
+async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,representative=false}={}) {
   const identity=t=>h.serialize([t.chain_id,t.token_address.toLowerCase(),t.token_type,t.token_id??null,String(t.balance_block_number),String(t.wallet_balance_raw)]);
   const identities=new Set(tokens.map(identity));
   const fingerprint=crypto.createHash('sha256').update(h.serialize([...identities].sort())).digest('hex');
@@ -431,6 +453,10 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000}={})
   // cached reads and fixed block, but revisit the pools to record quote status.
   if(cache.quote_schema_version!==2){cache.completed_pools=[];cache.quote_schema_version=2;}
   cache.pool_attempts=cache.pool_attempts||{};
+  cache.asset_reviews=cache.asset_reviews||{};
+  if(typeof cache.asset_reviews!=='object'||Array.isArray(cache.asset_reviews)||Object.values(cache.asset_reviews).some(r=>!r||typeof r!=='object'||typeof r.done!=='boolean'||!Number.isSafeInteger(r.failures)||r.failures<0))throw new Error('Invalid saved asset review frontier.');
+  const assetKey=t=>t.token_address.toLowerCase()+':'+t.token_type;
+  const done=t=>cache.asset_reviews[assetKey(t)]?.done===true;
   if(typeof cache.pool_attempts!=='object'||Array.isArray(cache.pool_attempts)||Object.values(cache.pool_attempts).some(value=>!Number.isSafeInteger(value)||value<0))throw new Error('Invalid saved market attempt frontier.');
   const saved=cacheDecode(cache.tokens);
   for(const token of tokens){
@@ -440,11 +466,18 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000}={})
       if(index<0)token.dex_pools.push(pool);else if(cache.completed_pools.includes(token.token_address.toLowerCase()+':'+pool.pool.toLowerCase()))token.dex_pools[index]=pool;
     }
   }
+  const requestKey=(name,args)=>crypto.createHash('sha256').update(h.serialize({name,args})).digest('hex');
+  const deferred=new Map();
   const c=new Proxy(client,{get(target,name){
     if(!['multicall','readContract'].includes(name))return Reflect.get(target,name);
     return async args=>{
-      const key=crypto.createHash('sha256').update(h.serialize({name,args})).digest('hex');
-      if(cache.requests[key])return cacheDecode(cache.requests[key]);
+      const key=requestKey(name,args);
+      if(cache.requests[key]!==undefined)return cacheDecode(cache.requests[key]);
+      if(representative&&name==='readContract'&&deferred.has(key))throw deferred.get(key);
+      if(representative&&name==='multicall'){
+        const keys=args.contracts.map(q=>requestKey('readContract',{...q,blockNumber:args.blockNumber}));
+        if(keys.every(k=>cache.requests[k]!==undefined||deferred.has(k)))return keys.map(k=>cache.requests[k]!==undefined?{status:'success',result:cacheDecode(cache.requests[k])}:{status:'failure',error:deferred.get(k)});
+      }
       if(Date.now()>=deadline)throw new MarketBudget();
       const result=await boundedMarket(target[name](args),deadline);
       const safe=name==='multicall'?result.map(r=>r.status==='success'?{status:'success',result:r.result}:{status:'failure',error:h.safeError(r.error)}):result;
@@ -453,7 +486,7 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000}={})
     };
   }});
   // Supplement DEX indexer discovery on Base with the canonical WETH/USDC factories.
-  if (n.chain_id===8453) {
+  if (n.chain_id===8453&&!representative) {
     const queries=[];
     for (const t of tokens.filter(t=>t.token_type!=='ERC1155')) for(const quote of ['0x4200000000000000000000000000000000000006','0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913']) {
       if(t.token_address.toLowerCase()===quote.toLowerCase())continue;
@@ -477,15 +510,59 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000}={})
     });
     for(const t of tokens)t.factory_discovery={candidate_count:queries.filter(q=>q.t===t).length,errors:queries.filter((q,i)=>q.t===t&&found[i].status==='failure').length,block_number:block};
   }
-  const poolTotal=tokens.reduce((sum,t)=>sum+t.dex_pools.filter(p=>['uniswap','aerodrome'].includes(p.venue)).length,0);
+  const supported=t=>t.dex_pools.filter(p=>['uniswap','aerodrome'].includes(p.venue));
+  if(representative)for(const t of tokens){
+    const key=assetKey(t),review=cache.asset_reviews[key]||{done:false,failures:0};cache.asset_reviews[key]=review;
+    // A funded curve prefix may still need an intermediate quote. Give that
+    // single route to the liquidation adapter instead of scanning other pools.
+    if(representativeQuote(t)||seedQuotes(t).some(q=>validLeg(q,t.token_address,BigInt(t.wallet_balance_raw),t.balance_block_number,t.balance_block_hash)))review.done=true;
+    const pools=supported(t);
+    if(!pools.length&&t.dex_discovery_status!=='pending'){review.done=true;review.reason='No supported indexed pool. Other factories and venues remain unsearched.';}
+    if(!review.pool&&pools.length){
+      const score=p=>Number(p.pool.length===42)*2+Number((p.paired_tokens||[]).some(a=>a.address.toLowerCase()!==t.token_address.toLowerCase()&&terminal(n.chain_id,a.address)));
+      review.pool=[...pools].sort((a,b)=>score(b)-score(a)||Number(b.reported_liquidity?.usd||0)-Number(a.reported_liquidity?.usd||0)||a.pool.toLowerCase().localeCompare(b.pool.toLowerCase()))[0].pool.toLowerCase();
+    }
+  }
+  const selected=t=>representative?supported(t).filter(p=>!done(t)&&p.pool.toLowerCase()===cache.asset_reviews[assetKey(t)].pool):supported(t);
+  const poolTotal=tokens.reduce((sum,t)=>sum+selected(t).length,0);
   let poolChecked=0;emitProgress(n,'pool_checks',0,poolTotal);
   const poolKey=(t,p)=>t.token_address.toLowerCase()+':'+p.pool.toLowerCase();
-  const poolQueue=tokens.flatMap(t=>t.dex_pools.filter(p=>['uniswap','aerodrome'].includes(p.venue)).map(p=>({t,p})))
+  const poolQueue=tokens.flatMap(t=>selected(t).map(p=>({t,p})))
     .sort((a,b)=>(cache.pool_attempts[poolKey(a.t,a.p)]||0)-(cache.pool_attempts[poolKey(b.t,b.p)]||0));
+  if(representative&&tokens.length>1){
+    // Share the pool state, membership and output metadata across assets.
+    // Only successful cells survive a slice; failed batches do not fan out.
+    const warm=async plans=>{
+      const pending=[...new Map(plans.map(q=>[requestKey('readContract',{...q,blockNumber:block}),q])).entries()].filter(([k])=>cache.requests[k]===undefined);
+      for(let start=0;start<pending.length;start+=128){
+        const group=pending.slice(start,start+128);if(Date.now()>=deadline)throw new MarketBudget();
+        const rows=await boundedMarket(calls(client,group.map(([,q])=>q),block),deadline);
+        rows.forEach((r,i)=>{if(r.status==='success')cache.requests[group[i][0]]=cacheEncode(r.result);else deferred.set(group[i][0],r.error);});save();
+      }
+    };
+    const value=q=>{const raw=cache.requests[requestKey('readContract',{...q,blockNumber:block})];return raw===undefined?undefined:cacheDecode(raw);};
+    const plan=poolQueue.filter(({p})=>p.pool.length===42);
+    const state=p=>Object.fromEntries(['factory','token0','token1',p.version_labels?.includes('v3')?'liquidity':'getReserves'].map(functionName=>[functionName,value({address:p.pool,abi:poolAbi,functionName})]));
+    const recognized=s=>typeof s.factory==='string'&&(deployments.some(d=>d.chainId===n.chain_id&&d.contract.toLowerCase().includes('factory')&&d.address.toLowerCase()===s.factory.toLowerCase())||n.chain_id===8453&&s.factory.toLowerCase()==='0x420dd381b31aef6683db6b902084cb0ffece40da');
+    await warm(plan.flatMap(({p})=>['factory','token0','token1',p.version_labels?.includes('v3')?'liquidity':'getReserves'].map(functionName=>({address:p.pool,abi:poolAbi,functionName}))));
+    const parameter=p=>p.version_labels?.includes('v3')?{address:p.pool,abi:v.parseAbi(['function fee() view returns (uint24)']),functionName:'fee'}:p.venue==='aerodrome'?{address:p.pool,abi:v.parseAbi(['function stable() view returns (bool)']),functionName:'stable'}:null;
+    await warm(plan.filter(({p})=>recognized(state(p))).map(({p})=>parameter(p)).filter(Boolean));
+    const membership=p=>{
+      const s=state(p),q=parameter(p),param=q?value(q):null;
+      if(!recognized(s)||!s.token0||!s.token1||q&&param===undefined)return null;
+      return {address:s.factory,abi:poolAbi,functionName:p.version_labels?.includes('v3')||p.venue==='aerodrome'?'getPool':'getPair',args:q?[s.token0,s.token1,param]:[s.token0,s.token1]};
+    };
+    await warm(plan.map(({p})=>membership(p)).filter(Boolean));
+    await warm(plan.flatMap(({t,p})=>{
+      const q=membership(p);if(!q||value(q)?.toLowerCase()!==p.pool.toLowerCase())return [];
+      const s=state(p),output=[s.token0,s.token1].find(a=>a.toLowerCase()!==t.token_address.toLowerCase());
+      return [{address:output,abi:erc20,functionName:'balanceOf',args:[p.pool]},{address:output,abi:erc20,functionName:'decimals'},{address:output,abi:erc20,functionName:'symbol'}];
+    }));
+  }
   for(const {t,p} of poolQueue) {
     if(!['uniswap','aerodrome'].includes(p.venue))continue;
     const identity=poolKey(t,p);
-    if(cache.completed_pools.includes(identity)){emitProgress(n,'pool_checks',++poolChecked,poolTotal);continue;}
+    if(cache.completed_pools.includes(identity)){if(representative)cache.asset_reviews[assetKey(t)].done=true;emitProgress(n,'pool_checks',++poolChecked,poolTotal);continue;}
     if(Date.now()>=deadline)throw new MarketBudget();
     cache.pool_attempts[identity]=(cache.pool_attempts[identity]||0)+1;
     let retry=false,paused=false;
@@ -535,16 +612,21 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000}={})
       // Budget pauses retain successful RPC prefixes, but do not mark an
       // unfinished pool as verified or as a provider failure.
       if(!paused&&Date.now()<deadline){if(!retry)cache.completed_pools.push(identity);poolChecked++;}
+      if(representative&&!paused&&Date.now()<deadline){const review=cache.asset_reviews[assetKey(t)];if(retry)review.failures++;review.done=!retry||review.failures>=2;}
       if(retry)p.rpc_verification={...p.rpc_verification,error:{message:'Some pool reads failed. Remaining price and execution details are unknown.'}};
       cache.tokens=cacheEncode(tokens);save();emitProgress(n,'pool_checks',poolChecked,poolTotal);
     }
+  }
+  if(representative){
+    tokens.forEach(t=>{if(done(t))delete t.market_pending;else t.market_pending=true;});
+    cache.tokens=cacheEncode(tokens);save();return tokens;
   }
   if(Date.now()>=deadline)throw new MarketBudget();
   tokens.forEach(t=>{delete t.market_pending;if(t.dex_pools.some(p=>p.rpc_verification?.error)||t.factory_discovery?.errors)t.dex_verification_error={message:'Some market reads failed. Missing pool and price evidence remains unknown.'};else delete t.dex_verification_error;});cache.tokens=cacheEncode(tokens);save();
   return tokens;
   }catch(e){
     if(e.code!=='market_budget')throw e;
-    tokens.forEach(t=>t.market_pending=true);
+    tokens.forEach(t=>{if(representative&&cache?.asset_reviews?.[t.token_address.toLowerCase()+':'+t.token_type]?.done)delete t.market_pending;else t.market_pending=true;});
     if(cache){cache.tokens=cacheEncode(tokens);save();}
     return tokens;
   }
@@ -603,6 +685,8 @@ async function routePools(chain,address,deadline) {
 }
 async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) {
   const tokens=input.tokens.filter(t=>t.chain_id===n.chain_id),file=path.join(path.dirname(outputPath),`cashout-checkpoint-${n.chain_id}.json`);
+  const representative=input.market_scope==='representative_v1',rootOnly=input.cashout_root_only===true;
+  const tokenKey=t=>t.token_address.toLowerCase()+':'+t.token_type;
   if(n.environment!=='mainnet')return {tokens,market_pending:false};
   let cache=fs.existsSync(file)?JSON.parse(fs.readFileSync(file)):null;
   const save=()=>{if(cache)write(file,cache);};
@@ -613,6 +697,8 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
         ||cache.block_number!==String(pinned.balance_block_number)||cache.block_hash!==pinned.balance_block_hash))throw new Error('Liquidation checkpoint does not match this request.');
     const client=await boundedMarket(connect(n),deadline),snapshot=await boundedMarket(h.snapshotBlock(client,cache||{block_number:String(pinned.balance_block_number),block_hash:pinned.balance_block_hash}),deadline),block=snapshot.number;
     cache=cache||{schema_version:1,wallet:input.wallet.toLowerCase(),chain_id:n.chain_id,bond:n.mintclub_bond_address.toLowerCase(),block_number:block.toString(),block_hash:snapshot.hash,requests:{},asset_pools:{},nodes:{}};save();
+    cache.asset_reviews=cache.asset_reviews||{};
+    if(typeof cache.asset_reviews!=='object'||Array.isArray(cache.asset_reviews)||Object.values(cache.asset_reviews).some(r=>!r||typeof r!=='object'||typeof r.done!=='boolean'||!Number.isSafeInteger(r.failures)||r.failures<0))throw new Error('Invalid saved asset review frontier.');
     let assetDeadline=deadline;
     const queryKey=args=>crypto.createHash('sha256').update(h.serialize({...args,blockNumber:block})).digest('hex');
     const deferred=new Map();
@@ -638,7 +724,7 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
       }
     };
     const members=tokens.filter(t=>t.mintclub_membership_status==='verified'&&t.balance_block_hash===snapshot.hash
-      &&cache.nodes[t.token_address.toLowerCase()+':'+t.token_type]?.root_recovery_done!==true&&!t.mintclub?.wallet_full_burn);
+      &&!(representative&&cache.asset_reviews[tokenKey(t)]?.done)&&cache.nodes[tokenKey(t)]?.root_recovery_done!==true&&!t.mintclub?.wallet_full_burn);
     const bondQuery=t=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'tokenBond',args:[t.token_address]});
     await prefetch(members.map(bondQuery));
     const reserves=members.map(t=>cache.requests[queryKey(bondQuery(t))]).filter(v=>v!==undefined).map(cacheDecode)
@@ -679,35 +765,57 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
       const shadow={chain_id:n.chain_id,token_address:address,token_type:'ERC20',wallet_balance_raw:amount,
         balance_block_number:block,balance_block_hash:snapshot.hash,quantity_basis:'Prior amount-specific route output, not an observed wallet holding.',dex_pools:structuredClone(catalog.pools)};
       const identity=crypto.createHash('sha256').update(h.serialize([address.toLowerCase(),amount])).digest('hex');
-      const [verified]=await dexChain(n,[shadow],{file:path.join(path.dirname(outputPath),`route-market-checkpoint-${n.chain_id}-${identity}.json`),wallet:input.wallet,deadline:assetDeadline});
+      const [verified]=await dexChain(n,[shadow],{file:path.join(path.dirname(outputPath),`route-market-checkpoint-${n.chain_id}-${identity}.json`),wallet:input.wallet,deadline:assetDeadline,representative});
       if(verified.market_pending)throw new MarketBudget();
       for(const pool of verified.dex_pools)quotes.push(pool.cashout_quote||{status:'unknown',reason:'Pool adapter or quote unavailable.'});
       return quotes;
     };
     let retryPending=false;
-    const rootOnly=input.cashout_root_only===true,attemptsKey=rootOnly?'root_attempts':'route_attempts';
+    const attemptsKey=rootOnly?'root_attempts':'route_attempts';
     cache[attemptsKey]=cache[attemptsKey]||{};
     if(typeof cache[attemptsKey]!=='object'||Array.isArray(cache[attemptsKey])||Object.values(cache[attemptsKey]).some(n=>!Number.isSafeInteger(n)||n<0))throw new Error('Invalid route attempt checkpoint.');
-    const tokenKey=t=>t.token_address.toLowerCase()+':'+t.token_type;
+    const progress=()=>{
+      if(!representative||rootOnly)return;
+      const checked=tokens.filter(t=>cache.asset_reviews[tokenKey(t)]?.done&&!t.market_pending).length;
+      const quoted=tokens.filter(t=>cache.asset_reviews[tokenKey(t)]?.done&&!t.market_pending&&representativeQuote(t,cache.nodes[tokenKey(t)]?.routes)).length;
+      console.log(JSON.stringify({stage:'onchain_progress',operation:'asset_review',chain_id:n.chain_id,checked,total:tokens.length,quoted,unknown:checked-quoted}));
+    };
+    progress();
     // Unvisited assets receive a turn before retry holes. Attempts are durable
     // scheduling facts, not successful evidence or a completion percentage.
     for(const token of [...tokens].sort((a,b)=>(cache[attemptsKey][tokenKey(a)]||0)-(cache[attemptsKey][tokenKey(b)]||0)||Number(!!b.mintclub?.funded)-Number(!!a.mintclub?.funded)||Number(b.mintclub_membership_status==='verified')-Number(a.mintclub_membership_status==='verified'))){
       const key=token.token_address.toLowerCase()+':'+token.token_type;
+      const review=cache.asset_reviews[key]||{done:false,failures:0};cache.asset_reviews[key]=review;
+      if(representative&&!rootOnly&&review.done){
+        const state=cache.nodes[key];
+        if(state&&state.identity!==JSON.stringify([token.chain_id,token.token_address.toLowerCase(),token.token_type,String(token.wallet_balance_raw),String(token.balance_block_number),token.balance_block_hash]))throw new Error('Saved representative holding changed.');
+        token.liquidation_routes=state?.routes||[];token.liquidation_unknown_routes=state?.unknown||[];
+        token.asset_review={scope:'representative_v1',status:representativeQuote(token)?'quoted':'unknown'};delete token.cashout_pending;progress();continue;
+      }
+      if(representative&&!rootOnly&&token.market_pending){token.cashout_pending=true;retryPending=true;continue;}
       if(Date.now()>=deadline)throw new MarketBudget();
       // Three root reads or four intermediate reads must fit the shared
       // two-second family lane while two chains are active. Keep the overall
       // deadline authoritative and retain incomplete work at a turn boundary.
       assetDeadline=Math.min(deadline,Date.now()+18000);
       cache[attemptsKey][key]=(cache[attemptsKey][key]||0)+1;save();
-      let state;
-      try{state=await expandRoutes(token,quoteAsset,{state:cache.nodes[key],rootOnly,maxSteps:2,save:state=>{cache.nodes[key]=state;save();}});}
+      let state;const expandedBefore=cache.nodes[key]?.expanded||0;
+      try{state=await expandRoutes(token,quoteAsset,{state:cache.nodes[key],rootOnly,representative,maxNodes:representative?4:32,maxBranches:representative?1:4,maxSteps:2,save:state=>{cache.nodes[key]=state;save();}});}
       catch(error){if(error.code!=='market_budget')throw error;
         token.cashout_pending=true;retryPending=true;state=cache.nodes[key];
         if(!state)continue;
       }
       token.liquidation_routes=state.routes;token.liquidation_unknown_routes=state.unknown;
+      if(representative&&!rootOnly&&(state.root_retry_pending||state.pending.length&&state.expanded===expandedBefore)&&Date.now()<assetDeadline){
+        review.failures++;
+        if(review.failures>=2){state.root_retry_pending=false;state.pending=[];state.unknown=[...new Set([...state.unknown,'Representative redemption unavailable after bounded attempts. Other routes remain unknown.'])];save();}
+      }
+      if(representative&&!rootOnly&&!state.pending.length&&!state.root_retry_pending){
+        review.done=true;token.asset_review={scope:'representative_v1',status:representativeQuote(token)?'quoted':'unknown'};save();
+      }
       if(state.pending.length||state.root_retry_pending){token.cashout_pending=true;retryPending=true;}else delete token.cashout_pending;
       emitProgress(n,'cashout_routes',tokens.filter(t=>{const s=cache.nodes[tokenKey(t)];return s?.pending.length===0&&!s.root_retry_pending;}).length,tokens.length);
+      progress();
     }
     return {tokens,market_pending:retryPending};
   }catch(error){
@@ -715,7 +823,7 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
     for(const token of tokens){const state=cache?.nodes[token.token_address.toLowerCase()+':'+token.token_type];
       token.liquidation_routes=state?.routes||[];token.liquidation_unknown_routes=state?.unknown||[];
       if(pending&&(!state||state.pending.length))token.cashout_pending=true;
-      if(!pending)token.liquidation_unknown_routes.push('Liquidation path reads unavailable or checkpoint mismatch.');}
+      if(!pending){token.liquidation_unknown_routes.push('Liquidation path reads unavailable or checkpoint mismatch.');if(representative)token.asset_review={scope:'representative_v1',status:'unknown'};}}
     if(pending)save();return {tokens,market_pending:pending};
   }
 }
@@ -749,7 +857,8 @@ async function main() {
     const deadline=Date.now()+Math.min(180_000,Math.max(0,input.market_budget_ms??180_000));
     const result=await parallel(input.networks.filter(n=>input.tokens.some(t=>t.chain_id===n.chain_id)),2,async n=>{
       const group=input.tokens.filter(t=>t.chain_id===n.chain_id);
-      try{return await dexChain(n,group,{file:path.join(path.dirname(outputPath),`market-checkpoint-${n.chain_id}.json`),wallet:input.wallet,deadline});}catch(e){group.forEach(t=>t.dex_verification_error=h.safeError(e));return group;}
+      if(input.market_scope==='representative_v1'&&n.environment!=='mainnet')return group;
+      try{return await dexChain(n,group,{file:path.join(path.dirname(outputPath),`market-checkpoint-${n.chain_id}.json`),wallet:input.wallet,deadline,representative:input.market_scope==='representative_v1'});}catch(e){group.forEach(t=>t.dex_verification_error=h.safeError(e));return group;}
     });
     const tokens=result.flat(),pending=tokens.some(t=>t.market_pending||t.dex_discovery_status==='pending');
     write(outputPath,{wallet:input.wallet,observed_at:stamp(),tokens,market_pending:pending});

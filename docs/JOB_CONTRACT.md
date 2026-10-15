@@ -218,3 +218,29 @@ Only a stable measured step may show an expiring ETA range; overall time remains
 unknown. progress_observed_at advances on actual checked work or a saved initial
 publication, not repeated errors or provider waits. Quiet and disconnected states
 are explicit. Live announcements concern state transitions, not every count.
+
+### Asset-focused market review
+
+New engine runs record pipeline.market_scope: representative_v1. Each discovered
+mainnet token checks one supported indexed pool, or a funded burn and its
+representative redemption path. Successful terminal quotes stop further route
+exploration. Pool selection prefers address-based pools and terminal output
+assets, then reported liquidity and a stable address order. Membership, amount,
+holding block and quote arithmetic still require on-chain verification.
+Other pools, factories and unknown holdings remain outside this finite scope.
+A representative estimate does not promise the best price or actual execution.
+
+Provider failures receive at most two admitted attempts per market or redemption
+step. Slice boundaries do not consume a failure attempt. Exhausted failures end
+as unknown, while pause and resume retain unfinished work. Successful metadata
+cells are reused only within the same pinned wallet analysis. Previously saved
+unit prices may survive unavailable rereads with their original source and date;
+contrary unfunded or unreliable evidence invalidates them. Retained prices do
+not establish a new USD 1 qualification.
+
+The optional asset_progress map persists total, checked, quoted and unknown
+counts per mainnet chain. checked equals quoted plus unknown, not successful
+valuation. It survives process restarts, pause and resume and current-step count
+resets. The total can grow with discovered holdings. The viewer separately shows
+saved asset checks, available prices and unresolved checks. It does not derive
+an overall ETA from this changing denominator. Review not selected.

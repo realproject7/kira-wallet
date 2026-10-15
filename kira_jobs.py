@@ -79,6 +79,7 @@ class Job(TypedDict):
     continuation: NotRequired[dict]
     scan_policy: NotRequired[str]
     progress_observed_at: NotRequired[str]
+    asset_progress: NotRequired[dict]
 
 class JobError(ValueError):
     def __init__(self, code, message):
@@ -138,7 +139,7 @@ class JobStore:
         job = read(path)
         if not isinstance(job,dict) or type(job.get('schema_version')) is not int or job.get('schema_version') != 1: raise JobError('unsupported_version', 'Unsupported persisted job version.')
         required={'schema_version','job_id','operation','input','state','attempt','sequence','result','previous_result','key_hash','request_hash','created_at','updated_at','cancel_requested','checkpoint','stage','events','errors','chains'}
-        optional={'raw_hash','control_receipts','control_raw','provider_configuration','started_at','analysis_phase','parent_job_id','continuation_id','continuation','scan_policy','progress_observed_at'}
+        optional={'raw_hash','control_receipts','control_raw','provider_configuration','started_at','analysis_phase','parent_job_id','continuation_id','continuation','scan_policy','progress_observed_at','asset_progress'}
         if required-set(job) or set(job)-required-optional or job['job_id']!=job_id or job['checkpoint']!='snapshots/jobs/'+job_id or not isinstance(job['operation'],str) or job['operation'] not in {'wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv'} or not isinstance(job['state'],str) or job['state'] not in TERMINAL|{'queued','running'} or any(type(job[k]) is not int or job[k]<0 for k in ('attempt','sequence')) or type(job['cancel_requested']) is not bool or not isinstance(job['input'],dict) or any(not isinstance(job[k],list) for k in ('events','errors')) or not isinstance(job['chains'],dict):
             raise JobError('invalid_envelope','Persisted job validation failed. Preserve the file for recovery.')
         names={'wallet.add':['address','tag'],'wallet.refresh':['wallet'],'prices.refresh':['wallet'],'wallet.setTags':['wallet','tags'],
@@ -147,6 +148,10 @@ class JobStore:
         fields(job['input'],names)
         if 'analysis_phase' in job and job['analysis_phase'] not in ('baseline','enrichment'):raise JobError('invalid_envelope','Invalid analysis phase.')
         if 'scan_policy' in job and job['scan_policy']!='optional_depth_v1':raise JobError('invalid_envelope','Invalid scan policy.')
+        if 'asset_progress' in job:
+            progress=job['asset_progress']
+            if not isinstance(progress,dict) or any(not isinstance(k,str) or not re.fullmatch(r'[1-9][0-9]*',k) or not isinstance(v,dict) or set(v)!={'total','checked','quoted','unknown'} or any(type(x) is not int or x<0 for x in v.values()) or v['checked']>v['total'] or v['quoted']+v['unknown']!=v['checked'] for k,v in progress.items()):
+                raise JobError('invalid_envelope','Invalid saved asset progress.')
         if 'progress_observed_at' in job:
             try:datetime.fromisoformat(job['progress_observed_at'].replace('Z','+00:00'))
             except (ValueError,TypeError,AttributeError):raise JobError('invalid_envelope','Invalid progress timestamp.') from None
@@ -508,9 +513,11 @@ class JobStore:
     def event(self, job_id, event):
         allowed = {'registered', 'discovery', 'chain', 'onchain_progress', 'first_evidence', 'dex_discovery', 'market_paused', 'research_paused', 'token_images', 'published', 'failed'}
         if event.get('stage') not in allowed: return
+        if event.get('operation')=='asset_review':
+            if type(event.get('chain_id')) is not int or event['chain_id']<=0 or any(type(event.get(k)) is not int or event[k]<0 for k in ('total','checked','quoted','unknown')) or event['checked']>event['total'] or event['quoted']+event['unknown']!=event['checked']:return
         with self.locked():
             job = self.get(job_id)
-            counts = {k: v for k, v in event.items() if k in {'complete_chains', 'candidates', 'tokens','chain_id','registry','checked','held','block_number','total','pending_ranges'} and type(v) is int and v >= 0}
+            counts = {k: v for k, v in event.items() if k in {'complete_chains', 'candidates', 'tokens','chain_id','registry','checked','held','block_number','total','pending_ranges','quoted','unknown'} and type(v) is int and v >= 0}
             job['stage'] = event['stage']
             if event['stage']=='chain' and type(event.get('chain_id')) is int:
                 block=event.get('block_number');block=str(block) if type(block) is int and block>=0 else block
@@ -518,8 +525,9 @@ class JobStore:
                     'endpoint_index':event.get('endpoint_index') if type(event.get('endpoint_index')) is int else None,
                     'status':event.get('status') if event.get('status') in ('complete','partial','unavailable') else 'unknown'}
             job['events'].append({'stage': event['stage'], 'observed_at': now(), 'counts': counts})
-            if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets','reserves','history','market_discovery','factory_queries','pool_checks','cashout_routes','mintclub_membership'):
+            if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets','reserves','history','market_discovery','factory_queries','pool_checks','cashout_routes','mintclub_membership','asset_review'):
                 context={'operation':event['operation'],'chain_id':counts.get('chain_id'),'attempt':job['attempt']}
+                if event['operation']=='asset_review':job.setdefault('asset_progress',{})[str(event['chain_id'])]={k:counts[k] for k in ('total','checked','quoted','unknown')}
                 if event.get('provider') in ('etherscan_keyless','etherscan_keyless_erc1155_id0'):context['provider']=event['provider']
                 job['events'][-1]['context']=context
                 prior=[e for e in job['events'][:-1] if e.get('context')==context and type(e.get('counts',{}).get('checked')) is int]

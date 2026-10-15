@@ -452,19 +452,26 @@ def source_check(networks, folder):
     atomic(folder/'mintclub-support.json',{'observed_at':h.now(),'source':CONTRACT_SOURCE,'networks_verified':len(networks),'bond_deployments':configured})
 
 
-def dex_fetch(t, folder, deadline=None):
+def dex_fetch(t, folder, deadline=None, attempt_limit=None):
     chain=DEX.get(t['chain_id'])
     if not chain or t.get('token_type')=='ERC1155':
         return {'chain_id':t['chain_id'],'token_address':t['token_address'],'response':[], 'observed_at':None, 'status':'outside_dex_indexer_scope'}
     name=f"dex-{t['chain_id']}-{t['token_address'].lower()}.json"
+    old={}
     if (folder/name).exists():
         old=read(folder/name)
         if isinstance(old.get('response'),list):return old
-    url='https://api.dexscreener.com/token-pairs/v1/'+chain+'/'+t['token_address']
-    response=fetch(url,deadline=deadline)
+        if attempt_limit and old.get('attempts',1)>=attempt_limit:return {**old,'status':'unavailable'}
     if deadline is not None and time.monotonic()>=deadline:
         return {'chain_id':t['chain_id'],'token_address':t['token_address'],'response':[], 'observed_at':None,'status':'pending'}
+    url='https://api.dexscreener.com/token-pairs/v1/'+chain+'/'+t['token_address']
+    response=fetch(url,deadline=deadline)
+    if deadline is not None and time.monotonic()>=deadline and not attempt_limit:
+        return {'chain_id':t['chain_id'],'token_address':t['token_address'],'response':[], 'observed_at':None,'status':'pending'}
     row={'chain_id':t['chain_id'],'token_address':t['token_address'],'source':url,'observed_at':h.now(),'response':response}
+    if attempt_limit:
+        row['attempts']=old.get('attempts',0)+1
+        if isinstance(response,dict) and response.get('research_pending'):row['status']='pending' if row['attempts']<attempt_limit else 'unavailable'
     atomic(folder/name,row)
     return row
 
@@ -489,12 +496,12 @@ def continuation_checkpoint(folder, discovered, market_pending):
     for pattern in ('balance-checkpoint-*.json','registry-checkpoint-*.json','market-checkpoint-*.json','reserve-checkpoint-*.json','cashout-checkpoint-*.json','route-market-checkpoint-*.json'):
         for path in sorted(folder.glob(pattern)):
             saved=read(path)
-            progress[path.name]={k:saved[k] for k in ('balances','entries','next_index','requests','completed_pools','nodes','mintclub_membership') if k in saved}
+            progress[path.name]={k:saved[k] for k in ('balances','entries','next_index','requests','completed_pools','nodes','mintclub_membership','facts','asset_reviews') if k in saved}
             if 'pool_attempts' in saved:progress[path.name]['pools_attempted']=sorted(saved['pool_attempts'])
     # Only successful evidence counts. Strip observation timestamps recursively
     # so a failed retry cannot disguise a stalled frontier as new work.
     def stable(value):
-        if isinstance(value,dict):return {k:stable(v) for k,v in value.items() if k not in ('observed_at','started_at','rpc_routes','balance_observed_at','error')}
+        if isinstance(value,dict):return {k:stable(v) for k,v in value.items() if k not in ('observed_at','started_at','rpc_routes','balance_observed_at','error','failures')}
         if isinstance(value,list):return [stable(v) for v in value]
         return value
     encoded=json.dumps(stable(progress),sort_keys=True,separators=(',',':')).encode()
@@ -505,8 +512,25 @@ def continuation_checkpoint(folder, discovered, market_pending):
     return value
 
 
+def retain_price_evidence(current, previous):
+    """Retain dated estimates on missing reads, never over contrary evidence."""
+    from decimal import Decimal, InvalidOperation
+    def usable(row):
+        from datetime import datetime
+        try:return row.get('quality')=='estimated' and datetime.fromisoformat(row['observed_at'].replace('Z','+00:00')).tzinfo is not None and Decimal(str(row.get('usd'))).is_finite() and Decimal(str(row['usd']))>=0
+        except (InvalidOperation,KeyError,TypeError,ValueError,AttributeError):return False
+    rows={(p['chain_id'],p['address'].lower()):p for p in current.get('tokens',[])}
+    for p in previous.get('tokens',[]):
+        key=(p['chain_id'],p['address'].lower());fresh=rows.get(key,{})
+        if not usable(p) or fresh.get('usd') is not None or fresh.get('quality') in ('unfunded','unreliable'):continue
+        rows[key]={**p,'retained_from_previous':True,'latest_price_status':'unavailable'}
+    return {**current,'tokens':list(rows.values())}
+
+
 def finish(wallet, folder, networks, discovered):
     deadline=time.monotonic()+180
+    market_scope='representative_v1'
+    previous_prices=read(folder/'market-prices.json') if (folder/'market-prices.json').exists() else {}
     checkpoint_folder=folder
     raw=read(folder/'onchain-summary.json')
     research_pending=any(s.get('discovery_status') in ('history_pending','throttled') for d in discovered for s in discovery_sources(d)) or any(c.get('research_pending') and not c.get('continuation_stalled') for c in raw['chains'])
@@ -515,7 +539,7 @@ def finish(wallet, folder, networks, discovered):
     # Expand funded burns and recover missing verified-member quotes first.
     early=[t for t in tokens if (t.get('mintclub') or {}).get('funded') or t.get('mintclub_membership_status')=='verified']
     if early:
-        atomic(folder/'cashout-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':early,'market_chain_names':DEX,'market_budget_ms':45000,'cashout_root_only':True})
+        atomic(folder/'cashout-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':early,'market_chain_names':DEX,'market_scope':market_scope,'market_budget_ms':45000,'cashout_root_only':True})
         run_node('liquidate',folder/'cashout-input.json',folder/'liquidation-verified.json')
         enriched=read(folder/'liquidation-verified.json')['tokens']
         by_asset={(t['chain_id'],t['token_address'].lower(),t['token_type']):t for t in enriched}
@@ -524,7 +548,7 @@ def finish(wallet, folder, networks, discovered):
     discovery_deadline=min(deadline-25,time.monotonic()+30)
     with ThreadPoolExecutor(max_workers=5) as executor:
         responses=[]
-        for response in executor.map(lambda t:dex_fetch(t,folder,discovery_deadline),tokens):
+        for response in executor.map(lambda t:dex_fetch(t,folder,discovery_deadline,attempt_limit=2),tokens):
             responses.append(response);event('onchain_progress',operation='market_discovery',checked=len(responses),total=len(tokens))
     for t,r in zip(tokens,responses):
         if isinstance(r['response'],list):
@@ -533,12 +557,12 @@ def finish(wallet, folder, networks, discovered):
             t['dex_discovery_status']='queried' if r.get('status') is None else r['status']
         else:
             t['dex_discovery_status']='provider_error'
-    atomic(folder/'dex-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':tokens,'market_budget_ms':max(0,min(60000,int((deadline-time.monotonic()-45)*1000)))})
+    atomic(folder/'dex-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':tokens,'market_scope':market_scope,'market_budget_ms':max(0,min(60000,int((deadline-time.monotonic()-45)*1000)))})
     run_node('dex',folder/'dex-input.json',folder/'dex-verified.json')
     verified=read(folder/'dex-verified.json');tokens=verified['tokens'];market_pending=verified.get('market_pending',False)
     market_pending=market_pending or any(r.get('status')=='pending' for r in responses)
     if time.monotonic()<deadline-25:
-        atomic(folder/'cashout-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':tokens,'market_chain_names':DEX,
+        atomic(folder/'cashout-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':tokens,'market_chain_names':DEX,'market_scope':market_scope,
             'market_budget_ms':max(0,int((deadline-time.monotonic()-25)*1000))})
         run_node('liquidate',folder/'cashout-input.json',folder/'liquidation-verified.json')
         liquidation=read(folder/'liquidation-verified.json');tokens=liquidation['tokens'];market_pending=market_pending or liquidation['market_pending']
@@ -615,7 +639,7 @@ def finish(wallet, folder, networks, discovered):
     from cashout import TERMINAL_ASSETS
     reserve_candidates=dict(sorted(reserve_candidates.items(),key=lambda item:item[0] not in TERMINAL_ASSETS))
     with ThreadPoolExecutor(max_workers=5) as executor:
-        reserve_rows=list(executor.map(lambda t:dex_fetch(t,folder,deadline),reserve_candidates.values()))
+        reserve_rows=list(executor.map(lambda t:dex_fetch(t,folder,deadline,attempt_limit=2),reserve_candidates.values()))
     market_pending=market_pending or time.monotonic()>=deadline
     sys.path.insert(0,str(ASSETS/'viewer'))
     from model import dex_price
@@ -638,12 +662,12 @@ def finish(wallet, folder, networks, discovered):
         'counts':counts,'coverage':coverage,'tokens':tokens,'nested_curve_independent_redemption_estimates':[], 'price_references':refs,
         'limitations':['General indexers can omit arbitrary ERC20 assets. Failed or incomplete discovery is never interpreted as no holdings.',
             'Mint Club wallet candidate mode verifies bond membership before ID0 balances and does not enumerate the full registry. Full inventory mode separately enumerates reachable bond assets. Neither completed provider pages nor a finite route search proves exhaustive holdings or cash-out coverage. Deposits and stakes are outside direct wallet balances.',
-            'DEX discovery combines DEX Screener and supplemental Base WETH/USDC factory queries. Other quote assets, custom fee tiers and unindexed pools can be missed.',
+            'Market review selects one supported indexed pool or a funded curve route per asset. Other factories, pools, custom fee tiers and unindexed venues remain unsearched. A representative quote is not a best-price guarantee.',
             'DEX TVL and curve reserves describe the entire pool or curve. Spot wallet values are estimates, distinct from executable cash-out value.',
             'Full-wallet burn quotes subtract the recorded creator royalty and exclude gas. Nested reserve backing overlaps and must not be summed as independent cash reserves.',
             'Testnet assets are excluded from USD totals. Missing prices stay unknown.'],
         'actions':{'paid_provider_calls':None,'provider_billing':'Not determined; provider allowance can be consumed.','signatures':0,'approvals':0,'swaps':0,'transfers':0,'rpc_read_only':True},
-        'pipeline':{'version':1,'entrypoint':'wallet.py','resumable':True,'market_pending':market_pending,'registry_cache':'Shared append-only asset identity cache. Wallet balances are not reused between wallets.'},
+        'pipeline':{'version':2,'entrypoint':'wallet.py','market_scope':market_scope,'resumable':True,'market_pending':market_pending,'registry_cache':'Shared append-only asset identity cache. Wallet balances are not reused between wallets.'},
         'evidence_files':[f.name for f in sorted(folder.glob('*.json')) if f.name not in ('results.json','market-prices.json')]}
     atomic(folder/'results.json',result)
     prices=[]
@@ -655,7 +679,7 @@ def finish(wallet, folder, networks, discovered):
             'source':p.get('source'),'asset_id':p.get('asset_id'),'basis':p.get('basis','Market index')} for k,p in refs.items()},
         'tokens':prices+reserve_prices,'note':'DEX and reserve prices observed during this run. Curve spot prices use recorded on-chain state. Unknown prices remain null.'})
     from curve_pricing import enrich
-    if not market_pending:
+    if not market_pending and market_scope!='representative_v1':
         try:atomic(folder/'market-prices.json',enrich(result,read(folder/'market-prices.json'),folder,deadline=deadline))
         except MarketPause:market_pending=True
     from token_images import refresh_catalog
@@ -664,8 +688,15 @@ def finish(wallet, folder, networks, discovered):
             event('token_images',tokens=len(tokens))
             event('token_images',**refresh_catalog([result],ROOT,native_images=native_market['images'],fetch=lambda url:fetch(url,deadline=deadline)))
     except (OSError,ValueError):event('token_images',status='unavailable')
+    atomic(folder/'market-prices.json',retain_price_evidence(read(folder/'market-prices.json'),previous_prices))
     from cashout import annotate
     annotate(result,read(folder/'market-prices.json'))
+    for n in networks:
+        if n['environment']!='mainnet':continue
+        held=[t for t in tokens if t['chain_id']==n['chain_id']]
+        checked=sum(t.get('asset_review',{}).get('status') in ('quoted','unknown') for t in held)
+        quoted=sum(t.get('asset_review',{}).get('status')=='quoted' for t in held)
+        event('onchain_progress',operation='asset_review',chain_id=n['chain_id'],total=len(held),checked=checked,quoted=quoted,unknown=checked-quoted)
     result['evidence_files']=[f.name for f in sorted(folder.glob('*.json')) if f.name not in ('results.json','market-prices.json')]
     atomic(folder/'results.json',result)
     report(result,folder)

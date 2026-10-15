@@ -30,7 +30,25 @@ function seedQuotes(token) {
   return quotes;
 }
 
-async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNodes=32,maxBranches=4,maxSteps=Infinity,rootOnly=false}={}) {
+function representativeQuote(token, routes=token.liquidation_routes||[]) {
+  const holding=integer(token.wallet_balance_raw),block=String(token.balance_block_number),hash=token.balance_block_hash;
+  if(!holding)return null;
+  for(const route of routes){
+    let input=token.token_address,amount=holding;
+    const visited=new Set([input.toLowerCase()]),pools=new Set();
+    const legs=route.legs;
+    if(!Array.isArray(legs)||!legs.length)continue;
+    if(legs.every(leg=>{
+      if(!validLeg(leg,input,amount,block,hash))return false;
+      const output=leg.output_address.toLowerCase(),pool=leg.pool?.toLowerCase();
+      if(visited.has(output)||pool&&pools.has(pool))return false;
+      visited.add(output);if(pool)pools.add(pool);input=output;amount=integer(leg.output_amount_raw);return true;
+    })&&terminal(token.chain_id,input)&&route.output_address?.toLowerCase()===input&&integer(route.output_amount_raw)===amount&&integer(route.holding_amount_raw)===holding)return route;
+  }
+  return seedQuotes(token).find(q=>validLeg(q,token.token_address,holding,block,hash)&&terminal(token.chain_id,q.output_address))||null;
+}
+
+async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNodes=32,maxBranches=4,maxSteps=Infinity,rootOnly=false,representative=false}={}) {
   const holding=integer(token.wallet_balance_raw),block=String(token.balance_block_number),hash=token.balance_block_hash;
   if(!holding||!address(token.token_address)||!/^0x[0-9a-fA-F]{64}$/.test(hash||''))throw new Error('Pinned route holding unavailable');
   const identity=JSON.stringify([token.chain_id,token.token_address.toLowerCase(),token.token_type,holding.toString(),block,hash]);
@@ -38,6 +56,12 @@ async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNod
   if(state&&(!Array.isArray(state.pending)||!Array.isArray(state.routes)||!Array.isArray(state.unknown)||!Number.isSafeInteger(state.expanded)||state.expanded<0
       ||state.root_quotes!==undefined&&!Array.isArray(state.root_quotes)
       ||state.pending.some(node=>!address(node.address)||!integer(node.amount)||!Array.isArray(node.legs)||node.legs.length>=maxLegs||!Array.isArray(node.visited))))throw new Error('Invalid liquidation route frontier');
+  const finishRepresentative=()=>{
+    if(!representative||!representativeQuote(token,state.routes))return false;
+    state.pending=[];state.root_retry_pending=false;
+    state.unknown=[...new Set([...state.unknown,'One representative route is recorded. Alternative routes and the best achievable output remain unverified.'])];save(state);return true;
+  };
+  if(state&&finishRepresentative())return state;
   // Pool verification can add root quotes after an early burn-only pass. A
   // completed empty frontier must not hide those new amount-specific seeds.
   const seeds=seedQuotes(token),signature=JSON.stringify(seeds.map(q=>[q.status,q.kind,q.pool?.toLowerCase(),q.input_amount_raw,q.holding_amount_raw,
@@ -76,7 +100,7 @@ async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNod
     if(!valid.length&&(node.legs.length===0&&state.root_retry_pending||quotes.some(q=>q.retryable===true))){save(state);break;}
     valid.sort((a,b)=>Number(terminal(token.chain_id,b.output_address))-Number(terminal(token.chain_id,a.output_address)));
     if(valid.length>maxBranches)state.unknown.push('Bounded route branch limit reached; other routes remain unknown.');
-    for(const quote of valid.slice(0,maxBranches)){
+    for(const quote of valid.slice(0,representative?1:maxBranches)){
       const output=quote.output_address.toLowerCase(),legs=[...node.legs,quote];
       const repeatedPool=quote.pool&&node.legs.some(leg=>leg.pool?.toLowerCase()===quote.pool.toLowerCase());
       if(node.visited.includes(output)||repeatedPool){state.unknown.push('Cyclic or reused-pool path not composed from unchanged pool states.');continue;}
@@ -92,7 +116,8 @@ async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNod
       else state.pending.push({address:output,amount:quote.output_amount_raw,legs,visited:[...node.visited,output]});
     }
     state.pending.shift();state.expanded++;steps++;state.unknown=[...new Set(state.unknown)];save(state);
+    if(finishRepresentative())break;
   }
   return state;
 }
-module.exports={terminal,validLeg,seedQuotes,expandRoutes};
+module.exports={terminal,validLeg,seedQuotes,representativeQuote,expandRoutes};

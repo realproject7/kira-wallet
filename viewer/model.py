@@ -136,16 +136,18 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         if override and (override.get('basis')!='Curve spot' or override.get('retained_from_previous')):
             cache[k]=override;return override
         if mint:
-            reserve=mint['reserve_symbol'];reserve_price=None
+            reserve=mint['reserve_symbol'];reserve_price=None;retained_reserve=None
             reserve_identity=(t['chain_id'],mint['reserve_token'].lower())
             if reserve_identity==(8453,'0x4200000000000000000000000000000000000006'):reserve_price=eth
             elif reserve_identity==(8453,'0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf'):reserve_price=number(refs.get('cbBTC_USD',{}).get('value'))
             rt=prices.get((t['chain_id'],mint['reserve_token'].lower()))
-            if rt and rt.get('usd') is not None:reserve_price=number(rt['usd'])
+            if rt and rt.get('usd') is not None:
+                reserve_price=number(rt['usd']);retained_reserve=rt if rt.get('retained_from_previous') else None
             parent=by_address.get((t['chain_id'],mint['reserve_token'].lower()))
             if parent:
                 parent_price=price_for(parent,seen)
-                if parent_price:reserve_price=parent_price.get('usd')
+                if parent_price:
+                    reserve_price=parent_price.get('usd');retained_reserve=parent_price if parent_price.get('retained_from_previous') else None
             if reserve_price is not None:
                 spot=number((override or {}).get('curve_price_in_reserve',mint['price_for_next_mint_in_reserve_token']))
                 funded=number(override['curve_reserve'])>0 if override and 'curve_reserve' in override else mint.get('funded')
@@ -153,6 +155,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
                    'source':mint['source_url'],'observed_at':(override or {}).get('observed_at',mint['observed_at']),
                    'quality':'estimated' if funded else 'unfunded'}
                 if not funded:p['usd']=None
+                elif retained_reserve:p.update(retained_from_previous=True,latest_price_status='unavailable',observed_at=retained_reserve.get('observed_at'))
                 cache[k]=p;return p
         p=dex_price(t,None)
         cache[k]=p;return p
@@ -192,6 +195,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             'symbol':label,'name':name,'address':t['token_address'],'balance':t['wallet_balance'],
             'price':p,'value_usd':value,'is_native':False,'links':links,'market_pools':market_pools,
             'balance_observed_at':t.get('balance_observed_at') or snapshot.get('compiled_at'),
+            'quantity_retained':bool(t.get('metadata_evidence_retained') or t.get('balance_evidence_retained')),
             'burn_quote':(t.get('mintclub') or {}).get('wallet_full_burn'),
             'exit_quote':exit_quote(t),
             'cashout_eligibility':cashout_classification(t,market,environment=next((c.get('environment') for c in snapshot.get('coverage',[]) if c.get('chain_id')==t['chain_id']),'unknown')),

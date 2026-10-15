@@ -53,6 +53,17 @@ test('wallet card keeps unknowns visible and disables writes while disconnected 
  h.setJobs([{...deep,state:'queued',stage:'stopped',events:[{stage:'onchain_progress',counts:{checked:7,total:20},context:{operation:'pool_checks',attempt:deep.attempt}}]},basic]);h.run('renderWalletScan()');
  assert.match(h.el('wallet-scan').innerHTML,/Waiting to start/);assert.doesNotMatch(h.el('wallet-scan').innerHTML,/Research stopped|7 \/ 20|<progress|are being checked/);
 });
+test('cumulative reviews remain visible through step resets, pause and resume',()=>{
+ const h=harness(),asset_progress={'8453':{total:100,checked:72,quoted:12,unknown:60},'1':{total:20,checked:9,quoted:2,unknown:7}};
+ for(const state of ['running','cancelled','queued','partial']){
+  const job={...deep,state,asset_progress,events:[{stage:'onchain_progress',counts:{checked:0,total:10},context:{operation:'pool_checks',attempt:2}}]};
+  assert.deepEqual(KiraView.jobProgress(job).assets,{total:120,checked:81,quoted:14,unknown:67});
+  h.setJobs([job,basic]);h.run('renderWalletScan()');const html=h.el('wallet-scan').innerHTML;
+  assert.match(html,/81 \/ 120 assets reviewed/);assert.match(html,/>14<\/strong> sell estimates/);assert.match(html,/>67<\/strong> unresolved checks/);
+  assert.match(html,/the total can grow/);
+ }
+ assert.equal(KiraView.assetProgress({...deep,asset_progress:{'1':{total:2,checked:2,quoted:2,unknown:1}}}),null);
+});
 test('one click stays in flight through double clicks, preserves job identity and allows retry after failure',async()=>{
  const h=harness(),calls=[];let release;
  h.context.submitOperation=(operation,input)=>{calls.push({operation,input});return new Promise(resolve=>{release=resolve;});};
