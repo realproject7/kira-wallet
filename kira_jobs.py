@@ -338,7 +338,7 @@ class JobStore:
                         raise JobError('not_resumable', 'Only interrupted, failed or cancelled jobs can resume.')
                     if job.get('parent_job_id') and self.wallet(job['input']['wallet']).get('research_generation') not in (None,job['parent_job_id']):
                         raise JobError('superseded','A newer basic scan replaced this work. Open its saved result to start a deep scan.')
-                    job.update(state='queued', cancel_requested=False, errors=[])
+                    job.update(state='queued', stage='queued', cancel_requested=False, errors=[])
                     job.pop('continuation',None)
                 elif job['state'] == 'queued': job.update(state='cancelled', cancel_requested=True)
                 elif job['state'] == 'running': job['cancel_requested'] = True

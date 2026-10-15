@@ -18,6 +18,7 @@ function researchStage(event) {
 }
 function jobStage(job) {
   const event=job.events?.at(-1);
+  if(job.state==='queued')return (job.analysis_phase==='enrichment'?'Deep scan · ':job.analysis_phase==='baseline'?'Basic scan · ':'')+(job.continuation?.not_before*1000>Date.now()?'Waiting to continue':'Waiting to start');
   return (job.analysis_phase==='enrichment'?'Deep scan · ':job.analysis_phase==='baseline'?'Basic scan · ':'')+researchStage(event&&event.stage===job.stage?event:{stage:job.stage||'starting'});
 }
 function scanButton(action,id,label,primary=false,disabled=false) {

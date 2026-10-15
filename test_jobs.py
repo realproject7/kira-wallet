@@ -225,6 +225,7 @@ class JobsTest(JobFixtures, unittest.TestCase):
         self.assertEqual(repeated['state'],'cancelled')
         resumed=self.store.submit(self.request('job.resume',{'job_id':child['job_id']},'resume-depth'))
         self.assertEqual(resumed['job_id'],child['job_id']);self.assertEqual(resumed['state'],'queued')
+        self.assertEqual(resumed['stage'],'queued')
         self.assertEqual(resumed['previous_result'],child['previous_result']);self.assertFalse(resumed['cancel_requested'])
 
     def test_deep_scan_requires_saved_basic_result_and_current_generation(self):
@@ -288,7 +289,7 @@ class JobsTest(JobFixtures, unittest.TestCase):
     def test_restart_interrupted_and_explicit_resume(self):
         job=self.running();self.store.recover();self.assertEqual(self.store.get(job['job_id'])['state'],'interrupted')
         resumed=self.store.submit(self.request('job.resume',{'job_id':job['job_id']},'resume-test'))
-        self.assertEqual(resumed['state'],'queued');self.assertEqual(resumed['previous_result']['directory'],'snapshots/prior')
+        self.assertEqual(resumed['state'],'queued');self.assertEqual(resumed['stage'],'queued');self.assertEqual(resumed['previous_result']['directory'],'snapshots/prior')
         self.assertEqual(self.store.submit(self.request('job.resume',{'job_id':job['job_id']},'resume-test'))['attempt'],1)
     def test_partial_publication_recovers_without_rerun(self):
         job=self.running();self.publish(job);self.store.recover();saved=self.store.get(job['job_id'])

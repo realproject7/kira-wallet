@@ -18,7 +18,7 @@ test('deep waits, pause, disconnect recovery and new basic generations stay dist
  const paused=KiraView.researchSession([{...deep,state:'cancelled'},basic],wallet);
  assert.equal(paused.mode,'paused');assert.equal(paused.action,'resume');assert.match(paused.description,/without starting over/);
  const waiting=KiraView.researchSession([{...deep,state:'queued',continuation:{not_before:Date.now()/1000+120}},basic],wallet);
- assert.match(waiting.title,/waiting for the data source/);
+ assert.match(waiting.title,/waiting to continue/);
  const stalled=KiraView.researchSession([{...deep,state:'interrupted',errors:[{code:'no_progress'}]},basic],wallet);
  assert.equal(stalled.actionLabel,'Retry saved scan');assert.match(stalled.description,/no new progress/);
  const newer={...basic,job_id:'new-basic',state:'queued',created_at:'2026-10-15T00:02:00Z'};
@@ -50,6 +50,8 @@ test('wallet card keeps unknowns visible and disables writes while disconnected 
  h.run('jobList=testJobs;renderWalletScan()');assert.match(h.el('wallet-scan').innerHTML,/Overall remaining time is unknown/);assert.doesNotMatch(h.el('wallet-scan').innerHTML,/<progress/);
  h.setJobs([{...deep,state:'cancelled',cancel_requested:true},basic]);h.run('renderWalletScan()');
  assert.match(h.el('wallet-scan').innerHTML,/Resume deep scan/);assert.doesNotMatch(h.el('wallet-scan').innerHTML,/disabled/);
+ h.setJobs([{...deep,state:'queued',stage:'stopped',events:[{stage:'onchain_progress',counts:{checked:7,total:20},context:{operation:'pool_checks',attempt:deep.attempt}}]},basic]);h.run('renderWalletScan()');
+ assert.match(h.el('wallet-scan').innerHTML,/Waiting to start/);assert.doesNotMatch(h.el('wallet-scan').innerHTML,/Research stopped|7 \/ 20|<progress|are being checked/);
 });
 test('one click stays in flight through double clicks, preserves job identity and allows retry after failure',async()=>{
  const h=harness(),calls=[];let release;

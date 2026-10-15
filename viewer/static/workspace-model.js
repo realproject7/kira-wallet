@@ -86,10 +86,10 @@
     const last=job.events?.at(-1),counts=last?.counts||{},context=last?.context||{},unit=progressUnits[context.operation];
     const known=context.operation!=='reserves'&&Number.isSafeInteger(counts.total)&&counts.total>0&&Number.isSafeInteger(counts.checked)&&counts.checked<=counts.total;
     const checked=Number.isSafeInteger(counts.checked)&&counts.checked>=0?counts.checked:null;
-    const currentScope=!active(job)||context.attempt==null||context.attempt===job.attempt;
+    const currentScope=!active(job)||job.state==='running'&&(context.attempt==null||context.attempt===job.attempt);
     const count=currentScope&&unit&&checked!=null?(known?checked+' / '+counts.total+' '+unit:checked+' '+unit+' checked')+(context.operation==='history'?' including saved work':''):'';
     const waiting=job.state==='queued'&&job.continuation?.not_before*1000>now;
-    let eta=waiting?'Provider retry in '+duration(Math.ceil(job.continuation.not_before-now/1000)):'Overall remaining time is unknown.';
+    let eta=waiting?'Next check in '+duration(Math.ceil(job.continuation.not_before-now/1000)):'Overall remaining time is unknown.';
     if(job.state==='running'&&connected&&!job.cancel_requested&&known&&checked<counts.total&&context.attempt===job.attempt&&now-Date.parse(last.observed_at)<=20000){
       const samples=[];
       for(const event of job.events||[]){
@@ -129,8 +129,8 @@
     if(active(job)){
       mode=job.cancel_requested?'pausing':job.state==='queued'?'waiting':'running';
       const waiting=job.continuation?.not_before*1000>now;
-      title=job.cancel_requested?'Saving your stopping point':isDeep?(waiting?'Deep scan is waiting for the data source':job.state==='queued'?'Deep scan is queued':'Looking deeper into your wallet'):'Building your basic results';
-      description=job.cancel_requested?'Your saved results stay available. Resume here when you are ready.':isDeep?'Additional tokens and market routes are being checked. New results appear as they are saved.':'Checking initial balances on Base, Ethereum and Blast. Other networks and harder-to-price tokens are part of the optional deep scan.';
+      title=job.cancel_requested?'Saving your stopping point':isDeep?(waiting?'Deep scan is waiting to continue':job.state==='queued'?'Deep scan is queued':'Looking deeper into your wallet'):'Building your basic results';
+      description=job.cancel_requested?'Your saved results stay available. Resume here when you are ready.':job.state==='queued'?'The next checks are queued. Your saved results stay available, and you can pause before the scan continues.':isDeep?'Additional tokens and market routes are being checked. New results appear as they are saved.':'Checking initial balances on Base, Ethereum and Blast. Other networks and harder-to-price tokens are part of the optional deep scan.';
       action='cancel';actionLabel='Pause scan';
     }else if(['cancelled','interrupted','failed'].includes(job.state)){
       mode='paused';title=isDeep?'Deep scan paused':'Basic scan paused';

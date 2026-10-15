@@ -48,7 +48,7 @@ assert.match(jobProgress(measured,time,false).eta,/unknown/);
 assert.match(jobProgress({...measured,attempt:3},time).eta,/unknown/);
 assert.match(jobProgress({...measured,events:[progressEvent(10,0),progressEvent(20,10),progressEvent(5,20)]},time).eta,/unknown/);
 assert.match(jobProgress({...measured,events:[{...progressEvent(4,20),counts:{checked:4,pending_ranges:3},context:{operation:'history',attempt:2}}]},time).count,/history pages checked including saved work/);
-assert.match(jobProgress({...measured,state:'queued',continuation:{not_before:time/1000+60}},time).eta,/Provider retry in 1m 0s/);
+assert.match(jobProgress({...measured,state:'queued',continuation:{not_before:time/1000+60}},time).eta,/Next check in 1m 0s/);
 assert.equal(jobProgress({...measured,state:'partial'},time).eta,'');
 console.log('Workspace catalog and job-state checks passed with 5,002 synthetic tokens.');
 
