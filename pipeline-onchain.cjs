@@ -690,6 +690,15 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
   if(n.environment!=='mainnet')return {tokens,market_pending:false};
   let cache=fs.existsSync(file)?JSON.parse(fs.readFileSync(file)):null;
   const save=()=>{if(cache)write(file,cache);};
+  const restoreReviewed=token=>{
+    const key=tokenKey(token),state=cache?.nodes?.[key];
+    if(!representative||cache?.asset_reviews?.[key]?.done!==true||cache.schema_version!==1||cache.wallet!==input.wallet.toLowerCase()||cache.chain_id!==n.chain_id
+      ||cache.bond!==n.mintclub_bond_address.toLowerCase()||cache.block_number!==String(token.balance_block_number)||cache.block_hash!==token.balance_block_hash
+      ||state?.identity!==JSON.stringify([token.chain_id,token.token_address.toLowerCase(),token.token_type,String(token.wallet_balance_raw),String(token.balance_block_number),token.balance_block_hash])
+      ||!Array.isArray(state.routes)||!Array.isArray(state.unknown))return false;
+    token.liquidation_routes=state.routes;token.liquidation_unknown_routes=state.unknown;
+    token.asset_review={scope:'representative_v1',status:representativeQuote(token)?'quoted':'unknown'};delete token.cashout_pending;return true;
+  };
   try{
     const pinned=tokens.find(t=>t.balance_block_hash&&t.balance_block_number!=null);
     if(!pinned)throw new Error('Pinned holding unavailable for liquidation paths.');
@@ -787,10 +796,8 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
       const key=token.token_address.toLowerCase()+':'+token.token_type;
       const review=cache.asset_reviews[key]||{done:false,failures:0};cache.asset_reviews[key]=review;
       if(representative&&!rootOnly&&review.done){
-        const state=cache.nodes[key];
-        if(state&&state.identity!==JSON.stringify([token.chain_id,token.token_address.toLowerCase(),token.token_type,String(token.wallet_balance_raw),String(token.balance_block_number),token.balance_block_hash]))throw new Error('Saved representative holding changed.');
-        token.liquidation_routes=state?.routes||[];token.liquidation_unknown_routes=state?.unknown||[];
-        token.asset_review={scope:'representative_v1',status:representativeQuote(token)?'quoted':'unknown'};delete token.cashout_pending;progress();continue;
+        if(!restoreReviewed(token))throw new Error('Saved representative holding changed.');
+        progress();continue;
       }
       if(representative&&!rootOnly&&token.market_pending){token.cashout_pending=true;retryPending=true;continue;}
       if(Date.now()>=deadline)throw new MarketBudget();
@@ -820,9 +827,10 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
     return {tokens,market_pending:retryPending};
   }catch(error){
     const pending=error.code==='market_budget';
-    for(const token of tokens){const state=cache?.nodes[token.token_address.toLowerCase()+':'+token.token_type];
+    for(const token of tokens){const state=cache?.nodes?.[token.token_address.toLowerCase()+':'+token.token_type];
+      if(restoreReviewed(token))continue;
       token.liquidation_routes=state?.routes||[];token.liquidation_unknown_routes=state?.unknown||[];
-      if(pending&&(!state||state.pending.length))token.cashout_pending=true;
+      if(pending&&(!state||state.pending.length||state.root_retry_pending))token.cashout_pending=true;
       if(!pending){token.liquidation_unknown_routes.push('Liquidation path reads unavailable or checkpoint mismatch.');if(representative)token.asset_review={scope:'representative_v1',status:'unknown'};}}
     if(pending)save();return {tokens,market_pending:pending};
   }

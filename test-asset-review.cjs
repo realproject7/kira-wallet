@@ -77,6 +77,9 @@ test('a recovered ID0 burn finishes once and keeps original evidence on resume',
   const input={wallet:WALLET,tokens:[t],market_scope:'representative_v1'},out=path.join(root,'result.json');
   const first=await liquidationChain(network,structuredClone(input),out);assert.equal(first.market_pending,false);assert.equal(first.tokens[0].asset_review.status,'quoted');assert.equal(first.tokens[0].liquidation_routes.length,1);
   const count=reads;const second=await liquidationChain(network,structuredClone(input),out);assert.equal(reads,count);assert.deepEqual(second.tokens[0].liquidation_routes,first.tokens[0].liquidation_routes);
+  const boundary=await liquidationChain(network,{...structuredClone(input),tokens:[structuredClone(t),token(11)]},out,Date.now()-1);
+  assert.equal(boundary.market_pending,true);assert.equal(boundary.tokens[0].asset_review.status,'quoted');assert.equal(boundary.tokens[0].cashout_pending,undefined);
+  assert.deepEqual(boundary.tokens[0].liquidation_routes,first.tokens[0].liquidation_routes);assert.equal(boundary.tokens[1].cashout_pending,true);assert.equal(boundary.tokens[1].asset_review,undefined);
  }finally{Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
 });
 
