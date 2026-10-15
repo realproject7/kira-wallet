@@ -231,8 +231,11 @@ Other pools, factories and unknown holdings remain outside this finite scope.
 A representative estimate does not promise the best price or actual execution.
 
 Provider failures receive at most two admitted attempts per market or redemption
-step. Slice boundaries do not consume a failure attempt. Exhausted failures end
-as unknown, while pause and resume retain unfinished work. Successful metadata
+step. Slice boundaries do not consume a failure attempt.
+Returned failed warm batches count even when the slice ends before individual
+pool checks. Shared getters count once per asset per turn; queue waits do not
+consume a failure attempt. Successful prefixes survive these failed batches.
+Exhausted failures end as unknown, while pause and resume retain unfinished work. Successful metadata
 cells are reused only within the same pinned wallet analysis. Previously saved
 unit prices may survive unavailable rereads with their original source and date;
 contrary unfunded or unreliable evidence invalidates them. Retained prices do

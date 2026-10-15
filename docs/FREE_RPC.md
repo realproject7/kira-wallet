@@ -82,9 +82,12 @@ amount-specific DEX or funded burn legs, including ordinary and nested curve
 reserves. Each next input is no greater than the preceding net output, and all
 legs share the holding's block hash. Cycles and reused pools are not composed
 from unchanged state. A saved frontier resumes after a market time budget.
-The search admits at most 32 nodes and four branches per node; omitted,
-unsupported and failed paths stay unknown. These bounds do not establish
-exhaustive qualifying-asset coverage or benchmarked latency.
+Current wallet research uses `representative_v1`: one supported indexed pool or
+funded curve path per discovered mainnet asset, with at most four nodes and one
+branch. A valid terminal representative stops alternative exploration. Legacy
+direct engine calls retain the 32-node, four-branch general search. Omitted,
+unsupported and failed paths stay unknown. Neither mode establishes exhaustive
+qualifying-asset coverage, the best price or benchmarked latency.
 Market pool attempts have a durable frontier: unread pools receive a turn before
 failed retry holes. Repeated failures cannot continuously consume the budget
 ahead of the same untested pools, and retries alone do not count as new evidence.
@@ -98,6 +101,12 @@ remain explicitly unsearched. New verified root quotes reopen an earlier route
 frontier. Reusing cached prices keeps their original provider observation time,
 including an unknown time when older evidence did not record one. Compilation
 time never makes a cached price newly observed.
+Selected pool and representative redemption failures receive bounded admissions
+before an unknown outcome is saved. A slice boundary preserves unfinished work.
+Successful token metadata is reused only in the same pinned analysis. Completed
+asset reviews survive budget boundaries as well as pause and resume. Optional
+deep scanning has no overall completion deadline. See the current
+[job contract](JOB_CONTRACT.md#asset-focused-market-review) for its finite scope.
 
 ## Default token inventory
 

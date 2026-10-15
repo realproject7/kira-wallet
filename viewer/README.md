@@ -101,6 +101,13 @@ count units, attempt elapsed time and provider retry wait. Activity also shows
 time since the original request across attempts and access to saved results.
 History page counts include saved work. Factory queries, pool checks and route
 asset counts are distinct. Counts describe checks, not confirmed holdings.
+The wallet card and Activity also retain cumulative asset reviews across steps
+and restarts. All known mainnet inventories enter the total before market work.
+Reviewed assets include both representative estimates and unresolved outcomes;
+available unit prices are counted separately. The total may grow with discovery.
+This bar describes saved checks of discovered assets, not exhaustive wallet
+coverage. Previous estimates display their original date and explicitly say when
+the current price is unavailable.
 
 An overall percentage or completion time is not inferred from token counts.
 A current-step estimate appears only for a fixed recorded total with at least

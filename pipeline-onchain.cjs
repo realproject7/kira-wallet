@@ -529,38 +529,64 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
   const poolKey=(t,p)=>t.token_address.toLowerCase()+':'+p.pool.toLowerCase();
   const poolQueue=tokens.flatMap(t=>selected(t).map(p=>({t,p})))
     .sort((a,b)=>(cache.pool_attempts[poolKey(a.t,a.p)]||0)-(cache.pool_attempts[poolKey(b.t,b.p)]||0));
+  const warmFailures=new Set(),warmCounted=new Set(),warmOwners=new Map();
   if(representative&&tokens.length>1){
     // Share the pool state, membership and output metadata across assets.
     // Only successful cells survive a slice; failed batches do not fan out.
+    const owned=(t,q)=>{
+      if(!q)return null;
+      const key=requestKey('readContract',{...q,blockNumber:block});
+      if(!warmOwners.has(key))warmOwners.set(key,new Set());warmOwners.get(key).add(t);return q;
+    };
     const warm=async plans=>{
-      const pending=[...new Map(plans.map(q=>[requestKey('readContract',{...q,blockNumber:block}),q])).entries()].filter(([k])=>cache.requests[k]===undefined);
+      const needed=key=>[...(warmOwners.get(key)||[])].some(t=>!done(t));
+      const pending=[...new Map(plans.map(q=>[requestKey('readContract',{...q,blockNumber:block}),q])).entries()].filter(([k])=>cache.requests[k]===undefined&&needed(k));
       for(let start=0;start<pending.length;start+=128){
-        const group=pending.slice(start,start+128);if(Date.now()>=deadline)throw new MarketBudget();
+        const group=pending.slice(start,start+128).filter(([k])=>needed(k));if(!group.length)continue;
+        if(Date.now()>=deadline)throw new MarketBudget();
         const rows=await boundedMarket(calls(client,group.map(([,q])=>q),block),deadline);
-        rows.forEach((r,i)=>{if(r.status==='success')cache.requests[group[i][0]]=cacheEncode(r.result);else deferred.set(group[i][0],r.error);});save();
+        rows.forEach((r,i)=>{
+          const key=group[i][0];
+          if(r.status==='success'){cache.requests[key]=cacheEncode(r.result);return;}
+          deferred.set(key,r.error);
+          for(const t of warmOwners.get(key)||[]){
+            const asset=assetKey(t);warmFailures.add(asset);
+            // A returned failed batch is an admitted attempt, even if the
+            // slice ends before the individual pool loop. Queue waits are not.
+            if(warmCounted.has(asset)||rpcFailure(r.error).schedulingFailure)continue;
+            warmCounted.add(asset);const review=cache.asset_reviews[asset];review.failures++;
+            if(review.failures>=2){
+              review.done=true;review.reason='Selected pool reads unavailable after bounded attempts. Other venues remain unsearched.';
+              t.dex_verification_error={message:review.reason};
+              const pool=t.dex_pools.find(p=>p.pool.toLowerCase()===review.pool);
+              if(pool)pool.rpc_verification={...pool.rpc_verification,verification:'unverified',error:{message:review.reason}};
+            }
+          }
+        });cache.tokens=cacheEncode(tokens);save();
       }
     };
     const value=q=>{const raw=cache.requests[requestKey('readContract',{...q,blockNumber:block})];return raw===undefined?undefined:cacheDecode(raw);};
     const plan=poolQueue.filter(({p})=>p.pool.length===42);
     const state=p=>Object.fromEntries(['factory','token0','token1',p.version_labels?.includes('v3')?'liquidity':'getReserves'].map(functionName=>[functionName,value({address:p.pool,abi:poolAbi,functionName})]));
     const recognized=s=>typeof s.factory==='string'&&(deployments.some(d=>d.chainId===n.chain_id&&d.contract.toLowerCase().includes('factory')&&d.address.toLowerCase()===s.factory.toLowerCase())||n.chain_id===8453&&s.factory.toLowerCase()==='0x420dd381b31aef6683db6b902084cb0ffece40da');
-    await warm(plan.flatMap(({p})=>['factory','token0','token1',p.version_labels?.includes('v3')?'liquidity':'getReserves'].map(functionName=>({address:p.pool,abi:poolAbi,functionName}))));
+    await warm(plan.flatMap(({t,p})=>['factory','token0','token1',p.version_labels?.includes('v3')?'liquidity':'getReserves'].map(functionName=>owned(t,{address:p.pool,abi:poolAbi,functionName}))));
     const parameter=p=>p.version_labels?.includes('v3')?{address:p.pool,abi:v.parseAbi(['function fee() view returns (uint24)']),functionName:'fee'}:p.venue==='aerodrome'?{address:p.pool,abi:v.parseAbi(['function stable() view returns (bool)']),functionName:'stable'}:null;
-    await warm(plan.filter(({p})=>recognized(state(p))).map(({p})=>parameter(p)).filter(Boolean));
+    await warm(plan.filter(({p})=>recognized(state(p))).map(({t,p})=>owned(t,parameter(p))).filter(Boolean));
     const membership=p=>{
       const s=state(p),q=parameter(p),param=q?value(q):null;
       if(!recognized(s)||!s.token0||!s.token1||q&&param===undefined)return null;
       return {address:s.factory,abi:poolAbi,functionName:p.version_labels?.includes('v3')||p.venue==='aerodrome'?'getPool':'getPair',args:q?[s.token0,s.token1,param]:[s.token0,s.token1]};
     };
-    await warm(plan.map(({p})=>membership(p)).filter(Boolean));
+    await warm(plan.map(({t,p})=>owned(t,membership(p))).filter(Boolean));
     await warm(plan.flatMap(({t,p})=>{
       const q=membership(p);if(!q||value(q)?.toLowerCase()!==p.pool.toLowerCase())return [];
       const s=state(p),output=[s.token0,s.token1].find(a=>a.toLowerCase()!==t.token_address.toLowerCase());
-      return [{address:output,abi:erc20,functionName:'balanceOf',args:[p.pool]},{address:output,abi:erc20,functionName:'decimals'},{address:output,abi:erc20,functionName:'symbol'}];
+      return [{address:output,abi:erc20,functionName:'balanceOf',args:[p.pool]},{address:output,abi:erc20,functionName:'decimals'},{address:output,abi:erc20,functionName:'symbol'}].map(q=>owned(t,q));
     }));
   }
   for(const {t,p} of poolQueue) {
     if(!['uniswap','aerodrome'].includes(p.venue))continue;
+    if(representative&&done(t)){emitProgress(n,'pool_checks',++poolChecked,poolTotal);continue;}
     const identity=poolKey(t,p);
     if(cache.completed_pools.includes(identity)){if(representative)cache.asset_reviews[assetKey(t)].done=true;emitProgress(n,'pool_checks',++poolChecked,poolTotal);continue;}
     if(Date.now()>=deadline)throw new MarketBudget();
@@ -612,7 +638,7 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
       // Budget pauses retain successful RPC prefixes, but do not mark an
       // unfinished pool as verified or as a provider failure.
       if(!paused&&Date.now()<deadline){if(!retry)cache.completed_pools.push(identity);poolChecked++;}
-      if(representative&&!paused&&Date.now()<deadline){const review=cache.asset_reviews[assetKey(t)];if(retry)review.failures++;review.done=!retry||review.failures>=2;}
+      if(representative&&!paused&&Date.now()<deadline){const review=cache.asset_reviews[assetKey(t)];if(retry&&!warmFailures.has(assetKey(t)))review.failures++;review.done=!retry||review.failures>=2;}
       if(retry)p.rpc_verification={...p.rpc_verification,error:{message:'Some pool reads failed. Remaining price and execution details are unknown.'}};
       cache.tokens=cacheEncode(tokens);save();emitProgress(n,'pool_checks',poolChecked,poolTotal);
     }

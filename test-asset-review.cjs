@@ -68,6 +68,38 @@ test('unfinished indexer discovery cannot be finalized as an unknown pool absenc
  }finally{Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
 });
 
+test('failed warm batches settle unknown even when every slice ends before the pool loop',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-warm-failures-')),original={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock},realNow=Date.now;
+ try{
+  const base=realNow();let clock=base;Date.now=()=>clock;
+  const tokens=Array.from({length:140},(_,i)=>({...token(1000+i,1),dex_pools:[{pool:address(2000+i),venue:'uniswap',version_labels:['v2'],paired_tokens:[]}]}));
+  const observed=new Map();h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:7n,hash:HASH});
+  h.client=()=>({getChainId:async()=>1,multicall:async({contracts})=>{
+   await Promise.resolve();clock+=20000;
+   return contracts.map(q=>{const key=q.address+':'+q.functionName;observed.set(key,(observed.get(key)||0)+1);
+    return q.functionName==='token0'?{status:'success',result:address(10)}:{status:'failure',error:Error('Synthetic provider failure')};});
+  }});
+  const file=path.join(root,'market.json');let rows;
+  for(let turn=0;turn<10;turn++){
+   clock=base;rows=await dexChain({chain_id:1},structuredClone(tokens),{file,wallet:WALLET,representative:true,deadline:base+30000});
+   if(rows.every(t=>!t.market_pending))break;
+  }
+  assert(rows.every(t=>!t.market_pending&&!t.dex_pools[0].cashout_quote));
+  const saved=JSON.parse(fs.readFileSync(file));assert.equal(Object.values(saved.asset_reviews).filter(r=>r.done&&r.failures===2).length,140);
+  assert([...observed].filter(([k])=>k.endsWith(':token0')).every(([,n])=>n===1));
+  assert([...observed].filter(([k])=>k.endsWith(':factory')).every(([,n])=>n===2));
+  h.client=()=>({getChainId:async()=>1,multicall:async({contracts})=>{
+   await Promise.resolve();clock+=20000;const error=Error('Synthetic queue wait');error.name='RpcSchedulingTimeout';
+   return contracts.map(()=>({status:'failure',error}));
+  }});
+  for(let turn=0;turn<3;turn++){
+   clock=base;const waiting=await dexChain({chain_id:1},structuredClone(tokens.slice(0,2)),{file:path.join(root,'waiting.json'),wallet:WALLET,representative:true,deadline:base+30000});
+   assert(waiting.every(t=>t.market_pending));
+  }
+  assert(Object.values(JSON.parse(fs.readFileSync(path.join(root,'waiting.json'))).asset_reviews).every(r=>!r.done&&r.failures===0));
+ }finally{Date.now=realNow;Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('a recovered ID0 burn finishes once and keeps original evidence on resume',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-asset-burn-')),original={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock};
  try{
