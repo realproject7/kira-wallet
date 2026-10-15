@@ -144,6 +144,7 @@ function renderWallet(){
   if(selectedChain!=='all'&&!chainOptions.some(c=>String(c.id)===selectedChain))selectedChain='all';
   $('chain-filter').innerHTML='<option value="all">All chains</option>'+chainOptions.map(c=>`<option value="${c.id}">${escapeHTML(c.name)}${c.environment==='testnet'?' · Testnet':''}${KiraView.coverageGap(c)?' · Incomplete':''}</option>`).join('');
   $('chain-filter').value=selectedChain;renderHoldings();renderDiscoveryCoverage(w);
+  if(typeof renderWalletScan==='function')renderWalletScan();
 }
 function renderHomeCoverage(){
   const readiness=typeof setupReadiness!=='undefined'?setupReadiness:null;

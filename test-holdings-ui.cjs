@@ -164,10 +164,10 @@ routeHarness.poll().then(()=>{
 
 const pending={analysed_at:'now',chains:[{id:1,environment:'mainnet',rpc_available:true,registry_complete:false,registry_phase:'deferred',complete:true},{id:8453,environment:'mainnet',rpc_available:false,rpc_pending:true,registry_complete:false,complete:false}]};
 const notice=require('./viewer/static/workspace-model.js').discoveryNotice(pending,{discovery_provider:'none',public_discovery:true});
-assert.equal(notice.title,'First results are available');assert.equal(notice.rpcIssues,undefined);
+assert.equal(notice.title,'Your saved results cover the initial checks');assert.equal(notice.rpcIssues,undefined);
 
 const stoppedInitial=context.KiraView.discoveryNotice({analysed_at:"recorded",chains:[{environment:"mainnet",complete:false,rpc_pending:true,registry_phase:"deferred"}]},{public_discovery:true,discovery_provider:"none"});
-assert.match(stoppedInitial.message,/resume stopped work/);assert.doesNotMatch(stoppedInitial.message,/research continues/);
+assert.match(stoppedInitial.message,/optional deep scan/);assert.doesNotMatch(stoppedInitial.message,/research continues/);
 // Real control function: enrichment permits prices, queued/running prices do not.
 const controls={...context,state:{demo:false},localSession:{controls:true},selectedWallet:'0x'+'1'.repeat(40),jobList:[],currentWallet:()=>wallet};
 vm.createContext(controls);

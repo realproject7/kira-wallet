@@ -9,7 +9,7 @@ Mutations use `{schema_version: 1, operation, input, idempotency_key}`.
 Supported operations are `wallet.add` (address, exact tag), `wallet.refresh`
 (wallet address or exact tag), `prices.refresh` (same), `wallet.setTags`
 (wallet, exact tags), `settings.rpc`, `settings.discovery`, `settings.provider`,
-`job.resume` and `job.cancel` (job_id).
+`job.deepen`, `job.resume` and `job.cancel` (job_id).
 Read operations are `job.read`, `job.list`, `snapshot.read`, and
 `snapshots.compare`. The portfolio projection retains its existing schema.
 
@@ -124,6 +124,9 @@ no mutation tools and requires separate operator-approved client setup.
 
 ## Initial evidence and continuations in 0.1.7
 
+The automatic admission described in this historical section is superseded by
+the optional deep-scan contract below. Existing admitted children are preserved.
+
 A valid wallet admission records its identity under a short registry lock.
 Idempotent replay repairs missing admission without undoing later name edits.
 New analysis jobs have `analysis_phase: baseline`. The first usable chain
@@ -183,3 +186,35 @@ worker applies it under the writer lock and records a settings receipt. No
 secret value is copied into the request, receipt, viewer or model context.
 Explicit cancellation survives recovery and exception boundaries as stopped.
 A completed publication receipt still wins a cancellation race.
+
+## Basic scans and optional deep scans
+
+New wallet.add and wallet.refresh jobs have scan_policy: optional_depth_v1.
+The basic scan checks initial balances on Base, Ethereum and Blast and publishes
+usable results. Finishing a basic scan does not start more provider work.
+Unstarted legacy parents also do not acquire new child jobs on app restart.
+The viewer presents the result as "Basic scan ready", with coverage gaps visible.
+
+An explicit job.deepen request targets a succeeded or partial baseline with a
+saved result. It admits exactly one enrichment child per parent under the
+request lock. Concurrent clicks, new request keys and restart recovery all
+return that same child, including a previously paused child. A separate explicit
+job.resume is required to resume it. A newer basic generation rejects starting
+or resuming old deep work. No saved balances are copied into a new analysis.
+
+A deep scan has no overall twenty-minute completion deadline. It keeps the
+bounded, checkpointed engine slices, provider backoff, single writer,
+short-operation priority and no-progress protection described above.
+"Pause scan" uses job.cancel to stop the current worker and retain results and
+checkpoints. "Resume deep scan" requeues the same job. Publication still wins a
+pause race. Finished partial results describe unknown coverage, not failure to
+meet a time target or proof of exhaustive holdings.
+
+The wallet card and Activity restore their state from persisted jobs. Buttons
+require the existing protected local session and are disabled while disconnected,
+submitting or pausing. Sample and watch-only workspaces cannot start scans.
+Current-step bars use actual bounded counts. Unknown totals have no percentage.
+Only a stable measured step may show an expiring ETA range; overall time remains
+unknown. progress_observed_at advances on actual checked work or a saved initial
+publication, not repeated errors or provider waits. Quiet and disconnected states
+are explicit. Live announcements concern state transitions, not every count.

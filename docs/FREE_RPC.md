@@ -126,7 +126,7 @@ Explicit keyless opt-outs and custom-only preferences remain respected.
 
 Initial reports check Base, Ethereum and Blast, up to 128 candidates per chain.
 Selected common contracts take priority. Remaining candidates and networks are
-explicitly pending. A durable background continuation scans every configured
+explicitly pending. A user-selected deep scan checks every configured
 network, its recorded inventory policy and markets. In full mode, pinned registry counts,
 successful identities, failed indices and the next index are saved after each
 batch. Each chain receives at most four registry and four balance batches per
@@ -138,6 +138,12 @@ verified payload limits. Three consecutive unchanged rounds leave work explicitl
 incomplete. Registry identities can be reused; wallet balances stay wallet-specific.
 New initial work takes priority over detailed research. Older same-wallet
 continuations cannot replace newer evidence.
+
+Basic results are usable without a deep scan. The user starts optional deep
+work from the wallet or Activity and can pause or resume it. Deep work has no
+overall twenty-minute deadline; individual slices and provider calls remain
+bounded. Time spent cannot establish exhaustive coverage. Missing tokens,
+unavailable sources and unsupported market paths stay unknown.
 
 Wallet candidate mode has a separate Etherscan ERC1155 frontier on Ethereum,
 Optimism, BNB, Unichain, Polygon, Robinhood, Base, ApeChain, Arbitrum, Avalanche

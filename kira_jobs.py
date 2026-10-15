@@ -77,6 +77,8 @@ class Job(TypedDict):
     control_raw: NotRequired[dict[str,str]]
     provider_configuration: NotRequired[dict]
     continuation: NotRequired[dict]
+    scan_policy: NotRequired[str]
+    progress_observed_at: NotRequired[str]
 
 class JobError(ValueError):
     def __init__(self, code, message):
@@ -136,7 +138,7 @@ class JobStore:
         job = read(path)
         if not isinstance(job,dict) or type(job.get('schema_version')) is not int or job.get('schema_version') != 1: raise JobError('unsupported_version', 'Unsupported persisted job version.')
         required={'schema_version','job_id','operation','input','state','attempt','sequence','result','previous_result','key_hash','request_hash','created_at','updated_at','cancel_requested','checkpoint','stage','events','errors','chains'}
-        optional={'raw_hash','control_receipts','control_raw','provider_configuration','started_at','analysis_phase','parent_job_id','continuation_id','continuation'}
+        optional={'raw_hash','control_receipts','control_raw','provider_configuration','started_at','analysis_phase','parent_job_id','continuation_id','continuation','scan_policy','progress_observed_at'}
         if required-set(job) or set(job)-required-optional or job['job_id']!=job_id or job['checkpoint']!='snapshots/jobs/'+job_id or not isinstance(job['operation'],str) or job['operation'] not in {'wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv'} or not isinstance(job['state'],str) or job['state'] not in TERMINAL|{'queued','running'} or any(type(job[k]) is not int or job[k]<0 for k in ('attempt','sequence')) or type(job['cancel_requested']) is not bool or not isinstance(job['input'],dict) or any(not isinstance(job[k],list) for k in ('events','errors')) or not isinstance(job['chains'],dict):
             raise JobError('invalid_envelope','Persisted job validation failed. Preserve the file for recovery.')
         names={'wallet.add':['address','tag'],'wallet.refresh':['wallet'],'prices.refresh':['wallet'],'wallet.setTags':['wallet','tags'],
@@ -144,6 +146,10 @@ class JobStore:
         if job['operation']=='settings.rpc' and 'priority' in job['input']:names=names+['priority']
         fields(job['input'],names)
         if 'analysis_phase' in job and job['analysis_phase'] not in ('baseline','enrichment'):raise JobError('invalid_envelope','Invalid analysis phase.')
+        if 'scan_policy' in job and job['scan_policy']!='optional_depth_v1':raise JobError('invalid_envelope','Invalid scan policy.')
+        if 'progress_observed_at' in job:
+            try:datetime.fromisoformat(job['progress_observed_at'].replace('Z','+00:00'))
+            except (ValueError,TypeError,AttributeError):raise JobError('invalid_envelope','Invalid progress timestamp.') from None
         if 'continuation' in job:
             c=job['continuation']
             if (not isinstance(c,dict) or set(c)!={'fingerprint','not_before','unchanged_turns'}
@@ -230,7 +236,7 @@ class JobStore:
                     raise JobError('invalid_tags', 'Supply 1 to 20 unique exact non-empty tags.')
                 result['tags'] = tags
             return result
-        if operation in {'job.resume', 'job.cancel'}:
+        if operation in {'job.resume', 'job.cancel', 'job.deepen'}:
             fields(value, ['job_id']); identifier(value['job_id'])
             return value.copy()
         raise JobError('unsupported_operation', 'Unsupported job operation.')
@@ -273,6 +279,10 @@ class JobStore:
             elif entry is None and job['operation']=='wallet.add':
                 register(registry,address,job['input']['tag'])
                 atomic(self.root/'wallets.json',registry)
+        if job.get('parent_job_id'):
+            parent=self.get(job['parent_job_id'])
+            if not parent.get('continuation_id'):
+                parent['continuation_id']=job['job_id'];self.save(parent)
         return job
 
     def submit(self, request, *, phase='baseline', parent=None):
@@ -306,11 +316,28 @@ class JobStore:
                 recorded=existing.get('control_receipts',{}).get(key_hash,existing['request_hash'])
                 if recorded != fingerprint: raise JobError('idempotency_conflict', 'This request key already belongs to another operation.')
                 job = existing
+            elif operation=='job.deepen':
+                parent_job=self.get(value['job_id'])
+                if parent_job.get('analysis_phase')!='baseline' or parent_job['state'] not in {'succeeded','partial'} or not parent_job.get('result'):
+                    raise JobError('basic_scan_required','Finish or resume the basic scan before starting a deep scan.')
+                wallet=self.wallet(parent_job['input'].get('wallet') or parent_job['input'].get('address'))
+                if wallet.get('research_generation') not in (None,parent_job['job_id']):
+                    raise JobError('superseded','A newer basic scan is available. Start deep scanning from its saved result.')
+                # Recover admission if the child was saved before its parent link.
+                job=next((j for p in self.jobs.glob('*.json') if (j:=self.get(p.stem)).get('parent_job_id')==parent_job['job_id']),None)
+                if job is None:
+                    job=self.new_job('wallet.refresh',{'wallet':wallet['address_key']},key_hash,fingerprint,raw_hash,'enrichment',parent_job['job_id'])
+                job.setdefault('control_receipts',{})[key_hash]=fingerprint
+                job.setdefault('control_raw',{})[key_hash]=raw_hash
+                self.save(job)
+                parent_job['continuation_id']=job['job_id'];self.save(parent_job)
             elif operation in {'job.resume', 'job.cancel'}:
                 job = self.get(value['job_id'])
                 if operation == 'job.resume':
                     if job['state'] not in {'interrupted', 'failed', 'cancelled'}:
                         raise JobError('not_resumable', 'Only interrupted, failed or cancelled jobs can resume.')
+                    if job.get('parent_job_id') and self.wallet(job['input']['wallet']).get('research_generation') not in (None,job['parent_job_id']):
+                        raise JobError('superseded','A newer basic scan replaced this work. Open its saved result to start a deep scan.')
                     job.update(state='queued', cancel_requested=False, errors=[])
                     job.pop('continuation',None)
                 elif job['state'] == 'queued': job.update(state='cancelled', cancel_requested=True)
@@ -319,24 +346,31 @@ class JobStore:
                 job.setdefault('control_raw',{})[key_hash]=raw_hash
                 self.save(job)
             else:
-                previous = None
-                if operation=='wallet.add':
-                    existing_wallet=next((w for w in read(self.root/'wallets.json')['wallets'] if w['address_key']==value['address'].lower()),None)
-                    if existing_wallet:previous=existing_wallet.get('latest_snapshot')
-                if operation in {'wallet.refresh','prices.refresh','wallet.setTags'}:
-                    previous = self.wallet(value['wallet']).get('latest_snapshot')
-                job_id = str(uuid.uuid4())
-                job = {'schema_version': 1, 'job_id': job_id, 'operation': operation, 'input': value,
-                    'key_hash': key_hash, 'request_hash': fingerprint,'raw_hash':raw_hash, 'state': 'queued', 'attempt': 0,
-                    'created_at': now(), 'updated_at': now(), 'sequence': 0, 'cancel_requested': False,
-                    'stage': 'queued', 'events': [], 'checkpoint': 'snapshots/jobs/' + job_id,
-                    'result': None, 'previous_result': previous, 'errors': [],'chains':{}}
-                if operation in ('wallet.add','wallet.refresh'):job['analysis_phase']=phase
-                if parent:job['parent_job_id']=parent
-                self.save(job)
+                job=self.new_job(operation,value,key_hash,fingerprint,raw_hash,phase,parent)
             self.admit_wallet(job)
             atomic(receipt, {'schema_version': 1, 'request_hash': fingerprint,'raw_hash':raw_hash, 'job_id': job['job_id']})
             return job
+
+    def new_job(self,operation,value,key_hash,fingerprint,raw_hash,phase,parent):
+        """Called under the request lock; child admission is serialized too."""
+        previous = None
+        if operation=='wallet.add':
+            existing_wallet=next((w for w in read(self.root/'wallets.json')['wallets'] if w['address_key']==value['address'].lower()),None)
+            if existing_wallet:previous=existing_wallet.get('latest_snapshot')
+        if operation in {'wallet.refresh','prices.refresh','wallet.setTags'}:
+            previous = self.wallet(value['wallet']).get('latest_snapshot')
+        job_id = str(uuid.uuid4())
+        job = {'schema_version': 1, 'job_id': job_id, 'operation': operation, 'input': value,
+            'key_hash': key_hash, 'request_hash': fingerprint,'raw_hash':raw_hash, 'state': 'queued', 'attempt': 0,
+            'created_at': now(), 'updated_at': now(), 'sequence': 0, 'cancel_requested': False,
+            'stage': 'queued', 'events': [], 'checkpoint': 'snapshots/jobs/' + job_id,
+            'result': None, 'previous_result': previous, 'errors': [],'chains':{}}
+        if operation in ('wallet.add','wallet.refresh'):
+            job['analysis_phase']=phase
+            job['scan_policy']='optional_depth_v1'
+        if parent:job['parent_job_id']=parent
+        self.save(job)
+        return job
 
     def snapshot(self, snapshot_id):
         if not isinstance(snapshot_id, str) or not snapshot_id.startswith('snapshots/'):
@@ -439,6 +473,26 @@ class JobStore:
         if not published: return None
         return {'snapshot_id': job['checkpoint'], 'status': result['status']}
 
+    def reconcile_idle(self):
+        """Reconcile app restart without launching providers or disturbing a worker.
+
+        The inherited worker lease also protects a still-running engine orphan.
+        Both locks are nonblocking so opening the app never waits for a scan.
+        """
+        with (self.root/'.job-worker.lock').open('a') as lease,(self.root/'.analysis.lock').open('a') as writer:
+            try:
+                fcntl.flock(lease,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                fcntl.flock(writer,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:return False
+            self.recover()
+            with self.locked():
+                for path in self.jobs.glob('*.json'):
+                    job=self.get(path.stem)
+                    if job['state']=='queued' and job.get('scan_policy')=='optional_depth_v1':
+                        job.update(state='interrupted',stage='interrupted',errors=[{'code':'interrupted',
+                            'message':'Kira restarted before this scan continued. Resume here when ready. Saved results are safe.'}]);self.save(job)
+            return True
+
     def recover(self):
         with self.locked():
             for path in self.jobs.glob('*.json'):
@@ -468,10 +522,14 @@ class JobStore:
                 context={'operation':event['operation'],'chain_id':counts.get('chain_id'),'attempt':job['attempt']}
                 if event.get('provider') in ('etherscan_keyless','etherscan_keyless_erc1155_id0'):context['provider']=event['provider']
                 job['events'][-1]['context']=context
+                prior=[e for e in job['events'][:-1] if e.get('context')==context and type(e.get('counts',{}).get('checked')) is int]
+                if type(counts.get('checked')) is int and counts['checked']>max((e['counts']['checked'] for e in prior),default=0):
+                    job['progress_observed_at']=job['events'][-1]['observed_at']
             if event['stage']=='first_evidence' and isinstance(event.get('snapshot'),str) and (event['snapshot']==job['checkpoint']+'/initial' or re.fullmatch(re.escape(job['checkpoint'])+r'/market-initial-[0-9]{4}',event['snapshot'])):
                 saved=self.snapshot(event['snapshot'])
                 wallet=job['input'].get('wallet') or job['input'].get('address')
                 if saved.get('wallet_address','').lower()==wallet.lower():job['result']={'snapshot_id':event['snapshot'],'status':saved['status'],'phase':'initial'}
+                job['progress_observed_at']=job['events'][-1]['observed_at']
             if event['stage']=='chain' and type(event.get('chain_id')) is int:job['events'][-1]['context']={'chain_id':event['chain_id'],**job['chains'][str(event['chain_id'])]}
             job['events'] = job['events'][-100:]
             self.save(job)
@@ -489,17 +547,12 @@ class JobStore:
         return {'wallet': wallet['address_key'], 'tags': tags, 'status': 'completed'}
 
     def continue_research(self):
-        """A durable continuation of the admitted analysis, behind initial reports."""
-        for parent in self.list():
-            if parent.get('analysis_phase')!='baseline' or parent['state'] not in ('succeeded','partial') or parent.get('cancel_requested') or parent.get('continuation_id'):continue
-            result=parent.get('result')
-            if not result or not result.get('snapshot_id'):continue
-            saved=self.snapshot(result['snapshot_id'])
-            if saved.get('pipeline',{}).get('phase')!='baseline':continue
-            wallet=parent['input'].get('address') or parent['input'].get('wallet')
-            child=self.submit({'schema_version':1,'operation':'wallet.refresh','input':{'wallet':wallet},'idempotency_key':'enrichment:'+parent['job_id']},phase='enrichment',parent=parent['job_id'])
-            with self.locked():
-                parent=self.get(parent['job_id']);parent['continuation_id']=child['job_id'];self.save(parent)
+        """Compatibility hook. Deep work now requires explicit job.deepen.
+
+        Existing child jobs are preserved; unstarted legacy parents do not gain
+        new background work merely because the worker or app restarts.
+        """
+        return
 
     def engine_command(self, job):
         if job['operation'] == 'prices.refresh':

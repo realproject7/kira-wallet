@@ -292,6 +292,13 @@
           "minimum": 0
         }
       }
+    },
+    "scan_policy": {
+      "const": "optional_depth_v1"
+    },
+    "progress_observed_at": {
+      "type": "string",
+      "format": "date-time"
     }
   },
   "additionalProperties": false,

@@ -422,7 +422,7 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
             'mainnets_with_general_indexer':sum(c['environment']=='mainnet' and c['indexer_complete'] for c in coverage),
             'mintclub_tokens':sum(bool(t.get('mintclub')) for t in tokens),'mintclub_tokens_with_nonzero_reserve':sum(bool((t.get('mintclub') or {}).get('funded')) for t in tokens),
             'dex_tokens_with_liquidity_evidence':0,'mintclub_registry_assets_checked':0},
-        'limitations':['Initial evidence is partial. Detailed candidate and market research continues separately under the recorded inventory policy. Missing holdings and prices are unknown, not zero.',
+        'limitations':['Initial evidence is partial. Optional deep scanning can check additional candidates and markets under the recorded inventory policy. Missing holdings and prices are unknown, not zero.',
             'Free candidate discovery and known-token catalogs do not guarantee every arbitrary ERC20 contract.'],
         'actions':{'signatures':0,'approvals':0,'swaps':0,'transfers':0,'rpc_read_only':True},
         'pipeline':{'version':2,'phase':phase,'enrichment_pending':True,'resumable':True},'evidence_files':['onchain-summary.json']}

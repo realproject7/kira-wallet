@@ -2,6 +2,8 @@
 let localSession=null, jobList=[], jobsSignature='', localPolling=false;
 let discoverySettingsRevision='';
 const pendingActions=new Set();
+const scanBusyJobs=new Set();
+let scanAnnouncement='';
 const jobLabels={'wallet.add':'Wallet research','wallet.refresh':'Holdings refresh','prices.refresh':'Price refresh','wallet.setTags':'Wallet names','settings.rpc':'RPC settings','settings.discovery':'Token discovery','settings.provider':'Data provider connection','settings.importEnv':'Local connection setup'};
 const stageLabels={queued:'Waiting to start',starting:'Opening saved evidence',registered:'Wallet registered',discovery:'Token discovery',chain:'Checking on-chain holdings',onchain_progress:'Reading on-chain records',first_evidence:'First results available',dex_discovery:'Checking markets',token_images:'Preparing token artwork',published:'Evidence saved',failed:'Research stopped',stopped:'Research stopped',interrupted:'Ready for recovery'};
 function researchStage(event) {
@@ -16,7 +18,42 @@ function researchStage(event) {
 }
 function jobStage(job) {
   const event=job.events?.at(-1);
-  return (job.analysis_phase==='enrichment'?'Detailed research · ':'')+researchStage(event?.stage===job.stage?event:{stage:job.stage});
+  return (job.analysis_phase==='enrichment'?'Deep scan · ':job.analysis_phase==='baseline'?'Basic scan · ':'')+researchStage(event&&event.stage===job.stage?event:{stage:job.stage||'starting'});
+}
+function scanButton(action,id,label,primary=false,disabled=false) {
+  const busy=scanBusyJobs.has(id);
+  return `<button type="button" class="${primary?'primary':'quiet'}-button" data-job-action="${action}" data-job-id="${escapeHTML(id)}" ${disabled||busy||!jobsConnected?'disabled':''}>${escapeHTML(busy?(action==='cancel'?'Pausing…':action==='deepen'?'Starting…':'Resuming…'):label)}</button>`;
+}
+function jobControls(job) {
+  if(!localSession?.controls||state?.demo)return '';
+  if(KiraView.active(job))return scanButton('cancel',job.job_id,job.cancel_requested?(job.scan_policy?'Pausing…':'Stopping…'):job.scan_policy?'Pause scan':'Stop',false,job.cancel_requested);
+  const key=String(job.input.wallet||job.input.address||'').toLowerCase(),session=KiraView.researchSession(jobList,{key});
+  if(session?.job.job_id===job.job_id&&session.action)return scanButton(session.action,job.job_id,session.actionLabel,session.action==='deepen');
+  if(!['wallet.add','wallet.refresh'].includes(job.operation)&&['interrupted','failed','cancelled'].includes(job.state))return scanButton('resume',job.job_id,'Resume saved work');
+  return '';
+}
+function renderWalletScan() {
+  const card=$('wallet-scan'),wallet=typeof currentWallet==='function'?currentWallet():null;
+  const session=wallet?KiraView.researchSession(jobList,wallet):null;
+  card.hidden=!session;if(!session)return;
+  const {job,isDeep,basicReady,mode}=session,p=KiraView.jobPresentation(job,Date.now(),jobsConnected),progress=KiraView.jobProgress(job,Date.now(),jobsConnected);
+  const focused=card.contains(document.activeElement)?document.activeElement.dataset.jobId||'heading':null;
+  const detailsOpen=card.querySelector('details')?.open;
+  const saved=!!(job.result||job.previous_result||wallet.analysed_at),working=KiraView.active(job);
+  const steps=[['Saved results',saved?'done':!isDeep?'current':'next'],['Basic scan',basicReady?'done':!isDeep?'current':'next'],['Deep scan',isDeep?(mode==='saved'?'done':mode==='paused'?'paused':'current'):'next']];
+  const canControl=localSession?.controls&&!state?.demo;
+  const action=canControl&&session.action?scanButton(session.action,job.job_id,job.cancel_requested&&working?'Pausing…':session.actionLabel,session.action!=='cancel',working&&job.cancel_requested):'';
+  const status=!jobsConnected?'Reconnecting':mode==='ready'?'Optional next step':mode==='paused'?'Saved for later':mode==='saved'?'Results saved':mode==='pausing'?'Pausing':mode==='waiting'?'Waiting':'In progress';
+  card.dataset.mode=mode;
+  card.innerHTML=`<ol class="scan-steps" aria-label="Wallet scan stages">${steps.map(([label,status],i)=>`<li class="${status}" ${status==='current'?'aria-current="step"':''}><span aria-hidden="true">${status==='done'?'✓':i+1}</span><span>${label}${i===2&&!isDeep?'<small>Optional</small>':''}</span></li>`).join('')}</ol>
+    <div class="scan-heading"><div><span class="scan-status">${p.spinner&&!job.cancel_requested?'<span class="spinner" aria-hidden="true"></span>':''}${status}</span><h2 id="wallet-scan-title" tabindex="-1">${escapeHTML(session.title)}</h2><p>${escapeHTML(session.description)}</p></div><div class="scan-actions">${action}<a class="text-link" href="#/activity">View scan details <span aria-hidden="true">↗</span></a></div></div>
+    ${working?`<div class="scan-current"><div class="scan-current-heading"><strong>${escapeHTML(jobStage(job))}</strong><span data-job-timer="${escapeHTML(job.job_id)}">${p.timerLabel} ${KiraView.duration(p.elapsed)}</span></div>${progress.count?`<p>${escapeHTML(progress.count)} <span class="scan-step-note">· current step</span></p>`:'<p>Preparing the next check. The total work is not known yet.</p>'}${progress.total?`<progress value="${progress.checked}" max="${progress.total}" aria-label="Current step: ${escapeHTML(progress.count)}"></progress>`:''}<p class="scan-estimate" data-job-estimate="${escapeHTML(job.job_id)}">${escapeHTML(progress.eta)}</p></div>`:''}
+    ${!jobsConnected?'<p class="scan-notice">The local connection was lost. Showing the last recorded state. Scan controls will return when connected.</p>':p.quiet?'<p class="scan-notice">Still waiting for the next update. Data sources can be slow; your saved results are safe. You can pause at any time.</p>':''}
+    <div class="scan-saved"><span>${wallet.analysed_at?wallet.assets.length+(wallet.assets.length===1?' position saved · ':' positions saved · ')+wallet.unpriced_count+' unpriced':'Verified results will appear below as they are saved.'}</span>${progress.lastProgress?`<span data-job-progress="${escapeHTML(job.job_id)}">Last progress ${stamp(progress.lastProgress)}</span>`:''}</div>
+    <details class="scan-explainer" ${detailsOpen?'open':''}><summary>${mode==='ready'?'What does a deep scan check?':'About this scan'}</summary><p>Deep scanning checks additional token history, remaining networks and more complex market routes. It has no overall time limit. You can pause and resume saved work here. Missing prices and unchecked tokens stay unknown.</p><p>You can leave this page. Scanning continues while Kira is running on this computer. If Kira stops, return here to resume. Long scans do not guarantee that every token or price can be found.</p></details>`;
+  if(focused){const next=[...card.querySelectorAll('[data-job-id]')].find(el=>el.dataset.jobId===focused);(next||$('wallet-scan-title')).focus({preventScroll:true});}
+  const announcement=job.job_id+':'+mode+':'+jobsConnected;
+  if(announcement!==scanAnnouncement){scanAnnouncement=announcement;$('scan-announcement').textContent=!jobsConnected?'Scan connection lost. Saved results remain available.':session.title;}
 }
 async function localAPI(path,options={}){
   const response=await fetch(path,{cache:'no-store',...options,headers:{'X-Kira-Session':localSession?.token||'',...options.headers},signal:options.signal||AbortSignal.timeout(12000)});
@@ -30,7 +67,9 @@ async function submitOperation(operation,input){
   const key=sessionStorage.getItem(storageKey)||crypto.randomUUID();sessionStorage.setItem(storageKey,key);
   try{
     const result=await localAPI('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schema_version:1,operation,input,idempotency_key:key})});
-    sessionStorage.removeItem(storageKey);toast((operation.startsWith('settings.')?'Queued ':'Saved ')+(jobLabels[operation]||'job').toLowerCase());await pollJobs();return result;
+    sessionStorage.removeItem(storageKey);
+    const scanMessage=operation==='job.deepen'?'Deep scan queued. Your basic results are ready to use.':operation==='job.resume'?'Scan queued to resume from saved work.':operation==='job.cancel'?'Pause requested. Saved results stay available.':null;
+    toast(scanMessage||(operation.startsWith('settings.')?'Queued ':'Saved ')+(jobLabels[operation]||'job').toLowerCase());await pollJobs();return result;
   }finally{pendingActions.delete(fingerprint);}
 }
 function refreshControlState(){
@@ -65,20 +104,21 @@ function renderJobs(){
     const presentation=KiraView.jobPresentation(j,Date.now(),jobsConnected),progress=KiraView.jobProgress(j,Date.now(),jobsConnected);
     const counts=j.events?.at(-1)?.counts||{},context=j.events?.at(-1)?.context;
     const evidence=progress.count?(Number.isSafeInteger(counts.pending_ranges)?counts.pending_ranges+' block ranges still pending':''):[...Object.entries(counts).filter(([name])=>name!=='block_number').map(([name,count])=>`${name.replaceAll('_',' ')} ${count}`),...(context?.block_number?['block '+context.block_number]:[])].join(' · ');
-    const controls=KiraView.active(j)?`<button class="quiet-button" data-job-action="cancel" data-job-id="${escapeHTML(j.job_id)}" ${j.cancel_requested?'disabled':''}>${j.cancel_requested?'Stopping…':'Stop'}</button>`:['interrupted','failed','cancelled'].includes(j.state)?`<button class="quiet-button" data-job-action="resume" data-job-id="${escapeHTML(j.job_id)}">Resume saved work</button>`:'';
+    const controls=jobControls(j);
     const link=j.input.wallet||j.input.address;
     const name=state?.wallets.find(w=>w.key===link?.toLowerCase())?.name||(j.operation==='wallet.add'?j.input.tag:null);
     const recorded=(j.events||[]).map(event=>{const context=event.context;const detail=Object.entries(event.counts||{}).filter(([name])=>name!=='block_number').map(([name,value])=>name.replaceAll('_',' ')+': '+value).join(' · ');return `<li><strong>${escapeHTML(researchStage(event))}</strong><span>${stamp(event.observed_at)} · ${escapeHTML(detail)}${context?.block_number?' · block '+escapeHTML(context.block_number):''}</span></li>`;}).join('');
     const stages=recorded?`<details class="job-stages"><summary>Recorded stages · ${j.events.length}</summary><ol>${recorded}</ol></details>`:'';
     return `<article class="job-row"><div class="job-identity"><span class="job-state ${escapeHTML(j.state)}">${presentation.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(presentation.label)}</span><strong>${escapeHTML(jobLabels[j.operation]||j.operation)}</strong>${link?`<a href="#/wallet/${escapeHTML(link.toLowerCase())}">${escapeHTML(name||shortAddress(link))}</a>`:''}<p>${escapeHTML(jobStage(j))}${j.state==='partial'?' · coverage gaps remain':''}</p><p class="job-timer" data-job-timer="${escapeHTML(j.job_id)}">${presentation.timerLabel} ${KiraView.duration(presentation.elapsed)}${j.attempt>1?' · since request '+KiraView.duration(progress.totalElapsed):''}</p>${progress.count?`<p class="job-progress">${escapeHTML(progress.count)}</p>`:''}<p class="job-estimate" data-job-estimate="${escapeHTML(j.job_id)}">${escapeHTML(progress.eta)}</p>${progress.saved?`<p class="job-saved">${escapeHTML(progress.saved)}</p>`:''}${evidence?`<p class="job-evidence">${escapeHTML(evidence)}</p>`:''}${presentation.freshness?`<p class="job-freshness">${escapeHTML(presentation.freshness)}</p>`:''}${j.errors?.length?`<p class="job-error">${escapeHTML(j.errors[0].message)}</p>`:''}${stages}<small>Last update ${stamp(j.updated_at)} · attempt ${j.attempt} · ${escapeHTML(j.job_id.slice(0,8))}</small></div><div class="job-actions">${controls}</div></article>`;
   }).join('')||'<div class="empty"><h3>'+(!localSession?.controls?'Activity is not available in this session':'No jobs in this view')+'</h3><p>Research jobs appear here when a local action starts.</p></div>';
-  $('active-work').hidden=active.length===0||selectedView==='activity';
+  $('active-work').hidden=active.length===0||selectedView==='activity'||(selectedView==='wallet'&&active.every(j=>String(j.input.wallet||j.input.address||'').toLowerCase()===selectedWallet));
   $('active-work').innerHTML=active.slice(0,2).map(j=>{
     const p=KiraView.jobPresentation(j,Date.now(),jobsConnected),progress=KiraView.jobProgress(j,Date.now(),jobsConnected);
     return `<div><a href="#/activity"><strong>${p.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(p.label)} · ${escapeHTML(jobLabels[j.operation]||j.operation)}</strong><small data-job-timer="${escapeHTML(j.job_id)}">${p.timerLabel} ${KiraView.duration(p.elapsed)}</small></a><p>${escapeHTML(jobStage(j))}${p.freshness?' · '+escapeHTML(p.freshness):''}</p>${progress.count?`<p>${escapeHTML(progress.count)}</p>`:''}<p data-job-estimate="${escapeHTML(j.job_id)}">${escapeHTML(progress.eta)}</p>${progress.saved?`<p>${escapeHTML(progress.saved)}</p>`:''}</div>`;
   }).join('')+(active.length>2?'<small>'+ (active.length-2)+' more jobs in Activity</small>':'');
   if(typeof renderBriefing==='function')renderBriefing();
   if(typeof renderWallets==='function'&&state)renderWallets();
+  renderWalletScan();
 }
 function tickJobTimers(){
   if(document.hidden)return;
@@ -126,7 +166,19 @@ $('refresh-wallet').addEventListener('click',async()=>{try{await submitOperation
 $('refresh-prices').addEventListener('click',async()=>{try{await submitOperation('prices.refresh',{wallet:selectedWallet});}catch(error){toast(error.message);}});
 $('edit-tags').addEventListener('click',()=>{if(!currentWallet())return;$('tags-dialog').dataset.wallet=selectedWallet;$('tag-values').value=currentWallet().tags.join('\n');$('tags-error').textContent='';$('tags-dialog').showModal();});
 formAction($('tags-form'),$('tags-error'),async()=>{await submitOperation('wallet.setTags',{wallet:$('tags-dialog').dataset.wallet,tags:$('tag-values').value.split('\n').filter(t=>t.length)});$('tags-dialog').close();});
-$('jobs-list').addEventListener('click',async event=>{const button=event.target.closest('[data-job-action]');if(!button)return;button.disabled=true;try{await submitOperation('job.'+button.dataset.jobAction,{job_id:button.dataset.jobId});}catch(error){button.disabled=false;toast(error.message);}});
+async function handleScanAction(event) {
+  const button=event.target.closest('[data-job-action]');if(!button||button.disabled||!jobsConnected)return;
+  const id=button.dataset.jobId,action=button.dataset.jobAction;
+  if($('wallet-scan').contains(button))$('wallet-scan-title').focus({preventScroll:true});
+  if(scanBusyJobs.has(id))return;scanBusyJobs.add(id);button.disabled=true;
+  button.textContent=action==='cancel'?'Pausing…':action==='deepen'?'Starting…':'Resuming…';
+  try{await submitOperation('job.'+action,{job_id:id});}
+  catch(error){toast(error.message);}
+  finally{scanBusyJobs.delete(id);renderJobs();}
+}
+$('jobs-list').addEventListener('click',handleScanAction);
+$('wallet-scan').addEventListener('click',handleScanAction);
+$('chat-research').addEventListener('click',handleScanAction);
 let connectionConfig = null, connectionReadiness = null, connectionRevision = 0, workspaceSettingsRevision = 0, pendingSetting = null, settingSaving = false, settingSaved = false, settingFailed = false, connectionWallet = null;
 function connectionSummary(config) {
   const order = config.rpc.allow_public_fallback === false ? 'Custom RPC only.' : config.rpc.priority === 'custom_first' ? 'Custom RPC first, public backup.' : 'Public RPC first, custom backup.';

@@ -175,17 +175,91 @@ class JobsTest(JobFixtures, unittest.TestCase):
         self.assertEqual(registry['wallets'][0]['latest_snapshot']['directory'],'snapshots/new')
         self.assertEqual(registry['research_runs'][-1]['snapshot'],'snapshots/older')
 
-    def test_continuation_is_durable_and_never_recursively_admitted(self):
+    def test_legacy_basic_result_can_start_one_explicit_continuation(self):
         parent=self.store.submit(self.request());self.publish(parent)
         result=json.loads((self.root/parent['checkpoint']/'results.json').read_text())
         result['pipeline']={'phase':'baseline'};atomic(self.root/parent['checkpoint']/'results.json',result)
         parent.update(state='partial',result=self.store.publication(parent));self.store.save(parent)
-        self.store.continue_research();self.store.continue_research()
+        # Pre-upgrade envelopes also require an explicit choice for new deep work.
+        parent.pop('scan_policy');self.store.save(parent)
+        self.store.continue_research();self.assertEqual(len(self.store.list()),1)
+        self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'legacy-deep-one'))
+        self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'legacy-deep-two'))
+        self.store.continue_research()
         rows=self.store.list();self.assertEqual(len(rows),2)
         child=next(j for j in rows if j.get('parent_job_id')==parent['job_id'])
         self.assertEqual(child['analysis_phase'],'enrichment')
         self.assertEqual(self.store.get(parent['job_id'])['continuation_id'],child['job_id'])
         self.assertIn('enrichment',self.store.engine_command(child))
+
+    def basic_result(self):
+        parent=self.store.submit(self.request());self.publish(parent)
+        parent.update(state='partial',result=self.store.publication(parent));self.store.save(parent)
+        return parent
+
+    def test_new_basic_scan_never_starts_deep_work_without_a_choice(self):
+        parent=self.basic_result()
+        self.store.continue_research();JobStore(self.root).continue_research()
+        self.assertEqual(len(self.store.list()),1)
+        self.assertEqual(self.store.get(parent['job_id'])['scan_policy'],'optional_depth_v1')
+
+    def test_deep_scan_concurrent_clicks_and_restart_admit_one_child(self):
+        parent=self.basic_result()
+        def start(i):return self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'deep-click-'+str(i)))
+        with ThreadPoolExecutor(max_workers=8) as executor:children=list(executor.map(start,range(8)))
+        self.assertEqual(len({j['job_id'] for j in children}),1);child=children[0]
+        self.assertEqual(child['analysis_phase'],'enrichment');self.assertEqual(child['parent_job_id'],parent['job_id'])
+        self.assertEqual(child['previous_result']['directory'],parent['checkpoint'])
+        # Simulate a crash after the child envelope but before its receipt/link.
+        (self.store.jobs/'requests'/(digest('deep-click-0')+'.json')).unlink()
+        parent=self.store.get(parent['job_id']);parent.pop('continuation_id');self.store.save(parent)
+        restored=JobStore(self.root).submit(self.request('job.deepen',{'job_id':parent['job_id']},'deep-after-restart'))
+        self.assertEqual(restored['job_id'],child['job_id']);self.assertEqual(len(self.store.list()),2)
+        self.assertEqual(self.store.get(parent['job_id'])['continuation_id'],child['job_id'])
+
+    def test_paused_deep_scan_requires_resume_and_preserves_earlier_result(self):
+        parent=self.basic_result();child=self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'start-depth'))
+        self.store.submit(self.request('job.cancel',{'job_id':child['job_id']},'pause-depth'))
+        self.store.continue_research();self.store.recover()
+        repeated=self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'another-start'))
+        self.assertEqual(repeated['state'],'cancelled')
+        resumed=self.store.submit(self.request('job.resume',{'job_id':child['job_id']},'resume-depth'))
+        self.assertEqual(resumed['job_id'],child['job_id']);self.assertEqual(resumed['state'],'queued')
+        self.assertEqual(resumed['previous_result'],child['previous_result']);self.assertFalse(resumed['cancel_requested'])
+
+    def test_deep_scan_requires_saved_basic_result_and_current_generation(self):
+        parent=self.store.submit(self.request())
+        with self.assertRaises(JobError) as error:self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'early-depth'))
+        self.assertEqual(error.exception.code,'basic_scan_required')
+        self.publish(parent);parent.update(state='partial',result=self.store.publication(parent));self.store.save(parent)
+        child=self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'valid-depth'))
+        self.store.submit(self.request('job.cancel',{'job_id':child['job_id']},'pause-old-depth'))
+        self.store.submit(self.request(key='new-basic-scan'))
+        for operation,target in [('job.deepen',parent),('job.resume',child)]:
+            with self.assertRaises(JobError) as error:self.store.submit(self.request(operation,{'job_id':target['job_id']},'stale-'+operation))
+            self.assertEqual(error.exception.code,'superseded')
+
+    def test_progress_clock_does_not_advance_on_repeated_waits(self):
+        job=self.running();event={'stage':'onchain_progress','operation':'balances','chain_id':8453,'checked':3,'total':10}
+        with patch('kira_jobs.now',return_value='2026-10-15T00:00:00Z'):self.store.event(job['job_id'],event)
+        with patch('kira_jobs.now',return_value='2026-10-15T00:01:00Z'):
+            self.store.event(job['job_id'],event);self.store.event(job['job_id'],{'stage':'market_paused'})
+        self.assertEqual(self.store.get(job['job_id'])['progress_observed_at'],'2026-10-15T00:00:00Z')
+
+    def test_app_restart_exposes_resume_without_starting_providers(self):
+        parent=self.basic_result();child=self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'restart-deep'))
+        with patch.object(self.store,'launch') as launch:
+            self.assertTrue(self.store.reconcile_idle());launch.assert_not_called()
+        saved=self.store.get(child['job_id']);self.assertEqual(saved['state'],'interrupted')
+        self.assertEqual(saved['previous_result'],child['previous_result'])
+        self.assertEqual(self.store.get(parent['job_id'])['state'],'partial')
+        self.store.submit(self.request('job.resume',{'job_id':child['job_id']},'restart-resume'))
+        import fcntl
+        for lock in ('.job-worker.lock','.analysis.lock'):
+            with (self.root/lock).open('a') as held:
+                fcntl.flock(held,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                self.assertFalse(self.store.reconcile_idle())
+                self.assertEqual(self.store.get(child['job_id'])['state'],'queued')
 
     def test_duplicate_and_key_conflict(self):
         a=self.store.submit(self.request());b=self.store.submit(self.request());self.assertEqual(a['job_id'],b['job_id'])
@@ -354,7 +428,8 @@ class WorkerProcessTest(JobFixtures, unittest.TestCase):
     def test_short_settings_and_prices_preempt_enrichment_then_it_resumes(self):
         parent=self.store.submit(self.request());self.publish(parent)
         result=json.loads((self.root/parent['checkpoint']/'results.json').read_text());result['pipeline']={'phase':'baseline'};atomic(self.root/parent['checkpoint']/'results.json',result)
-        parent.update(state='partial',result=self.store.publication(parent));self.store.save(parent);self.store.continue_research()
+        parent.update(state='partial',result=self.store.publication(parent));self.store.save(parent)
+        self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'start-preemption-depth'))
         child=self.store.get(self.store.get(parent['job_id'])['continuation_id']);worker=self.worker_process('wait')
         try:
             self.wait_for(lambda:self.store.get(child['job_id'])['state']=='running')

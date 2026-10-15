@@ -76,6 +76,19 @@ class JobsHTTPTest(unittest.TestCase):
         code,first=self.request();self.assertEqual(code,202);_,duplicate=self.request();self.assertEqual(first['job_id'],duplicate['job_id'])
         self.assertEqual(self.request('/api/jobs',method='GET')[0],200)
         self.assertEqual(self.request('/api/jobs',headers={'X-Kira-Session':''},method='GET')[0],403)
+
+    def test_deep_scan_requires_protected_transport_and_an_explicit_request(self):
+        parent=self.http.jobs.submit({'schema_version':1,'operation':'wallet.refresh','input':{'wallet':ADDRESS},'idempotency_key':'basic-http-scan'})
+        parent.update(state='partial',result={'snapshot_id':parent['checkpoint'],'status':'completed_with_coverage_gaps'});self.http.jobs.save(parent)
+        body=json.dumps({'schema_version':1,'operation':'job.deepen','input':{'job_id':parent['job_id']},'idempotency_key':'deep-http-scan'}).encode()
+        for headers in ({'X-Kira-Session':''},{'Origin':'https://foreign.test'},{'Host':'foreign.test:'+str(self.http.server_port)}):
+            self.assertEqual(self.request(body=body,headers=headers)[0],403)
+        self.assertEqual(len(self.http.jobs.list()),1)
+        code,child=self.request(body=body);self.assertEqual(code,202)
+        self.assertEqual(self.request(body=body)[1]['job_id'],child['job_id'])
+        self.assertEqual(child['analysis_phase'],'enrichment')
+        self.http.controls=False
+        self.assertEqual(self.request(body=body)[0],501)
     def test_agent_endpoints_require_local_session_and_exact_origin(self):
         self.assertEqual(self.request('/api/agent',method='GET')[0],200)
         for path in ('/api/agent','/api/agent/models?provider=codex','/api/chat','/api/chat/history'):

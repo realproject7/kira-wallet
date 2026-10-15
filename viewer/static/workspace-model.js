@@ -47,7 +47,7 @@
     const disabled=(readiness?.public_discovery===false&&readiness?.discovery_provider==='none'&&chains.every(c=>!c.complete))||(!readiness&&chains.every(c=>c.discovery_status==='disabled'));
     const noKey=readiness?.discovery_configured&&!readiness.discovery_key_available;
     const rpc=chains.filter(rpcGap);
-    if(chains.some(c=>c.market_pending))return {title:'Balances saved; market checks paused',message:'Recorded balances and completed registry checks are available. Remaining market verification reached its time budget. Resume the job in Activity to continue saved checks. Pending markets are not verified absent, and missing prices remain unknown.',action:'none',settings:false};
+    if(chains.some(c=>c.market_pending))return {title:'Some market checks are still open',message:'Recorded balances and completed checks are available. Start or resume an optional deep scan to investigate remaining markets. Pending markets and missing prices remain unknown.',action:'none',settings:false};
     if(rpc.length){
       const connection=missing&&(disabled||noKey);
       return {title:'Some balances could not be checked',
@@ -57,8 +57,8 @@
     if(reported.length)return {title:'Network retirement was reported',message:reported.map(c=>c.name).join(', ')+': a shutdown was reported, but no verified official closure notice is recorded. Saved balances remain dated evidence. RPC failure alone cannot establish closure, and Alchemy is not a verified recovery path. Check network coverage before retrying.',action:'none',settings:false};
     if(chains.some(c=>c.head_status==='stale'))return {title:'A provider returned an old block head',message:'These balances use a dated block observation. A stale head does not prove the network has shut down. Review the recorded block and time, then retry later or review your data connection.',action:'refresh',settings:true,settingsLabel:'Review data connection'};
     if(chains.some(c=>c.market_errors>0))return {title:'Some market checks did not complete',message:'Recorded holdings remain available. Some pool reads failed, so missing market and price details remain unknown. Retry holdings. If this continues, review your data connection and its RPC access.',action:'refresh',settings:true,settingsLabel:'Review data connection'};
-    if(chains.some(c=>c.discovery_status==='history_pending'))return {title:'Free token history is still being checked',message:'Kira found token candidates without a key and verifies their balances with RPC. The saved transfer-history window is unfinished. Refresh holdings to continue from its saved page. Known balances remain available; transfer records do not prove current holdings. Alchemy is optional for a broader initial inventory.',action:'refresh',refreshLabel:'Continue free discovery',settings:true,settingsLabel:'Review optional connection'};
-    if(!disabled&&!noKey&&chains.some(c=>c.rpc_pending||c.registry_phase==='deferred'))return {title:'First results are available',message:'This initial report has recorded balances. Other networks, remaining token candidates, the full Mint Club registry and markets need detailed research. Check Activity for progress or to resume stopped work. You can also refresh holdings. Missing holdings and prices remain unknown. Alchemy is optional for broader coverage.',action:'none',settings:true,settingsLabel:'Review optional connection'};
+    if(chains.some(c=>c.discovery_status==='history_pending'))return {title:'More token history is available to check',message:'Known balances remain available. An optional deep scan can investigate remaining transfer history and verify additional token balances. Transfer records alone do not prove current holdings. Missing tokens remain unknown.',action:'none',settings:false};
+    if(!disabled&&!noKey&&chains.some(c=>c.rpc_pending||c.registry_phase==='deferred'))return {title:'Your saved results cover the initial checks',message:'An optional deep scan checks remaining networks, additional tokens and harder-to-price holdings. You can keep using the saved results below. Unchecked holdings and prices remain unknown.',action:'none',settings:false};
     if(missing&&disabled)return {title:'Some tokens may be missing',message:'Free research checks native balances, selected common tokens and Mint Club assets, with keyless token discovery on supported networks. Public RPC cannot list all wallet tokens. We recommend Alchemy for broader token coverage on supported networks. Connect it, then refresh holdings. Missing tokens are not zero balances.',action:'settings',settingsLabel:'Set up Alchemy'};
     if(missing&&noKey)return {title:'Token discovery needs a connection',message:'The local Alchemy key is unavailable. Follow the setup guide, check the key, then refresh holdings. Other tokens may be missing from this partial portfolio.',action:'settings',settingsLabel:'Set up Alchemy'};
     if(missing&&readiness?.discovery_key_available&&chains.some(c=>['disabled','missing_credential'].includes(c.discovery_status)))return {title:'Refresh holdings to discover other tokens',message:'Your discovery connection is now available. This saved analysis predates it and remains partial until you refresh holdings.',action:'refresh'};
@@ -68,15 +68,15 @@
   function jobPresentation(job, now = Date.now(), connected = true) {
     const labels = { queued: 'Queued', running: 'Running', succeeded: 'Completed', partial: 'Saved with gaps', interrupted: 'Interrupted', failed: 'Failed', cancelled: 'Stopped' };
     const start = job.state === 'queued' ? job.updated_at || job.created_at : job.started_at || job.created_at;
-    const end = active(job) ? now : Date.parse(job.updated_at);
+    const end = active(job) ? now : Date.parse(job.events?.at(-1)?.observed_at || job.updated_at);
     const elapsed = Math.max(0, Math.floor((end - Date.parse(start)) / 1000));
     const last = job.events?.at(-1)?.observed_at || job.updated_at;
     const quiet = job.state === 'running' && now - Date.parse(last) > 60000;
     return {
-      label: job.cancel_requested && active(job) ? 'Stopping' : labels[job.state] || 'Unknown',
+      label: job.cancel_requested && active(job) ? (job.scan_policy?'Pausing':'Stopping') : job.scan_policy&&job.state==='cancelled'?'Paused':job.scan_policy&&job.analysis_phase==='baseline'&&['partial','succeeded'].includes(job.state)?'Basic scan ready':job.scan_policy&&job.analysis_phase==='enrichment'&&['partial','succeeded'].includes(job.state)?'Deep scan saved':labels[job.state] || 'Unknown',
       active: active(job), spinner: connected && job.state === 'running', quiet,
       elapsed: Number.isFinite(elapsed) ? elapsed : null,
-      timerLabel: job.state === 'queued' ? 'Waiting' : job.started_at ? job.attempt>1?'Attempt elapsed':'Elapsed' : 'Since request',
+      timerLabel: job.state === 'queued' ? 'Waiting' : job.started_at ? job.attempt>1?(job.scan_policy?'Current pass':'Attempt elapsed'):'Elapsed' : 'Since request',
       freshness: !connected ? 'Connection lost. Last recorded state shown.' : quiet ? 'Awaiting a new stage update. Still marked running.' : '',
     };
   }
@@ -86,7 +86,8 @@
     const last=job.events?.at(-1),counts=last?.counts||{},context=last?.context||{},unit=progressUnits[context.operation];
     const known=context.operation!=='reserves'&&Number.isSafeInteger(counts.total)&&counts.total>0&&Number.isSafeInteger(counts.checked)&&counts.checked<=counts.total;
     const checked=Number.isSafeInteger(counts.checked)&&counts.checked>=0?counts.checked:null;
-    const count=unit&&checked!=null?(known?checked+' / '+counts.total+' '+unit:checked+' '+unit+' checked')+(context.operation==='history'?' including saved work':''):'';
+    const currentScope=!active(job)||context.attempt==null||context.attempt===job.attempt;
+    const count=currentScope&&unit&&checked!=null?(known?checked+' / '+counts.total+' '+unit:checked+' '+unit+' checked')+(context.operation==='history'?' including saved work':''):'';
     const waiting=job.state==='queued'&&job.continuation?.not_before*1000>now;
     let eta=waiting?'Provider retry in '+duration(Math.ceil(job.continuation.not_before-now/1000)):'Overall remaining time is unknown.';
     if(job.state==='running'&&connected&&!job.cancel_requested&&known&&checked<counts.total&&context.attempt===job.attempt&&now-Date.parse(last.observed_at)<=20000){
@@ -112,14 +113,44 @@
     if(!active(job))eta='';
     const age=Math.max(0,Math.floor((now-Date.parse(job.created_at))/1000));
     const saved=active(job)&&(job.result||job.previous_result)?'Saved results remain available while research continues. Missing holdings and prices are still unknown.':'';
-    return {count,eta,saved,totalElapsed:Number.isFinite(age)?age:null};
+    return {count,eta,saved,totalElapsed:Number.isFinite(age)?age:null,
+      checked:known&&currentScope?checked:null,total:known&&currentScope?counts.total:null,
+      lastProgress:job.progress_observed_at||null};
+  }
+  function researchSession(jobs,wallet,now=Date.now()) {
+    const rows=jobs.filter(j=>['wallet.add','wallet.refresh'].includes(j.operation)&&String(j.input?.wallet||j.input?.address||'').toLowerCase()===wallet?.key).sort((a,b)=>b.created_at.localeCompare(a.created_at));
+    if(!rows.length)return null;
+    const latest=rows[0],base=latest.parent_job_id?rows.find(j=>j.job_id===latest.parent_job_id):latest;
+    const deep=latest.analysis_phase==='enrichment'?latest:rows.find(j=>j.parent_job_id===base?.job_id);
+    const basic=base?.analysis_phase!=='enrichment'?base:null;
+    const job=deep||basic||latest,isDeep=job.analysis_phase==='enrichment';
+    const basicReady=!!basic?.result&&['succeeded','partial'].includes(basic.state)||isDeep;
+    let mode,title,description,action=null,actionLabel=null;
+    if(active(job)){
+      mode=job.cancel_requested?'pausing':job.state==='queued'?'waiting':'running';
+      const waiting=job.continuation?.not_before*1000>now;
+      title=job.cancel_requested?'Saving your stopping point':isDeep?(waiting?'Deep scan is waiting for the data source':job.state==='queued'?'Deep scan is queued':'Looking deeper into your wallet'):'Building your basic results';
+      description=job.cancel_requested?'Your saved results stay available. Resume here when you are ready.':isDeep?'Additional tokens and market routes are being checked. New results appear as they are saved.':'Checking initial balances on Base, Ethereum and Blast. Other networks and harder-to-price tokens are part of the optional deep scan.';
+      action='cancel';actionLabel='Pause scan';
+    }else if(['cancelled','interrupted','failed'].includes(job.state)){
+      mode='paused';title=isDeep?'Deep scan paused':'Basic scan paused';
+      description=job.errors?.some(e=>e.code==='no_progress')?'Recent attempts made no new progress. Your evidence is saved. Check the data connection, then retry when ready.':job.state==='failed'?'The data source could not finish this scan. Saved results are safe. You can retry from the saved work.':'Your stopping point is saved. Resume to continue this scan without starting over.';
+      if(job.errors?.some(e=>e.code==='superseded'))description='A newer basic scan replaced this work. Open the latest wallet results to continue.';
+      else {action='resume';actionLabel=job.state==='failed'||job.errors?.some(e=>e.code==='no_progress')?'Retry saved scan':'Resume '+(isDeep?'deep':'basic')+' scan';}
+    }else if(isDeep){
+      mode='saved';title='Deep scan results saved';description='Available checks are saved below. Some tokens, networks or market routes may still be unknown. Saved does not mean every holding or price has been found.';
+    }else{
+      mode='ready';title='Your basic results are ready';description='You can use these results now. A deep scan looks for more tokens across the remaining networks and investigates unpriced holdings. It is optional and may take a while.';
+      if(basic?.analysis_phase==='baseline'&&basic.result){action='deepen';actionLabel='Start deep scan';}
+    }
+    return {basic,deep,job,isDeep,basicReady,mode,title,description,action,actionLabel};
   }
   function duration(seconds) {
     if (seconds == null) return 'Unknown';
     const h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = seconds % 60;
     return (h ? h + 'h ' : '') + m + 'm ' + s + 's';
   }
-  const api = { catalog, pageSize, active, jobPresentation, jobProgress, duration, discoveryNotice, coverageGap, networkEmpty };
+  const api = { catalog, pageSize, active, jobPresentation, jobProgress, researchSession, duration, discoveryNotice, coverageGap, networkEmpty };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KiraView = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

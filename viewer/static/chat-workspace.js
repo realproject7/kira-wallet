@@ -15,7 +15,7 @@ function renderResearchChat() {
     const name=state?.wallets.find(w=>w.key===key)?.name||job.input.tag||'Wallet research';
     const counts=job.events?.at(-1)?.counts||{};
     const detail=progress.count;
-    return `<a class="chat-research-row" href="#/activity">${p.spinner?'<span class="spinner" aria-hidden="true"></span>':''}<span><strong>${escapeHTML(name)}</strong><span>${escapeHTML(jobStage(job))}${detail?' · '+escapeHTML(detail):''}</span><small data-job-timer="${escapeHTML(job.job_id)}">${escapeHTML(p.timerLabel)} ${KiraView.duration(p.elapsed)}</small><small data-job-estimate="${escapeHTML(job.job_id)}">${escapeHTML(progress.eta)}</small>${p.freshness?'<small>'+escapeHTML(p.freshness)+'</small>':''}</span><span aria-hidden="true">↗</span></a>`;
+    return `<div class="chat-research-item"><a class="chat-research-row" href="#/wallet/${escapeHTML(key)}">${p.spinner?'<span class="spinner" aria-hidden="true"></span>':''}<span><strong>${escapeHTML(name)}</strong><span>${escapeHTML(jobStage(job))}${detail?' · '+escapeHTML(detail):''}</span><small data-job-timer="${escapeHTML(job.job_id)}">${escapeHTML(p.timerLabel)} ${KiraView.duration(p.elapsed)}</small><small data-job-estimate="${escapeHTML(job.job_id)}">${escapeHTML(progress.eta)}</small>${p.freshness?'<small>'+escapeHTML(p.freshness)+'</small>':''}</span><span aria-hidden="true">↗</span></a>${jobControls(job)}</div>`;
   }).join('')+(active.length>2?`<a class="text-button" href="#/activity">${active.length-2} more in Activity</a>`:'');
 }
 function expandChat(expand,animate=true) {
