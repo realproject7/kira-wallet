@@ -535,6 +535,8 @@ def finish(wallet, folder, networks, discovered):
     raw=read(folder/'onchain-summary.json')
     research_pending=any(s.get('discovery_status') in ('history_pending','throttled') for d in discovered for s in discovery_sources(d)) or any(c.get('research_pending') and not c.get('continuation_stalled') for c in raw['chains'])
     tokens=[t for c in raw['chains'] for t in c['tokens']]
+    for n in networks:
+        if n['environment']=='mainnet':event('onchain_progress',operation='asset_inventory',chain_id=n['chain_id'],total=sum(t['chain_id']==n['chain_id'] for t in tokens))
     # A slow general pool scan must not consume the entire publication slice.
     # Expand funded burns and recover missing verified-member quotes first.
     early=[t for t in tokens if (t.get('mintclub') or {}).get('funded') or t.get('mintclub_membership_status')=='verified']

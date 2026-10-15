@@ -241,6 +241,8 @@ not establish a new USD 1 qualification.
 The optional asset_progress map persists total, checked, quoted and unknown
 counts per mainnet chain. checked equals quoted plus unknown, not successful
 valuation. It survives process restarts, pause and resume and current-step count
-resets. The total can grow with discovered holdings. The viewer separately shows
-saved asset checks, available prices and unresolved checks. It does not derive
+resets. The total can grow with discovered holdings.
+Each slice registers the known inventory for all mainnet chains before market
+checks, so the first completed chain does not imply all discovered work is done.
+The viewer separately shows saved asset checks, available prices and unresolved checks. It does not derive
 an overall ETA from this changing denominator. Review not selected.

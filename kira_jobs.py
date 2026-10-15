@@ -515,6 +515,8 @@ class JobStore:
         if event.get('stage') not in allowed: return
         if event.get('operation')=='asset_review':
             if type(event.get('chain_id')) is not int or event['chain_id']<=0 or any(type(event.get(k)) is not int or event[k]<0 for k in ('total','checked','quoted','unknown')) or event['checked']>event['total'] or event['quoted']+event['unknown']!=event['checked']:return
+        if event.get('operation')=='asset_inventory':
+            if type(event.get('chain_id')) is not int or event['chain_id']<=0 or type(event.get('total')) is not int or event['total']<0:return
         with self.locked():
             job = self.get(job_id)
             counts = {k: v for k, v in event.items() if k in {'complete_chains', 'candidates', 'tokens','chain_id','registry','checked','held','block_number','total','pending_ranges','quoted','unknown'} and type(v) is int and v >= 0}
@@ -525,8 +527,11 @@ class JobStore:
                     'endpoint_index':event.get('endpoint_index') if type(event.get('endpoint_index')) is int else None,
                     'status':event.get('status') if event.get('status') in ('complete','partial','unavailable') else 'unknown'}
             job['events'].append({'stage': event['stage'], 'observed_at': now(), 'counts': counts})
-            if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets','reserves','history','market_discovery','factory_queries','pool_checks','cashout_routes','mintclub_membership','asset_review'):
+            if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets','reserves','history','market_discovery','factory_queries','pool_checks','cashout_routes','mintclub_membership','asset_review','asset_inventory'):
                 context={'operation':event['operation'],'chain_id':counts.get('chain_id'),'attempt':job['attempt']}
+                if event['operation']=='asset_inventory':
+                    prior=job.setdefault('asset_progress',{}).setdefault(str(event['chain_id']),{'total':0,'checked':0,'quoted':0,'unknown':0})
+                    prior['total']=max(prior['total'],counts['total'])
                 if event['operation']=='asset_review':job.setdefault('asset_progress',{})[str(event['chain_id'])]={k:counts[k] for k in ('total','checked','quoted','unknown')}
                 if event.get('provider') in ('etherscan_keyless','etherscan_keyless_erc1155_id0'):context['provider']=event['provider']
                 job['events'][-1]['context']=context

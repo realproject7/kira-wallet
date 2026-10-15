@@ -14,7 +14,7 @@ function researchStage(event) {
   const operations={balances:'Checking token balances',registry:'Discovering Mint Club tokens',metadata:'Reading token details',curves:'Checking curve backing',markets:'Checking markets',reserves:'Checking reserve prices',mintclub_membership:'Checking Mint Club membership',history:'Discovering transfer history',market_discovery:'Finding token markets',factory_queries:'Finding pools',pool_checks:'Verifying pools',cashout_routes:'Checking sell estimates',asset_review:'Saving asset checks'};
   const counts=event.counts||{},context=event.context||{};
   const chain=(typeof state==='undefined'?[]:state?.wallets||[]).flatMap(w=>w.chains||[]).find(c=>c.id===context.chain_id);
-  return (operations[context.operation]||label)+(context.chain_id?' · '+(chain?.name||'network '+context.chain_id):'')+(context.provider==='etherscan_keyless_erc1155_id0'?' · ERC1155 ID0':'');
+  return (context.operation==='asset_inventory'?'Saving discovered asset counts':operations[context.operation]||label)+(context.chain_id?' · '+(chain?.name||'network '+context.chain_id):'')+(context.provider==='etherscan_keyless_erc1155_id0'?' · ERC1155 ID0':'');
 }
 function jobStage(job) {
   const event=job.events?.at(-1);

@@ -55,6 +55,7 @@ test('wallet card keeps unknowns visible and disables writes while disconnected 
 });
 test('cumulative reviews remain visible through step resets, pause and resume',()=>{
  const h=harness(),asset_progress={'8453':{total:100,checked:72,quoted:12,unknown:60},'1':{total:20,checked:9,quoted:2,unknown:7}};
+ assert.deepEqual(KiraView.assetProgress({...deep,asset_progress:{...asset_progress,'137':{total:50,checked:0,quoted:0,unknown:0}}}),{total:170,checked:81,quoted:14,unknown:67});
  for(const state of ['running','cancelled','queued','partial']){
   const job={...deep,state,asset_progress,events:[{stage:'onchain_progress',counts:{checked:0,total:10},context:{operation:'pool_checks',attempt:2}}]};
   assert.deepEqual(KiraView.jobProgress(job).assets,{total:120,checked:81,quoted:14,unknown:67});
