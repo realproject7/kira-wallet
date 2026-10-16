@@ -25,41 +25,45 @@ function harness(api) {
   return {el,run:code=>vm.runInContext(code,context),context};
 }
 const status = () => ({config:{provider:'codex',model:'',scope:'none',retain_history:false},providers:[],conversation_id:'conversation',messages:[],active_turn:null});
-test('setup opens the existing account modal once without submitting model or wallet operations',async()=>{
+test('setup leaves the portfolio visible until the connection button is selected',async()=>{
   const calls=[];const h=harness(async(path,options)=>{calls.push({path,options});return {...status(),config:null};});
   h.run("location.search='?setup=1';location.hash='#/activity'");
   await h.run('initialAgent()');
-  assert.equal(h.el('agent-dialog').open,true);assert.equal(h.el('agent-dialog').opens,1);
+  assert.equal(h.el('agent-dialog').open,false);assert.equal(h.el('agent-dialog').opens,0);
   assert.equal(h.run('agentStep'),1);assert.equal(h.run('location.search'),'');
-  assert.equal(h.context.renderedRoute,'#/home');
+  assert.equal(h.run('location.hash'),'#/activity');
+  assert.deepEqual(calls.map(call=>call.path),['/api/agent']);
+  await h.el('chat-setup').listeners.click();
+  assert.equal(h.el('agent-dialog').open,true);assert.equal(h.el('agent-dialog').opens,1);
   assert.ok(calls.length>0);assert.ok(calls.every(call=>(call.path==='/api/agent'||call.path.startsWith('/api/agent/models?'))&&!call.options));
   h.el('agent-dialog').close();await h.run('initialAgent()');
   assert.equal(h.el('agent-dialog').open,false);assert.equal(h.el('agent-dialog').opens,1);
 });
-test('setup waits for controls and workspace even when another status load is already ready',async()=>{
+test('loading controls or workspace data never opens optional model setup',async()=>{
   const h=harness(async()=>status());
   h.run("location.search='?setup=1';localSession.controls=false;state=null");
   await h.run('initialAgent()');assert.equal(h.el('agent-dialog').opens,0);
   h.run('localSession.controls=true');await h.run('loadAgent()');await h.run('initialAgent()');
-  assert.equal(h.el('agent-dialog').opens,0);assert.equal(h.run('location.search'),'?setup=1');
+  assert.equal(h.el('agent-dialog').opens,0);assert.equal(h.run('location.search'),'');
   h.run('state={wallets:[]}');await h.run('initialAgent()');
-  assert.equal(h.el('agent-dialog').opens,1);assert.equal(h.run('location.search'),'');
+  assert.equal(h.el('agent-dialog').opens,0);assert.equal(h.run('location.search'),'');
 });
-test('setup retries a failed initial status lookup without losing its intent',async()=>{
+test('startup retries a failed status lookup without opening a connection modal',async()=>{
   let fail=true;const h=harness(async()=>{if(fail)throw Error('Unavailable');return status();});
   h.run("location.search='?setup=1'");await h.run('initialAgent()');
-  assert.equal(h.el('agent-dialog').opens,0);assert.equal(h.run('location.search'),'?setup=1');
-  fail=false;await h.run('initialAgent()');assert.equal(h.el('agent-dialog').opens,1);
+  assert.equal(h.el('agent-dialog').opens,0);assert.equal(h.run('location.search'),'');
+  fail=false;await h.run('initialAgent()');assert.equal(h.el('agent-dialog').opens,0);assert.equal(h.run('agentReady'),true);
 });
 test('ordinary startup leaves navigation and the modal unchanged',async()=>{
   const h=harness(async()=>status());h.run("location.hash='#/activity'");
   await h.run('initialAgent()');await h.run('initialAgent()');
   assert.equal(h.el('agent-dialog').opens,0);assert.equal(h.run('location.hash'),'#/activity');
 });
-test('setup reloads saved Claude account and permission choices instead of fresh defaults',async()=>{
+test('opening the connection modal reloads saved account and permission choices',async()=>{
   const config={provider:'claude',model:'saved-model',scope:'wallet',wallet:'sample',retain_history:true,trust_native_cli:true,wallet_tools:false};
   const h=harness(async()=>({...status(),config}));
   h.run("location.search='?setup=1';state.wallets=[{key:'sample',name:'Sample wallet'}]");await h.run('initialAgent()');
+  assert.equal(h.el('agent-dialog').opens,0);await h.el('chat-setup').listeners.click();
   assert.equal(h.run('agentProvider'),'claude');assert.equal(h.el('agent-model').value,'saved-model');
   assert.equal(h.el('agent-wallet').value,'sample');assert.equal(h.el('agent-retain').checked,true);
   assert.equal(h.el('agent-tools').checked,false);assert.equal(h.el('agent-trust').checked,true);
@@ -70,7 +74,7 @@ test('setup does not reset choices in a modal already opened by the user',async(
   assert.equal(h.el('agent-dialog').opens,1);assert.equal(h.el('agent-model').value,'unsaved-choice');
   assert.equal(h.run('agentStep'),2);
 });
-test('dismissing a manually opened modal cancels pending startup intent without changing the current route',async()=>{
+test('dismissing a connection modal while startup is pending keeps it closed and preserves navigation',async()=>{
   const first=deferred(),calls=[];
   const h=harness(async(path,options)=>{calls.push({path,options});return calls.length===1?first.promise:status();});
   h.run("location.search='?setup=1&view=local';location.hash='#/activity'");

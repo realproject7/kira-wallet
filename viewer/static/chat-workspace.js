@@ -9,13 +9,22 @@ function renderResearchChat() {
   $('chat-form').dataset.working=String(working);
   $('kira-panel').dataset.speaking=String(working);
   const tray=$('chat-research');tray.hidden=!active.length;
-  tray.innerHTML=active.slice(0,2).map(job=>{
+  if(!active.length){$('chat-research-details').open=false;return;}
+  const first=active[0],firstKey=String(first.input.wallet||first.input.address||'').toLowerCase();
+  const firstName=state?.wallets.find(w=>w.key===firstKey)?.name||first.input.tag||'Wallet research';
+  const firstPresentation=KiraView.jobPresentation(first,Date.now(),jobsConnected);
+  $('chat-research-label').textContent=firstName+' · '+firstPresentation.label;
+  $('chat-research-label').title=jobStage(first);
+  $('chat-research-spinner').hidden=!firstPresentation.spinner;
+  $('chat-research-count').hidden=active.length<2;
+  $('chat-research-count').textContent='+'+(active.length-1);
+  $('chat-research-count').setAttribute('aria-label',(active.length-1)+' more active '+(active.length===2?'job':'jobs'));
+  $('chat-research-jobs').innerHTML=active.slice(0,2).map(job=>{
     const p=KiraView.jobPresentation(job,Date.now(),jobsConnected),progress=KiraView.jobProgress(job,Date.now(),jobsConnected);
     const key=String(job.input.wallet||job.input.address||'').toLowerCase();
     const name=state?.wallets.find(w=>w.key===key)?.name||job.input.tag||'Wallet research';
-    const counts=job.events?.at(-1)?.counts||{};
     const detail=progress.count;
-    return `<div class="chat-research-item"><a class="chat-research-row" href="#/wallet/${escapeHTML(key)}">${p.spinner?'<span class="spinner" aria-hidden="true"></span>':''}<span><strong>${escapeHTML(name)}</strong><span>${escapeHTML(jobStage(job))}${detail?' · '+escapeHTML(detail):''}</span><small data-job-timer="${escapeHTML(job.job_id)}">${escapeHTML(p.timerLabel)} ${KiraView.duration(p.elapsed)}</small><small data-job-estimate="${escapeHTML(job.job_id)}">${escapeHTML(progress.eta)}</small>${p.freshness?'<small>'+escapeHTML(p.freshness)+'</small>':''}</span><span aria-hidden="true">↗</span></a>${jobControls(job)}</div>`;
+    return `<div class="chat-research-item"><a class="chat-research-row" href="#/wallet/${escapeHTML(key)}"><span class="chat-research-icon" aria-hidden="true">${p.spinner?'<span class="spinner"></span>':''}</span><span class="chat-research-copy"><strong>${escapeHTML(name)}</strong><span>${escapeHTML(jobStage(job))}${detail?' · '+escapeHTML(detail):''}</span><small data-job-timer="${escapeHTML(job.job_id)}">${escapeHTML(p.timerLabel)} ${KiraView.duration(p.elapsed)}</small><small data-job-estimate="${escapeHTML(job.job_id)}">${escapeHTML(progress.eta)}</small>${p.freshness?'<small>'+escapeHTML(p.freshness)+'</small>':''}</span><span aria-hidden="true">↗</span></a>${jobControls(job)}</div>`;
   }).join('')+(active.length>2?`<a class="text-button" href="#/activity">${active.length-2} more in Activity</a>`:'');
 }
 function expandChat(expand,animate=true) {

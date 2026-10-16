@@ -80,10 +80,11 @@ authentication. Verified adapter versions are Codex 0.158.x and Claude Code
 verified. This is a native CLI connection, with no Kira account, API-key proxy or
 hosted portfolio backend.
 
-From published 0.1.5, setup opens the existing Account / Permissions / Ready
-modal directly. Choose Codex or Claude, then Use default model or a readable
-model choice. Codex choices come from bounded native metadata; Claude offers
-Sonnet, Opus and Haiku aliases. A catalog is not proof of account access.
+Setup leaves the wallet checklist visible. Choose **Connect AI** or **Connect a
+model** to open the Account / Permissions / Ready modal. Choose Codex or Claude,
+then Use default model or a readable model choice. Codex choices come from
+bounded native metadata; Claude offers Sonnet, Opus and Haiku aliases. A catalog
+is not proof of account access.
 Advanced accepts a custom identifier and preserves saved identifiers absent
 from the catalog. Workspace settings reopens the same selector and permissions. Choose no automatic wallet context, one registered wallet,
 or the whole recorded portfolio. A generic response check sends no wallet data
