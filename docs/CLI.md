@@ -10,8 +10,9 @@ npm install -g kira-wallet
 kira setup
 ```
 
-The npm registry currently offers version 0.1.2. The same archive and checksum
-are available from the [GitHub release](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2).
+The operator published npm version 0.1.3 on 2026-10-06. GitHub v0.1.3 remains
+a draft; the previous archive and checksum are available from the
+[0.1.2 GitHub release](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2).
 Registry publication remains an operator action. The code and original character assets use the MIT license.
 
 ## Lifecycle
@@ -33,13 +34,18 @@ read-only and control modes requires an explicit stop and restart. Starting
 an already-running app in the same mode reuses its URL. The old `--controls`
 option remains accepted for existing scripts but is no longer needed.
 
-These startup defaults apply from 0.1.3. In the published 0.1.2 package, use
+These startup defaults apply from published 0.1.3. In the older 0.1.2 package, use
 `kira setup` or `kira start --controls` for the full app.
 
 The 0.1.2 GitHub release starts with a wallet checklist. Add a public EVM
 address or use the browser wallet picker. Registration starts one explicit
 research job; follow it in Activity and read the saved portfolio report.
 No signature, seed phrase or private key is needed.
+
+Candidate 0.1.4 explains limited discovery before wallet registration and beside
+holdings. Missing coverage keeps the portfolio estimate partial. It is not yet
+published to npm. Existing snapshots require a holdings refresh after connecting
+an indexer; a price refresh does not discover missing tokens.
 
 Public RPC checks known assets and Mint Club. For broader ERC20 discovery,
 open Research connections, select Alchemy and name the private environment
@@ -50,8 +56,8 @@ prove complete coverage; inspect the recorded results and gaps.
 Connecting Codex or Claude is optional. Use Connect your AI when ready, verify
 a generic response and explicitly choose context permissions. Assistant answers
 render a safe Markdown subset; raw HTML, images and links remain inert text.
-Install the 0.1.1 GitHub archive for this wallet-first setup. The npm registry's
-0.1.0 package continues to use the earlier account-first setup.
+The wallet-first setup is included in published npm 0.1.3. The historical
+0.1.0 package uses the earlier account-first setup.
 
 ## Your model account
 

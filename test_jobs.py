@@ -119,6 +119,17 @@ class JobsTest(JobFixtures, unittest.TestCase):
         value['chains'][0]['url_env']='https://secret-endpoint.test/key'
         with self.assertRaises(JobError):self.store.submit(self.request('settings.rpc',value,'invalid-settings'))
 
+    def test_saving_discovery_preserves_the_existing_explorer_preference(self):
+        from kira_config import default_config
+        config=default_config();config['discovery']['explorers']=True
+        atomic(self.root/'.kira.local.json',config)
+        job=self.store.submit(self.request('settings.discovery',{'provider':'alchemy','key_env':'TEST_INDEXER_KEY'}))
+        self.store.worker()
+        self.assertEqual(self.store.get(job['job_id'])['state'],'succeeded')
+        saved=json.loads((self.root/'.kira.local.json').read_text())
+        self.assertTrue(saved['discovery']['explorers'])
+        self.assertEqual(saved['discovery']['key_env'],'TEST_INDEXER_KEY')
+
 
 class WorkerProcessTest(JobFixtures, unittest.TestCase):
     # Inherit the synthetic fixture setup, but only run process-specific cases.

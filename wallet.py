@@ -41,7 +41,9 @@ def atomic(path, data):
     temp = path.with_suffix(path.suffix+'.tmp')
     text = data if isinstance(data, str) else json.dumps(data, indent=2, ensure_ascii=False)+'\n'
     # Providers occasionally include credentialed URLs in an error response.
-    for secret in h.secrets().values():
+    try:values=h.secrets().values()
+    except ValueError:values=[]
+    for secret in values:
         if secret:
             text=text.replace(secret,'[redacted]')
     temp.write_text(text)
@@ -92,9 +94,10 @@ def discover(wallet, n, folder):
         cached=read(evidence)
         if cached['wallet'].lower()==wallet.lower() and cached['complete']:
             return cached
-    row = {'wallet':wallet,'chain_id':cid,'observed_at':h.now(),'complete':False,'tokens':[],'native':[], 'pages':[],'source':None}
+    row = {'wallet':wallet,'chain_id':cid,'observed_at':h.now(),'complete':False,'tokens':[],'native':[], 'pages':[],'source':None,'discovery_status':'incomplete'}
     cfg=load_config()
-    key=h.secrets().get('ALCHEMY_CUSTOM_APY_KEY') if cfg['discovery']['provider']=='alchemy' else None
+    try:key=h.secrets().get('ALCHEMY_CUSTOM_APY_KEY') if cfg['discovery']['provider']=='alchemy' else None
+    except ValueError:key=None
     if cid in ALCHEMY and key:
         row['source']='Alchemy Portfolio Tokens By Wallet'
         network=ALCHEMY[cid]
@@ -147,7 +150,14 @@ def discover(wallet, n, folder):
         else:
             row['error']=response
     else:
-        row['error']={'message':'No general ERC20 indexer configured for this network. Mint Club registry and native balances are queried independently.'}
+        status='disabled' if cfg['discovery']['provider']=='none' else 'missing_credential' if cid in ALCHEMY and not key else 'unsupported'
+        row['discovery_status']=status
+        messages={'disabled':'Token discovery is off. Configure an indexer to discover other ERC20 holdings.',
+                  'missing_credential':'The selected indexer credential is unavailable. Configure its private environment reference, then refresh holdings.',
+                  'unsupported':'No general ERC20 indexer is available for this network.'}
+        row['error']={'message':messages[status]+' Mint Club registry and native balances are queried independently.'}
+    if row['complete']:row['discovery_status']='checked'
+    elif row['source']:row['discovery_status']='provider_error'
     row['tokens']=list({t['address'].lower():t for t in row['tokens']}.values())
     atomic(evidence,row)
     return row
@@ -228,6 +238,8 @@ def finish(wallet, folder, networks, discovered):
              'rpc_endpoint_indices':c.get('rpc_endpoint_indices',[]),
              'general_erc20_discovery':'indexer_checked' if d['complete'] else 'incomplete',
              'indexer_source':d['source'],'indexer_pages':len(d['pages']),'indexer_complete':d['complete'],
+             'discovery_status':d.get('discovery_status','checked' if d['complete'] else 'incomplete'),
+             'candidate_balance_errors':len(c.get('balance_errors',[])),
              'positive_erc20_count_discovered':sum(t['chain_id']==n['chain_id'] and t['token_type']=='ERC20' for t in tokens),
              'mintclub_inventory_scan':None,'mintclub_registry_scan':c.get('registry_scan'),'notes':[]}
         if not d['complete']:row['notes'].append('General token discovery incomplete. See discovery evidence; this is not proof of no holdings.')
@@ -264,7 +276,7 @@ def finish(wallet, folder, networks, discovered):
             'dex_tokens_with_liquidity_evidence':sum(t['dex_liquidity_found'] for t in tokens),'mintclub_tokens':len(minted),
             'mintclub_tokens_with_nonzero_reserve':sum(t['mintclub']['funded'] for t in minted),
             'mintclub_registry_assets_checked':sum(c.get('mintclub_registry_scan',{}).get('checked',0) if c.get('mintclub_registry_scan') else 0 for c in coverage)}
-    gaps=any(not c['indexer_complete'] or not (c.get('mintclub_registry_scan') or {}).get('complete') or c['rpc_status']!='available' for c in coverage)
+    gaps=any(not c['indexer_complete'] or not (c.get('mintclub_registry_scan') or {}).get('complete') or c['rpc_status']!='available' or c['candidate_balance_errors'] for c in coverage)
     result={'schema_version':1,'wallet_address':wallet['address'],'tags':wallet['tags'],'compiled_at':h.now(),'status':'completed_with_coverage_gaps' if gaps else 'completed',
         'scope':'Direct ERC20, registered Mint Club ERC1155 and native holdings across all configured Mint Club EVM networks. Testnets are separate.',
         'counts':counts,'coverage':coverage,'tokens':tokens,'nested_curve_independent_redemption_estimates':[], 'price_references':refs,

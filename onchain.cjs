@@ -52,7 +52,12 @@ function safeError(error){
   message=message.replace(/https?:\/\/[^\s"<>]+/g,'[RPC URL]');
   message=message.replace(/(bearer\s+)[^\s,;"<>]+/gi,'$1[redacted]');
   message=message.replace(/(authorization|api[-_]?key|bearer)([\s:=]+)[^\s,;"<>]+/gi,'$1$2[redacted]');
-  return {error_type:error.name,message:message.slice(0,500)};
+  const diagnostic={error_type:error.name,message:message.slice(0,500)};
+  for(let cause=error,depth=0;cause&&depth<6;cause=cause.cause,depth++){
+    if(Number.isInteger(cause.status))diagnostic.http_status=cause.status;
+    if(Number.isInteger(cause.code))diagnostic.rpc_code=cause.code;
+  }
+  return diagnostic;
 }
 function rpcEndpointsUsed(c){return [...(endpointReads.get(c)||[])].filter(i=>i>=0).sort((a,b)=>a-b);}
 module.exports={viem,root,assets,networks,bondAbi,endpoints,client,connect,resilientTransport,rpcEndpointsUsed,serialize,safeError};

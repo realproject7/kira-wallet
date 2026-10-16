@@ -35,6 +35,17 @@ class WalletPipelineTests(unittest.TestCase):
         self.assertFalse(result['complete'])
         self.assertEqual(len(result['tokens']),1)
         self.assertIn('partialErrors',result['error'])
+        self.assertEqual(result['discovery_status'],'provider_error')
+
+    def test_disabled_and_missing_credentials_record_the_actual_reason(self):
+        for provider,secrets,expected in [('none',{},'disabled'),('alchemy',{},'missing_credential')]:
+            with patch.object(wallet,'load_config',return_value={'discovery':{'provider':provider,'explorers':False}}),patch.object(wallet.h,'secrets',return_value=secrets),patch.object(wallet,'fetch') as fetch:
+                result=wallet.discover(self.address,self.network,self.folder)
+            fetch.assert_not_called();self.assertFalse(result['complete'])
+            self.assertEqual(result['discovery_status'],expected)
+        with patch.object(wallet.h,'secrets',side_effect=ValueError('Unreadable secret file')),patch.object(wallet,'fetch') as fetch:
+            result=wallet.discover(self.address,self.network,self.folder)
+        fetch.assert_not_called();self.assertEqual(result['discovery_status'],'missing_credential')
 
     def test_pagination_deduplicates_and_rejects_other_network_or_wallet(self):
         foreign=self.token();foreign['address']='0x0000000000000000000000000000000000000002'
@@ -43,6 +54,7 @@ class WalletPipelineTests(unittest.TestCase):
         with patch.object(wallet,'fetch',side_effect=responses) as fetch:
             result=wallet.discover(self.address,self.network,self.folder)
         self.assertTrue(result['complete']);self.assertEqual(len(result['tokens']),2)
+        self.assertEqual(result['discovery_status'],'checked')
         self.assertEqual(fetch.call_args_list[1].args[1]['pageKey'],'next')
         persisted=json.loads((self.folder/'discovery-8453.json').read_text())
         self.assertNotIn('fixture-key',json.dumps(persisted))
@@ -113,6 +125,23 @@ class WalletPipelineTests(unittest.TestCase):
                     {'tokenPrices':[{'currency':'usd','value':'2100','lastUpdatedAt':'2026-10-04T12:00:00Z'}]}]}])
         self.assertEqual(result['price_references']['ETH_USD']['value'],'2100')
         self.assertEqual(result['price_references']['ETH_USD']['source'],'Alchemy Portfolio Tokens By Wallet')
+
+    def test_candidate_balance_errors_keep_successful_discovery_partial(self):
+        wallet.atomic(self.folder/'onchain-summary.json',{'chains':[{'chain_id':8453,'tokens':[],
+            'native_balance':'0','observed_at':'2026-10-04T12:00:00Z','rpc_status':'available',
+            'registry_scan':{'complete':True,'checked':0,'registry_count':0},
+            'balance_errors':[{'error':{'message':'PRIVATE-DIAGNOSTIC'}}]}]})
+        def node(command,input_path,output_path):wallet.atomic(output_path,{'tokens':[]})
+        with patch.object(wallet,'run_node',side_effect=node),patch.object(wallet,'event'),\
+             patch('native_assets.market_metadata',return_value={'prices':{},'images':{},'evidence':None}),\
+             patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder:market),\
+             patch('token_images.refresh_catalog',return_value={}):
+            result=wallet.finish({'address':self.address,'tags':['Fixture']},self.folder,
+                [{**self.network,'name':'Base','mintclub_network':'base'}],
+                [{'chain_id':8453,'complete':True,'source':None,'pages':[],'native':[]}])
+        self.assertEqual(result['coverage'][0]['candidate_balance_errors'],1)
+        self.assertEqual(result['status'],'completed_with_coverage_gaps')
+        self.assertNotIn('PRIVATE-DIAGNOSTIC',json.dumps(result))
 
 
 if __name__=='__main__':unittest.main()

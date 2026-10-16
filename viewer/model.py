@@ -196,6 +196,11 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             'links':[{'label':'Explorer','url':EXPLORERS[c['chain_id']]+'/address/'+entry['address']}] if c['chain_id'] in EXPLORERS else []})
     chains=[]
     for c in coverage:
+        # Older snapshots retained this count only in a fixed pipeline note.
+        failed_balances=c.get('candidate_balance_errors')
+        if type(failed_balances) is not int or failed_balances<0:
+            failed_balances=max((int(m.group(1)) for note in c.get('notes',[]) or [] if isinstance(note,str)
+                and (m:=re.fullmatch(r'([0-9]{1,9}) candidate token balances could not be read\.',note))),default=0)
         rows=[a for a in assets if a['chain_id']==c['chain_id']]
         for a in rows:
             a['environment']=c['environment']
@@ -204,6 +209,11 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             'image_url':chain_image(c['chain_id']),
             'assets':len(rows),'value_usd':sum(a['value_usd'] for a in rows if a['value_usd'] is not None) if c['environment']=='mainnet' and any(a['value_usd'] is not None for a in rows) else None,
             'complete':c['general_erc20_discovery']=='indexer_checked','rpc_available':c['rpc_status']=='available',
+            'discovery_status':c.get('discovery_status') if c.get('discovery_status') in ('checked','disabled','missing_credential','unsupported','provider_error') else 'incomplete',
+            'registry_complete':(c.get('mintclub_registry_scan') or {}).get('complete') is True,
+            'registry_errors':(c.get('mintclub_registry_scan') or {}).get('registry_errors',0),
+            'balance_errors':(c.get('mintclub_registry_scan') or {}).get('balance_errors',0),
+            'candidate_balance_errors':failed_balances,
             'native_symbol':c.get('native_symbol'),
             'native_balance':c.get('native_balance') if c['rpc_status']=='available' and number(c.get('native_balance')) is not None else None,
             'native_observed_at':c.get('native_observed_at'),

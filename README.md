@@ -43,11 +43,12 @@ For a viewer without wallet or research actions, use `kira start --read-only`.
 Prefer an archive? [GitHub releases](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2)
 include the same package and its checksum.
 
-1. **Add a watching wallet.** Paste a public address and give it a name. Add more
-   wallets whenever you need them.
-2. **Set up discovery.** In **Workspace settings**, connect an indexer for broad
+1. **Set up discovery.** In **Workspace settings**, connect an indexer for broad
    ERC20 discovery. Public RPC alone has limited discovery; incomplete coverage
-   stays visible.
+   stays visible. An AI or browser wallet connection does not enable an indexer.
+2. **Add a watching wallet.** Paste a public address and give it a name. Add more
+   wallets whenever you need them. Without discovery, the form explicitly
+   offers limited research of native and Mint Club assets.
 3. **Connect your AI.** Install and sign in to the
    [Codex CLI](https://developers.openai.com/codex/cli) or
    [Claude Code](https://code.claude.com/docs/en/quickstart), then choose your
@@ -116,6 +117,12 @@ Data defaults to `~/.local/share/kira-wallet`, separate from the installed
 package. Use `--data-dir /absolute/private/directory` before a command to choose
 another workspace. For connection, model or provider help, see the
 [CLI guide](docs/CLI.md) and [viewer guide](viewer/README.md).
+
+From 0.1.4, a partial wallet analysis explains disabled discovery, missing
+credentials and network failures directly beside the holdings. After connecting
+discovery, use **Refresh holdings** to create a new analysis. **Refresh prices**
+does not discover missing tokens. Existing workspace provider settings and
+published snapshots are preserved.
 
 ## Build and contribute
 

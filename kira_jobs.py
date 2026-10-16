@@ -403,7 +403,7 @@ class JobStore:
                     previous=config['rpc']['chains'].get(key,{})
                     if row['url_env']==previous.get('url_env') and previous.get('alchemy_network'):row['alchemy_network']=previous['alchemy_network']
                 config['rpc']=updated
-            else:config['discovery']={**job['input'],'explorers':False}
+            else:config['discovery']={**job['input'],'explorers':config['discovery'].get('explorers',False)}
             atomic(config_path(),config)
             result={'status':'completed','setting':job['operation']};atomic(self.jobs/'results'/(job['job_id']+'.json'),result);return result
         env = {**os.environ, 'KIRA_DATA_DIR': str(self.root), 'KIRA_JOB_ID': job['job_id'], 'KIRA_JOB_SNAPSHOT': job['checkpoint'], 'KIRA_ANALYSIS_FD': str(writer.fileno()), 'PYTHONUNBUFFERED': '1'}
