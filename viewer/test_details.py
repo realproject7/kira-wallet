@@ -23,6 +23,20 @@ class DetailTests(unittest.TestCase):
         self.assertEqual(coverage_status(wallet,{'rpc_available':False,'rpc_status':'pending'}),'Research pending')
         self.assertEqual(coverage_status(wallet,{'rpc_available':False,'rpc_status':'unavailable'}),'RPC unavailable')
 
+    def test_failed_or_deferred_reads_cannot_make_an_empty_network_a_verified_zero(self):
+        import json,subprocess
+        for fields,expected in (({'candidate_balance_errors':2},'Incomplete on-chain checks'),
+                                ({'registry_complete':False,'registry_errors':1},'Incomplete on-chain checks'),
+                                ({'registry_complete':False,'registry_phase':'deferred'},'Research pending')):
+            wallet=self.wallet('first',[]);wallet['chains'][0].update(fields)
+            network=next(c for c in project_details([wallet],self.root)['networks'] if c['id']==8453)
+            self.assertEqual(network['wallets'][0]['coverage'],expected)
+            self.assertIsNone(network['wallets'][0]['value_usd']);self.assertIsNone(network['value_usd'])
+            script="const ui=require('./viewer/static/workspace-model.js');const n=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(JSON.stringify(ui.networkEmpty(n,0)));"
+            empty=json.loads(subprocess.check_output(['node','-e',script],input=json.dumps(network).encode(),cwd=Path(__file__).resolve().parents[1]))
+            self.assertTrue(empty['activity'])
+            self.assertNotIn('completed checks found no positive holdings',empty['message'])
+
     def asset(self, chain=8453, balance='1', value=5, environment='mainnet'):
         address = '0x' + '1' * 40
         return {'id':f'{chain}:{address}','chain_id':chain,'address':address,

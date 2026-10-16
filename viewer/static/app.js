@@ -267,10 +267,15 @@ function aggregateRow(a){
 }
 function renderNetworkTokens(network){
   const search=tokenSearch.trim().toLowerCase();
-  const assets=state.details.tokens.filter(a=>a.chain_id===network.id&&(minimum===0||(a.value_usd!=null&&a.value_usd>=minimum))&&(!search||[a.symbol,a.name,a.address||'native'].some(s=>s.toLowerCase().includes(search))));
+  const recorded=state.details.tokens.filter(a=>a.chain_id===network.id);
+  const assets=recorded.filter(a=>(minimum===0||(a.value_usd!=null&&a.value_usd>=minimum))&&(!search||[a.symbol,a.name,a.address||'native'].some(s=>s.toLowerCase().includes(search))));
   $('network-visible-count').textContent=assets.length;
   $('network-token-body').innerHTML=assets.map(aggregateRow).join('');
   $('network-token-table').hidden=assets.length===0;$('network-token-empty').hidden=assets.length>0;
+  if(!assets.length){
+    const empty=KiraView.networkEmpty(network,recorded.length);
+    $('network-token-empty').innerHTML=`<h3>${escapeHTML(empty.title)}</h3><p>${escapeHTML(empty.message)}</p>${empty.activity?'<a class="quiet-button" href="#/activity">View Activity</a>':''}`;
+  }
   bindImages();
 }
 function renderDetail(){

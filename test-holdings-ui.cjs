@@ -160,3 +160,26 @@ assert.equal(notice.title,'First results are available');assert.equal(notice.rpc
 
 const stoppedInitial=context.KiraView.discoveryNotice({analysed_at:"recorded",chains:[{environment:"mainnet",complete:false,rpc_pending:true,registry_phase:"deferred"}]},{public_discovery:true,discovery_provider:"none"});
 assert.match(stoppedInitial.message,/resume stopped work/);assert.doesNotMatch(stoppedInitial.message,/research continues/);
+// Real control function: enrichment permits prices, queued/running prices do not.
+const controls={...context,state:{demo:false},localSession:{controls:true},selectedWallet:'0x'+'1'.repeat(40),jobList:[],currentWallet:()=>wallet};
+vm.createContext(controls);
+vm.runInContext(fs.readFileSync('viewer/static/jobs.js','utf8').split('function refreshControlState(){')[1].split('let jobsPage=')[0].replace(/^/,'function refreshControlState(){'),controls);
+wallet.analysed_at='2026-10-04';
+controls.jobList=[{operation:'wallet.add',state:'running',analysis_phase:'enrichment',input:{address:controls.selectedWallet}}];
+controls.refreshControlState();
+assert.equal(node('refresh-prices').disabled,false);
+assert.equal(node('refresh-wallet').disabled,true);
+assert.match(node('refresh-prices').title,/resumes automatically/);
+controls.jobList.push({operation:'prices.refresh',state:'queued',input:{wallet:controls.selectedWallet}});
+controls.refreshControlState();assert.equal(node('refresh-prices').disabled,true);assert.equal(node('refresh-prices').textContent,'Prices queued…');
+controls.jobList[1].state='running';controls.refreshControlState();assert.equal(node('refresh-prices').textContent,'Refreshing prices…');
+controls.jobList[1].state='succeeded';controls.refreshControlState();assert.equal(node('refresh-prices').disabled,false);
+wallet.analysed_at=null;controls.refreshControlState();assert.equal(node('refresh-prices').disabled,true);assert.match(node('refresh-prices').title,/first saved report/);
+wallet.analysed_at='2026-10-04';controls.state.demo=true;controls.refreshControlState();assert.equal(node('refresh-prices').disabled,true);
+// Render empty network copy from actual recorded counts rather than inactive filters.
+const networkContext={...context,state:{details:{tokens:[]}},tokenSearch:'',minimum:0,aggregateRow:a=>a.symbol};
+vm.createContext(networkContext);vm.runInContext(source.slice(source.indexOf('function renderNetworkTokens('),source.indexOf('function renderDetail(')),networkContext);
+const network={id:42161,wallets:[{coverage:'Research pending'}]};
+networkContext.renderNetworkTokens(network);assert.match(node('network-token-empty').innerHTML,/Research is pending/);assert.match(node('network-token-empty').innerHTML,/#\/activity/);
+networkContext.state.details.tokens=[{chain_id:42161,symbol:'SAMPLE',name:'Sample',value_usd:null}];networkContext.minimum=10;
+networkContext.renderNetworkTokens(network);assert.match(node('network-token-empty').innerHTML,/filters/);assert(!node('network-token-empty').innerHTML.includes('#/activity'));

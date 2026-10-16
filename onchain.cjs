@@ -9,21 +9,27 @@ const runtime=JSON.parse(resolved.stdout);
 const root=runtime.data_root;
 const networks=JSON.parse(fs.readFileSync(path.join(assets,'sources/rpc-candidates.json')));
 const bondAbi=JSON.parse(fs.readFileSync(path.join(assets,'sources/mintclub-bond-abi.json')));
-const {RpcPool}=require('./rpc-pool.cjs');
+const {RpcPool,RouteRecorder}=require('./rpc-pool.cjs');
 const pool=new RpcPool({publicUrls:networks.flatMap(n=>n.public_rpc||[]),healthFile:runtime.health_file});
 function endpoints(chainId){return runtime.endpoints[String(chainId)] || [];}
 const endpointReads=new WeakMap();
+const endpointOutcomes=new WeakMap();
 const clientState=new WeakMap();
-function resilientTransport(chainId,urls,transport=viem.http,onSuccess=()=>{}) {
-  return pool.transport(chainId,urls,transport,onSuccess);
+function resilientTransport(chainId,urls,transport=viem.http,onSuccess=()=>{},onOutcome=()=>{}) {
+  return pool.transport(chainId,urls,transport,onSuccess,onOutcome);
 }
 function client(chainId,url) {
   const urls=endpoints(chainId);
   const index=url==null?0:urls.indexOf(url);
   const ordered=url==null?urls:index<0?[url]:urls.slice(index);
   const used=new Set();
+  const outcomes=new RouteRecorder();
   const state={chainId,last:null};
-  const c=viem.createPublicClient({transport:resilientTransport(chainId,ordered,viem.http,(i,endpoint)=>{used.add(urls.indexOf(ordered[i]));state.last=endpoint;})});
+  const c=viem.createPublicClient({transport:resilientTransport(chainId,ordered,viem.http,(i,endpoint)=>{used.add(urls.indexOf(ordered[i]));state.last=endpoint;},(i,event)=>{
+    const endpoint=urls.indexOf(ordered[i]),endpointClass=pool.publicUrls.has(ordered[i])?'public':'custom';
+    outcomes.record(endpoint,endpointClass,event);
+  })});
+  endpointOutcomes.set(c,outcomes);
   clientState.set(c,state);
   endpointReads.set(c,used);return c;
 }
@@ -52,4 +58,5 @@ function safeError(error){
   return diagnostic;
 }
 function rpcEndpointsUsed(c){return [...(endpointReads.get(c)||[])].filter(i=>i>=0).sort((a,b)=>a-b);}
-module.exports={viem,root,assets,networks,bondAbi,endpoints,client,connect,snapshotBlock,resilientTransport,rpcEndpointsUsed,serialize,safeError};
+function rpcRoutes(c){return endpointOutcomes.get(c)?.snapshot()||[];}
+module.exports={viem,root,assets,networks,bondAbi,endpoints,client,connect,snapshotBlock,resilientTransport,rpcEndpointsUsed,rpcRoutes,serialize,safeError};

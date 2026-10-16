@@ -37,3 +37,14 @@ assert.equal(jobPresentation({ ...job, cancel_requested: true }, time).label, 'S
 assert.equal(jobPresentation({ ...job, created_at: 'invalid' }, time).elapsed, null);
 assert.equal(duration(3661), '1h 1m 1s');
 console.log('Workspace catalog and job-state checks passed with 5,002 synthetic tokens.');
+
+const {networkEmpty}=require('./viewer/static/workspace-model.js');
+const coverage=(...states)=>({wallets:states.map(coverage=>({coverage}))});
+assert.equal(networkEmpty(coverage('Research pending','Research pending'),0).activity,true);
+assert.match(networkEmpty(coverage('Research pending'),0).title,/pending/);
+assert.match(networkEmpty(coverage('Researched'),0).title,/No positive holdings/);
+assert.equal(networkEmpty(coverage('Researched'),0).activity,false);
+assert.match(networkEmpty(coverage('RPC unavailable','Researched'),0).message,/unknown/);
+assert.match(networkEmpty(coverage('Incomplete discovery'),0).title,/incomplete/);
+assert.match(networkEmpty(coverage('Research pending'),3).title,/filters/);
+assert.equal(networkEmpty(coverage('Research pending'),3).activity,false);

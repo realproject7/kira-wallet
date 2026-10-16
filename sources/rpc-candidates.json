@@ -27,8 +27,7 @@
     "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/base.ts",
     "public_rpc": [
       "https://base-rpc.publicnode.com",
-      "https://base.drpc.org",
-      "https://public.1rpc.io/base"
+      "https://base.drpc.org"
     ],
     "explorer": "https://basescan.org",
     "public_rpc_sources": [
@@ -143,9 +142,12 @@
     "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
     "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/shibarium.ts",
     "public_rpc": [
-      "https://rpc.shibrpc.com"
+      "https://rpc.shibarium.shib.io"
     ],
-    "explorer": "https://shibariumscan.io"
+    "explorer": "https://shibariumscan.io",
+    "public_rpc_sources": [
+      "https://docs.shib.io/get-started/deploy-contracts"
+    ]
   },
   {
     "network": "cyber",
@@ -155,9 +157,13 @@
     "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
     "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/cyber.ts",
     "public_rpc": [
+      "https://rpc.cyber.co",
       "https://cyber.alt.technology"
     ],
-    "explorer": "https://cyberscan.co"
+    "explorer": "https://cyberscan.co",
+    "public_rpc_sources": [
+      "https://github.com/ethereum-optimism/superchain-registry/blob/main/chainList.toml"
+    ]
   },
   {
     "network": "ham",
@@ -299,9 +305,12 @@
     "mintclub_bond_address": "0x5dfA75b0185efBaEF286E80B847ce84ff8a62C2d",
     "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/shibariumTestnet.ts",
     "public_rpc": [
-      "https://puppynet.shibrpc.com"
+      "https://rpc.puppynet.shib.io"
     ],
-    "explorer": "https://puppyscan.shib.io"
+    "explorer": "https://puppyscan.shib.io",
+    "public_rpc_sources": [
+      "https://docs.shib.io/get-started/deploy-contracts"
+    ]
   },
   {
     "network": "avalanchefuji",

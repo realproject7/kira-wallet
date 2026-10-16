@@ -60,11 +60,12 @@ class ResearchTools:
         if identity not in visible:raise JobError('snapshot_scope','This analysis is outside the current conversation scope.')
         result=self.store.snapshot(identity)
         if result.get('wallet_address','').lower() not in approved:raise JobError('snapshot_scope','This analysis does not belong to the approved wallet.')
-        from kira_agent import wallet_facts, compact_wallet_facts
+        from kira_agent import wallet_facts, compact_wallet_facts, recorded_valuation
         from model import project_wallet
         entry=self.store.wallet(result['wallet_address'])
         entry={**entry,'latest_snapshot':{'directory':identity}}
         wallet=project_wallet(entry,result,self.root);count=len(wallet['assets'])
+        wallet['recorded_valuation']=recorded_valuation(wallet['assets'])
         wallet['assets']=wallet['assets'][offset:offset+limit]
         rows=compact_wallet_facts(wallet_facts([wallet],pool_budget=0))
         rows[0].update(asset_count=count,assets_omitted=count-len(wallet['assets']),offset=offset,

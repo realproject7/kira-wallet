@@ -41,9 +41,10 @@ async function parallel(items, workers, fn) {
   }));
   return results;
 }
-async function connect(n) {
+async function connect(n, onClient=()=>{}) {
   if(!h.endpoints(n.chain_id).length)throw new Error('No RPC endpoint configured; public fallback is disabled.');
   const c=h.client(n.chain_id);
+  onClient(c);
   if(await c.getChainId()!==n.chain_id)throw new Error('RPC chain identity mismatch');
   endpointIdentity.set(c,h.rpcEndpointsUsed(c)[0]??0);return c;
 }
@@ -149,7 +150,7 @@ async function scanChain(input, n, output, baseline=false) {
     let checkpoint=fs.existsSync(checkpointFile)?JSON.parse(fs.readFileSync(checkpointFile)):null;
     if(checkpoint&&(checkpoint.wallet!==input.wallet.toLowerCase()||checkpoint.chain_id!==n.chain_id||checkpoint.fingerprint!==fingerprint&&(!checkpoint.candidates||checkpoint.candidates.some(a=>!candidates.includes(a)))))
       throw new Error('Saved balance checkpoint does not match this research request. Start a new holdings analysis.');
-    const c = await connect(n), snapshot = await h.snapshotBlock(c,checkpoint),block=snapshot.number;rpcClient=c;
+    const c = await connect(n,c=>{rpcClient=c;}), snapshot = await h.snapshotBlock(c,checkpoint),block=snapshot.number;
     checkpoint=checkpoint||{wallet:input.wallet.toLowerCase(),chain_id:n.chain_id,block_number:block.toString(),block_hash:snapshot.hash,observed_at:stamp(),balances:{}};
     checkpoint.fingerprint=fingerprint;checkpoint.candidates=candidates;row.candidate_fingerprint=fingerprint;
     row.preferred_endpoint_index=endpointIdentity.get(c);
@@ -233,6 +234,7 @@ async function scanChain(input, n, output, baseline=false) {
     row.status = row.registry_scan.complete && errors.length===0?'complete':'partial';
   } catch(e) {row.error=h.safeError(e);}
   row.rpc_endpoint_indices=h.rpcEndpointsUsed(rpcClient);
+  row.rpc_routes=h.rpcRoutes(rpcClient);
   row.endpoint_index=row.rpc_endpoint_indices.length===1?row.rpc_endpoint_indices[0]:null;
   write(file,row);
   emitChain(row);

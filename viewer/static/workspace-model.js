@@ -19,6 +19,13 @@
   const active = job => ['queued', 'running'].includes(job.state);
   const rpcGap = chain => (chain.rpc_available===false&&!chain.rpc_pending)||(chain.registry_complete===false&&!chain.rpc_pending&&chain.registry_phase!=='deferred')||chain.candidate_balance_errors>0;
   const coverageGap = chain => !chain.complete||rpcGap(chain)||chain.candidate_deferred>0||chain.market_pending||chain.market_errors>0;
+  function networkEmpty(network, recordedCount) {
+    if(recordedCount)return {title:'No tokens match these filters',message:'Lower the minimum value or clear your search to see recorded holdings.',activity:false};
+    const rows=network.wallets||[];
+    if(!rows.length||rows.some(r=>['Research pending','Awaiting analysis','Not researched'].includes(r.coverage)))return {title:'Research is pending on this network',message:'No holdings have been recorded here yet. Check Activity for progress or resume saved work. Missing records do not mean zero holdings.',activity:true};
+    if(rows.some(r=>r.coverage!=='Researched'))return {title:'No holdings recorded; coverage is incomplete',message:'Some checks could not establish holdings on this network. Review Activity and retry holdings when ready. Missing records remain unknown.',activity:true};
+    return {title:'No positive holdings recorded',message:'The completed checks found no positive holdings. Coverage can still omit tokens. Refresh holdings to check again.',activity:false};
+  }
   function discoveryNotice(wallet, readiness = null) {
     const chains=(wallet?.chains||[]).filter(c=>c.environment==='mainnet');
     const gaps=chains.filter(coverageGap);
@@ -62,7 +69,7 @@
     const h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = seconds % 60;
     return (h ? h + 'h ' : '') + m + 'm ' + s + 's';
   }
-  const api = { catalog, pageSize, active, jobPresentation, duration, discoveryNotice, coverageGap };
+  const api = { catalog, pageSize, active, jobPresentation, duration, discoveryNotice, coverageGap, networkEmpty };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KiraView = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
