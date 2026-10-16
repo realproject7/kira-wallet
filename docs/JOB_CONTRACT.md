@@ -212,6 +212,8 @@ short-operation priority, immutable publication and no-progress protection remai
 There is no overall twenty-minute deadline. Finite route work never proves every
 market has been searched. The viewer calls this optional action **Analyze sell
 routes**; holdings, token prices and artwork do not depend on it.
+Pending or failed route checks stay in sell-analysis progress and do not
+invalidate the saved holdings coverage.
 
 Current-step bars use real counts. Unknown durations have no ETA or percentage.
 Detailed stages remain in Activity; chat has one collapsed status line. Review

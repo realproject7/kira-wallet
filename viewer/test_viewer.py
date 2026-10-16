@@ -55,6 +55,20 @@ class ViewerTests(unittest.TestCase):
         projected=model.project_wallet(self.entry,self.snapshot,self.root)
         self.assertTrue(all(a['value_usd'] is None for a in projected['assets'] if not a['is_native']))
 
+    def test_optional_sell_work_does_not_invalidate_saved_holdings_coverage(self):
+        self.snapshot['pipeline']={'phase':'sell','market_pending':True}
+        self.snapshot['tokens'][0]['dex_verification_error']={'message':'A sale estimate is unavailable.'}
+        before=json.dumps(self.snapshot,sort_keys=True)
+        projected=model.project_wallet(self.entry,self.snapshot,self.root)
+        self.assertTrue(projected['sell_analysis_pending'])
+        self.assertTrue(all(not c['market_pending'] and c['market_errors']==0 for c in projected['chains']))
+        self.assertEqual(sum(c['sell_analysis_errors'] for c in projected['chains']),1)
+        self.assertEqual(json.dumps(self.snapshot,sort_keys=True),before)
+        self.snapshot['pipeline']={'market_pending':True}
+        legacy=model.project_wallet(self.entry,self.snapshot,self.root)
+        self.assertTrue(all(c['market_pending'] for c in legacy['chains']))
+        self.assertEqual(sum(c['market_errors'] for c in legacy['chains']),1)
+
     def test_failed_all_network_read_is_not_displayed_as_unstarted_work(self):
         self.snapshot['pipeline']={'phase':'holdings'}
         chain=self.snapshot['coverage'][0];chain['rpc_status']='pending'
