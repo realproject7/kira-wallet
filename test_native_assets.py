@@ -79,7 +79,7 @@ class NativeMarketTests(unittest.TestCase):
             with (root/'.analysis.lock').open('a') as lock,\
                  patch.object(research,'ROOT',root),patch.object(research,'fetch',side_effect=fetch),\
                  patch('subprocess.run',return_value=SimpleNamespace(returncode=0,stdout=json.dumps({'tokens':rpc_tokens or [],'errors':[]}))),\
-                 patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder:market),\
+                 patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder:market) as enrich,\
                  patch('token_images.refresh_catalog',return_value={},side_effect=images_error) as images,\
                  patch.object(sys,'argv',['refresh_prices.py','--wallet','Fixture']),\
                  patch.dict(os.environ,{'KIRA_JOB_SNAPSHOT':'snapshots/job-fixture','KIRA_ANALYSIS_FD':'123456'}),\
@@ -88,6 +88,7 @@ class NativeMarketTests(unittest.TestCase):
                 except SystemExit as failure:error=str(failure)
             market=folder/'market-prices.json';overlay=root/'snapshots/job-fixture/prices.json'
             self.assertEqual((folder/'results.json').read_text(),original)
+            if enrich.called:self.assertEqual(enrich.call_args.args[2],root/'snapshots/job-fixture')
             return (json.loads(market.read_text()) if market.exists() else None,
                     json.loads(overlay.read_text()) if overlay.exists() else None,images.call_args,error)
 

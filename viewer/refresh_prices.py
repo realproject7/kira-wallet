@@ -30,7 +30,8 @@ if not selected:raise SystemExit('No analysed registered wallet matches this sel
 for w in selected:
  folder=within(h.ROOT,w['latest_snapshot']['directory']);path=within(h.ROOT,w['latest_snapshot']['result']);snapshot=json.loads(path.read_text())
  native_market=market_metadata(snapshot.get('coverage',[]))
- evidence_folder=folder
+ import uuid
+ evidence_folder=folder/'price-evidence'/uuid.uuid4().hex
  if os.environ.get('KIRA_JOB_SNAPSHOT'):
   evidence_folder=(h.ROOT/os.environ['KIRA_JOB_SNAPSHOT']).resolve()
   if not evidence_folder.is_relative_to((h.ROOT/'snapshots').resolve()):raise ValueError('Job path must be within snapshots/.')
@@ -103,7 +104,7 @@ for w in selected:
          'source_requests':fetched,'rpc_price_state':rpc,
          'note':'Prices only. Balances and research coverage remain at their recorded analysis time.'}
  destination=folder/'market-prices.json';temporary=destination.with_suffix('.json.tmp')
- output=enrich(snapshot,output,folder)
+ output=enrich(snapshot,output,evidence_folder)
  # Preserve historical quotes on a provider gap, after fresh reserve derivation.
  # Fresh unfunded/unreliable evidence must invalidate an old estimate.
  published={(p['chain_id'],p['address'].lower()):p for p in output['tokens']}
