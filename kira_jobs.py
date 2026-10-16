@@ -128,6 +128,7 @@ class JobStore:
             raise JobError('invalid_envelope','Persisted job validation failed. Preserve the file for recovery.')
         names={'wallet.add':['address','tag'],'wallet.refresh':['wallet'],'prices.refresh':['wallet'],'wallet.setTags':['wallet','tags'],
             'settings.rpc':['mode','chains','allow_public_fallback'],'settings.discovery':['provider','key_env'],'settings.provider':['provider','key_env']}[job['operation']]
+        if job['operation']=='settings.rpc' and 'priority' in job['input']:names=names+['priority']
         fields(job['input'],names)
         wallet=job['input'].get('wallet') or job['input'].get('address')
         if wallet is not None and (not isinstance(wallet,str) or not ADDRESS.fullmatch(wallet)):raise JobError('invalid_envelope','Persisted wallet identity is invalid.')
@@ -160,7 +161,9 @@ class JobStore:
                 raise JobError('invalid_settings','Choose a data provider and a local credential reference.')
             return value.copy()
         if operation == 'settings.rpc':
-            fields(value,['mode','chains','allow_public_fallback'])
+            fields(value,['mode','chains','allow_public_fallback']+(['priority'] if isinstance(value,dict) and 'priority' in value else []))
+            if value.get('priority','public_first') not in ('public_first','custom_first'):
+                raise JobError('invalid_settings','Choose a valid RPC priority.')
             if value['mode'] not in ('public','custom') or type(value['allow_public_fallback']) is not bool or not isinstance(value['chains'],list) or len(value['chains'])>30:
                 raise JobError('invalid_settings','Choose a valid RPC mode and credential references.')
             available={n['chain_id'] for n in read(ASSETS/'sources/rpc-candidates.json')}
@@ -171,7 +174,7 @@ class JobStore:
                     raise JobError('invalid_settings','Use a known chain and a unique environment variable reference.')
                 chains[str(chain['chain_id'])]={'url_env':chain['url_env']}
             if value['mode']=='custom' and not chains:raise JobError('invalid_settings','Custom RPC requires at least one endpoint reference.')
-            return {'mode':value['mode'],'chains':chains,'allow_public_fallback':value['allow_public_fallback']}
+            return {'mode':value['mode'],'chains':chains,'allow_public_fallback':value['allow_public_fallback'],**({'priority':value['priority']} if 'priority' in value else {})}
         if operation == 'settings.discovery':
             fields(value,['provider','key_env'])
             if value['provider'] not in ('none','alchemy') or not isinstance(value['key_env'],str) or not re.fullmatch(r'[A-Z_][A-Z0-9_]{0,99}',value['key_env']):raise JobError('invalid_settings','Use a supported indexer and environment variable reference.')
@@ -404,6 +407,7 @@ class JobStore:
             config=load_config()
             if job['operation']=='settings.rpc':
                 updated={**job['input'],'chains':{key:dict(row) for key,row in job['input']['chains'].items()}}
+                updated.setdefault('priority',config['rpc'].get('priority','public_first'))
                 for key,row in updated['chains'].items():
                     previous=config['rpc']['chains'].get(key,{})
                     if row['url_env']==previous.get('url_env') and previous.get('alchemy_network'):row['alchemy_network']=previous['alchemy_network']

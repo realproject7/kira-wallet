@@ -29,7 +29,7 @@ class ConfigurationTests(unittest.TestCase):
         with patch.dict(os.environ,{'BASE_RPC':'https://custom.example/private-key?secret=value'}):
             self.assertEqual(len(config.endpoints(self.network)),2)
             cfg['rpc']['allow_public_fallback']=True;self.save(cfg)
-            self.assertEqual(config.endpoints(self.network)[-1],'https://public.example')
+            self.assertEqual(config.endpoints(self.network)[0],'https://public.example')
             self.assertNotIn('private-key',config.redact('failed https://custom.example/private-key?secret=value'))
             cfg['rpc']['allow_public_fallback']=False;self.save(cfg)
             self.assertEqual(config.endpoints(self.network),['https://custom.example/private-key?secret=value'])
@@ -38,7 +38,7 @@ class ConfigurationTests(unittest.TestCase):
         cfg=config.default_config();cfg['secret_env_file']=str(file);cfg['discovery']['provider']='alchemy'
         cfg['rpc'].update(mode='custom',chains={'8453':{'url_env':'ALCHEMY_API_KEY','alchemy_network':'base-mainnet'}});self.save(cfg)
         with patch.dict(os.environ,{'ALCHEMY_API_KEY':'fixture-env-key'}):
-            self.assertIn('fixture-env-key',config.endpoints(self.network)[0])
+            self.assertIn('fixture-env-key',config.endpoints(self.network)[-1])
             self.assertNotIn('fixture-env-key',config.redact('Bearer fixture-env-key'))
         file.unlink();self.assertEqual(config.endpoints(self.network),['https://public.example'])
     def test_malformed_or_insecure_configuration_has_safe_errors(self):
@@ -77,5 +77,16 @@ class ConfigurationTests(unittest.TestCase):
         redacted=config.redact('Authorization: Bearer secret-token https://user:password@rpc.example/key?apiKey=another-token')
         self.assertNotIn('another-token',redacted);self.assertNotIn('password',redacted)
         self.assertNotIn('secret-token',redacted)
+
+    def test_priority_and_legacy_custom_only(self):
+        cfg=config.default_config();cfg['rpc'].update(mode='custom',chains={'8453':{'url_env':'RPC'}})
+        with patch.dict(os.environ,{'RPC':'https://custom.example'}):
+            self.assertEqual(config.endpoints(self.network,cfg),['https://public.example','https://custom.example'])
+            cfg['rpc']['priority']='custom_first'
+            self.assertEqual(config.endpoints(self.network,cfg),['https://custom.example','https://public.example'])
+            cfg['rpc'].pop('priority');cfg['rpc']['allow_public_fallback']=False
+            self.assertEqual(config.endpoints(self.network,cfg),['https://custom.example'])
+        cfg['rpc']['priority']='unknown';self.save(cfg)
+        with self.assertRaisesRegex(ValueError,'priority'):config.load_config()
 
 if __name__=='__main__':unittest.main()

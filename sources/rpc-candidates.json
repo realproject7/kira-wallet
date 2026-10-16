@@ -7,12 +7,15 @@
     "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
     "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/mainnet.ts",
     "public_rpc": [
-      "https://eth.merkle.io",
-      "https://ethereum-rpc.publicnode.com"
+      "https://ethereum-rpc.publicnode.com",
+      "https://eth.drpc.org",
+      "https://public.1rpc.io/eth"
     ],
     "explorer": "https://etherscan.io",
     "public_rpc_sources": [
-      "https://ethereum.publicnode.com/"
+      "https://www.publicnode.com/",
+      "https://drpc.org/docs/howitworks/ratelimiting",
+      "https://docs.1rpc.io/overview/supported-networks"
     ]
   },
   {
@@ -23,9 +26,16 @@
     "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
     "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/base.ts",
     "public_rpc": [
-      "https://mainnet.base.org"
+      "https://base-rpc.publicnode.com",
+      "https://base.drpc.org",
+      "https://public.1rpc.io/base"
     ],
-    "explorer": "https://basescan.org"
+    "explorer": "https://basescan.org",
+    "public_rpc_sources": [
+      "https://www.publicnode.com/",
+      "https://drpc.org/docs/howitworks/ratelimiting",
+      "https://docs.1rpc.io/overview/supported-networks"
+    ]
   },
   {
     "network": "blast",
@@ -47,9 +57,16 @@
     "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
     "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/optimism.ts",
     "public_rpc": [
+      "https://optimism-rpc.publicnode.com",
+      "https://optimism.drpc.org",
       "https://mainnet.optimism.io"
     ],
-    "explorer": "https://optimistic.etherscan.io"
+    "explorer": "https://optimistic.etherscan.io",
+    "public_rpc_sources": [
+      "https://www.publicnode.com/",
+      "https://drpc.org/docs/howitworks/ratelimiting",
+      "https://docs.1rpc.io/overview/supported-networks"
+    ]
   },
   {
     "network": "arbitrum",
@@ -59,9 +76,16 @@
     "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
     "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/arbitrum.ts",
     "public_rpc": [
+      "https://arbitrum-one-rpc.publicnode.com",
+      "https://arbitrum.drpc.org",
       "https://arb1.arbitrum.io/rpc"
     ],
-    "explorer": "https://arbiscan.io"
+    "explorer": "https://arbiscan.io",
+    "public_rpc_sources": [
+      "https://www.publicnode.com/",
+      "https://drpc.org/docs/howitworks/ratelimiting",
+      "https://docs.1rpc.io/overview/supported-networks"
+    ]
   },
   {
     "network": "avalanche",
@@ -83,9 +107,16 @@
     "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
     "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/polygon.ts",
     "public_rpc": [
-      "https://polygon.drpc.org"
+      "https://polygon-bor-rpc.publicnode.com",
+      "https://polygon.drpc.org",
+      "https://public.1rpc.io/matic"
     ],
-    "explorer": "https://polygonscan.com"
+    "explorer": "https://polygonscan.com",
+    "public_rpc_sources": [
+      "https://www.publicnode.com/",
+      "https://drpc.org/docs/howitworks/ratelimiting",
+      "https://docs.1rpc.io/overview/supported-networks"
+    ]
   },
   {
     "network": "bnbchain",
@@ -95,9 +126,14 @@
     "mintclub_bond_address": "0xc5a076cad94176c2996B32d8466Be1cE757FAa27",
     "chain_id_source": "https://github.com/wevm/viem/blob/main/src/chains/definitions/bsc.ts",
     "public_rpc": [
+      "https://bsc-rpc.publicnode.com",
       "https://56.rpc.thirdweb.com"
     ],
-    "explorer": "https://bscscan.com"
+    "explorer": "https://bscscan.com",
+    "public_rpc_sources": [
+      "https://www.publicnode.com/",
+      "https://portal.thirdweb.com/rpc-edge/overview"
+    ]
   },
   {
     "network": "shibarium",

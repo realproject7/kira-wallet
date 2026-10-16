@@ -20,6 +20,7 @@ ALCHEMY = {1:'eth-mainnet',8453:'base-mainnet',81457:'blast-mainnet',10:'opt-mai
     43114:'avax-mainnet',137:'polygon-mainnet',56:'bnb-mainnet',130:'unichain-mainnet',7777777:'zora-mainnet',
     33139:'apechain-mainnet',4663:'robinhood-mainnet',11155111:'eth-sepolia',84532:'base-sepolia',
     168587773:'blast-sepolia',43113:'avax-fuji'}
+PORTFOLIO = {**ALCHEMY,137:'matic-mainnet'}
 EXPLORERS = {109:'https://shibariumscan.io',7560:'https://cyberscan.co',177:'https://hashkey.blockscout.com',
     5112:'https://explorer.ham.fun'}
 DEX = {1:'ethereum',8453:'base',81457:'blast',10:'optimism',42161:'arbitrum',43114:'avalanche',137:'polygon',
@@ -100,7 +101,7 @@ def discover(wallet, n, folder):
     except ValueError:key=None
     if cid in ALCHEMY and key:
         row['source']='Alchemy Portfolio Tokens By Wallet'
-        network=ALCHEMY[cid]
+        network=PORTFOLIO[cid]
         endpoint=f'https://api.g.alchemy.com/data/v1/{key}/assets/tokens/by-address'
         body={'addresses':[{'address':wallet,'networks':[network]}], 'withMetadata':True,'withPrices':True,
               'includeNativeTokens':True,'includeErc20Tokens':True,'includeBlockMetadata':True}
@@ -108,22 +109,34 @@ def discover(wallet, n, folder):
         for page in range(100):
             response=fetch(endpoint,body)
             row['pages'].append({'observed_at':h.now(),'request':dict(body),'response':response})
-            data=response.get('data') or {}
+            if not isinstance(response,dict) or not isinstance(response.get('data'),dict) or not isinstance(response['data'].get('tokens'),list):
+                row['error']=(response.get('error') or response.get('transport_error')) if isinstance(response,dict) else None
+                row['error']=row['error'] or {'message':'Token provider returned an invalid or missing token list.'}
+                break
+            data=response['data']
             for t in data.get('tokens',[]):
-                if t.get('network')!=network or t.get('address','').lower()!=wallet.lower():
+                if not isinstance(t,dict):
+                    row['error']={'message':'Token provider returned an invalid token record.'};continue
+                if not isinstance(t.get('network'),str) or not t['network'] or not isinstance(t.get('address'),str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}',t['address']):
+                    row['error']={'message':'A token record identity was missing or invalid.'};continue
+                if t['network']!=network or t['address'].lower()!=wallet.lower():
                     continue
                 try:
-                    balance=int(t.get('tokenBalance') or '0',16)
+                    if not isinstance(t.get('tokenBalance'),str) or not re.fullmatch(r'0x[0-9a-fA-F]+',t['tokenBalance']):raise ValueError('Invalid balance')
+                    balance=int(t['tokenBalance'],16)
                 except (TypeError,ValueError):
+                    row['error']={'message':'A token balance was missing or invalid.'}
                     continue
                 if not t.get('tokenAddress'):
                     row['native'].append(t)
                 elif balance>0:
+                    if not isinstance(t['tokenAddress'],str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}',t['tokenAddress']):
+                        row['error']={'message':'A token contract address was invalid.'};continue
                     meta=t.get('tokenMetadata') or {}
                     row['tokens'].append({'chain_id':cid,'address':t['tokenAddress'],'name':meta.get('name'),'symbol':meta.get('symbol'),
                                           'decimals':meta.get('decimals'),'prices':t.get('tokenPrices') or []})
-            if 'data' not in response or response.get('error') or response.get('transport_error'):
-                row['error']=response.get('error') or response.get('transport_error') or {'message':'Missing provider data'}
+            if response.get('error') or response.get('transport_error') or row.get('error'):
+                row['error']=response.get('error') or response.get('transport_error') or row['error']
                 break
             cursor=data.get('pageKey')
             if not cursor:
@@ -235,6 +248,7 @@ def finish(wallet, folder, networks, discovered):
         row={**{k:v for k,v in n.items() if k not in ('public_rpc','explorer')},'rpc_status':c.get('rpc_status','unavailable'),
              'native_symbol':NATIVE.get(n['chain_id'],'ETH'),'native_balance':c['native_balance'],
              'native_observed_at':c['observed_at'],'native_block_number':c.get('block_number'),
+             'native_block_hash':c.get('block_hash'),
              'rpc_endpoint_indices':c.get('rpc_endpoint_indices',[]),
              'general_erc20_discovery':'indexer_checked' if d['complete'] else 'incomplete',
              'indexer_source':d['source'],'indexer_pages':len(d['pages']),'indexer_complete':d['complete'],
@@ -385,7 +399,8 @@ def main():
             with ThreadPoolExecutor(max_workers=5) as executor:
                 discovered=list(executor.map(lambda n:discover(wallet['address'],n,folder),networks))
             event('discovery',complete_chains=sum(d['complete'] for d in discovered),candidates=sum(len(d['tokens']) for d in discovered))
-            atomic(folder/'scan-input.json',{'wallet':wallet['address'],'networks':networks,'candidates':[t for d in discovered for t in d['tokens']]})
+            known=read(ASSETS/'sources/known-tokens.json')['tokens']
+            atomic(folder/'scan-input.json',{'wallet':wallet['address'],'networks':networks,'candidates':known+[t for d in discovered for t in d['tokens']]})
             run_node('scan',folder/'scan-input.json',folder)
             result=finish(wallet,folder,networks,discovered)
             # Reload before publication. Preserve all other wallets and historical runs.

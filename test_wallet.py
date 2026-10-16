@@ -78,6 +78,22 @@ class WalletPipelineTests(unittest.TestCase):
         self.assertEqual(registry['wallets'][0]['tags'],['Demo main','Secondary tag'])
         self.assertEqual(len(registry['tag_history']),2)
 
+    def test_malformed_provider_payloads_do_not_become_complete_empty_wallets(self):
+        missing=self.token();missing.pop('tokenBalance')
+        identities=[]
+        for field in ('network','address'):
+            for value in (None,17,{},''):
+                token=self.token();token[field]=value;identities.append({'data':{'tokens':[token]}})
+            token=self.token();token.pop(field);identities.append({'data':{'tokens':[token]}})
+        for response in ({'data':{}},{'data':{'tokens':None}},{'data':{'tokens':[missing]}},['invalid'],{'data':{'tokens':[None]}},*identities):
+            with patch.object(wallet,'fetch',return_value=response):result=wallet.discover(self.address,self.network,self.folder)
+            self.assertFalse(result['complete']);self.assertEqual(result['discovery_status'],'provider_error');self.assertTrue(result['error'])
+
+    def test_polygon_uses_the_portfolio_network_name(self):
+        with patch.object(wallet,'fetch',return_value={'data':{'tokens':[]}}) as fetch:
+            result=wallet.discover(self.address,{'chain_id':137},self.folder)
+        self.assertTrue(result['complete']);self.assertEqual(fetch.call_args.args[1]['addresses'][0]['networks'],['matic-mainnet'])
+
     def test_supported_scope_changes_stop_before_analysis(self):
         class Response:
             def __enter__(self):return self

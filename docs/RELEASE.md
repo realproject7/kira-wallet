@@ -44,19 +44,21 @@ RPC failures show affected networks, retry guidance and a settings action.
 Failed candidate balance reads keep the saved result and valuation partial
 even when general token discovery succeeded.
 
-The next candidate is **0.1.5**. It opens the existing setup modal directly,
-adds readable Codex and Claude model choices, and exposes model and permission
-changes in Workspace settings. New setup recommends local history; upgrades
-preserve explicit opt-outs. Watching wallet methods use individual buttons.
-Data provider connection offers one atomic Alchemy RPC and discovery save,
-with custom overrides under Advanced. A missing key keeps prior settings.
-The wallet draft survives a connection detour. Connecting still requires an
-explicit holdings refresh before missing assets can appear in saved evidence.
+Published **0.1.5** opens the existing setup modal directly, adds Codex and
+Claude model choices, exposes model and permission changes in Workspace settings,
+and provides one Alchemy connection save. Its registry version was confirmed on
+2026-10-09. Published package bytes remain immutable.
 
-Version 0.1.5 requires independent review and operator registry publication.
-It is not yet available from the registry. Keep published 0.1.4 and earlier
-package bytes immutable. The showcase remains a separate deployment.
-See [discovery acceptance](KIRA_DISCOVERY_ACCEPTANCE.md).
+The next candidate is **0.1.6**. It adds a paced local RPC pool, core-chain public
+alternatives, public-first custom backup, fixed-block hash checks and a small
+known-token catalog. Home and wallet pages display incomplete coverage with an
+Alchemy setup action. The settings guide explains account setup, private local
+key import and an explicit holdings refresh. Missing or malformed discovery data
+cannot become a completed empty inventory.
+
+Version 0.1.6 requires review and operator registry publication. It is not yet
+published. The showcase remains a separate deployment. See
+[free RPC behavior](FREE_RPC.md) and [Alchemy setup](ALCHEMY_SETUP.md).
 
 The operator published npm **0.1.2** on 2026-10-05. Its registry archive was
 downloaded and matched the reviewed GitHub archive above, including SHA-256,
@@ -78,7 +80,7 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep GitHub v0.1.1, its tag and its released archive immutable. Versions 0.1.2, 0.1.3 and 0.1.4 are also published and immutable. Do not rebuild them from later documentation
+Keep GitHub v0.1.1, its tag and its released archive immutable. Versions 0.1.2, 0.1.3, 0.1.4 and 0.1.5 are also published and immutable. Do not rebuild them from later documentation
 commits. Future package changes need a new version. Release preparation does not
 publish a GitHub release, merge PR 19, promote the website or publish to npm.
 Registry publication remains operator-only. The coding agent never publishes.
@@ -93,12 +95,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.5.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.6.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.5.tgz --access public
+npm publish ./dist/kira-wallet-0.1.6.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.

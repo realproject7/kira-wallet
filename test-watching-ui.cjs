@@ -50,7 +50,7 @@ function harness() {
   run("localSession={controls:true,token:'synthetic'};pollJobs=async()=>{};");
   run(fs.readFileSync('viewer/static/watching.js','utf8'));
   const provider=new EventEmitter();provider.request=async()=>[A,B];
-  Object.assign(context,{provider,A,ID});
+  Object.assign(context,{provider,A,B,ID});
   async function choose() {
     run("watchingConnection.announce({info:{uuid:ID,name:'Synthetic wallet',rdns:'test.synthetic'},provider});setWatchingMode('browser');");
     await run('watchingConnection.connect(ID)');
@@ -67,6 +67,26 @@ function assertCaptured(h) {
   assert.equal(h.element('wallet-registration-fields').hidden,true);
   assert.equal(h.run('Object.isFrozen(watchingSubmission)'),true);
 }
+test('coverage recovery opens Alchemy guidance and rechecks local readiness without a write',async()=>{
+  const h=harness();
+  h.run("currentWallet=()=>({key:A});localAPI=async path=>path==='/api/settings'?{rpc:{mode:'public',allow_public_fallback:true,chains:{}},discovery:{provider:'none',key_env:'ALCHEMY_API_KEY'}}:{local_key_available:false,discovery_key_available:false};");
+  await h.run('openDataConnections(false,true,A)');
+  assert.equal(h.element('data-provider').value,'alchemy');assert.equal(h.element('provider-key-guide').open,true);
+  assert.equal(h.element('provider-save').disabled,true);assert.equal(h.posts.length,0);
+  h.run("localAPI=async path=>path==='/api/settings'?{rpc:{mode:'custom',allow_public_fallback:true,priority:'public_first',chains:{}},discovery:{provider:'alchemy',key_env:'ALCHEMY_API_KEY'}}:{local_key_available:true,discovery_key_available:true};");
+  await h.element('provider-recheck').listeners.click();
+  assert.equal(h.element('provider-save').disabled,false);assert.equal(h.element('provider-key-guide').open,false);
+  assert.equal(h.element('settings-refresh').hidden,false);assert.equal(h.element('settings-refresh').disabled,false);assert.equal(h.posts.length,0);
+});
+test('settings refresh retains its chosen wallet and is explicit',async()=>{
+  const h=harness();
+  h.run("currentWallet=()=>({key:A});localAPI=async path=>path==='/api/settings'?{rpc:{mode:'custom',allow_public_fallback:true,chains:{}},discovery:{provider:'alchemy',key_env:'KEY'}}:{local_key_available:true,discovery_key_available:true};globalThis.refreshes=[];submitOperation=async(operation,input)=>{refreshes.push({operation,input});return {job_id:ID};};");
+  await h.run('openDataConnections(false,false,A)');assert.equal(h.run('refreshes.length'),0);
+  h.run('currentWallet=()=>({key:B});selectedWallet=B');
+  await h.element('settings-refresh').listeners.click();
+  assert.equal(h.run('refreshes[0].operation'),'wallet.refresh');assert.equal(h.run('refreshes[0].input.wallet'),A);
+  assert.equal(h.element('settings-dialog').open,false);assert(h.notices.includes('#/activity'));
+});
 test('closing and reopening a pending request retains its exact review and prevents duplicate submission',async()=>{
   const h=harness();await h.choose();const done=h.submit();assertCaptured(h);
   h.element('wallet-dialog').close();h.element('wallet-session').listeners.click();

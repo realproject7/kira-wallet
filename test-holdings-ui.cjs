@@ -25,7 +25,7 @@ assert.match(node('coverage-note').textContent,/Token discovery: 0 of 3 mainnets
 assert.equal(node('discovery-notice').hidden,false);
 assert.match(node('discovery-notice-title').textContent,/partial/);
 context.setupReadiness={discovery_provider:'none',discovery_configured:false,discovery_key_available:false};
-context.renderWallet();assert.equal(node('discovery-notice-title').textContent,'Token discovery is off');
+context.renderWallet();assert.equal(node('discovery-notice-title').textContent,'Some tokens may be missing');
 assert.equal(node('discovery-settings').hidden,true,'Read-only views cannot change discovery settings.');
 wallet.chains[0].complete=true;wallet.chains[0].discovery_status='checked';
 context.renderWallet();assert.match(node('discovery-notice-title').textContent,/partial/,'Explorer coverage must not be described as entirely disabled.');
@@ -43,12 +43,12 @@ wallet.chains[0].rpc_available=false;wallet.chains[1].candidate_balance_errors=2
 context.renderWallet();
 assert.equal(node('discovery-notice-title').textContent,'Some balances could not be checked');
 assert.match(node('discovery-notice-text').textContent,/2 networks/);
-assert.match(node('discovery-notice-text').textContent,/Wait a moment.*retry holdings.*review RPC settings/);
+assert.match(node('discovery-notice-text').textContent,/Wait a moment.*retry holdings.*Alchemy/);
 assert.match(node('valuation-note').textContent,/Partial portfolio/);
 assert.match(node('discovery-network-details').textContent,/Chain 1: balance reads failed/);
 assert.match(node('discovery-network-details').textContent,/Chain 33139: 2 token balance reads failed/);
 assert.equal(node('discovery-notice-details').open,true);
-assert.equal(node('discovery-settings').textContent,'Review RPC settings');
+assert.equal(node('discovery-settings').textContent,'Set up Alchemy');
 assert.equal(node('discovery-refresh').textContent,'Retry holdings');
 assert.equal(node('discovery-settings').hidden,false);assert.equal(node('discovery-refresh').hidden,false);
 context.localSession.controls=false;context.renderWallet();
@@ -58,7 +58,7 @@ context.renderWallet();assert.equal(node('discovery-notice').hidden,true,'A new 
 wallet.chains.forEach(c=>c.complete=false);
 wallet.chains[0].registry_complete=false;context.renderWallet();
 assert.match(node('discovery-notice-title').textContent,/balances/,'Registry failures need the same recovery guidance.');
-assert.equal(node('discovery-settings').textContent,'Review data connection','Missing discovery and RPC errors must both have a recovery path.');
+assert.equal(node('discovery-settings').textContent,'Set up Alchemy','Missing discovery and RPC errors must both have a recovery path.');
 wallet.chains[0].registry_complete=true;
 click({target:{closest:()=>({hasAttribute:()=>true})}});
 assert.equal(saved.size,0,'View filters stay temporary.');assert.equal(node('visible-count').textContent,3);
