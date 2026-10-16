@@ -11,7 +11,7 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import research as h
 from model import dex_price, within, number
-from curve_pricing import enrich
+from curve_pricing import enrich, resolve
 from native_assets import market_metadata
 from token_images import refresh_catalog
 DEX_CHAINS={1:'ethereum',8453:'base',10:'optimism',42161:'arbitrum',137:'polygon',56:'bsc',43114:'avalanche',81457:'blast',130:'unichain',7777777:'zora',33139:'apechain',177:'hashkey',8217:'kaia',7560:'cyber',109:'shibarium',4663:'robinhood'}
@@ -104,7 +104,22 @@ for w in selected:
          'source_requests':fetched,'rpc_price_state':rpc,
          'note':'Prices only. Balances and research coverage remain at their recorded analysis time.'}
  destination=folder/'market-prices.json';temporary=destination.with_suffix('.json.tmp')
- output=enrich(snapshot,output,evidence_folder)
+ # Reuse the fresh batched curve observations before traversing missing reserves.
+ # These are price facts, never fresh wallet balances.
+ graph=[{'chain_id':p['chain_id'],'address':p['address'],'is_curve':True,
+         'price_in_reserve':p['curve_price_in_reserve'],'curve_reserve':p['curve_reserve'],
+         'reserve_token':p['reserve_token'],'reserve_symbol':p['reserve_symbol'],
+         'funded':p['funded'],'source':p.get('source'),'observed_at':p.get('observed_at'),'block_number':p.get('block_number')}
+        for p in rpc['tokens'] if p.get('basis')=='Curve spot' and p.get('reserve_token') and type(p.get('funded')) is bool and p.get('curve_price_in_reserve') is not None]
+ resolved={(p['chain_id'],p['address'].lower()):p for p in output['tokens']}
+ for p in resolve(graph,output['tokens']):resolved[(p['chain_id'],p['address'].lower())]=p
+ output['tokens']=list(resolved.values())
+ missing=[t for t in snapshot['tokens'] if t.get('mintclub') and resolved.get((t['chain_id'],t['token_address'].lower()),{}).get('usd') is None
+          and resolved.get((t['chain_id'],t['token_address'].lower()),{}).get('quality') not in ('unfunded','unreliable')]
+ if missing:
+  from wallet import MarketPause
+  try:output=enrich({**snapshot,'tokens':missing},output,evidence_folder)
+  except MarketPause:output['reserve_price_status']='partial'
  # Preserve historical quotes on a provider gap, after fresh reserve derivation.
  # Fresh unfunded/unreliable evidence must invalidate an old estimate.
  published={(p['chain_id'],p['address'].lower()):p for p in output['tokens']}
@@ -125,7 +140,7 @@ for w in selected:
   overlay=job_folder/'prices.json'
   output['snapshot_id']=w['latest_snapshot']['directory']
   missing_native=any(c.get('environment')=='mainnet' and float(c.get('native_balance') or 0)>0 and c.get('native_symbol')+'_USD' not in fresh_native for c in snapshot.get('coverage',[]))
-  output['job_result_status']='completed_with_coverage_gaps' if missing_native or retained or rpc.get('errors') or any('error' in p for p in rpc['tokens']) or any(isinstance(r['response'],dict) and 'transport_error' in r['response'] for r in fetched) else 'completed'
+  output['job_result_status']='completed_with_coverage_gaps' if missing_native or retained or output.get('reserve_price_status')=='partial' or (output.get('reserve_price_graph') or {}).get('errors') or rpc.get('errors') or any('error' in p for p in rpc['tokens']) or any(isinstance(r['response'],dict) and 'transport_error' in r['response'] for r in fetched) else 'completed'
   atomic(overlay,output)
   atomic(job_folder/'price-publication.json',{'schema_version':1,'snapshot_id':w['latest_snapshot']['directory'],
       'overlay':str(overlay.relative_to(h.ROOT)),'projection':str(destination.relative_to(h.ROOT)),
