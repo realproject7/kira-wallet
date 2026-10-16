@@ -45,8 +45,12 @@ def live_record(root):
 
 def start(root,port,controls=False):
     if item:=live_record(root):
-        if controls and not health(item['port']).get('controls'):raise ValueError('The running viewer is read-only. Stop it and start with --controls.')
-        print(json.dumps({'status':'running','url':f"http://127.0.0.1:{item['port']}"}));return
+        if bool((health(item['port']) or {}).get('controls')) != controls:
+            mode='local controls' if controls else 'read-only mode'
+            command='kira start' if controls else 'kira start --read-only'
+            raise ValueError(f'The running app uses a different mode. Run kira stop, then {command} to use {mode}.')
+        url=f"http://127.0.0.1:{item['port']}"
+        print(json.dumps({'status':'running','url':url}));return url
     if health(port):raise ValueError('Port belongs to another Kira data directory. Choose --port.')
     instance=str(uuid.uuid4());env={**os.environ,'KIRA_INSTANCE_ID':instance}
     with (root/'viewer.log').open('ab') as log:
@@ -56,7 +60,8 @@ def start(root,port,controls=False):
         if child.poll() is not None:raise ValueError('Viewer could not start. Check the private viewer.log or choose another port.')
         if (health(port) or {}).get('instance')==instance:
             atomic(root/'viewer-process.json',{'pid':child.pid,'port':port,'instance':instance})
-            print(json.dumps({'status':'running','url':f'http://127.0.0.1:{port}'}));return
+            url=f'http://127.0.0.1:{port}'
+            print(json.dumps({'status':'running','url':url}));return url
         time.sleep(.1)
     child.terminate();raise ValueError('Viewer startup timed out.')
 
@@ -143,7 +148,12 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data-dir',default=os.environ.get('KIRA_DATA_DIR',str(Path.home()/'.local/share/kira-wallet')))
     sub=parser.add_subparsers(dest='command',required=True)
-    sub.add_parser('init');s=sub.add_parser('start');s.add_argument('--port',type=int,default=8787);s.add_argument('--controls',action='store_true')
+    sub.add_parser('init');s=sub.add_parser('start');s.add_argument('--port',type=int,default=8787)
+    mode=s.add_mutually_exclusive_group()
+    mode.add_argument('--read-only',dest='controls',action='store_false',help='View recorded holdings without local browser actions.')
+    mode.add_argument('--controls',dest='controls',action='store_true',help=argparse.SUPPRESS)
+    s.set_defaults(controls=True)
+    s.add_argument('--no-open',action='store_true',help='Print the local app URL without opening a browser.')
     setup=sub.add_parser('setup');setup.add_argument('--port',type=int,default=8787);setup.add_argument('--no-open',action='store_true')
     sub.add_parser('stop');sub.add_parser('status');sub.add_parser('wallets')
     sub.add_parser('tools')
@@ -172,7 +182,7 @@ def main():
         serve(root);return 0
     if getattr(args,'resume',None) and (args.enqueue or args.idempotency_key):raise ValueError('Legacy snapshot resume cannot enqueue or use an idempotency key. Use jobs resume for durable jobs.')
     root.mkdir(parents=True,exist_ok=True,mode=0o700)
-    operation_lock=None
+    operation_lock=None;viewer_lock=None
     if args.command in ('init','demo','rpc','discovery') or args.command=='config' and args.setting!='show':
         import fcntl
         operation_lock=(root/'.analysis.lock').open('a')
@@ -183,15 +193,17 @@ def main():
         viewer_lock=(root/'.viewer.lock').open('a')
         try:fcntl.flock(viewer_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:raise ValueError('Another viewer lifecycle operation is active.') from None
-    initialize(root)
     from kira_config import load_config,config_path,redact
     try:
+        initialize(root)
         if args.command=='init':print(json.dumps({'status':'initialized','rpc_mode':load_config()['rpc']['mode']}))
-        elif args.command=='start':start(root,args.port,args.controls)
+        elif args.command=='start':
+            url=start(root,args.port,args.controls)
+            if not args.no_open:
+                import webbrowser
+                webbrowser.open(url)
         elif args.command=='setup':
-            start(root,args.port,True)
-            item=live_record(root)
-            url=f"http://127.0.0.1:{item['port']}/?setup=1"
+            url=start(root,args.port,True)+'/?setup=1'
             if not args.no_open:
                 import webbrowser
                 webbrowser.open(url)
@@ -257,6 +269,9 @@ def main():
             return subprocess.run(command).returncode
     except (ValueError,OSError) as error:
         print(redact(error),file=sys.stderr);return 1
+    finally:
+        if viewer_lock:viewer_lock.close()
+        if operation_lock:operation_lock.close()
     return 0
 
 if __name__=='__main__':

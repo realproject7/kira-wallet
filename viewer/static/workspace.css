@@ -273,6 +273,13 @@ main { margin-left: 232px; width: calc(100% - 232px); }
 .research-dialog p, .research-dialog label { font-size: 14px; line-height: 1.6; }
 .research-dialog .form-note, .assistant-gate p { font-size: 12px; line-height: 1.6; }
 .research-dialog input:not([type=checkbox]), .research-dialog textarea, .research-dialog select { font-size: 14px; min-height: 44px; }
+.ows-provider-card { padding: 17px 18px; margin: 0 0 16px; border: 1px solid #e2d8e9; border-radius: 14px; background: #f2edf6; }
+.ows-provider-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; color: var(--secondary); font-size: 12px; }
+.ows-provider-heading a { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; color: var(--secondary); }
+.ows-provider-heading img { display: block; width: 148px; height: 31px; object-fit: contain; filter: brightness(0); opacity: .8; }
+.ows-provider-heading a:hover img { opacity: 1; }
+.ows-provider-card h3 { margin: 0 0 8px; font-size: 15px; line-height: 1.4; font-weight: 600; color: var(--ink); }
+.research-dialog .ows-provider-card p { margin: 0; font-size: 13px; line-height: 1.6; }
 .history-row { font-size: 14px; line-height: 1.6; }
 .history-row small, .comparison-result small { font-size: 12px; }
 

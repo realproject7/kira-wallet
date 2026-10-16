@@ -31,6 +31,15 @@ kira setup
 
 Open the local app at [127.0.0.1:8787](http://127.0.0.1:8787).
 
+After your first setup, open Kira with:
+
+```sh
+kira start
+```
+
+It starts your local app and opens the browser. Use `kira stop` to stop it.
+For a viewer without wallet or research actions, use `kira start --read-only`.
+
 Prefer an archive? [GitHub releases](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2)
 include the same package and its checksum.
 
@@ -80,7 +89,8 @@ are excluded from your portfolio's USD value.
 
 - **Watch an existing wallet** using its public address. Watching does not grant
   Kira permission to spend.
-- **Create an encrypted local wallet** with **Create wallet** in the sidebar.
+- **Create an OWS wallet** with **Create wallet** in the sidebar, powered by
+  [Open Wallet Standard](https://openwallet.sh/).
   Enter the encryption passphrase in the local form. Kira connects the public
   EVM account; keys stay in the local OWS vault.
 - **Choose what AI can see.** Wallet access can be off, limited to one wallet,

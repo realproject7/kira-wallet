@@ -20,4 +20,11 @@ The SDK is an optional dependency used for human-submitted encrypted wallet
 creation and public account listing. See
 [Open Wallet Standard](https://github.com/open-wallet-standard/core).
 
+The official Open Wallet Standard wordmark in `viewer/static/ows-logo.svg` and
+`site/assets/ows-logo.svg` is copied unchanged from
+[openwallet.sh](https://openwallet.sh/footer-logo.svg). CSS displays its original
+white artwork in black on light backgrounds. The mark belongs to its owner and
+identifies the OWS wallet-creation integration without implying endorsement.
+Its retrieval date and source digest are in `site/assets/ows-artwork-source.json`.
+
 CASHCAT, BLAST and USDB artwork in the public reconstructed demo comes from lpTOKEN.fun token metadata, DEX Screener and CoinGecko. Token marks belong to their respective owners and identify the assets without implying affiliation or endorsement. The source URLs and chain-specific contract identities are recorded in `site/assets/token-artwork-sources.json`.

@@ -16,14 +16,25 @@ Registry publication remains an operator action. The code and original character
 
 ## Lifecycle
 
-`kira init` prepares an empty private data directory. `kira start --port 8787`
-starts a loopback-only read-only viewer. `kira status` identifies the managed
-instance. `kira stop` checks its live instance ID and OS process identity.
+Use `kira setup` for your first setup. For everyday use, `kira start` starts
+the local app with browser controls and opens it in your browser. The default
+port is 8787. Use `--port` to choose another port, or `--no-open` to print the
+URL without opening a browser. `kira status` identifies the managed instance.
+`kira stop` checks its live instance ID and OS process identity before stopping it.
+
+`kira init` prepares an empty private data directory. `kira start --read-only`
+starts a loopback-only viewer without wallet or research actions.
 Another portfolio never silently reuses that server.
 
 `kira setup` starts the loopback viewer with local controls and opens its setup
 screen. Use `--no-open` to print its URL instead. If a read-only viewer is already
-running, stop it explicitly before setup. The normal `kira start` remains read-only.
+running, stop it explicitly before setup or a normal start. Changing between
+read-only and control modes requires an explicit stop and restart. Starting
+an already-running app in the same mode reuses its URL. The old `--controls`
+option remains accepted for existing scripts but is no longer needed.
+
+These startup defaults apply from 0.1.3. In the published 0.1.2 package, use
+`kira setup` or `kira start --controls` for the full app.
 
 The 0.1.2 GitHub release starts with a wallet checklist. Add a public EVM
 address or use the browser wallet picker. Registration starts one explicit
@@ -151,9 +162,9 @@ cancelled jobs retain their last good result and unpublished evidence.
 interrupted jobs. Price jobs retain immutable overlays before updating the
 viewer projection. A viewer stop does not cancel research jobs.
 
-Start with `kira start --controls` to enable protected browser actions. The
-usual start remains read-only. Stop an existing read-only instance before
-starting one with controls. Actions need the local session and same origin.
+Start with `kira start` to use protected browser actions. Use `--read-only`
+for a viewer without those actions. Stop an existing instance before switching
+modes. Actions need the local session and same origin.
 The supported URL uses 127.0.0.1. Browser controls offer wallet registration,
 exact names, holdings/price refresh, cancel/resume, saved analysis comparison,
 RPC references and discovery references. The synthetic demo cannot start
