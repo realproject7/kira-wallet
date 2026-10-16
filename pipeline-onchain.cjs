@@ -630,7 +630,7 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
         const q=await calls(c,[{address:quote,abi:erc20,functionName:'balanceOf',args:[p.pool]},{address:quote,abi:erc20,functionName:'decimals'},{address:quote,abi:erc20,functionName:'symbol'}],block);
         if(q.some(x=>x.status==='failure'))retry=true;
         if(q.every(x=>x.status==='success')) Object.assign(p.factory_measurement,{quote_token:quote,quote_symbol:q[2].result,quote_decimals:q[1].result,quote_balance:v.formatUnits(q[0].result,q[1].result)});
-        p.cashout_quote=await quotePool(c,n,t,p,block,snapshot.hash,deployments);
+        p.cashout_quote=await quotePool(c,n,t,p,block,snapshot.hash,deployments,{batchRead:contracts=>calls(c,contracts,block)});
         if(p.cashout_quote.status==='unknown'&&p.cashout_quote.reason.startsWith('Pool quote failed'))retry=true;
       }
     }catch(e){if(e.code==='market_budget'){paused=true;throw e;}retry=true;p.rpc_verification={verification:'unverified',error:h.safeError(e)};}

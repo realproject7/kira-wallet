@@ -108,6 +108,19 @@ asset reviews survive budget boundaries as well as pause and resume. Optional
 deep scanning has no overall completion deadline. See the current
 [job contract](JOB_CONTRACT.md#asset-focused-market-review) for its finite scope.
 
+Amount-specific quote fallback keeps the full-input fast path, then groups up
+to three smaller inputs per read-only aggregate. Every existing sample remains
+eligible in the original order. Payload limits use the same bounded splitting
+as other contract reads, and transport failures remain unknown. Provider pacing
+is unchanged. The canonical [QuoterV2](https://github.com/Uniswap/v3-periphery/blob/main/contracts/lens/QuoterV2.sol)
+reverts each internal quote swap, so calls in a [Multicall3](https://github.com/mds1/multicall/blob/main/src/Multicall3.sol)
+exact-input batch observe the same pinned state. These calls submit no transaction.
+
+When upgrading an existing wallet, positive identities from its own saved
+publications can seed later candidate balance checks. The one-time import saves
+identities only. New RPC reads still determine balances; another wallet's
+records and paths outside the private snapshot directory are rejected.
+
 ## Default token inventory
 
 Fresh research defaults to wallet candidates (`--inventory market`). Native

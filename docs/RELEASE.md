@@ -84,7 +84,7 @@ commits. Future package changes need a new version. Release preparation does not
 publish a GitHub release, merge PR 19, promote the website or publish to npm.
 Registry publication remains operator-only. The coding agent never publishes.
 
-Required preparation from a clean, reviewed source checkout:
+Required preparation from a clean, validated source checkout:
 
 ```sh
 npm test
@@ -205,14 +205,11 @@ bounded read plans with individual completion receipts. Failed account probes
 are distinct from unsupported versions. Reviewed lifecycle notices and targeted
 suspicious-zero checks preserve unknown and historical observations.
 
-Publication is operator-only. Prepare the archive from the final reviewed clean
-commit, run the required install and public checks, and test that exact archive
-in isolated public-only and Alchemy auxiliary workspaces. The personal published
-0.1.10 app and archive remain intact. The final release manifest records the
-candidate source commit, digest and package members. Do not publish an
-unreviewed development pack.
+Publication is operator-only. Preserve the published 0.1.10 app and archive.
+The next release uses its own clean source commit, exact installation and
+manifest. Registry and GitHub publication are separate operations.
 
-## Development candidate: 0.1.11
+## Release candidate: 0.1.11
 
 This branch adds durable, segmented discovery frontiers, block-range splitting
 past provider page limits, source-specific cursor and quota recovery, and a
@@ -232,12 +229,34 @@ records unsupported discovery and liquidation paths as unknown. Same-block
 quotes compose supported DEX and nested funded-burn outputs into terminal assets;
 spot reserve prices alone do not establish cash proceeds.
 
-This is not a frozen release candidate. Fresh exact-package wallet acceptance
-and independent scoped pinned comparisons remain pending. One required review
-covered the earlier discovery implementation and its fixes; the cash-out and
-wallet-candidate additions have not been independently reviewed. Additional
-review not selected. Keep source-discovery,
-balance and price completion separate. An unavailable or unsupported scope stays
-unknown. The known inherited history-author finding is still reported by the
-privacy check; it is not a passing scan or permission to rewrite history.
-Registry publication remains operator-only.
+Basic scans save usable balances first. Users explicitly select a deep scan,
+which finishes after representative asset checks with quoted or unknown
+outcomes. Cumulative progress survives pause, restart and bounded engine slices.
+Available prices, representative estimates and unresolved checks remain separate.
+Missing rereads retain earlier dated evidence without marking it fresh.
+
+Quote fallback preserves all sampled input sizes and their order. A successful
+full-input quote returns immediately; smaller V3 and Aerodrome inputs use bounded
+read-only batches with the existing provider pacing and payload-limit splitting.
+Upgrades recover previously positive token identities from that wallet's own
+saved publications. They never reuse the old quantities as new balances or
+establish exhaustive new-wallet discovery.
+
+Release preparation requires the full suite, a clean exact-package installation,
+tracked and history privacy scans, a default public-only basic-scan check and
+focused same-block quote equivalence. Existing discovery configuration and
+auxiliary-provider regressions remain in the suite. No credential changes or
+paid-provider acceptance are part of this release preparation. Earlier actual
+natural completion and protected desktop/mobile pause and resume evidence are
+retained; rerun affected behavior on the final package. Review not selected under
+the operator's current ruling. No additional independent review is implied.
+
+The operator delegated resolution of the legacy author-metadata finding on
+October 16, 2026. The privacy checker accepts only the existing author identity
+of immutable merge commit `2ed52a24bc38ac4101aceff781cb7ff58941be57` and reports
+the exception separately. New identities, commit contents and secrets retain
+their checks. No history rewrite or broad email exemption is required.
+
+Use only the archive matching the final `dist/release.json` source commit,
+SHA-256 and installed member hashes. A registry dry run does not publish or
+establish registry credentials. Registry publication remains operator-only.

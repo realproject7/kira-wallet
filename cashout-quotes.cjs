@@ -25,7 +25,7 @@ function contractRevert(error) {
   }
   return reverted;
 }
-async function quotePool(client,network,token,pool,block,blockHash,deployments) {
+async function quotePool(client,network,token,pool,block,blockHash,deployments,{batchRead}={}) {
   const state=pool.factory_measurement?.state||{},balance=integer(token.wallet_balance_raw);
   const unknown=reason=>({status:'unknown',reason,gas_included:false,execution_verified:false});
   if(!balance||!address(token.token_address)||!address(state.token0)||!address(state.token1)||state.token0.toLowerCase()===state.token1.toLowerCase()
@@ -39,22 +39,40 @@ async function quotePool(client,network,token,pool,block,blockHash,deployments) 
     return unknown('Output token metadata unavailable');
   const canonical=protocol=>deployments.find(d=>d.chainId===network.chain_id&&d.protocol===protocol&&d.contract===(protocol==='v2'?'UniswapV2Factory':'UniswapV3Factory')&&d.address.toLowerCase()===state.factory?.toLowerCase());
   const quoter=deployments.find(d=>d.chainId===network.chain_id&&d.protocol==='v3'&&d.contract==='QuoterV2'&&d.status==='active');
-  let kind,quote;
+  let kind,quote,request,decode;
   if(canonical('v3')&&quoter&&Number.isInteger(state.fee)&&state.fee>=0&&state.fee<1_000_000) {
     kind='uniswap_v3_quoter';
-    quote=async amount=>(await client.readContract({address:quoter.address,abi:v3Abi,functionName:'quoteExactInputSingle',args:[{tokenIn:token.token_address,tokenOut:output,amountIn:amount,fee:state.fee,sqrtPriceLimitX96:0n}],blockNumber:block}))[0];
+    request=amount=>({address:quoter.address,abi:v3Abi,functionName:'quoteExactInputSingle',args:[{tokenIn:token.token_address,tokenOut:output,amountIn:amount,fee:state.fee,sqrtPriceLimitX96:0n}]});
+    decode=result=>result[0];
   }else if(network.chain_id===8453&&state.factory?.toLowerCase()==='0x420dd381b31aef6683db6b902084cb0ffece40da'&&pool.venue==='aerodrome') {
     kind='aerodrome_pool';
-    quote=amount=>client.readContract({address:pool.pool,abi:aeroAbi,functionName:'getAmountOut',args:[amount,token.token_address],blockNumber:block});
+    request=amount=>({address:pool.pool,abi:aeroAbi,functionName:'getAmountOut',args:[amount,token.token_address]});
+    decode=result=>result;
   }else if(canonical('v2')&&Array.isArray(state.getReserves)) {
     const reserveIn=integer(state.getReserves[is0?0:1]),reserveOut=integer(state.getReserves[is0?1:0]);
     if(!reserveIn||!reserveOut)return unknown('Pool reserves unavailable');
     kind='uniswap_v2_reserves';quote=async amount=>v2AmountOut(amount,reserveIn,reserveOut);
   }else return unknown('Quote adapter unavailable for this verified pool');
-  let failures=0;
-  for(const amount of inputAmounts(balance)) {
+  if(request)quote=async amount=>decode(await client.readContract({...request(amount),blockNumber:block}));
+  const amounts=inputAmounts(balance);let failures=0,buffer=[];
+  for(let index=0;index<amounts.length;index++) {
+    const amount=amounts[index];
     let result;
-    try{result=integer(await quote(amount));}
+    try{
+      // Keep the usual full-input fast path. Only fallback inputs are grouped,
+      // in their original order. QuoterV2 reverts its internal pool swap, so
+      // each exact-input call observes the same state in a read-only aggregate.
+      if(index>0&&request&&batchRead){
+        if(!buffer.length){
+          const group=amounts.slice(index,index+3);
+          buffer=await batchRead(group.map(request));
+          if(!Array.isArray(buffer)||buffer.length!==group.length)throw Error('Malformed quote batch');
+        }
+        const row=buffer.shift();
+        if(row.status!=='success')throw row.error||Error('Quote batch unavailable');
+        result=integer(decode(row.result));
+      }else result=integer(await quote(amount));
+    }
     catch(error){if(error.code==='market_budget')throw error;failures++;if(contractRevert(error))continue;break;}
     if(result===null){failures++;continue;}
     if(result>0n)return {status:'quoted',kind,input_amount_raw:amount.toString(),input_amount_is_maximum:kind==='uniswap_v3_quoter',

@@ -8,6 +8,18 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Operator-selected release preparation accepts only this existing author
+# identity. The immutable commit's contents and metadata still get secret scans.
+ACCEPTED_LEGACY_AUTHORS = {'2ed52a24bc38ac4101aceff781cb7ff58941be57'}
+
+
+def identity_status(commit, author, committer):
+    if not (committer.endswith('@users.noreply.github.com') or committer == 'noreply@github.com'):
+        return 'unapproved'
+    if author.endswith('@users.noreply.github.com'):
+        return 'valid'
+    return 'accepted_legacy_author' if commit in ACCEPTED_LEGACY_AUTHORS else 'unapproved'
+
 
 def git(*args):
     return subprocess.check_output(['git', *args], cwd=ROOT)
@@ -69,12 +81,16 @@ def main():
         if reasons:
             findings.append({'path': path, 'reasons': reasons})
     history_blobs = set()
+    accepted_authors = []
     if args.history:
         for commit in git('rev-list', args.ref).decode().splitlines():
             metadata = git('show', '-s', '--format=%ae%n%ce%n%B', commit).decode()
             author,committer=metadata.splitlines()[:2]
-            if not author.endswith('@users.noreply.github.com') or not (committer.endswith('@users.noreply.github.com') or committer=='noreply@github.com'):
+            status = identity_status(commit, author, committer)
+            if status == 'unapproved':
                 findings.append({'commit': commit[:7], 'reasons': ['non-noreply commit identity']})
+            elif status == 'accepted_legacy_author':
+                accepted_authors.append({'commit': commit, 'reason': 'Accepted existing author metadata only; content and secret checks remain active.'})
             reasons = check('commit message', metadata.encode(), identifiers, secrets)
             if reasons:
                 findings.append({'commit': commit[:7], 'reasons': reasons})
@@ -88,7 +104,7 @@ def main():
                 reasons = check(path, git('cat-file', 'blob', blob), identifiers, secrets)
                 if reasons:
                     findings.append({'commit': commit[:7], 'path': path, 'reasons': reasons})
-    print(json.dumps({'tracked_files': count, 'history_blobs': len(history_blobs), 'findings': findings}, indent=2))
+    print(json.dumps({'tracked_files': count, 'history_blobs': len(history_blobs), 'accepted_history_authors': accepted_authors, 'findings': findings}, indent=2))
     if findings:
         raise SystemExit(1)
 

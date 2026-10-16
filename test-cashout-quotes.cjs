@@ -62,6 +62,29 @@ test('unrecognized factories, token mismatches and stale block hashes cannot pro
  assert.equal((await quotePool({}, {chain_id:1},token,pool,7n,HASH,deployments)).status,'unknown');
 });
 
+test('fallback batches preserve every sampled input, ordering and the full-input fast path',async()=>{
+ const {token,pool,deployments}=fixture('v3');token.wallet_balance_raw='65536';
+ const reverted=()=>Object.assign(Error('Synthetic contract revert'),{name:'ExecutionRevertedError'});
+ let singles=0,batches=0;const sampled=[];
+ const client={readContract:async q=>{singles++;sampled.push(q.args[0].amountIn);throw reverted();}};
+ const batchRead=async contracts=>{batches++;assert(contracts.length<=3);return contracts.map(q=>{sampled.push(q.args[0].amountIn);return {status:'failure',error:reverted()};});};
+ const unknown=await quotePool(client,{chain_id:1},token,pool,7n,HASH,deployments,{batchRead});
+ assert.equal(unknown.status,'unknown');assert.deepEqual(sampled,inputAmounts(65536n));assert.equal(singles+batches,3);
+ const fast=await quotePool({readContract:async()=>[12n]},{chain_id:1},token,pool,7n,HASH,deployments,{batchRead:async()=>assert.fail('Full input must not start a batch')});
+ assert.equal(fast.input_amount_raw,'65536');
+ const partial=await quotePool(client,{chain_id:1},token,pool,7n,HASH,deployments,{batchRead:async contracts=>contracts.map((q,i)=>({status:'success',result:[BigInt(i+12)]}))});
+ assert.equal(partial.input_amount_raw,'32768');assert.equal(partial.output_amount_raw,'12');assert.equal(partial.holding_amount_raw,'65536');
+});
+
+test('a batched transport failure cannot be skipped for a later quote and budgets remain pauses',async()=>{
+ const {token,pool,deployments}=fixture('v3');
+ const client={readContract:async()=>{throw Object.assign(Error('Synthetic revert'),{name:'ExecutionRevertedError'});}};
+ const unknown=await quotePool(client,{chain_id:1},token,pool,7n,HASH,deployments,{batchRead:async contracts=>contracts.map((q,i)=>i?{status:'success',result:[12n]}:{status:'failure',error:Object.assign(Error('Synthetic outage'),{name:'HttpRequestError'})})});
+ assert.equal(unknown.status,'unknown');
+ await assert.rejects(quotePool(client,{chain_id:1},token,pool,7n,HASH,deployments,{batchRead:async()=>{throw Object.assign(Error('Budget'),{code:'market_budget'});}}),e=>e.code==='market_budget');
+ assert.equal((await quotePool(client,{chain_id:1},token,pool,7n,HASH,deployments,{batchRead:async()=>[]})).status,'unknown');
+});
+
 test('market pipeline pins quotes to holdings and reuses the durable quote after restart',async()=>{
  const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
  const h=require('./onchain.cjs'),{dexChain}=require('./pipeline-onchain.cjs');

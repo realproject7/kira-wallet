@@ -258,21 +258,39 @@ def discover(wallet, n, folder, budget=None, *, continue_only=False):
 def prior_candidates(wallet):
     """Durable positive identities survive baseline publication and failed rereads."""
     cache=ROOT/'cache/prior-positive'/f"{wallet['address_key']}.json"
-    prior=[]
+    prior=[];imported=set()
     try:
         saved=read(cache) if cache.is_file() and cache.stat().st_size<=8000000 else {}
-        if isinstance(saved,dict) and saved.get('wallet')==wallet['address_key'] and isinstance(saved.get('candidates'),list):prior=saved['candidates']
+        if isinstance(saved,dict) and saved.get('wallet')==wallet['address_key'] and isinstance(saved.get('candidates'),list):
+            prior=saved['candidates']
+            sources=saved.get('imported_snapshots',[])
+            if isinstance(sources,list):imported={p for p in sources if isinstance(p,str)}
     except (OSError,ValueError):pass
-    previous=(wallet.get('latest_snapshot') or {}).get('result')
-    if previous:
-        previous_path=(ROOT/previous).resolve()
-        if previous_path.is_relative_to(ROOT/'snapshots') and previous_path.is_file():
-            old=read(previous_path)
-            if old.get('wallet_address','').lower()==wallet['address_key']:
-                prior += [{'chain_id':t.get('chain_id'),'address':t.get('token_address'),
-                           **({'token_type':'ERC1155','token_id':'0'} if t.get('token_type')=='ERC1155' else {})}
-                          for t in old.get('tokens',[]) if t.get('token_type')=='ERC20' or
-                          t.get('token_type')=='ERC1155' and str(t.get('token_id'))=='0' and (t.get('mintclub') or t.get('mintclub_membership_status')=='verified')]
+    def import_snapshot(relative, *, historical=False):
+        if not isinstance(relative,str) or historical and relative in imported:return
+        try:
+            source=(ROOT/relative).resolve()
+            if not source.is_relative_to(ROOT/'snapshots') or not source.is_file() or source.stat().st_size>32_000_000:return
+            old=read(source)
+            if not isinstance(old,dict) or old.get('wallet_address','').lower()!=wallet['address_key'] or not isinstance(old.get('tokens'),list):return
+            for t in old.get('tokens',[]):
+                if not isinstance(t,dict):continue
+                # Bootstrap upgrades from this wallet's own published history.
+                # A historical positive identity is a new-read candidate only.
+                raw=str(t.get('wallet_balance_raw',''))
+                if historical and (not re.fullmatch(r'[0-9]{1,78}',raw) or int(raw)<=0):continue
+                if t.get('token_type')=='ERC20' or t.get('token_type')=='ERC1155' and str(t.get('token_id'))=='0' and (t.get('mintclub') or t.get('mintclub_membership_status')=='verified'):
+                    prior.append({'chain_id':t.get('chain_id'),'address':t.get('token_address'),
+                                  **({'token_type':'ERC1155','token_id':'0'} if t.get('token_type')=='ERC1155' else {})})
+            imported.add(relative)
+        except (OSError,ValueError,TypeError,AttributeError):return
+    import_snapshot((wallet.get('latest_snapshot') or {}).get('result'))
+    try:registry=read(ROOT/'wallets.json')
+    except (OSError,ValueError):registry={}
+    runs=registry.get('research_runs',[]) if isinstance(registry,dict) else []
+    for run in runs if isinstance(runs,list) else []:
+        if isinstance(run,dict) and run.get('address_key')==wallet['address_key'] and isinstance(run.get('snapshot'),str):
+            import_snapshot(run['snapshot'].rstrip('/')+'/results.json',historical=True)
     candidates={}
     for token in prior if isinstance(prior,list) else []:
         if isinstance(token,dict) and type(token.get('chain_id')) is int and token['chain_id']>0 and isinstance(token.get('address'),str) and re.fullmatch(r'0x[0-9a-fA-F]{40}',token['address']):
@@ -281,7 +299,7 @@ def prior_candidates(wallet):
             identity=(token['chain_id'],token['address'].lower(),kind)
             candidates[identity]={'chain_id':identity[0],'address':identity[1],'suspicious_zero_check':True,'prices':[],
                                   **({'token_type':'ERC1155','token_id':'0','requires_mintclub_membership':True} if kind=='ERC1155' else {})}
-    atomic(cache,{'wallet':wallet['address_key'],'candidates':list(candidates.values())})
+    atomic(cache,{'wallet':wallet['address_key'],'candidates':list(candidates.values()),'imported_snapshots':sorted(imported)})
     return list(candidates.values())
 
 
