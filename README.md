@@ -43,12 +43,11 @@ For a viewer without wallet or research actions, use `kira start --read-only`.
 Prefer an archive? [GitHub releases](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2)
 include the same package and its checksum.
 
-1. **Set up discovery.** In **Workspace settings**, connect an indexer for broad
-   ERC20 discovery. Public RPC alone has limited discovery; incomplete coverage
+1. **Review optional coverage.** Free research is enabled by default. In **Workspace settings**, connect Alchemy for broader
+   ERC20 discovery. Free token sources have limited coverage; incomplete coverage
    stays visible. An AI or browser wallet connection does not enable an indexer.
 2. **Add a watching wallet.** Paste a public address and give it a name. Add more
-   wallets whenever you need them. Without discovery, the form explicitly
-   offers limited research of native and Mint Club assets.
+   wallets whenever you need them. The form starts free research of native, common tokens and Mint Club assets, with keyless discovery on supported networks. First balances appear before detailed research finishes.
 3. **Connect your AI.** Install and sign in to the
    [Codex CLI](https://developers.openai.com/codex/cli) or
    [Claude Code](https://code.claude.com/docs/en/quickstart), then choose your

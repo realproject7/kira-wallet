@@ -60,3 +60,16 @@ through the user's CLI; local storage does not imply an offline model.
 
 See [the conversation contract](ONBOARDING_CHAT_CONTRACT.md).
 The standalone stdio MCP adapter above remains read-only and separate.
+
+Native responses select the final Codex agent message. Older verified event
+streams without a phase use their last agent message. Commentary cannot become
+a tool request by concatenation. A mixed or malformed request gets one bounded
+correction; no tool executes from it and repeated malformed protocol fails
+without adding raw JSON to conversation history. Turn receipts expose only
+bounded tool names and completed/failed outcomes.
+
+Job reads include analysis phase, parent/continuation IDs and real progress
+events. Normalized chain discovery completeness is separate from a job's
+on-chain checkpoint status. Deferred candidates and pending networks are not
+failed reads or zero holdings. Historical observations cannot establish current
+execution, transfers or realized profit.

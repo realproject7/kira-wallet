@@ -49,15 +49,14 @@ Claude model choices, exposes model and permission changes in Workspace settings
 and provides one Alchemy connection save. Its registry version was confirmed on
 2026-10-09. Published package bytes remain immutable.
 
-The next candidate is **0.1.6**. It adds a paced local RPC pool, core-chain public
+Published **0.1.6** adds a paced local RPC pool, core-chain public
 alternatives, public-first custom backup, fixed-block hash checks and a small
 known-token catalog. Home and wallet pages display incomplete coverage with an
 Alchemy setup action. The settings guide explains account setup, private local
 key import and an explicit holdings refresh. Missing or malformed discovery data
 cannot become a completed empty inventory.
 
-Version 0.1.6 requires review and operator registry publication. It is not yet
-published. The showcase remains a separate deployment. See
+Version 0.1.6 is published and immutable. The showcase remains a separate deployment. See
 [free RPC behavior](FREE_RPC.md) and [Alchemy setup](ALCHEMY_SETUP.md).
 
 The operator published npm **0.1.2** on 2026-10-05. Its registry archive was
@@ -80,7 +79,7 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep GitHub v0.1.1, its tag and its released archive immutable. Versions 0.1.2, 0.1.3, 0.1.4 and 0.1.5 are also published and immutable. Do not rebuild them from later documentation
+Keep GitHub v0.1.1, its tag and its released archive immutable. Versions 0.1.2, 0.1.3, 0.1.4, 0.1.5 and 0.1.6 are also published and immutable. Do not rebuild them from later documentation
 commits. Future package changes need a new version. Release preparation does not
 publish a GitHub release, merge PR 19, promote the website or publish to npm.
 Registry publication remains operator-only. The coding agent never publishes.
@@ -95,17 +94,37 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.6.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.7.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.6.tgz --access public
+npm publish ./dist/kira-wallet-0.1.7.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
 After publication, verify the registry archive and perform a fresh install
 before marking the new onboarding flow as available to npm users.
+
+## Proposed 0.1.7 behavior
+
+The candidate enables useful keyless research by default, expands the curated
+contract inventory and separates first recorded balances from exhaustive
+background research. Pending candidates, registry work and other networks stay
+visible. Current wallet evidence cannot roll back when an older continuation
+resumes. See [coverage and limits](FREE_RPC.md).
+
+Codex uses the final native message rather than joined commentary. Mixed tool
+protocol receives one bounded correction and is never rendered as a completed
+answer. Claude retains its restricted native adapter. Tool receipts contain
+names and outcomes, without raw arguments. Job checkpoints and normalized token
+discovery flags have separate meanings. Imported connection references reconcile
+with untouched settings fields while preserving edited drafts.
+
+The next archive is **0.1.7**, unpublished until the operator runs the command.
+Release readiness requires the repository suite, clean installation, source and
+history privacy scans, independent review and the frozen archive manifest.
+No live-extension or human passphrase acceptance is inferred from these checks.
 
 ## Verified 0.1.0 publication
 

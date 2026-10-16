@@ -52,15 +52,42 @@ Registry identity caching remains separate from balances.
 
 Native balances and the selected issuer/deployment-backed contracts in
 `sources/known-tokens.json` are checked before cold Mint Club enumeration.
-The small list includes USDC on seven supported mainnets, USDT on Ethereum and
-Avalanche, and WETH on Arbitrum. Decimals and quantities come from on-chain
-reads. This list does not cover all common tokens or all wrapped/bridged variants.
+The catalog has 57 chain/contract identities on eight mainnets. Issuer references
+and selected Uniswap token-list records retain per-contract provenance. The
+upstream list commit and its license are bundled; no untrusted runtime list is
+loaded. Decimals and quantities come from on-chain reads. This remains a bounded
+inventory, not a claim to discover every wrapped or arbitrary token.
 
-The full Mint Club registry is still scanned. Public RPC cannot enumerate all
-arbitrary ERC20 contracts held by an address. Discovery remains incomplete
-without a working indexer on that network. Incomplete holdings show a persistent
-notice on Home and the wallet page, with a path to
-[Alchemy setup](ALCHEMY_SETUP.md) and an explicit holdings refresh.
+Default research also uses Routescan without a key on individually verified
+Ethereum, Avalanche and Blast routes. Its documented free access is limited to
+two requests per second and 10,000 calls per day. Kira starts at most one call
+per second, reads at most 20 pages of 100 candidates per chain and spends at most
+25 seconds per enumeration. An isolated HTTP reader enforces a total deadline,
+including DNS and response bodies. Unsafe pagination, outages, malformed data
+and limits keep coverage partial. Provider quantities and prices never replace
+RPC-verified balances. Other Routescan chains are not presumed supported.
+Explicit keyless opt-outs and custom-only preferences remain respected.
+
+Initial reports check Base, Ethereum and Blast, up to 128 candidates per chain.
+Selected common contracts take priority. Remaining candidates and networks are
+explicitly pending. A durable background continuation scans every configured
+network, the full Mint Club registry and markets. Registry identity prefixes
+are saved incrementally; balances are never shared between wallets. Batches
+contain at most 128 reads, with splitting only for verified payload limits.
+New initial work takes priority over detailed research. Older same-wallet
+continuations cannot replace newer evidence.
+
+Public RPC cannot enumerate all arbitrary ERC20 contracts. Alchemy is an
+optional broader candidate source and backup RPC. Discovery calls made through
+the wallet engine have a 25-second initial or 60-second detailed per-chain
+budget. Native balances, free candidates and Mint Club research remain usable
+without it. Missing or deferred evidence stays unknown. Persistent coverage
+notices distinguish pending work from failed reads and offer retry or optional
+[Alchemy setup](ALCHEMY_SETUP.md).
+
+Keyless sources: [Routescan addresses](https://routescan.io/docs/api/addresses),
+[API access](https://routescan.io/docs/plans-and-limits/api-keys-and-pricing),
+[rate limits](https://routescan.io/docs/plans-and-limits/rate-limits).
 
 ## Read preferences
 

@@ -1,6 +1,6 @@
 {
   "name": "kira-wallet",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Manage your wallets with your own AI. Track tokens, research markets and refresh holdings in a local workspace.",
   "license": "MIT",
   "private": false,
@@ -61,10 +61,12 @@
     "rpc-pool.cjs",
     "sources/known-tokens.json",
     "docs/ALCHEMY_SETUP.md",
-    "docs/FREE_RPC.md"
+    "docs/FREE_RPC.md",
+    "public_discovery.py",
+    "sources/TOKEN_LIST_LICENSE.txt"
   ],
   "scripts": {
-    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js && node test-watching.cjs && node test-watching-ui.cjs && node --check viewer/static/watching.js && node --check viewer/static/watching-model.js && node --check viewer/static/agent.js && node test-agent-ui.cjs && node test-markdown.cjs && node --check viewer/static/report.js && node test-report-ui.cjs && node test-holdings-ui.cjs && node test-rpc-fallback.cjs && node test-ows.cjs && node test-ows-ui.cjs && node --check viewer/static/ows.js && node --check viewer/static/chat-workspace.js && node --check viewer/static/selects.js && node --check site/demo.js && node test-rpc-pool.cjs"
+    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js && node test-watching.cjs && node test-watching-ui.cjs && node --check viewer/static/watching.js && node --check viewer/static/watching-model.js && node --check viewer/static/agent.js && node test-agent-ui.cjs && node test-markdown.cjs && node --check viewer/static/report.js && node test-report-ui.cjs && node test-holdings-ui.cjs && node test-settings-ui.cjs && node test-rpc-fallback.cjs && node test-ows.cjs && node test-ows-ui.cjs && node --check viewer/static/ows.js && node --check viewer/static/chat-workspace.js && node --check viewer/static/selects.js && node --check site/demo.js && node test-rpc-pool.cjs"
   },
   "dependencies": {
     "viem": "2.57.2"

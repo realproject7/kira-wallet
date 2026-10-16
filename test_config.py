@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import sys
 import unittest
 from unittest.mock import patch
 import kira_cli
@@ -18,6 +19,12 @@ class ConfigurationTests(unittest.TestCase):
         self.network={'chain_id':8453,'public_rpc':['https://public.example']}
     def tearDown(self):self.env.stop();self.temp.cleanup()
     def save(self,cfg):kira_cli.atomic(config.config_path(),cfg)
+    def test_cli_provider_changes_preserve_explicit_keyless_opt_out(self):
+        cfg=config.default_config();cfg['discovery']['public']=False;self.save(cfg)
+        for provider in ('none','alchemy'):
+            with contextlib.redirect_stdout(io.StringIO()),patch.object(sys,'argv',['kira','discovery',provider]):self.assertEqual(kira_cli.main(),0)
+            self.assertFalse(config.load_config()['discovery']['public'])
+
     def test_public_without_secrets_has_incomplete_discovery(self):
         self.assertEqual(config.endpoints(self.network),['https://public.example']);self.assertFalse(config.secret_values())
         with patch.object(wallet,'load_config',return_value=config.default_config()),patch.object(wallet.h,'secrets',return_value={}),patch.object(wallet,'fetch') as fetch:

@@ -254,6 +254,20 @@
     "started_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "analysis_phase": {
+      "enum": [
+        "baseline",
+        "enrichment"
+      ]
+    },
+    "parent_job_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "continuation_id": {
+      "type": "string",
+      "format": "uuid"
     }
   },
   "additionalProperties": false,

@@ -123,13 +123,16 @@ class JobStore:
         job = read(path)
         if not isinstance(job,dict) or type(job.get('schema_version')) is not int or job.get('schema_version') != 1: raise JobError('unsupported_version', 'Unsupported persisted job version.')
         required={'schema_version','job_id','operation','input','state','attempt','sequence','result','previous_result','key_hash','request_hash','created_at','updated_at','cancel_requested','checkpoint','stage','events','errors','chains'}
-        optional={'raw_hash','control_receipts','control_raw','provider_configuration','started_at'}
+        optional={'raw_hash','control_receipts','control_raw','provider_configuration','started_at','analysis_phase','parent_job_id','continuation_id'}
         if required-set(job) or set(job)-required-optional or job['job_id']!=job_id or job['checkpoint']!='snapshots/jobs/'+job_id or not isinstance(job['operation'],str) or job['operation'] not in {'wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider'} or not isinstance(job['state'],str) or job['state'] not in TERMINAL|{'queued','running'} or any(type(job[k]) is not int or job[k]<0 for k in ('attempt','sequence')) or type(job['cancel_requested']) is not bool or not isinstance(job['input'],dict) or any(not isinstance(job[k],list) for k in ('events','errors')) or not isinstance(job['chains'],dict):
             raise JobError('invalid_envelope','Persisted job validation failed. Preserve the file for recovery.')
         names={'wallet.add':['address','tag'],'wallet.refresh':['wallet'],'prices.refresh':['wallet'],'wallet.setTags':['wallet','tags'],
             'settings.rpc':['mode','chains','allow_public_fallback'],'settings.discovery':['provider','key_env'],'settings.provider':['provider','key_env']}[job['operation']]
         if job['operation']=='settings.rpc' and 'priority' in job['input']:names=names+['priority']
         fields(job['input'],names)
+        if 'analysis_phase' in job and job['analysis_phase'] not in ('baseline','enrichment'):raise JobError('invalid_envelope','Invalid analysis phase.')
+        for field in ('parent_job_id','continuation_id'):
+            if field in job:identifier(job[field])
         wallet=job['input'].get('wallet') or job['input'].get('address')
         if wallet is not None and (not isinstance(wallet,str) or not ADDRESS.fullmatch(wallet)):raise JobError('invalid_envelope','Persisted wallet identity is invalid.')
         return job
@@ -206,7 +209,27 @@ class JobStore:
             return value.copy()
         raise JobError('unsupported_operation', 'Unsupported job operation.')
 
-    def submit(self, request):
+    def admit_wallet(self, job):
+        if job['operation'] not in ('wallet.add','wallet.refresh'):return job
+        from wallet import register, registry_locked
+        with registry_locked(self.root):
+            registry=read(self.root/'wallets.json')
+            admissions=registry.setdefault('wallet_admissions',{})
+            address=job['input'].get('address') or job['input'].get('wallet')
+            entry=next((w for w in registry['wallets'] if w['address_key']==address.lower()),None)
+            if job['job_id'] not in admissions:
+                legacy_done=not job.get('analysis_phase') and (job['state']!='queued' or job['attempt']>0) and entry is not None
+                if job['operation']=='wallet.add' and not legacy_done:
+                    entry=register(registry,address,job['input']['tag'])
+                if job.get('analysis_phase')=='baseline':entry['research_generation']=job['job_id']
+                admissions[job['job_id']]=address.lower()
+                atomic(self.root/'wallets.json',registry)
+            elif entry is None and job['operation']=='wallet.add':
+                register(registry,address,job['input']['tag'])
+                atomic(self.root/'wallets.json',registry)
+        return job
+
+    def submit(self, request, *, phase='baseline', parent=None):
         fields(request, ['schema_version', 'operation', 'input', 'idempotency_key'])
         if type(request['schema_version']) is not int or request['schema_version'] != 1:
             raise JobError('unsupported_version', 'Expected request schema version 1.')
@@ -218,19 +241,19 @@ class JobStore:
             if not isinstance(operation,str):raise JobError('unsupported_operation','Expected a typed operation name.')
             key_hash = digest(key); receipt = self.jobs / 'requests' / (key_hash + '.json')
             raw_hash=digest({'operation':operation,'input':request['input']})
-            if receipt.exists() and read(receipt).get('raw_hash')==raw_hash:return self.get(read(receipt)['job_id'])
+            if receipt.exists() and read(receipt).get('raw_hash')==raw_hash:return self.admit_wallet(self.get(read(receipt)['job_id']))
             for p in self.jobs.glob('*.json'):
                 saved=self.get(p.stem)
                 if saved.get('control_raw',{}).get(key_hash)==raw_hash or saved['key_hash']==key_hash and saved.get('raw_hash')==raw_hash:
                     fingerprint=saved.get('control_receipts',{}).get(key_hash,saved['request_hash'])
                     atomic(receipt,{'schema_version':1,'request_hash':fingerprint,'raw_hash':raw_hash,'job_id':saved['job_id']})
-                    return saved
+                    return self.admit_wallet(saved)
             value = self.normalize(operation, request['input'])
             fingerprint = digest({'operation': operation, 'input': value})
             if receipt.exists():
                 old = read(receipt)
                 if old['request_hash'] != fingerprint: raise JobError('idempotency_conflict', 'This request key already belongs to another operation.')
-                return self.get(old['job_id'])
+                return self.admit_wallet(self.get(old['job_id']))
             # Recover an envelope committed before its request receipt.
             existing = next((j for p in self.jobs.glob('*.json') if (j := self.get(p.stem))['key_hash'] == key_hash or key_hash in j.get('control_receipts',{})), None)
             if existing:
@@ -261,7 +284,10 @@ class JobStore:
                     'created_at': now(), 'updated_at': now(), 'sequence': 0, 'cancel_requested': False,
                     'stage': 'queued', 'events': [], 'checkpoint': 'snapshots/jobs/' + job_id,
                     'result': None, 'previous_result': previous, 'errors': [],'chains':{}}
+                if operation in ('wallet.add','wallet.refresh'):job['analysis_phase']=phase
+                if parent:job['parent_job_id']=parent
                 self.save(job)
+            self.admit_wallet(job)
             atomic(receipt, {'schema_version': 1, 'request_hash': fingerprint,'raw_hash':raw_hash, 'job_id': job['job_id']})
             return job
 
@@ -361,11 +387,11 @@ class JobStore:
                 self.save(job)
 
     def event(self, job_id, event):
-        allowed = {'registered', 'discovery', 'chain', 'dex_discovery', 'token_images', 'published', 'failed'}
+        allowed = {'registered', 'discovery', 'chain', 'onchain_progress', 'first_evidence', 'dex_discovery', 'token_images', 'published', 'failed'}
         if event.get('stage') not in allowed: return
         with self.locked():
             job = self.get(job_id)
-            counts = {k: v for k, v in event.items() if k in {'complete_chains', 'candidates', 'tokens','chain_id','registry','checked','held','block_number'} and type(v) is int and v >= 0}
+            counts = {k: v for k, v in event.items() if k in {'complete_chains', 'candidates', 'tokens','chain_id','registry','checked','held','block_number','total'} and type(v) is int and v >= 0}
             job['stage'] = event['stage']
             if event['stage']=='chain' and type(event.get('chain_id')) is int:
                 block=event.get('block_number');block=str(block) if type(block) is int and block>=0 else block
@@ -373,19 +399,40 @@ class JobStore:
                     'endpoint_index':event.get('endpoint_index') if type(event.get('endpoint_index')) is int else None,
                     'status':event.get('status') if event.get('status') in ('complete','partial','unavailable') else 'unknown'}
             job['events'].append({'stage': event['stage'], 'observed_at': now(), 'counts': counts})
+            if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets'):
+                job['events'][-1]['context']={'operation':event['operation'],'chain_id':counts.get('chain_id')}
+            if event['stage']=='first_evidence' and event.get('snapshot')==job['checkpoint']+'/initial':
+                saved=self.snapshot(event['snapshot'])
+                wallet=job['input'].get('wallet') or job['input'].get('address')
+                if saved.get('wallet_address','').lower()==wallet.lower():job['result']={'snapshot_id':event['snapshot'],'status':saved['status'],'phase':'initial'}
             if event['stage']=='chain' and type(event.get('chain_id')) is int:job['events'][-1]['context']={'chain_id':event['chain_id'],**job['chains'][str(event['chain_id'])]}
             job['events'] = job['events'][-100:]
             self.save(job)
 
     def set_tags(self, job):
-        registry = read(self.root / 'wallets.json')
-        wallet = next(w for w in registry['wallets'] if w['address_key'] == job['input']['wallet'])
-        old = wallet['tags']; tags = job['input']['tags']
-        for tag in set(old) ^ set(tags):
-            registry.setdefault('tag_history', []).append({'address_key': wallet['address_key'], 'tag': tag,
-                'action': 'add' if tag in tags else 'remove', 'observed_at': now(), 'source': 'operator'})
-        wallet['tags'] = tags; atomic(self.root / 'wallets.json', registry)
+        from wallet import registry_locked
+        with registry_locked(self.root):
+            registry = read(self.root / 'wallets.json')
+            wallet = next(w for w in registry['wallets'] if w['address_key'] == job['input']['wallet'])
+            old = wallet['tags']; tags = job['input']['tags']
+            for tag in set(old) ^ set(tags):
+                registry.setdefault('tag_history', []).append({'address_key': wallet['address_key'], 'tag': tag,
+                    'action': 'add' if tag in tags else 'remove', 'observed_at': now(), 'source': 'operator'})
+            wallet['tags'] = tags; atomic(self.root / 'wallets.json', registry)
         return {'wallet': wallet['address_key'], 'tags': tags, 'status': 'completed'}
+
+    def continue_research(self):
+        """A durable continuation of the admitted analysis, behind initial reports."""
+        for parent in self.list():
+            if parent.get('analysis_phase')!='baseline' or parent['state'] not in ('succeeded','partial') or parent.get('cancel_requested') or parent.get('continuation_id'):continue
+            result=parent.get('result')
+            if not result or not result.get('snapshot_id'):continue
+            saved=self.snapshot(result['snapshot_id'])
+            if saved.get('pipeline',{}).get('phase')!='baseline':continue
+            wallet=parent['input'].get('address') or parent['input'].get('wallet')
+            child=self.submit({'schema_version':1,'operation':'wallet.refresh','input':{'wallet':wallet},'idempotency_key':'enrichment:'+parent['job_id']},phase='enrichment',parent=parent['job_id'])
+            with self.locked():
+                parent=self.get(parent['job_id']);parent['continuation_id']=child['job_id'];self.save(parent)
 
     def engine_command(self, job):
         if job['operation'] == 'prices.refresh':
@@ -394,6 +441,7 @@ class JobStore:
             add = job['operation'] == 'wallet.add'
             command = [sys.executable, str(ASSETS / 'wallet.py'), 'add' if add else 'refresh', job['input']['address'] if add else job['input']['wallet']]
             if add: command += ['--tag', job['input']['tag']]
+            command += ['--phase',job.get('analysis_phase','enrichment')]
             if (self.root / job['checkpoint'] / 'run.json').exists(): command += ['--resume', job['checkpoint']]
         return command
 
@@ -412,7 +460,7 @@ class JobStore:
                     previous=config['rpc']['chains'].get(key,{})
                     if row['url_env']==previous.get('url_env') and previous.get('alchemy_network'):row['alchemy_network']=previous['alchemy_network']
                 config['rpc']=updated
-            elif job['operation']=='settings.discovery':config['discovery']={**job['input'],'explorers':config['discovery'].get('explorers',False)}
+            elif job['operation']=='settings.discovery':config['discovery']={**config['discovery'],**job['input']}
             else:
                 from kira_config import provider_config,secret_values
                 config=provider_config(config,**job['input'])
@@ -420,12 +468,12 @@ class JobStore:
                     raise JobError('connection_key_missing','Kira cannot find the local Alchemy key. Follow the connection guide, then retry. Existing settings are unchanged.')
             atomic(config_path(),config)
             result={'status':'completed','setting':job['operation']};atomic(self.jobs/'results'/(job['job_id']+'.json'),result);return result
-        env = {**os.environ, 'KIRA_DATA_DIR': str(self.root), 'KIRA_JOB_ID': job['job_id'], 'KIRA_JOB_SNAPSHOT': job['checkpoint'], 'KIRA_ANALYSIS_FD': str(writer.fileno()), 'PYTHONUNBUFFERED': '1'}
+        env = {**os.environ, 'KIRA_DATA_DIR': str(self.root), 'KIRA_JOB_ID': job['job_id'], 'KIRA_JOB_SNAPSHOT': job['checkpoint'], 'KIRA_ANALYSIS_FD': str(writer.fileno()), 'PYTHONUNBUFFERED': '1', 'KIRA_RESEARCH_GENERATION':job.get('parent_job_id',job['job_id'])}
         command=self.engine_command(job)
         child = subprocess.Popen(command, env=env, cwd=ASSETS, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             start_new_session=True, pass_fds=(lease.fileno(), writer.fileno()))
         selector = selectors.DefaultSelector(); selector.register(child.stdout, selectors.EVENT_READ)
-        buffer = b''; cancelled = False; stopped = False
+        buffer = b''; cancelled = False; stopped = False; yielded = False; next_check = 0
         def stop_child():
             nonlocal stopped
             if stopped:return
@@ -445,6 +493,10 @@ class JobStore:
             while child.poll() is None:
                 if self.get(job['job_id'])['cancel_requested']:
                     cancelled = True; stop_child(); break
+                if job.get('analysis_phase')=='enrichment' and time.monotonic()>=next_check:
+                    next_check=time.monotonic()+2
+                    if any(j['state']=='queued' and j.get('analysis_phase')=='baseline' for j in self.list()):
+                        yielded=True;stop_child();break
                 for key, _ in selector.select(.2):
                     chunk = os.read(key.fileobj.fileno(), 65536)
                     if not chunk: selector.unregister(key.fileobj); continue
@@ -467,6 +519,7 @@ class JobStore:
             receipt = self.publication(job)
             if receipt: return receipt
             if cancelled: raise JobError('cancelled', 'Job stopped. Previous published results and saved evidence were preserved.')
+            if yielded:raise JobError('yielded','Detailed research yielded to a new initial report. Saved identity checkpoints are retained.')
             raise JobError('engine_failed', 'Analysis stopped before publication. Check connection settings and resume saved evidence.')
         finally:
             stop_child(); selector.close(); child.stdout.close()
@@ -478,13 +531,18 @@ class JobStore:
             with (self.root / '.analysis.lock').open('a') as writer:
                 fcntl.flock(writer, fcntl.LOCK_EX)
                 self.recover()
+                self.continue_research()
             while True:
                 writer = (self.root / '.analysis.lock').open('a')
                 fcntl.flock(writer, fcntl.LOCK_EX)
                 with self.locked():
-                    queued = sorted((self.get(p.stem) for p in self.jobs.glob('*.json')), key=lambda j: j['created_at'])
+                    queued = sorted((self.get(p.stem) for p in self.jobs.glob('*.json')), key=lambda j: (j.get('analysis_phase')=='enrichment',j['created_at']))
                     job = next((j for j in queued if j['state'] == 'queued'), None)
                     if not job:writer.close();return
+                    if job.get('analysis_phase')=='enrichment':
+                        entry=self.wallet(job['input']['wallet'])
+                        if entry.get('research_generation') not in (None,job.get('parent_job_id')):
+                            job.update(state='cancelled',stage='stopped',errors=[{'code':'superseded','message':'Newer holdings research replaced this detailed run. Earlier evidence is preserved.'}]);self.save(job);writer.close();continue
                     from kira_config import load_config
                     config=load_config()
                     job['provider_configuration']={'rpc_mode':config['rpc']['mode'],'discovery_provider':config['discovery']['provider'],
@@ -494,9 +552,13 @@ class JobStore:
                     result = self.execute(job, lease, writer)
                     with self.locked():
                         job = self.get(job['job_id']); job.update(result=result, state='succeeded' if result['status'] == 'completed' else 'partial', stage='published'); self.save(job)
+                    self.continue_research()
                 except JobError as error:
                     with self.locked():
-                        job = self.get(job['job_id']); job.update(state='cancelled' if error.code == 'cancelled' else 'failed', stage='stopped', errors=[{'code': error.code, 'message': str(error)}]); self.save(job)
+                        job = self.get(job['job_id'])
+                        if error.code=='yielded':job.update(state='queued',stage='queued',errors=[])
+                        else:job.update(state='cancelled' if error.code == 'cancelled' else 'failed', stage='stopped', errors=[{'code': error.code, 'message': str(error)}])
+                        self.save(job)
                 except (Exception, KeyboardInterrupt):
                     with self.locked():
                         job = self.get(job['job_id'])

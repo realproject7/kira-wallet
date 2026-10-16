@@ -4,7 +4,7 @@ function pendingWalletJob(wallet) {
   return jobList.find(job=>KiraView.active(job)&&['wallet.add','wallet.refresh','prices.refresh'].includes(job.operation)&&String(job.input.wallet||job.input.address||'').toLowerCase()===wallet.key);
 }
 function renderResearchChat() {
-  const active=jobList.filter(job=>KiraView.active(job)&&['wallet.add','wallet.refresh','prices.refresh'].includes(job.operation));
+  const active=jobList.filter(job=>KiraView.active(job)&&['wallet.add','wallet.refresh','prices.refresh'].includes(job.operation)).sort((a,b)=>(a.state!=='running')-(b.state!=='running')||a.created_at.localeCompare(b.created_at));
   const working=Boolean(chatTurn)||active.some(job=>job.state==='running');
   $('chat-form').dataset.working=String(working);
   $('kira-panel').dataset.speaking=String(working);
@@ -15,7 +15,7 @@ function renderResearchChat() {
     const name=state?.wallets.find(w=>w.key===key)?.name||job.input.tag||'Wallet research';
     const counts=job.events?.at(-1)?.counts||{};
     const detail=['checked','held'].filter(k=>Number.isFinite(counts[k])).map(k=>counts[k]+' '+k).join(' · ');
-    return `<a class="chat-research-row" href="#/activity"><span class="spinner" aria-hidden="true"></span><span><strong>${escapeHTML(name)}</strong><span>${escapeHTML(stageLabels[job.stage]||job.stage)}${detail?' · '+escapeHTML(detail):''}</span><small data-job-timer="${escapeHTML(job.job_id)}">${escapeHTML(p.timerLabel)} ${KiraView.duration(p.elapsed)}</small>${p.freshness?'<small>'+escapeHTML(p.freshness)+'</small>':''}</span><span aria-hidden="true">↗</span></a>`;
+    return `<a class="chat-research-row" href="#/activity"><span class="spinner" aria-hidden="true"></span><span><strong>${escapeHTML(name)}</strong><span>${escapeHTML(jobStage(job))}${detail?' · '+escapeHTML(detail):''}</span><small data-job-timer="${escapeHTML(job.job_id)}">${escapeHTML(p.timerLabel)} ${KiraView.duration(p.elapsed)}</small>${p.freshness?'<small>'+escapeHTML(p.freshness)+'</small>':''}</span><span aria-hidden="true">↗</span></a>`;
   }).join('')+(active.length>2?`<a class="text-button" href="#/activity">${active.length-2} more in Activity</a>`:'');
 }
 function expandChat(expand,animate=true) {

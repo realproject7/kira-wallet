@@ -235,7 +235,7 @@ def main():
                 from kira_config import provider_config
                 cfg=provider_config(cfg,'alchemy',args.key_env)
                 cfg['secret_env_file']=str(file);cfg['discovery']['explorers']=True
-            elif args.command=='discovery':cfg['discovery']={'provider':args.provider,'key_env':args.key_env,'explorers':args.explorers}
+            elif args.command=='discovery':cfg['discovery']={**cfg['discovery'],'provider':args.provider,'key_env':args.key_env,'explorers':args.explorers}
             elif args.setting=='public':cfg['rpc']['mode']='public'
             else:
                 cfg['rpc'].update(mode='custom')

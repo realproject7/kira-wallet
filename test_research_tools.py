@@ -100,6 +100,35 @@ class ResearchToolsTest(unittest.TestCase):
         store._run(key,self.config,'Inspect the saved wallet analysis.','Inspect the saved wallet analysis.',store.epoch)
         self.assertEqual(store.turns[key]['state'],'succeeded');self.assertIn('snapshot_id',calls[1]);self.assertEqual(store.turns[key]['answer'],'I found the saved analysis.')
 
+    def test_mixed_tool_protocol_is_repaired_before_any_tool_executes(self):
+        outputs=['I will check. {"kira_tool":"portfolio_read","arguments":{}}',
+                 '{"kira_tool":"portfolio_read","arguments":{}}','Recorded evidence only.']
+        calls=[]
+        def runner(config,prompt,cancel):calls.append(prompt);return outputs.pop(0)
+        store=AgentStore(self.root,runner=runner,detector=ready);store.config=self.config
+        key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
+        with patch.object(ResearchTools,'call',return_value={'recorded':True}) as tool:
+            store._run(key,self.config,'Inspect records.','Inspect records.',store.epoch)
+        self.assertEqual(tool.call_count,1);self.assertIn('not executed',calls[1])
+        self.assertEqual(store.turns[key]['answer'],'Recorded evidence only.')
+
+    def test_repeated_mixed_tool_protocol_fails_without_leaking_or_executing_it(self):
+        store=AgentStore(self.root,runner=lambda *args:'Prose {"kira_tool":"holdings_refresh","arguments":{}}',detector=ready);store.config=self.config
+        key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
+        with patch.object(ResearchTools,'call') as tool:
+            store._run(key,self.config,'Refresh records.','Refresh records.',store.epoch)
+        tool.assert_not_called();self.assertEqual(store.turns[key]['error']['code'],'invalid_tool_response')
+        self.assertNotIn('answer',store.turns[key]);self.assertEqual(store.messages,[])
+
+    def test_malformed_protocol_after_eight_tools_cannot_fall_through_as_answer(self):
+        outputs=['{"kira_tool":"portfolio_read","arguments":{}}']*8+['Prose {"kira_tool":"portfolio_read","arguments":{}}']
+        store=AgentStore(self.root,runner=lambda *args:outputs.pop(0),detector=ready);store.config=self.config
+        key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
+        with patch.object(ResearchTools,'call',return_value={}):
+            store._run(key,self.config,'Inspect records.','Inspect records.',store.epoch)
+        self.assertEqual(store.turns[key]['state'],'failed');self.assertEqual(store.messages,[])
+        self.assertEqual(store.turns[key]['error']['code'],'invalid_tool_response')
+
     def test_permissions_changed_during_model_turn_prevent_job_admission(self):
         store=None
         def runner(config,prompt,cancel):
