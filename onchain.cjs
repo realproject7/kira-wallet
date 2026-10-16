@@ -15,24 +15,31 @@ function endpoints(chainId){return runtime.endpoints[String(chainId)] || [];}
 const endpointReads=new WeakMap();
 const endpointOutcomes=new WeakMap();
 const clientState=new WeakMap();
-function resilientTransport(chainId,urls,transport=viem.http,onSuccess=()=>{},onOutcome=()=>{}) {
-  return pool.transport(chainId,urls,transport,onSuccess,onOutcome);
+function resilientTransport(chainId,urls,transport=viem.http,onSuccess=()=>{},onOutcome=()=>{},policy={}) {
+  return pool.transport(chainId,urls,transport,onSuccess,onOutcome,policy);
 }
-function client(chainId,url) {
+function client(chainId,url,override=null,transport=viem.http,fresh=false) {
   const urls=endpoints(chainId);
   const index=url==null?0:urls.indexOf(url);
-  const ordered=url==null?urls:index<0?[url]:urls.slice(index);
+  const ordered=override|| (url==null?urls:index<0?[url]:urls.slice(index));
   const used=new Set();
   const outcomes=new RouteRecorder();
-  const state={chainId,last:null};
-  const c=viem.createPublicClient({transport:resilientTransport(chainId,ordered,viem.http,(i,endpoint)=>{used.add(urls.indexOf(ordered[i]));state.last=endpoint;},(i,event)=>{
+  const state={chainId,last:null,lastUrl:null,transport};
+  const c=viem.createPublicClient({transport:resilientTransport(chainId,ordered,transport,(i,endpoint)=>{used.add(urls.indexOf(ordered[i]));state.last=endpoint;state.lastUrl=ordered[i];},(i,event)=>{
     const endpoint=urls.indexOf(ordered[i]),endpointClass=pool.publicUrls.has(ordered[i])?'public':'custom';
     outcomes.record(endpoint,endpointClass,event);
-  })});
+  },fresh?{cache:false}:{})});
   endpointOutcomes.set(c,outcomes);
   clientState.set(c,state);
   endpointReads.set(c,used);return c;
 }
+function peerClient(c){
+  const state=clientState.get(c);
+  if(!state)return null;
+  const urls=endpoints(state.chainId).filter(url=>url!==state.lastUrl);
+  return urls.length&&urls.length<endpoints(state.chainId).length?client(state.chainId,undefined,urls,state.transport,true):null;
+}
+function verificationClient(c){const state=clientState.get(c);return state?client(state.chainId,undefined,null,state.transport,true):null;}
 async function connect(chainId){
   const c=client(chainId);await c.getChainId();return c;
 }
@@ -41,7 +48,7 @@ async function snapshotBlock(c,saved=null){
   if(!state||header.number==null)throw new Error('Snapshot block identity unavailable.');
   if(saved&&header.hash!==saved.block_hash)throw new Error('Saved snapshot block is no longer canonical. Start a new holdings analysis.');
   pool.pin(state.chainId,header.number,header.hash,state.last);
-  return {number:header.number,hash:header.hash};
+  return {number:header.number,hash:header.hash,timestamp:header.timestamp};
 }
 const serialize=data=>JSON.stringify(data,(_,v)=>typeof v==='bigint'?v.toString():v,2);
 function safeError(error){
@@ -59,4 +66,4 @@ function safeError(error){
 }
 function rpcEndpointsUsed(c){return [...(endpointReads.get(c)||[])].filter(i=>i>=0).sort((a,b)=>a-b);}
 function rpcRoutes(c){return endpointOutcomes.get(c)?.snapshot()||[];}
-module.exports={viem,root,assets,networks,bondAbi,endpoints,client,connect,snapshotBlock,resilientTransport,rpcEndpointsUsed,rpcRoutes,serialize,safeError};
+module.exports={viem,root,assets,networks,bondAbi,endpoints,client,peerClient,verificationClient,connect,snapshotBlock,resilientTransport,rpcEndpointsUsed,rpcRoutes,serialize,safeError};

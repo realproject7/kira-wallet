@@ -47,7 +47,7 @@ include the same package and its checksum.
    ERC20 discovery. Free token sources have limited coverage; incomplete coverage
    stays visible. An AI or browser wallet connection does not enable an indexer.
 2. **Add a watching wallet.** Paste a public address and give it a name. Add more
-   wallets whenever you need them. The form starts free research of native, common tokens and Mint Club assets, with keyless discovery on supported networks. First balances appear before detailed research finishes.
+   wallets whenever you need them. The form starts free research of native, common tokens and Mint Club assets, with keyless ERC20 transfer discovery on Ethereum, Base, Optimism, Arbitrum, Polygon and BNB. RPC checks candidate balances; unfinished history remains visible. First balances appear before detailed research finishes.
 3. **Connect your AI.** Install and sign in to the
    [Codex CLI](https://developers.openai.com/codex/cli) or
    [Claude Code](https://code.claude.com/docs/en/quickstart), then choose your

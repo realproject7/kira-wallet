@@ -33,6 +33,9 @@ def coverage_for(wallet, chain_id):
 def coverage_status(wallet, coverage):
     if not wallet.get('analysed_at'): return 'Awaiting analysis'
     if not coverage: return 'Not researched'
+    if coverage.get('lifecycle',{}).get('status')=='retired':return 'Archived network'
+    if coverage.get('lifecycle',{}).get('status')=='retirement_reported':return 'Retirement reported'
+    if coverage.get('head_status')=='stale':return 'Stale observed head'
     if coverage.get('rpc_pending') or coverage.get('rpc_status') == 'pending': return 'Research pending'
     if not coverage.get('rpc_available'): return 'RPC unavailable'
     if coverage.get('registry_phase')=='deferred' or type(coverage.get('candidate_deferred')) is int and coverage['candidate_deferred']>0: return 'Research pending'

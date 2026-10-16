@@ -32,8 +32,8 @@ def provider_config(config, provider, key_env):
                 result['rpc']['chains'][str(cid)]={'url_env':key_env,'alchemy_network':network}
     return result
 
-def load_config():
-    path=config_path()
+def load_config(path=None):
+    path=Path(path) if path is not None else config_path()
     if not path.exists():return default_config()
     try:cfg=json.loads(path.read_text())
     except (OSError,ValueError):raise ValueError('Kira configuration is unreadable or malformed.') from None
@@ -53,6 +53,21 @@ def load_config():
     if any(not str(cid).isdigit() or int(cid)<=0 for cid in rpc['chains']):raise ValueError('Invalid RPC chain ID.')
     if 'secret_env_file' in cfg and not isinstance(cfg['secret_env_file'],str):raise ValueError('Invalid secret file reference.')
     return cfg
+
+def public_status(root=None):
+    """Only settings facts and environment names. Never endpoint or file values."""
+    path=None if root is None or Path(root).resolve()==data_root() else Path(root)/'.kira.local.json'
+    try:
+        cfg=load_config(path);available=bool(secret_values(cfg).get(cfg['discovery']['key_env']))
+    except ValueError:return {'status':'unavailable','note':'Review local data connection settings.'}
+    rpc=cfg['rpc'];discovery=cfg['discovery']
+    public=rpc['mode']=='public' or rpc['allow_public_fallback']
+    return {'status':'configured','rpc_mode':rpc['mode'],'read_order':rpc.get('priority','public_first') if public else 'custom_only',
+            'custom_chain_count':len(rpc['chains']) if rpc['mode']=='custom' else 0,
+            'discovery_provider':discovery['provider'],'discovery_key_available':discovery['provider']=='alchemy' and available,
+            'key_env':discovery['key_env'],'public_discovery':public and discovery.get('public',True),
+            'guide':'Workspace settings > Manage data connection > Alchemy. Add the key to a private local environment file, then run kira config import-env --file PATH. In the browser enter only the environment variable name, check availability and save. Refresh holdings to test API access. Never enter or request a key in chat.',
+            'keyless_providers':['etherscan_keyless','routescan'], 'complete_inventory_guaranteed':False}
 
 def secret_values(cfg=None):
     cfg=cfg or load_config();values={}

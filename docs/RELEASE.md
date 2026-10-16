@@ -94,12 +94,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.9.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.10.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.9.tgz --access public
+npm publish ./dist/kira-wallet-0.1.10.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
@@ -193,3 +193,21 @@ failures and runtime. Separate changed observation times from discovery effects.
 The procedure does not treat partial free discovery as exhaustive or stale spot
 sums as wealth floors. Private wallets, financial screenshots and local tickets
 stay outside the package and public review.
+
+
+## Next candidate: 0.1.10
+
+This candidate adds saved keyless ERC20 transfer discovery on six core chains,
+canonical RPC balance verification and explicit unfinished-history feedback.
+It fixes public-first cold qualification budgeting, exposes sanitized saved
+provider routes and authoritative coverage counts to native tools, and adds
+bounded read plans with individual completion receipts. Failed account probes
+are distinct from unsupported versions. Reviewed lifecycle notices and targeted
+suspicious-zero checks preserve unknown and historical observations.
+
+Publication is operator-only. Prepare the archive from the final reviewed clean
+commit, run the required install and public checks, and test that exact archive
+in isolated public-only and Alchemy auxiliary workspaces. The personal published
+0.1.9 app and archive remain intact. The final release manifest records the
+candidate source commit, digest and package members. Do not publish an
+unreviewed development pack.

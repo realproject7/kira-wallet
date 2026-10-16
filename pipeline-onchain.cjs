@@ -89,14 +89,35 @@ async function batches(c, contracts, block, size=128, progress=null) {
 async function balanceReads(c,tokens,wallet,block,checkpoint,file,n) {
   checkpoint.balance_times=checkpoint.balance_times||{};
   const key=t=>t.address.toLowerCase()+':'+t.token_type;
-  const pending=tokens.filter(t=>checkpoint.balances[key(t)]===undefined);
+  const pending=tokens.filter(t=>checkpoint.balances[key(t)]===undefined||t.token_type==='ERC20'&&t.suspicious_zero_check&&checkpoint.balances[key(t)]==='0'&&checkpoint.zero_checks?.[key(t)]?.outcome!=='agreed');
+  for(const token of pending){delete checkpoint.balances[key(token)];delete checkpoint.balance_times[key(token)];}
   let checked=tokens.length-pending.length;
   emitProgress(n,'balances',checked,tokens.length);
   const failures=new Map();
+  checkpoint.zero_checks=checkpoint.zero_checks||{};
+  let verified=Object.keys(checkpoint.zero_checks).length;
   for(let start=0;start<pending.length;start+=128) {
     const plan=pending.slice(start,start+128);
     const rows=await calls(c,plan.map(t=>({address:t.address,abi:t.token_type==='ERC1155'?erc1155:erc20,
       functionName:'balanceOf',args:t.token_type==='ERC1155'?[wallet,0n]:[wallet]})),block);
+    for(let i=0;i<plan.length;i++){
+      const token=plan[i],r=rows[i];
+      if(r.status!=='success'||r.result!==0n||!token.suspicious_zero_check||token.token_type!=='ERC20')continue;
+      if(verified>=8){rows[i]={status:'failure',error:new Error('Targeted zero verification budget reached. Balance remains unknown.')};continue;}
+      verified++;
+      try{
+        const query={address:token.address,abi:erc20,functionName:'balanceOf',args:[wallet],blockNumber:block};
+        const verifier=h.verificationClient(c)||c;
+        const direct=await verifier.readContract(query),peer=h.peerClient(verifier);
+        if(!peer)throw new Error('A qualified peer is unavailable for this suspicious zero. Balance remains unknown.');
+        await h.snapshotBlock(peer,{block_number:block.toString(),block_hash:checkpoint.block_hash});
+        const other=await peer.readContract(query);
+        checkpoint.zero_checks[key(token)]={direct:direct.toString(),peer:other.toString(),block_hash:checkpoint.block_hash,
+          outcome:direct===other?'agreed':'conflicting',rpc_routes:h.rpcRoutes(peer)};
+        if(direct!==other)throw new Error('Pinned balance observations conflict. Balance remains unknown.');
+        rows[i]={status:'success',result:direct};
+      }catch(error){if(error.code==='market_budget')throw error;const evidence=checkpoint.zero_checks[key(token)]||{};checkpoint.zero_checks[key(token)]={...evidence,outcome:evidence.outcome==='conflicting'?'conflicting':'unknown',block_hash:checkpoint.block_hash};rows[i]={status:'failure',error};}
+    }
     rows.forEach((r,i)=>{if(r.status==='success'){checkpoint.balances[key(plan[i])]=r.result.toString();checkpoint.balance_times[key(plan[i])]=stamp();}else failures.set(key(plan[i]),r);});
     write(file,checkpoint);checked+=plan.length;emitProgress(n,'balances',checked,tokens.length);
   }
@@ -148,6 +169,7 @@ async function scanChain(input, n, output, baseline=false) {
   try {
     const checkpointFile=path.join(output,`${baseline?'baseline-':''}balance-checkpoint-${n.chain_id}.json`);
     let checkpoint=fs.existsSync(checkpointFile)?JSON.parse(fs.readFileSync(checkpointFile)):null;
+    const resumedCheckpoint=!!checkpoint;
     if(checkpoint&&(checkpoint.wallet!==input.wallet.toLowerCase()||checkpoint.chain_id!==n.chain_id||checkpoint.fingerprint!==fingerprint&&(!checkpoint.candidates||checkpoint.candidates.some(a=>!candidates.includes(a)))))
       throw new Error('Saved balance checkpoint does not match this research request. Start a new holdings analysis.');
     const c = await connect(n,c=>{rpcClient=c;}), snapshot = await h.snapshotBlock(c,checkpoint),block=snapshot.number;
@@ -156,6 +178,8 @@ async function scanChain(input, n, output, baseline=false) {
     row.preferred_endpoint_index=endpointIdentity.get(c);
     row.block_number = block;
     row.block_hash = snapshot.hash;
+    row.head_age_seconds=resumedCheckpoint||snapshot.timestamp==null?null:Math.max(0,Math.floor(Date.now()/1000)-Number(snapshot.timestamp));
+    row.head_status=row.head_age_seconds==null?'saved_observation':row.head_age_seconds>86400?'stale':'observed';
     if(checkpoint.native_balance===undefined)checkpoint.native_balance=v.formatUnits(await c.getBalance({address:input.wallet,blockNumber:block}),18);
     row.native_balance=checkpoint.native_balance;row.observed_at=checkpoint.observed_at;write(checkpointFile,checkpoint);
     row.rpc_status = 'available';
@@ -203,6 +227,7 @@ async function scanChain(input, n, output, baseline=false) {
       source:'On-chain Mint Club bond tokenCount()/tokens(index), then direct wallet balance calls',bond_address:n.mintclub_bond_address};
     row.registry_scan.error_examples=reg.entries.filter(t=>t.error||!t.address).slice(0,5).map(t=>({index:t.index,error:t.error||{message:'Registry address unavailable'}}));
     row.balance_errors = errors;
+    row.zero_verification=checkpoint.zero_checks||{};
     for (const [heldIndex,t] of held.entries()) {
       const item = {chain_id:n.chain_id,network:n.network,token_address:t.address,token_type:t.token_type,token_id:t.token_type==='ERC1155'?'0':null,
         wallet_balance_raw:t.balance_raw,balance_block_number:block,balance_observed_at:firstReads.get(t.address.toLowerCase())?.observed_at||checkpoint.observed_at,indexer_price_references:t.prices||[],mintclub:null,dex_pools:[]};

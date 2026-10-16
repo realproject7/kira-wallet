@@ -5,6 +5,7 @@ from pathlib import Path
 from kira_jobs import JobStore, JobError, fields
 
 CATALOG = [
+    {'name':'records_read','arguments':{'reads':'List of 1 to 8 declared read tools, each with name and arguments.'},'description':'Execute an explicit bounded read plan. Includes one receipt per requested read. Read tools only; never queues research.'},
     {'name':'portfolio_read','arguments':{},'description':'Read approved wallet summaries and coverage. Includes a bounded first holdings page; use wallet_read for more.'},
     {'name':'wallet_read','arguments':{'wallet':'registered address or exact name'},'optional_arguments':{'offset':'nonnegative integer, default 0','limit':'integer 1 to 100, default 100'},'description':'Read a compact holdings page of one approved wallet. Follow next_offset until null for the complete recorded inventory. Use token_read for curve, market and exit details.'},
     {'name':'token_read','arguments':{'chain_id':'positive integer','address':'contract address or native'},'description':'Read a chain-specific token in the approved wallets.'},
@@ -80,6 +81,24 @@ class ResearchTools:
         return {'wallet':wallet,**{key:job.get(key) for key in ('job_id','operation','state','stage','created_at','updated_at','checkpoint','result','chains','analysis_phase','parent_job_id','continuation_id','events')}}
 
     def call(self, name, arguments, key):
+        if name=='records_read':
+            if not isinstance(arguments,dict):raise JobError('invalid_tool','Expected a read plan.')
+            fields(arguments,['reads']);reads=arguments['reads']
+            if not isinstance(reads,list) or not 1<=len(reads)<=8:raise JobError('invalid_tool','Use 1 to 8 read requests.')
+            allowed={'portfolio_read','wallet_read','token_read','snapshots_list','snapshot_read','snapshots_compare','job_list','job_read'}
+            for read in reads:
+                if not isinstance(read,dict):raise JobError('invalid_tool','Expected read requests.')
+                fields(read,['name','arguments'])
+                if read['name'] not in allowed:raise JobError('invalid_tool','Read plans accept declared read tools only.')
+            results=[]
+            for read in reads:
+                try:result=self.call(read['name'],read['arguments'],key)
+                except JobError as error:
+                    if error.code=='cancelled':raise
+                    result={'error':{'code':error.code,'message':str(error)}}
+                results.append({**read,'status':'failed' if isinstance(result,dict) and result.get('error') else 'completed','result':result})
+            return {'requested_reads':len(reads),'completed_reads':sum(read['status']=='completed' for read in results),
+                    'completion':'complete' if all(read['status']=='completed' for read in results) else 'partial','reads':results}
         tool=next((row for row in CATALOG if row['name']==name),None)
         if tool is None:raise JobError('unsupported_tool','Choose a declared wallet research tool.')
         if not isinstance(arguments,dict):raise JobError('invalid_tool','Expected declared tool arguments.')
@@ -98,7 +117,7 @@ class ResearchTools:
             wallet=self.wallet(arguments['wallet'],approved)
             from kira_agent import projection
             page=projection(self.root,self.config,wallet_key=wallet,offset=arguments.get('offset',0),limit=arguments.get('limit',100),inventory=True)
-            return {**page['wallets'][0],'note':page['note']}
+            return {**page['wallets'][0],'note':page['note'],'research_connection':page['research_connection']}
         if name=='token_read':
             from kira_jobs import ADDRESS
             address=arguments['address'].lower()

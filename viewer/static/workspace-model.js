@@ -17,8 +17,8 @@
     return { rows: rows.slice((page - 1) * pageSize, page * pageSize), count: rows.length, page, pages };
   }
   const active = job => ['queued', 'running'].includes(job.state);
-  const rpcGap = chain => (chain.rpc_available===false&&!chain.rpc_pending)||(chain.registry_complete===false&&!chain.rpc_pending&&chain.registry_phase!=='deferred')||chain.candidate_balance_errors>0;
-  const coverageGap = chain => !chain.complete||rpcGap(chain)||chain.candidate_deferred>0||chain.market_pending||chain.market_errors>0;
+  const rpcGap = chain => chain.lifecycle?.status!=='retired'&&chain.lifecycle?.status!=='retirement_reported'&&((chain.rpc_available===false&&!chain.rpc_pending)||(chain.registry_complete===false&&!chain.rpc_pending&&chain.registry_phase!=='deferred')||chain.candidate_balance_errors>0);
+  const coverageGap = chain => chain.head_status==='stale'||['retired','retirement_reported'].includes(chain.lifecycle?.status)||!chain.complete||rpcGap(chain)||chain.candidate_deferred>0||chain.market_pending||chain.market_errors>0;
   function networkEmpty(network, recordedCount) {
     if(recordedCount)return {title:'No tokens match these filters',message:'Lower the minimum value or clear your search to see recorded holdings.',activity:false};
     const rows=network.wallets||[];
@@ -27,9 +27,22 @@
     return {title:'No positive holdings recorded',message:'The completed checks found no positive holdings. Coverage can still omit tokens. Refresh holdings to check again.',activity:false};
   }
   function discoveryNotice(wallet, readiness = null) {
+    const lifecycle=(wallet?.chains||[]).filter(c=>c.environment==='mainnet'&&['retired','retirement_reported'].includes(c.lifecycle?.status));
+    const other=(wallet?.chains||[]).filter(c=>c.environment==='mainnet'&&!lifecycle.includes(c));
+    if(lifecycle.length&&other.some(coverageGap)){
+      const notice=coverageNotice({...wallet,chains:other},readiness);
+      if(notice)notice.message+=' '+lifecycle.map(c=>c.name+': '+(c.lifecycle.status==='retired'?'retired records are historical and excluded from current value; another provider cannot restart the network.':'retirement is reported without a verified official closure notice; changing provider is not a verified remedy.')).join(' ');
+      return notice;
+    }
+    return coverageNotice(wallet,readiness);
+  }
+  function coverageNotice(wallet, readiness = null) {
     const chains=(wallet?.chains||[]).filter(c=>c.environment==='mainnet');
     const gaps=chains.filter(coverageGap);
     if(!wallet?.analysed_at||!gaps.length)return null;
+    const retired=chains.filter(c=>c.lifecycle?.status==='retired');
+    const reported=chains.filter(c=>c.lifecycle?.status==='retirement_reported');
+    if(retired.length)return {title:'Retired network records are archived',message:retired.map(c=>c.name).join(', ')+': retained balances are historical and excluded from current value. Review the official notice and last observation in network coverage. Connecting another provider cannot restart a retired network.',action:'none',settings:false};
     const missing=chains.some(c=>!c.complete);
     const disabled=(readiness?.public_discovery===false&&readiness?.discovery_provider==='none'&&chains.every(c=>!c.complete))||(!readiness&&chains.every(c=>c.discovery_status==='disabled'));
     const noKey=readiness?.discovery_configured&&!readiness.discovery_key_available;
@@ -41,7 +54,10 @@
         message:'On-chain checks did not finish on '+rpc.length+(rpc.length===1?' network.':' networks.')+' Missing balances are unknown, so this portfolio is partial. Wait a moment, then retry holdings. '+(readiness?.discovery_key_available?'Review your Alchemy connection if errors continue. Public and custom providers can both have outages or limits.':'We recommend connecting Alchemy for backup RPC reads and broader token coverage on supported networks.')+(connection?' Other ERC20 holdings may also be missing.':''),
         action:'refresh',settings:true,rpcIssues:true,refreshLabel:'Retry holdings',settingsLabel:readiness?.discovery_key_available?'Review Alchemy connection':'Set up Alchemy'};
     }
+    if(reported.length)return {title:'Network retirement was reported',message:reported.map(c=>c.name).join(', ')+': a shutdown was reported, but no verified official closure notice is recorded. Saved balances remain dated evidence. RPC failure alone cannot establish closure, and Alchemy is not a verified recovery path. Check network coverage before retrying.',action:'none',settings:false};
+    if(chains.some(c=>c.head_status==='stale'))return {title:'A provider returned an old block head',message:'These balances use a dated block observation. A stale head does not prove the network has shut down. Review the recorded block and time, then retry later or review your data connection.',action:'refresh',settings:true,settingsLabel:'Review data connection'};
     if(chains.some(c=>c.market_errors>0))return {title:'Some market checks did not complete',message:'Recorded holdings remain available. Some pool reads failed, so missing market and price details remain unknown. Retry holdings. If this continues, review your data connection and its RPC access.',action:'refresh',settings:true,settingsLabel:'Review data connection'};
+    if(chains.some(c=>c.discovery_status==='history_pending'))return {title:'Free token history is still being checked',message:'Kira found token candidates without a key and verifies their balances with RPC. The saved transfer-history window is unfinished. Refresh holdings to continue from its saved page. Known balances remain available; transfer records do not prove current holdings. Alchemy is optional for a broader initial inventory.',action:'refresh',refreshLabel:'Continue free discovery',settings:true,settingsLabel:'Review optional connection'};
     if(!disabled&&!noKey&&chains.some(c=>c.rpc_pending||c.registry_phase==='deferred'))return {title:'First results are available',message:'This initial report has recorded balances. Other networks, remaining token candidates, the full Mint Club registry and markets need detailed research. Check Activity for progress or to resume stopped work. You can also refresh holdings. Missing holdings and prices remain unknown. Alchemy is optional for broader coverage.',action:'none',settings:true,settingsLabel:'Review optional connection'};
     if(missing&&disabled)return {title:'Some tokens may be missing',message:'Free research checks native balances, selected common tokens and Mint Club assets, with keyless token discovery on supported networks. Public RPC cannot list all wallet tokens. We recommend Alchemy for broader token coverage on supported networks. Connect it, then refresh holdings. Missing tokens are not zero balances.',action:'settings',settingsLabel:'Set up Alchemy'};
     if(missing&&noKey)return {title:'Token discovery needs a connection',message:'The local Alchemy key is unavailable. Follow the setup guide, check the key, then refresh holdings. Other tokens may be missing from this partial portfolio.',action:'settings',settingsLabel:'Set up Alchemy'};

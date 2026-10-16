@@ -71,11 +71,11 @@ async function loadModelChoices(recheck = false) {
 function renderProviders() {
   $('agent-providers').innerHTML = (agentState?.providers || []).map(row => {
     const ready = row.installed && row.supported && row.logged_in;
-    const label = !row.installed ? 'Install CLI' : !row.supported ? 'Unsupported version' : !row.logged_in ? 'Login needed' : 'Account detected';
+    const label = !row.installed ? 'Install CLI' : row.probe_status === 'unknown' ? 'Check incomplete · retry' : !row.supported ? 'Unsupported version' : !row.logged_in ? 'Login needed' : 'Account detected';
     return `<button class="provider-card" type="button" data-provider="${row.id}" aria-pressed="${agentProvider === row.id}"><strong>${escapeHTML(row.name)}</strong><small>${row.id === 'codex' ? 'Your ChatGPT account' : 'Your Claude account'}${row.version ? ' · ' + escapeHTML(row.version) : ''}</small><span class="provider-status ${ready ? 'ready' : ''}">${label}</span></button>`;
   }).join('');
   const selected = agentState?.providers.find(p => p.id === agentProvider);
-  $('agent-cli-help').innerHTML = !selected ? '' : selected.installed && selected.supported && selected.logged_in ? 'Your native account is ready for a response check. Kira never copies its credentials.' :
+  $('agent-cli-help').innerHTML = !selected ? '' : selected.probe_status === 'unknown' ? '<p>Kira could not finish checking this installed CLI. Select Recheck accounts to try again. This does not establish an unsupported version or require an upgrade.</p>' : selected.installed && selected.supported && selected.logged_in ? 'Your native account is ready for a response check. Kira never copies its credentials.' :
     `<p>${!selected.installed ? 'Install the official CLI in your terminal, then sign in.' : !selected.supported ? 'Use a verified version: Codex 0.158.x or Claude Code 2.1.259–2.1.x.' : 'Sign in through the official CLI in your terminal.'} <a href="${selected.url}" target="_blank" rel="noreferrer">Official setup ↗</a></p>${(!selected.installed ? [selected.install, selected.login] : [selected.login]).map(command => `<div class="cli-command"><code>${escapeHTML(command)}</code><button type="button" data-copy-cli="${escapeHTML(command)}">Copy</button></div>`).join('')}`;
   updateStep();
 }
@@ -229,7 +229,7 @@ async function sendChat(event) {
     chatTurn = turn.id; if (draftRevision === draftAtSend) $('kira-draft').value = ''; renderAgent(); $('conversation-scroll').scrollTop=$('conversation-scroll').scrollHeight;
     const result = await waitTurn(turn.id, () => epoch === chatEpoch);
     if (!result || epoch !== chatEpoch) return;
-    if (result.state !== 'succeeded') { if (!$('kira-draft').value && draftRevision === draftAtSend) $('kira-draft').value = message; chatRetry = null; throw new Error(result.error?.message || 'Response stopped. You can edit and send your message again.'); }
+    if (!['succeeded','partial'].includes(result.state)) { if (!$('kira-draft').value && draftRevision === draftAtSend) $('kira-draft').value = message; chatRetry = null; throw new Error(result.error?.message || 'Response stopped. You can edit and send your message again.'); }
     await loadAgent(); chatRetry = null;
   } catch (error) { if (epoch === chatEpoch) { $('chat-error').textContent = error.message; if (chatTurn && chatRetry) { recoverResponse(chatTurn, epoch); return; } } }
   finally { if (epoch === chatEpoch && !(chatTurn && chatRetry)) { chatTurn = null; chatRequest = null; renderAgent(); if (chatRetry) loadAgent().catch(() => {}); } }
@@ -238,7 +238,7 @@ async function recoverResponse(id, epoch) {
   try {
     const result = await waitTurn(id, () => epoch === chatEpoch);
     if (epoch !== chatEpoch || !result) return;
-    if (result.state !== 'succeeded') {
+    if (!['succeeded','partial'].includes(result.state)) {
       if (!$('kira-draft').value && !result.test && draftRevision === chatDraftRevision) $('kira-draft').value = chatRequest?.message || result.message || '';
       $('chat-error').textContent = result.error?.message || 'Response stopped. Research already queued stays in Activity, where you can stop it. You can edit and resend your message.';
     } else $('chat-error').textContent = '';

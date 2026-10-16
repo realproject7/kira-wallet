@@ -30,6 +30,18 @@ def number(value):
         return n if math.isfinite(n) and n >= 0 else None
     except (InvalidOperation, TypeError, ValueError, OverflowError): return None
 
+def safe_routes(routes):
+    result=[]
+    if not isinstance(routes,list):return result
+    for route in routes[:104]:
+        if not isinstance(route,dict) or route.get('endpoint_class') not in ('public','custom') or route.get('outcome') not in ('succeeded','failed','skipped','queue_timeout','local_timeout'):continue
+        item={key:route[key] for key in ('endpoint_class','outcome')}
+        for key in ('endpoint_index','http_status','rpc_code','count'):
+            if type(route.get(key)) is int and abs(route[key])<=2**53-1:item[key]=route[key]
+        if route.get('reason') in ('transport','throttle','size','method','contract','cooldown','queue','qualification','local_deadline'):item['reason']=route['reason']
+        result.append(item)
+    return result
+
 def within(root, relative):
     path = (root / relative).resolve()
     if not path.is_relative_to(root.resolve()): raise ValueError('Snapshot path outside research directory')
@@ -199,6 +211,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             'value_usd':quantity*px if px is not None and c['environment']=='mainnet' else None,
             'links':[{'label':'Explorer','url':EXPLORERS[c['chain_id']]+'/address/'+entry['address']}] if c['chain_id'] in EXPLORERS else []})
     chains=[]
+    from chain_lifecycle import lifecycle, retired
     for c in coverage:
         # Older snapshots retained this count only in a fixed pipeline note.
         failed_balances=c.get('candidate_balance_errors')
@@ -209,15 +222,25 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         for a in rows:
             a['environment']=c['environment']
             if c['environment']=='testnet':a['value_usd']=None
+            a['archived']=retired(c['chain_id'])
+            if a['archived']:a['historical_value_usd']=a['value_usd'];a['value_usd']=None
         chains.append({'id':c['chain_id'],'name':c['name'],'environment':c['environment'],
             'image_url':chain_image(c['chain_id']),
             'assets':len(rows),'value_usd':sum(a['value_usd'] for a in rows if a['value_usd'] is not None) if c['environment']=='mainnet' and any(a['value_usd'] is not None for a in rows) else None,
             'complete':c['general_erc20_discovery']=='indexer_checked','rpc_available':c['rpc_status']=='available',
-            'discovery_status':c.get('discovery_status') if c.get('discovery_status') in ('checked','disabled','missing_credential','unsupported','provider_error') else 'incomplete',
+            'discovery_status':c.get('discovery_status') if c.get('discovery_status') in ('checked','disabled','missing_credential','unsupported','provider_error','history_pending') else 'incomplete',
+            'rpc_routes':safe_routes(c.get('rpc_routes')),
+            'head_status':c.get('head_status') if c.get('head_status') in ('stale','observed','saved_observation') else None,
+            'head_age_seconds':c.get('head_age_seconds') if type(c.get('head_age_seconds')) is int else None,
+            'lifecycle':lifecycle(c['chain_id']),
+            'discovery_provider':c.get('discovery_provider') if c.get('discovery_provider') in ('etherscan_keyless','routescan') else 'alchemy' if c.get('indexer_source')=='Alchemy Portfolio Tokens By Wallet' else None,
+            'history_window':{k:v for k,v in (c.get('history_window') or {}).items() if k in ('startblock','endblock','page','complete','records','started_at','pagination_limit_reached') and type(v) in (int,bool)} if isinstance(c.get('history_window'),dict) else None,
+            'recent_window':{k:v for k,v in (c.get('recent_window') or {}).items() if k in ('startblock','endblock','page','complete','records') and type(v) in (int,bool)} if isinstance(c.get('recent_window'),dict) else None,
+            'discovery_filters':{'spam_filter':False,'minimum_value':None,'minimum_liquidity':None} if c.get('discovery_provider')=='etherscan_keyless' else None,
             'registry_complete':(c.get('mintclub_registry_scan') or {}).get('complete') is True,
             'registry_phase':(c.get('mintclub_registry_scan') or {}).get('phase'),
             'rpc_pending':c.get('rpc_status')=='pending',
-            'rpc_status':c.get('rpc_status','unknown'),
+            'rpc_status':'retired' if retired(c['chain_id']) else c.get('rpc_status','unknown'),
             'market_pending':market_pending,
             'market_errors':sum(bool(t.get('dex_verification_error')) for t in tokens if t['chain_id']==c['chain_id']),
             'registry_errors':(c.get('mintclub_registry_scan') or {}).get('registry_errors',0),

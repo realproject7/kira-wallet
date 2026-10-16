@@ -133,7 +133,7 @@ replacement in this catalog. This is an observation, not a claim that their
 chains permanently stopped. Their failed checks remain visible.
 
 Base public balance reads work independently of arbitrary token discovery.
-The keyless Base inventory remains selected common contracts and Mint Club.
+In published 0.1.9, the keyless Base inventory was selected common contracts and Mint Club. The next candidate adds the Etherscan transfer path below.
 Blockscout's current documentation deprecates per-instance APIs in favor of its
 keyed PRO API. Kira does not promise keyless Base enumeration through that route.
 The former 1RPC Base reserve returned HTTP 410 during block lookup and was
@@ -144,3 +144,51 @@ Sources: [Shib network setup](https://docs.shib.io/get-started/deploy-contracts)
 [Superchain registry](https://github.com/ethereum-optimism/superchain-registry/blob/main/chainList.toml),
 [Ham network information](https://docs.ham.fun/docs/network-information/),
 [Blockscout API migration](https://docs.blockscout.com/devs/apis).
+
+
+## Keyless transfer candidates
+
+Kira uses [Etherscan keyless MCP](https://docs.etherscan.io/build-with-ai/mcp)
+for ERC20 transfer identities on Ethereum, Base, Optimism, Arbitrum, Polygon
+and BNB Smart Chain. This backend adapter needs no model MCP configuration,
+API key, paid relay or shared credentials. Routescan remains available on
+Avalanche and Blast. Standard RPC verifies each candidate at a canonical
+pinned block. Transfer amounts never become wallet balances.
+
+Each request scans at most three 100-record pages within the research budget.
+A window ends at a block before a timestamp two minutes behind the local clock,
+allowing for explorer indexing lag. Its block bounds and next page are saved
+per wallet and chain. A later refresh continues unfinished history. Once a
+window finishes, subsequent refreshes recheck a 2,048-block overlap, scan new
+blocks and retain earlier candidate identities. A deeper reorg or older indexer
+backfill can still omit identities. While older history is pending, one fresh
+bounded page can find new receipts without replacing its saved frontier.
+A 100-page or 10,000-contract safety limit remains
+explicitly incomplete. Provider backfills, history limits, indexing lag and
+unsupported networks can still omit tokens. A finished window is not proof
+of a complete inventory. No majority-coverage promise is made.
+
+The shared local request lane conservatively paces tool calls every two seconds.
+HTTP 429 pauses that lane. It does not rotate accounts or evade provider limits.
+Sessions stay in process memory. Saved evidence contains candidate contracts
+and window facts, never MCP session IDs, credentials or transfer-derived balances.
+No liquidity or dollar-value filter removes candidate identities. Spam transfers
+can introduce irrelevant candidates. Only positive RPC balances enter holdings.
+
+Earlier positive holdings, common known contracts and Mint Club identities
+supplement candidate discovery. Targeted suspicious zeros receive up to eight
+direct and qualified peer checks per chain, at the same pinned hash. Conflicting
+or unavailable checks remain unknown. Ordinary zero-heavy registry scans do
+not receive an unbounded peer fan-out.
+
+## Network lifecycle
+
+A verified retirement notice removes a network from new default research and
+current valuation. Historical assets and timestamps remain available.
+Connectivity, stale observed heads, token discovery and provider support loss
+remain separate facts. Ham has an operator retirement report with no verified
+primary closure notice. It is labelled explicitly, without recommending
+Alchemy as a verified recovery path. Degen L3 is absent from the current catalog;
+its reviewed Alchemy notice is separate from Base DEGEN. A responding archive
+endpoint does not make a retired chain current. No bridge or migration outcome
+is promised.

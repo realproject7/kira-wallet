@@ -154,7 +154,7 @@ def discover(wallet, n, folder, budget=None):
                     if not isinstance(t['tokenAddress'],str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}',t['tokenAddress']):
                         row['error']={'message':'A token contract address was invalid.'};continue
                     meta=t.get('tokenMetadata') or {}
-                    row['tokens'].append({'chain_id':cid,'address':t['tokenAddress'],'name':meta.get('name'),'symbol':meta.get('symbol'),
+                    row['tokens'].append({'chain_id':cid,'address':t['tokenAddress'],'name':meta.get('name'),'symbol':meta.get('symbol'),'suspicious_zero_check':True,
                                           'decimals':meta.get('decimals'),'prices':t.get('tokenPrices') or []})
             if response.get('error') or response.get('transport_error') or row.get('error'):
                 row['error']=response.get('error') or response.get('transport_error') or row['error']
@@ -184,8 +184,15 @@ def discover(wallet, n, folder, budget=None):
         else:
             row['error']=response
     elif cfg['discovery'].get('public',True) and n.get('environment')=='mainnet' and not (cfg.get('rpc',{}).get('mode')=='custom' and cfg['rpc'].get('allow_public_fallback') is False):
-        from public_discovery import discover as free_discover
-        row.update(free_discover(wallet,cid))
+        from transfer_discovery import CHAINS, discover as transfer_discover
+        if cid in CHAINS:
+            frontier=ROOT/'cache/free-discovery'/wallet.lower()/f'{cid}.json'
+            try:state=read(frontier) if frontier.is_file() and frontier.stat().st_size<=1000000 else None
+            except (OSError,ValueError):state=None
+            row.update(transfer_discover(wallet,cid,state=state,save=lambda value:atomic(frontier,value),budget=budget or 25))
+        else:
+            from public_discovery import discover as free_discover
+            row.update(free_discover(wallet,cid,budget=budget or 25))
     else:
         status='disabled' if cfg['discovery']['provider']=='none' else 'missing_credential' if cid in ALCHEMY and not key else 'unsupported'
         row['discovery_status']=status
@@ -198,6 +205,38 @@ def discover(wallet, n, folder, budget=None):
     row['tokens']=list({t['address'].lower():t for t in row['tokens']}.values())
     atomic(evidence,row)
     return row
+
+
+def prior_candidates(wallet):
+    """Durable positive identities survive baseline publication and failed rereads."""
+    cache=ROOT/'cache/prior-positive'/f"{wallet['address_key']}.json"
+    prior=[]
+    try:
+        saved=read(cache) if cache.is_file() and cache.stat().st_size<=8000000 else {}
+        if isinstance(saved,dict) and saved.get('wallet')==wallet['address_key'] and isinstance(saved.get('candidates'),list):prior=saved['candidates']
+    except (OSError,ValueError):pass
+    previous=(wallet.get('latest_snapshot') or {}).get('result')
+    if previous:
+        previous_path=(ROOT/previous).resolve()
+        if previous_path.is_relative_to(ROOT/'snapshots') and previous_path.is_file():
+            old=read(previous_path)
+            if old.get('wallet_address','').lower()==wallet['address_key']:
+                prior += [{'chain_id':t.get('chain_id'),'address':t.get('token_address')} for t in old.get('tokens',[]) if t.get('token_type')=='ERC20']
+    candidates={}
+    for token in prior if isinstance(prior,list) else []:
+        if isinstance(token,dict) and type(token.get('chain_id')) is int and token['chain_id']>0 and isinstance(token.get('address'),str) and re.fullmatch(r'0x[0-9a-fA-F]{40}',token['address']):
+            identity=(token['chain_id'],token['address'].lower());candidates[identity]={'chain_id':identity[0],'address':identity[1],'suspicious_zero_check':True,'prices':[]}
+    atomic(cache,{'wallet':wallet['address_key'],'candidates':list(candidates.values())})
+    return list(candidates.values())
+
+
+def merge_candidates(prior, known, discovered):
+    merged={}
+    for token in prior+known+discovered:
+        key=(token['chain_id'],token['address'].lower());previous=merged.get(key,{})
+        merged[key]={**previous,**{k:v for k,v in token.items() if v is not None},
+            'suspicious_zero_check':previous.get('suspicious_zero_check',False) or token.get('suspicious_zero_check',False)}
+    return list(merged.values())
 
 
 def run_node(mode, source, destination, on_chain=None, deadline=None):
@@ -257,9 +296,11 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
             'native_balance':c.get('native_balance'),'native_observed_at':c.get('observed_at'),
             'native_block_number':c.get('block_number'),'native_block_hash':c.get('block_hash'),
             'rpc_endpoint_indices':c.get('rpc_endpoint_indices',[]),'rpc_routes':c.get('rpc_routes',[]),
+            'head_age_seconds':c.get('head_age_seconds'),'head_status':c.get('head_status'),
             'general_erc20_discovery':'indexer_checked' if d.get('complete') else 'incomplete',
             'indexer_source':d.get('source'),'indexer_complete':d.get('complete',False),'indexer_pages':len(d.get('pages',[])),
             'discovery_status':d.get('discovery_status','pending'),'candidate_balance_errors':len(c.get('balance_errors',[])),
+            'discovery_provider':d.get('provider'), 'history_window':d.get('history_window'), 'recent_window':d.get('recent_window'), 'discovery_filters':d.get('filters'),
             'candidate_scan':c.get('candidate_scan'),'mintclub_registry_scan':c.get('registry_scan'),
             'notes':['Initial balances. Remaining candidate balances, full Mint Club enumeration and market enrichment remain pending.']})
     result={'schema_version':1,'wallet_address':wallet['address'],'tags':wallet['tags'],'compiled_at':h.now(),
@@ -363,9 +404,11 @@ def finish(wallet, folder, networks, discovered):
              'native_block_hash':c.get('block_hash'),
              'rpc_endpoint_indices':c.get('rpc_endpoint_indices',[]),
              'rpc_routes':c.get('rpc_routes',[]),
+             'head_age_seconds':c.get('head_age_seconds'),'head_status':c.get('head_status'),
              'general_erc20_discovery':'indexer_checked' if d['complete'] else 'incomplete',
              'indexer_source':d['source'],'indexer_pages':len(d['pages']),'indexer_complete':d['complete'],
              'discovery_status':d.get('discovery_status','checked' if d['complete'] else 'incomplete'),
+             'discovery_provider':d.get('provider'), 'history_window':d.get('history_window'), 'recent_window':d.get('recent_window'), 'discovery_filters':d.get('filters'),
              'candidate_balance_errors':len(c.get('balance_errors',[])),
              'positive_erc20_count_discovered':sum(t['chain_id']==n['chain_id'] and t['token_type']=='ERC20' for t in tokens),
              'mintclub_inventory_scan':None,'mintclub_registry_scan':c.get('registry_scan'),'notes':[]}
@@ -510,7 +553,8 @@ def main():
         except BlockingIOError:raise SystemExit('Another wallet analysis is running. Resume after it finishes.')
         read(ROOT/'session.json');registry=read(ROOT/'wallets.json');registered=read(ROOT/'networks.json')['networks']
         candidates=read(ASSETS/'sources/rpc-candidates.json')
-        networks=[{**n,**next((c for c in candidates if c['chain_id']==n['chain_id']),{})} for n in registered]
+        from chain_lifecycle import retired
+        networks=[{**n,**next((c for c in candidates if c['chain_id']==n['chain_id']),{})} for n in registered if not retired(n['chain_id'])]
         if args.command=='add':
             address=validate_address(args.address)
             with registry_locked(ROOT):
@@ -551,7 +595,9 @@ def main():
                 discovered=list(executor.map(lambda n:discover(wallet['address'],n,folder,budget=25 if args.phase=='baseline' else 60),phase_networks))
             event('discovery',complete_chains=sum(d['complete'] for d in discovered),candidates=sum(len(d['tokens']) for d in discovered))
             known=read(ASSETS/'sources/known-tokens.json')['tokens']
-            atomic(folder/'scan-input.json',{'wallet':wallet['address'],'networks':phase_networks,'candidates':known+[t for d in discovered for t in d['tokens']]})
+            # Earlier positive identities are candidates, never reused balances.
+            prior=prior_candidates(wallet)
+            atomic(folder/'scan-input.json',{'wallet':wallet['address'],'networks':phase_networks,'candidates':merge_candidates(prior,known,[t for d in discovered for t in d['tokens']])})
             if args.phase=='baseline':
                 first=folder/'initial'
                 def first_evidence(message):

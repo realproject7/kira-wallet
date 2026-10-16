@@ -51,6 +51,31 @@ test('explicit payload size errors remain splittable without cooling the provide
   assert.equal(await c.request({method:'eth_call',params:[{data:'0x11'},'latest']}),'0x1');
   assert.equal(pool.states.get('1:public').until,0);assert.equal(calls,2);
 });
+test('cold healthy public qualification fits paced reads with a custom backup',async()=>{
+ const seen=[],events=[],pool=fresh({publicUrls:['p1','p2'],interval:40,deadline:260,attemptTimeout:80});pool.pin(1,7n,HASH);
+ const c=viem.createPublicClient({transport:pool.transport(1,['p1','p2','custom'],transport(async(url,r)=>{
+  seen.push([url,r.method]);if(r.method==='eth_chainId')return '0x1';if(r.method==='eth_getBlockByNumber')return {number:'0x7',hash:HASH};return '0x9';
+ }),()=>{},(index,event)=>events.push({index,...event}))});
+ assert.equal(await c.request({method:'eth_getBalance',params:[A,'0x7']}),'0x9');
+ assert(seen.every(([url])=>url==='p1'));assert.equal(pool.states.get('1:p1').strikes,0);
+ assert(events.every(e=>e.outcome==='succeeded'));
+});
+test('a cold secondary qualifies after a fast primary rejection',async()=>{
+ const seen=[],pool=fresh({publicUrls:['p1','p2'],interval:30,deadline:300,attemptTimeout:100});pool.pin(1,7n,HASH);
+ const c=client(pool,['p1','p2','custom'],async(url,r)=>{
+  seen.push(url);if(r.method==='eth_chainId')return url==='p1'?'0x2':'0x1';
+  if(r.method==='eth_getBlockByNumber')return {number:'0x7',hash:HASH};return '0x9';
+ });
+ assert.equal(await c.request({method:'eth_getBalance',params:[A,'0x7']}),'0x9');
+ assert(seen.includes('p2'));assert(!seen.includes('custom'));
+});
+test('local family contention does not penalize provider health',async()=>{
+ const events=[],pool=fresh({publicUrls:['https://one.publicnode.com'],interval:30,deadline:150,attemptTimeout:50});
+ const state=pool.state(1,'https://one.publicnode.com',transport(async()=> '0x1'),{});pool.families.get(state.family).next=Date.now()+200;
+ const c=viem.createPublicClient({transport:pool.transport(1,['https://one.publicnode.com','custom'],transport(async(url,r)=>r.method==='eth_chainId'?'0x1':'0x9'),()=>{},(index,event)=>events.push(event))});
+ assert.equal(await c.getBlockNumber({cacheTime:0}),9n);assert.equal(state.strikes,0);assert.equal(state.until,0);
+ assert(events.some(e=>e.outcome==='local_timeout'&&e.reason==='qualification'));
+});
 test('reorgs cannot substitute a different height into hash-qualified evidence',async()=>{
   let current=HASH;const pool=fresh();pool.pin(1,7n,HASH);
   const c=client(pool,['a'],async(url,r)=>{
@@ -192,4 +217,12 @@ test('provider-controlled route codes stay bounded while overflow retains failur
  assert.equal(rows.filter(r=>r.outcome==='failed').reduce((n,r)=>n+r.count,0),10000);
  assert.equal(rows.filter(r=>r.outcome==='succeeded').reduce((n,r)=>n+r.count,0),1);
  assert(rows.some(r=>r.aggregated_overflow));assert(!JSON.stringify(rows).includes('SECRET-MARKER'));
+});
+test('verification transport bypasses result cache and shared pending promises',async()=>{
+ const pool=fresh();pool.pin(1,7n,HASH);let count=0;
+ const fn=async(url,r)=>r.method==='eth_chainId'?'0x1':r.method==='eth_getBlockByNumber'?{number:'0x7',hash:HASH}:('0x'+(++count).toString(16));
+ const regular=client(pool,['a'],fn);await regular.request({method:'eth_getBalance',params:[A,'0x7']});
+ const verifier=viem.createPublicClient({transport:pool.transport(1,['a'],transport(fn),()=>{},()=>{},{cache:false})});
+ assert.equal(await verifier.request({method:'eth_getBalance',params:[A,'0x7']}),'0x2');
+ assert.equal(await regular.request({method:'eth_getBalance',params:[A,'0x7']}),'0x1');assert.equal(count,2);
 });

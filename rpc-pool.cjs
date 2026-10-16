@@ -67,10 +67,10 @@ function blockTag(request) {
 class RouteRecorder {
   constructor() { this.rows=new Map();this.overflow=new Map(); }
   record(index, endpointClass, event) {
-    if(!['public','custom'].includes(endpointClass)||!['succeeded','failed','skipped','queue_timeout'].includes(event.outcome))return;
+    if(!['public','custom'].includes(endpointClass)||!['succeeded','failed','skipped','queue_timeout','local_timeout'].includes(event.outcome))return;
     const row={endpoint_index:Number.isInteger(index)?index:null,endpoint_class:endpointClass,
       method:/^[a-zA-Z0-9_]{1,64}$/.test(event.method||'')?event.method:'other',outcome:event.outcome};
-    if(['transport','throttle','size','method','contract','cooldown'].includes(event.reason))row.reason=event.reason;
+    if(['transport','throttle','size','method','contract','cooldown','queue','qualification','local_deadline'].includes(event.reason))row.reason=event.reason;
     for(const name of ['http_status','rpc_code'])if(Number.isSafeInteger(event[name]))row[name]=event[name];
     const key=JSON.stringify(row);
     let saved=this.rows.get(key);
@@ -154,26 +154,29 @@ class RpcPool {
       // Public outages must leave time for the personal backup's actual read.
       const remaining=deadlineAt-Date.now();
       const backupAhead=this.publicUrls.has(url) && choices.slice(index+1).some(next=>!this.publicUrls.has(next));
-      const reserve=backupAhead?Math.min(this.deadline/2,2*this.interval+this.attemptTimeout):0;
-      const budget=backupAhead?Math.max(1,Math.min(attempts===0?this.attemptTimeout:Math.min(this.attemptTimeout,2000),remaining-reserve)):remaining;
+      const tag=blockTag(request),hash=this.pins.get(chain+':'+tag);
+      const qualification=Number(!state.verified)+Number(!!hash&&!state.blocks.has(tag));
+      const timeout=attempts===0?this.attemptTimeout:Math.min(this.attemptTimeout,2000);
+      const reserve=backupAhead?Math.min(this.deadline/2,2*this.interval+Math.min(this.attemptTimeout,2000)):0;
+      const budget=backupAhead?Math.max(1,Math.min(qualification*this.interval+timeout,remaining-reserve)):remaining;
+      if(backupAhead&&budget<=qualification*this.interval){onOutcome(index,{method:request.method,outcome:'skipped',reason:'qualification'});continue;}
       const controller=new AbortController(), abort=()=>controller.abort(signal.reason);
       signal.addEventListener('abort',abort,{once:true});
-      const timer=budget<remaining?setTimeout(()=>controller.abort(failure('RPC endpoint attempt timed out.', 'TimeoutError')),budget):null;
+      const timer=budget<remaining?setTimeout(()=>controller.abort(failure('Local RPC scheduling deadline reached.', 'RpcSchedulingTimeout')),budget):null;
       let release;
-      let attempted=false;
+      let attempted=false,phase='queue';
       try {
         release=await state.gate.acquire(controller.signal);
         // A request ahead of us may have cooled this endpoint while we waited.
         if (state.until > Date.now() || (state.methods.get(request.method) || 0) > Date.now()) {onOutcome(index,{method:request.method,outcome:'skipped',reason:'cooldown'});last=state.error||last;continue;}
         if (++attempts > 4) break;
         attempted=true;
-        const timeout=attempts===1?this.attemptTimeout:Math.min(this.attemptTimeout,2000);
+        phase='qualification';
         if (!state.verified) {
           const id = await this.send(state, {method:'eth_chainId'}, controller.signal, timeout);
           if (Number(BigInt(id)) !== chain) throw failure('RPC chain identity mismatch');
           state.verified = true;
         }
-        const tag = blockTag(request), hash = this.pins.get(chain + ':' + tag);
         if (hash && !state.blocks.has(tag)) {
           const header = await this.send(state, {method:'eth_getBlockByNumber',params:[tag,false]}, controller.signal, timeout);
           if (header?.hash?.toLowerCase() !== hash || BigInt(header.number) !== BigInt(tag)) throw failure('RPC snapshot block hash mismatch.', 'RpcConsistencyError');
@@ -181,6 +184,7 @@ class RpcPool {
         }
         // A height can reorg after verification. Every evidence read names the hash.
         const pinned=hash?{...request,params:[request.params[0],{blockHash:hash,requireCanonical:true},...request.params.slice(2)]}:request;
+        phase='read';
         let result;
         try { result=request.method==='eth_chainId'?'0x'+chain.toString(16):await this.send(state,pinned,controller.signal,timeout); }
         catch(error) {
@@ -194,7 +198,13 @@ class RpcPool {
         if (state.until) { state.until = 0; this.persist(); }
         return result;
       } catch (error) {
-        last = error;state.error=error; const kind = classify(error);
+        last = error;
+        if(signal.aborted||error.name==='RpcSchedulingTimeout'){
+          onOutcome(index,{method:request.method,outcome:attempted?'local_timeout':'queue_timeout',reason:phase==='queue'?'queue':phase==='qualification'?'qualification':'local_deadline'});
+          if(signal.aborted)throw signal.reason;
+          continue;
+        }
+        state.error=error; const kind = classify(error);
         const event={method:request.method,outcome:attempted?'failed':'queue_timeout',reason:kind};
         for(let cause=error,depth=0;cause&&depth<10;cause=cause.cause,depth++){
           if(Number.isInteger(cause.status))event.http_status=cause.status;
@@ -213,7 +223,7 @@ class RpcPool {
     }
     throw last;
   }
-  transport(chain, urls, transport = viem.http, onSuccess = () => {}, onOutcome = () => {}) {
+  transport(chain, urls, transport = viem.http, onSuccess = () => {}, onOutcome = () => {}, policy = {}) {
     if (!urls.length) throw failure('No configured RPC endpoint for this chain.');
     const pool = this;
     // Leave time for a personal backup after two public providers. Preserve explicit custom-first order.
@@ -225,8 +235,8 @@ class RpcPool {
         const tag = blockTag(request), hash = pool.pins.get(chain + ':' + tag);
         const key = JSON.stringify([chain, urls, hash || null, request.method, request.params]);
         const cached = pool.cache.get(key);
-        if (hash && cached && cached.expires > Date.now()) return cached.value;
-        if (!requestOptions.signal && pool.pending.has(key)) return pool.pending.get(key);
+        if (policy.cache!==false && hash && cached && cached.expires > Date.now()) return cached.value;
+        if (policy.cache!==false && !requestOptions.signal && pool.pending.has(key)) return pool.pending.get(key);
         const controller = new AbortController(), external = requestOptions.signal;
         const abort = () => controller.abort(external.reason);
         if (external?.aborted) abort(); else external?.addEventListener('abort', abort, {once:true});
@@ -234,10 +244,10 @@ class RpcPool {
         const timer = setTimeout(() => controller.abort(failure('RPC read deadline exceeded. Retry holdings.', 'TimeoutError')), pool.deadline);
         const promise = pool.run(chain, choices.map(row=>row.url), request, transport, options, (index,state)=>onSuccess(choices[index].index,state), controller.signal,deadlineAt,
           (index,event)=>onOutcome(choices[index].index,event)).then(value => {
-          if (hash) { if (pool.cache.size >= 512) pool.cache.delete(pool.cache.keys().next().value); pool.cache.set(key, {value,expires:Date.now()+300000}); }
+          if (policy.cache!==false && hash) { if (pool.cache.size >= 512) pool.cache.delete(pool.cache.keys().next().value); pool.cache.set(key, {value,expires:Date.now()+300000}); }
           return value;
         }).finally(() => { clearTimeout(timer); external?.removeEventListener('abort', abort); if (pool.pending.get(key) === promise) pool.pending.delete(key); });
-        if (!external) pool.pending.set(key, promise);
+        if (policy.cache!==false && !external) pool.pending.set(key, promise);
         return promise;
       }
     });
