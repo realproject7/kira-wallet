@@ -15,7 +15,7 @@ what you hold across supported EVM chains, and ask Kira to research your tokens
 or refresh your holdings. Kira runs on your computer and uses your existing
 Codex or Claude Code account.
 
-![Kira portfolio overview and chat](https://raw.githubusercontent.com/realproject7/kira-wallet/80ecaee312730997dcf2e0f48d8d88878d4bcde4/docs/screenshots/kira-readme-overview.jpg)
+![Kira portfolio overview with network allocation and research priorities](docs/screenshots/kira-readme-overview.jpg)
 
 ## Get started
 
@@ -72,7 +72,7 @@ value from an execution quote. Missing prices and holdings stay unknown;
 transfer inactivity needs transfer-history evidence. Testnets and pool liquidity
 are excluded from your portfolio's USD value.
 
-![USDC markets and balances by wallet](https://raw.githubusercontent.com/realproject7/kira-wallet/80ecaee312730997dcf2e0f48d8d88878d4bcde4/docs/screenshots/kira-readme-markets.jpg)
+![USDC markets and balances by wallet with matching Kira analysis](docs/screenshots/kira-readme-markets.jpg)
 
 *Markets, paired token logos and each wallet's balance in one view.*
 

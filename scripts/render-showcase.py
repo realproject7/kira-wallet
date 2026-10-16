@@ -1,163 +1,328 @@
-"""Render the public reconstructed chat demo. No portfolio input is read."""
+"""Render the responsive public chat film from synthetic examples only."""
+from functools import lru_cache
 from pathlib import Path
-import json,math,subprocess,textwrap
-from PIL import Image,ImageDraw,ImageFont
-ROOT=Path(__file__).resolve().parents[1]
-W,H,FPS=720,860,24
-FONT='/System/Library/Fonts/Supplemental/Arial.ttf'
-BOLD='/System/Library/Fonts/Supplemental/Arial Bold.ttf'
-def font(size,bold=False):return ImageFont.truetype(BOLD if bold else FONT,size)
-INK='#38313f';MUTED='#87748f';PURPLE='#715285'
-CASES=[
- {'label':'Find overlooked value','question':'Which tokens have been sitting idle, and what could I receive if I sold them?',
-  'working':'Checking activity evidence, holdings and exit routes…',
-  'answer':'Three holdings to review in this example. Spot value and expected sale output are different.',
-  'tokens':[
-   {'symbol':'CASHCAT','icon':'cashcat','chain':'Robinhood','balance':'1,200','price':'$0.1800','value':'$216.00',
-    'chain_id':4663,'contract':'0x020bfc650a365f8bb26819deaabf3e21291018b4',
-    'pool':'0xa92a3df27a00a276183ff7265fd8affa11df1fe8bb23ddfaf13f6c879a3f818b',
-    'market_url':'https://lptoken.fun/trade/robinhood/0x020bfc650a365f8bb26819deaabf3e21291018b4',
-    'route':'Uniswap v4 · CASHCAT / USDG','output':'Simulated output 212.19 USDG · gas $0.55',
-    'detail':'Example: no transfers in 180 days · impact 1.5% · fee 0.269%'},
-   {'symbol':'APE','icon':'ape','chain':'Ethereum','balance':'20','price':'$0.8500','value':'$17.00',
-    'chain_id':1,'contract':'0x4d224452801aced8b2f0aebe155379bb5d594381',
-    'route':'Uniswap v3 · APE / WETH','output':'Sale output unknown · no execution quote',
-    'detail':'Example: no transfers in 90 days · gas and impact unknown'},
-   {'symbol':'SIGNET','icon':'signet','chain':'Base','balance':'650','price':'Unknown','value':'Unknown',
-    'chain_id':8453,'contract':'0xdf2b673ec06d210c8a8be89441f8de60b5c679c9',
-    'route':'No funded market recorded','output':'Sale output unknown',
-    'detail':'Activity history unavailable · inactivity unconfirmed'}],
-  'next':'CASHCAT net example: $211.64 after gas, assuming USDG = $1. All figures are illustrative; refresh before acting.'},
- {'label':'Review a whole network','question':'Review my Blast holdings across wallets. What is liquid, and what should I check before moving it?',
-  'working':'Grouping wallets, token identities and recorded pools…',
-  'answer':'Your Blast exposure, grouped in this demo. Preserve ETH for fees and quote each exit separately.',
-  'tokens':[
-   {'symbol':'ETH','icon':'eth','chain':'Blast · Wallet A','balance':'0.050','price':'$2,700','value':'$135.00',
-    'chain_id':81457,'contract':'native',
-    'route':'Native gas asset · bridge route not quoted','output':'Keep ETH for gas · bridge fees unknown','detail':'Balance and price: example observation only'},
-   {'symbol':'USDB','icon':'usdb','chain':'Blast · Wallet A','balance':'250','price':'$1.000','value':'$250.00',
-    'chain_id':81457,'contract':'0x4300000000000000000000000000000000000003',
-    'pool':'0xf00da13d2960cf113edcef6e3f30d92e52906537',
-    'market_url':'https://dexscreener.com/blast/0xf00da13d2960cf113edcef6e3f30d92e52906537',
-    'route':'Thruster v3 · USDB / WETH','output':'Sale output unknown · quote full balance first','detail':'Pool liquidity $158,000 · illustrative observation'},
-   {'symbol':'BLAST','icon':'blast','chain':'Blast · Wallet B','balance':'100,000','price':'$0.0001566','value':'$15.66',
-    'chain_id':81457,'contract':'0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad',
-    'pool':'0x9a0aa28d999a21d3cf6f2703cdbba9feaf4a32f7',
-    'market_url':'https://dexscreener.com/blast/0x9a0aa28d999a21d3cf6f2703cdbba9feaf4a32f7',
-    'route':'Thruster v3 · BLAST / WETH','output':'Sale output unknown · costs can matter','detail':'Pool liquidity $15,000 · illustrative observation'}],
-  'next':'Demo spot total: $400.66. Neither a bridge quote nor cash proceeds. Check unpriced tokens and missing wallet coverage too.'},
- {'label':'Understand an LP position · preview','question':'Could I have forgotten LP positions? Show the underlying tokens, fees and what withdrawing would return.',
-  'working':'Previewing position ownership and underlying assets…',
-  'answer':'Two reconstructed positions. Pool links alone do not prove that you own liquidity.',
-  'tokens':[
-   {'symbol':'WETH / USDC','icon':'lp','chain':'Base · Aerodrome','balance':'LP position','price':'Preview','value':'$154.00',
-    'route':'Underlying: 0.030 WETH + 73.00 USDC','output':'Illustrative fees: $2.00 · withdrawal unquoted','detail':'Ownership, fee and exit data are concept-only'},
-   {'symbol':'ETH / USDC','icon':'lp','chain':'Ethereum · Uniswap','balance':'Position NFT','price':'Preview','value':'$278.00',
-    'route':'Underlying: 0.060 ETH + 116.00 USDC','output':'Illustrative fees: $4.50 · withdrawal unquoted','detail':'Values use illustrative ETH/WETH = $2,700'}],
-  'next':'LP discovery preview. Current Kira research covers direct holdings. No position, fee or withdrawal in this demo is measured.'}
-]
-ASSETS=ROOT/'site/assets'
-ICONS={}
-for name in ('ape','signet','eth','usdc','cashcat','blast','usdb'):
-    path=ASSETS/(name+'.png')
-    if path.exists():ICONS[name]=Image.open(path).convert('RGBA').resize((44,44))
-ART={pose:Image.open(ASSETS/('kira-'+pose+'.png')).convert('RGBA') for pose in ('explain','research')}
-def wrap(draw,text,size,width):
-    words=text.split();rows=[];line=''
-    for word in words:
-        candidate=(line+' '+word).strip()
-        if draw.textlength(candidate,font=font(size))>width and line:rows.append(line);line=word
-        else:line=candidate
-    return rows+[line] if line else rows
+import json
+import math
+import subprocess
+from PIL import Image, ImageDraw, ImageFont
 
-def frame(case,t):
-    im=Image.new('RGB',(W,H),'#fcfafc');d=ImageDraw.Draw(im)
-    d.rounded_rectangle((1,1,W-2,H-2),radius=24,outline='#dfd4e7',width=2)
-    d.text((30,25),'Kira Chat',font=font(24,True),fill=INK)
-    d.text((W-192,32),'ILLUSTRATIVE DEMO',font=font(12,True),fill=MUTED)
-    d.line((25,76,W-25,76),fill='#e8e0ed',width=1)
-    d.text((30,96),case['label'],font=font(15,True),fill=PURPLE)
-    # Request is typed in the floating input, sent, then answered.
-    text=case['question'];typing=min(1,max(0,t/2.4));sent=t>=2.7;answer=t>=5.2
-    if sent:
-        rows=wrap(d,text,19,W-136);bottom=147+len(rows)*25
-        d.rounded_rectangle((78,139,W-28,bottom+17),radius=15,fill='#eee7f4')
-        for i,row in enumerate(rows):d.text((96,147+i*25),row,font=font(19),fill=INK)
-        y=bottom+24
-        pose='explain' if answer else 'research';art=ART[pose].copy();art.thumbnail((46,58))
-        im.paste(art,(28,y),art)
-        d.text((88,y+10),'Kira',font=font(22,True),fill=PURPLE)
-        if not answer:
-            for i,row in enumerate(wrap(d,case['working'],18,W-165)):d.text((124,y+48+i*25),row,font=font(18),fill=MUTED)
-            for i in range(3):
-                pulse=(math.sin(t*5-i*.5)+1)/2
-                d.ellipse((124+i*16,y+99-pulse*3,130+i*16,y+116-pulse*3),fill=PURPLE)
+ROOT = Path(__file__).resolve().parents[1]
+ASSETS = ROOT / 'site' / 'assets'
+FPS, SCALE, SECONDS = 24, 3, 16
+VIDEO_CRF = 14
+FONT = '/System/Library/Fonts/SFNS.ttf'
+INK, MUTED, PLUM = '#302735', '#66536e', '#684578'
+BACKGROUND, CARD, LINE = '#fdfbff', '#f5f0f8', '#e8dff0'
+CASES = [
+    {
+        'id': 'tokens', 'label': 'Find value',
+        'question': 'What are my overlooked tokens worth? Show balances, prices and markets.',
+        'working': 'Reading your holdings and recorded markets…',
+        'answer': 'SIGNET uses a HUNT-backed Mint Club curve. CASHCAT and APE trade on DEX markets.',
+        'summary': 'Recorded spot value', 'total': '$272.65', 'note': 'Includes SIGNET’s curve value',
+        'tokens': [
+            {'symbol': 'CASHCAT', 'icon': 'cashcat', 'chain': 'Robinhood · Daily wallet', 'quantity': '1,200 CASHCAT', 'price': '$0.1800 each', 'value': '$216.00', 'market': 'Uniswap v4 · CASHCAT / USDG'},
+            {'symbol': 'APE', 'icon': 'ape', 'chain': 'Ethereum · Daily wallet', 'quantity': '20 APE', 'price': '$0.8500 each', 'value': '$17.00', 'market': 'Uniswap v3 · APE / WETH'},
+            {'symbol': 'SIGNET', 'icon': 'signet', 'chain': 'Base · Trading wallet', 'quantity': '650 SIGNET', 'price': '$0.0610 each', 'value': '$39.65', 'market': 'Mint Club · 0.613 HUNT / SIGNET',
+             'protocol': 'Mint Club', 'parent_symbol': 'HUNT', 'reference_price': '0.613 HUNT',
+             'pricing_source': 'https://mint.club/token/base/SIGNET',
+             'pricing_note': 'Official page observed 2026-10-05: 0.613 HUNT and approximately $0.061 per SIGNET. The demo uses that rounded USD reference with a fictional balance; spot value is not a burn quote.'},
+        ],
+    },
+    {
+        'id': 'blast', 'label': 'Review Blast',
+        'question': 'Review my Blast wallets. What do I hold, and where can these tokens trade?',
+        'working': 'Grouping your Blast wallets and token records…',
+        'answer': 'Your Blast holdings, together. Keep some ETH for fees before moving funds.',
+        'summary': 'Recorded spot value', 'total': '$400.66', 'note': 'across 2 wallets',
+        'tokens': [
+            {'symbol': 'ETH', 'icon': 'eth', 'chain': 'Blast · Daily wallet', 'quantity': '0.050 ETH', 'price': '$2,700.00 each', 'value': '$135.00', 'market': 'Native gas asset'},
+            {'symbol': 'USDB', 'icon': 'usdb', 'chain': 'Blast · Daily wallet', 'quantity': '250 USDB', 'price': '$1.0000 each', 'value': '$250.00', 'market': 'Thruster v3 · USDB / WETH'},
+            {'symbol': 'BLAST', 'icon': 'blast', 'chain': 'Blast · Trading wallet', 'quantity': '100,000 BLAST', 'price': '$0.0001566 each', 'value': '$15.66', 'market': 'Thruster v3 · BLAST / WETH'},
+        ],
+    },
+    {
+        'id': 'compare', 'label': 'See changes',
+        'question': 'What changed since the last time you checked my wallet?',
+        'working': 'Comparing your saved balances and prices…',
+        'answer': 'Your balances stayed the same. Prices moved, and a few coverage gaps were filled.',
+        'summary': 'Change in priced value', 'total': '+$14.50', 'note': 'balances unchanged',
+        'tokens': [
+            {'symbol': 'CASHCAT', 'icon': 'cashcat', 'chain': '1,200 CASHCAT · unchanged', 'quantity': 'Price', 'previous_price': '$0.1800', 'price': '$0.1900', 'value': '+$12.00', 'market': 'Robinhood · recorded spot value'},
+            {'symbol': 'ETH', 'icon': 'eth', 'chain': '0.050 ETH · unchanged', 'quantity': 'Price', 'previous_price': '$2,700', 'price': '$2,750', 'value': '+$2.50', 'market': 'Blast · recorded spot value'},
+            {'coverage': True, 'symbol': 'Two balances verified as zero', 'detail': 'Previously unknown. Now observed on-chain.'},
+        ],
+    },
+]
+PROFILES = {
+    'desktop': {'width': 520, 'height': 570, 'body': 14, 'detail': 12, 'card': 100, 'composer': 92},
+    'mobile': {'width': 440, 'height': 520, 'body': 15, 'detail': 12, 'card': 100, 'composer': 92},
+    'compact': {'width': 360, 'height': 520, 'body': 15, 'detail': 12, 'card': 100, 'composer': 92},
+}
+ICONS = {name: Image.open(ASSETS / (name + '.png')).convert('RGBA') for name in ('cashcat', 'ape', 'signet', 'eth', 'usdb', 'blast')}
+ART = {name: Image.open(ASSETS / ('kira-' + name + '.png')).convert('RGBA') for name in ('explain', 'research')}
+LOGO = Image.open(ASSETS / 'kira-logo.png').convert('RGBA')
+
+@lru_cache(maxsize=32)
+def font(size, weight=400):
+    result = ImageFont.truetype(FONT, round(size * SCALE))
+    # A little more stem weight keeps small raster text legible after video
+    # compression and responsive downscaling without enlarging the layout.
+    result.set_variation_by_axes([100, max(17, min(96, size)), 400, max(450, weight)])
+    return result
+
+class Painter:
+    def __init__(self, profile):
+        self.p = profile
+        self.width, self.height = profile['width'], profile['height']
+        self.image = Image.new('RGB', (self.width * SCALE, self.height * SCALE), BACKGROUND)
+        self.draw = ImageDraw.Draw(self.image)
+
+    def rounded(self, box, radius=12, fill=None, outline=None, width=1):
+        self.draw.rounded_rectangle(tuple(round(v * SCALE) for v in box), radius=radius * SCALE, fill=fill, outline=outline, width=width * SCALE)
+
+    def text(self, x, y, value, size, color=INK, weight=400, right=False):
+        self.draw.text((round(x * SCALE), round(y * SCALE)), value, font=font(size, weight), fill=color, anchor='rt' if right else 'lt')
+
+    def wrapped(self, text, size, width, weight=400):
+        lines, line = [], ''
+        for word in text.split():
+            trial = (line + ' ' + word).strip()
+            if self.draw.textlength(trial, font=font(size, weight)) > width * SCALE and line:
+                lines.append(line)
+                line = word
+            else:
+                line = trial
+        return lines + [line] if line else lines
+
+    def lines(self, x, y, values, size, color=INK, line_height=None, weight=400):
+        step = line_height or size * 1.55
+        for value in values:
+            self.text(x, y, value, size, color, weight)
+            y += step
+        return y
+
+    def artwork(self, source, x, y, width, height):
+        art = source.copy()
+        art.thumbnail((round(width * SCALE), round(height * SCALE)), Image.Resampling.LANCZOS)
+        self.image.paste(art, (round(x * SCALE), round(y * SCALE)), art)
+
+    def logo(self, source, x, y, size):
+        pixels = round(size * SCALE)
+        icon = Image.new('RGBA', (pixels, pixels), '#ffffff')
+        ratio = min(pixels / source.width, pixels / source.height)
+        art = source.resize((round(source.width * ratio), round(source.height * ratio)), Image.Resampling.LANCZOS)
+        icon.paste(art, ((pixels - art.width) // 2, (pixels - art.height) // 2), art)
+        mask = Image.new('L', (pixels, pixels), 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, pixels - 1, pixels - 1), fill=255)
+        self.image.paste(icon, (round(x * SCALE), round(y * SCALE)), mask)
+
+
+def geometry(case, profile):
+    p = Painter(profile)
+    w, body = p.width, profile['body']
+    margin = 24 if w > 400 else 18
+    question = p.wrapped(case['question'], body, w - margin * 2 - 52)
+    qbottom = 18 + 28 + len(question) * body * 1.55
+    answer_y = qbottom + 66
+    answer = p.wrapped(case['answer'], body, w - 2 * margin)
+    panel_y = answer_y + len(answer) * body * 1.55 + 24
+    cards_y = panel_y + 34
+    bottom = cards_y + 3 * profile['card']
+    return {'margin': margin, 'question': question, 'qbottom': qbottom,
+            'answer_y': answer_y, 'answer': answer, 'cards_y': cards_y,
+            'panel_y': panel_y, 'summary_y': bottom + 10, 'height': math.ceil(bottom + 54)}
+
+
+def conversation(case, time, profile, layout):
+    """One growing conversation block, positioned in a shared scroll stream."""
+    p = Painter(dict(profile, height=layout['height']))
+    w, body, detail = p.width, profile['body'], profile['detail']
+    margin = layout['margin']
+    if time < 2.6:
+        return p.image
+    qx, qy = margin + 26, 18
+    p.rounded((qx, qy, w - margin, layout['qbottom']), 14, '#eee6f5')
+    p.lines(qx + 16, qy + 14, layout['question'], body, '#504358')
+    y = layout['qbottom'] + 24
+    p.artwork(LOGO, margin, y, 28, 28)
+    p.text(margin + 38, y + 6, 'Kira', body, PLUM, 600)
+    y = layout['answer_y']
+    if time < 4.8:
+        art_w = 80 if w > 400 else 72
+        p.artwork(ART['research'], margin, y + 8, art_w, 108)
+        work_x = margin + art_w + 18
+        p.lines(work_x, y + 18, p.wrapped(case['working'], body, w - margin - work_x), body, MUTED)
+        for i in range(3):
+            pulse = (math.sin(time * 4 - i * .5) + 1) / 2
+            cx, cy = (work_x + i * 14) * SCALE, (y + 112 - pulse * 3) * SCALE
+            p.draw.ellipse((cx, cy, cx + 5 * SCALE, cy + 5 * SCALE), fill='#8a659d')
+        return p.image
+    visible = min(len(case['answer']), round(max(0, time - 4.8) / .5 * len(case['answer'])))
+    p.lines(margin, y, p.wrapped(case['answer'][:visible], body, w - 2 * margin), body, '#5f5369')
+    shown_rows = min(len(case['tokens']), 1 + int(max(0, time - 5.4) // 2.35))
+    panel_top = layout['panel_y']
+    panel_bottom = layout['height'] - 2 if time >= 12.3 else layout['cards_y'] + shown_rows * profile['card'] + 8
+    if time >= 5.4:
+        p.rounded((margin, panel_top, w - margin, panel_bottom), 14, '#ffffff', LINE)
+        p.text(margin + 14, panel_top + 12, 'Price changes' if case['id'] == 'compare' else 'Holdings & markets', 11, MUTED, 500)
+        p.text(w - margin - 14, panel_top + 12, 'Change' if case['id'] == 'compare' else 'Spot value', 11, MUTED, right=True)
+    for index, token in enumerate(case['tokens']):
+        top = layout['cards_y'] + index * profile['card']
+        progress = max(0, min(1, (time - 5.4 - index * 2.35) / .4))
+        if not progress:
+            continue
+        bottom = top + profile['card']
+        coverage = token.get('coverage')
+        left, right = margin + 14, w - margin - 14
+        if index:
+            p.draw.line((left * SCALE, top * SCALE, right * SCALE, top * SCALE), fill=LINE, width=SCALE)
+        if coverage:
+            p.rounded((left, top + 28, left + 30, top + 58), 15, '#e2eee7')
+            p.draw.line([((left + 9) * SCALE, (top + 42) * SCALE), ((left + 13) * SCALE, (top + 47) * SCALE), ((left + 22) * SCALE, (top + 36) * SCALE)], fill='#56705f', width=2 * SCALE)
+            headings = p.wrapped(token['symbol'], body, right - left - 42, 550)
+            yy = p.lines(left + 42, top + 18, headings, body, '#56705f', body * 1.3, 550)
+            ending = p.lines(left + 42, yy + 9, p.wrapped(token['detail'], detail, right - left - 42), detail, '#56705f', detail * 1.4)
+            assert ending < bottom - 8, f'{case["id"]}/{w}: coverage card overflow'
         else:
-            y+=65
-            for row in wrap(d,case['answer'],18,W-64):d.text((32,y),row,font=font(18),fill=INK);y+=25
-            y+=18
-            for i,token in enumerate(case['tokens']):
-                if t<5.35+i*.18:continue
-                symbol,icon=token['symbol'],token['icon']
-                d.rounded_rectangle((30,y,W-30,y+99),radius=12,fill='#f2edf6')
-                if icon=='lp':
-                    for name,x in [('eth',43),('usdc',61)]:
-                        logo=ICONS[name].resize((30,30));im.paste(logo,(x,y+12),logo)
-                elif icon in ICONS:im.paste(ICONS[icon],(43,y+9),ICONS[icon])
-                else:raise ValueError('Missing researched token artwork: '+icon)
-                d.text((102,y+12),symbol+' · '+token['chain'],font=font(17,True),fill=INK)
-                d.text((102,y+36),token['balance']+' × '+token['price']+' = '+token['value'],font=font(15),fill=MUTED)
-                d.text((43,y+58),token['route'],font=font(14),fill=MUTED)
-                d.text((43,y+78),token['output'],font=font(15,True),fill=PURPLE)
-                y+=105
-            y+=3
-            for row in wrap(d,case['next'],14,W-64):d.text((32,y),row,font=font(14),fill=PURPLE);y+=20
-            assert y<735, 'Demo content overlaps composer'
-    # The input is always at the bottom; it does not cover the answer.
-    if 2.7<t<5.2:
-        pulse=(math.sin(t*5)+1)/2
-        for inset in range(9,0,-1):d.rounded_rectangle((25-inset,742-inset,W-25+inset,830+inset),radius=20,outline=('#d8c3e7' if pulse>.45 else '#e7dcef'),width=1)
-    d.rounded_rectangle((25,742,W-25,830),radius=16,fill='white',outline='#c8b7d4',width=2)
-    shown='Ask Kira to check your wallets…' if sent else text[:int(len(text)*typing)]
-    for i,row in enumerate(wrap(d,shown,16,W-114)[:2]):d.text((43,758+i*22),row,font=font(16),fill=MUTED)
-    d.text((44,803),'Your own AI',font=font(12),fill=MUTED)
-    d.rounded_rectangle((W-74,780,W-39,817),radius=9,fill=PURPLE)
-    d.line((W-56,806,W-56,790),fill='white',width=2);d.line((W-61,796,W-56,790,W-51,796),fill='white',width=2)
-    return im
+            p.logo(ICONS[token['icon']], left, top + 12, 30)
+            p.text(left + 40, top + 12, token['symbol'], body, INK, 600)
+            color = '#35664d' if case['id'] == 'compare' else INK
+            p.text(right, top + 12, token['value'], body, color, 600, True)
+            assert p.draw.textlength(token['symbol'], font=font(body, 600)) + p.draw.textlength(token['value'], font=font(body, 600)) + 52 * SCALE < (right - left) * SCALE, f'{case["id"]}/{w}: token and value overlap'
+            p.text(left + 40, top + 33, token['chain'], 11, MUTED)
+            comparison = case['id'] == 'compare'
+            p.text(left, top + 51, 'Previous price' if comparison else 'Balance', 10, MUTED)
+            p.text(right, top + 51, 'Current price' if comparison else 'Unit price', 10, MUTED, right=True)
+            quantity = token['previous_price'] if comparison else token['quantity']
+            price = token['price'].removesuffix(' each')
+            p.text(left, top + 65, quantity, detail, INK, 500)
+            p.text(right, top + 65, price, detail, INK, 500, right=True)
+            assert p.draw.textlength(quantity, font=font(detail, 500)) + p.draw.textlength(price, font=font(detail, 500)) + 12 * SCALE < (right - left) * SCALE, f'{case["id"]}/{w}: balance and unit price overlap'
+            p.text(left, top + 85, token['market'], 11, PLUM)
+            assert p.draw.textlength(token['market'], font=font(11)) < (right - left) * SCALE, f'{case["id"]}/{w}: market row overflow'
+    if time >= 12.3:
+        y = layout['summary_y']
+        p.draw.line(((margin + 14) * SCALE, (y - 10) * SCALE, (w - margin - 14) * SCALE, (y - 10) * SCALE), fill=LINE, width=SCALE)
+        p.text(margin + 14, y, case['summary'], 11, MUTED)
+        p.text(w - margin - 14, y, case['total'], body, '#35664d' if case['id'] == 'compare' else '#594064', 600, True)
+        p.text(margin + 14, y + 22, case['note'], 10, MUTED)
+    return p.image
+
+
+def ease(value):
+    value = max(0, min(1, value))
+    return value * value * (3 - 2 * value)
+
+
+def frame(time, profile, layouts, completed):
+    """Append three questions and answers, scrolling only inside the chat film."""
+    p = Painter(profile)
+    w, h, body = p.width, p.height, profile['body']
+    index = min(len(CASES) - 1, int(time // SECONDS))
+    t = time - index * SECONDS
+    case, layout = CASES[index], layouts[index]
+    margin = layout['margin']
+    chat_h = h - profile['composer'] - 24
+    assert all(item['height'] - item['panel_y'] <= chat_h for item in layouts), 'Result panel must fit above the composer'
+    offsets, position = [], 0
+    for item in layouts:
+        offsets.append(position)
+        position += item['height'] + 20
+    current_top = offsets[index]
+    scroll = max(0, current_top - 20 - chat_h) if index else 0
+    targets = [(2.6, layout['answer_y'] + 140),
+               (4.8, layout['cards_y']),
+               (5.4, layout['cards_y'] + profile['card'] + 8),
+               (7.75, layout['cards_y'] + 2 * profile['card'] + 8),
+               (10.1, layout['cards_y'] + 3 * profile['card'] + 8),
+               (12.3, layout['height'])]
+    for start, bottom in targets:
+        target = max(scroll, current_top + bottom - chat_h)
+        scroll += (target - scroll) * ease((t - start) / .85)
+    content = Image.new('RGB', (w * SCALE, chat_h * SCALE), BACKGROUND)
+    for prior in range(index):
+        content.paste(completed[prior], (0, round((offsets[prior] - scroll) * SCALE)))
+    if t >= 2.6:
+        content.paste(conversation(case, t, profile, layout), (0, round((current_top - scroll) * SCALE)))
+    elif index == 0:
+        welcome = Painter(dict(profile, height=chat_h))
+        art_w, art_h = (140, 188) if w > 400 else (112, 150)
+        welcome.artwork(ART['explain'], (w - art_w) / 2, 24, art_w, art_h)
+        for y, value, size in [(art_h + 53, 'Let’s look at your wallets.', body + 2),
+                               (art_h + 89, 'Your questions. Your AI.', body)]:
+            tw = welcome.draw.textlength(value, font=font(size, 500)) / SCALE
+            welcome.text((w - tw) / 2, y, value, size, PLUM, 500)
+        content = welcome.image
+    # Quiet edge fades distinguish a scrolling transcript from a cropped frame.
+    fade = Image.new('RGB', content.size, BACKGROUND)
+    mask = Image.new('L', content.size, 255)
+    md = ImageDraw.Draw(mask)
+    for edge in range(10 * SCALE):
+        opacity = round(255 * edge / (10 * SCALE))
+        md.line((0, edge, content.width, edge), fill=opacity)
+        md.line((0, content.height - edge - 1, content.width, content.height - edge - 1), fill=opacity)
+    p.image.paste(Image.composite(content, fade, mask), (0, 0))
+    # Fixed composer always fits inside the frame; long typing stays on two rows.
+    top = h - profile['composer'] - 8
+    sent = t >= 2.6
+    typing = min(1, max(0, t / 2.3))
+    shown = 'Ask Kira about your wallets…' if sent else case['question'][:round(len(case['question']) * typing)]
+    input_size = 14
+    rows = p.wrapped(shown, input_size, w - margin * 2 - 42) or ['Ask Kira about your wallets…']
+    if len(rows) > 2:
+        rows = rows[-2:]
+    border = '#b998ca' if sent and t < 4.8 and math.sin(t * 4) > 0 else '#d4bfdf'
+    p.rounded((margin - 8, top, w - margin + 8, h - 12), 14, '#ffffff', border)
+    p.lines(margin + 6, top + 12, rows, input_size, '#7d698a', input_size * 1.45)
+    fy = h - 35
+    assert top + 12 + len(rows) * input_size * 1.45 < fy - 8, 'Composer typing overlaps its footer'
+    p.draw.ellipse(((margin + 8) * SCALE, (fy + 5) * SCALE, (margin + 13) * SCALE, (fy + 10) * SCALE), fill='#739284')
+    p.text(margin + 20, fy + 2, 'Your AI account', 11, MUTED)
+    bx = w - margin - 24
+    p.rounded((bx, fy - 6, bx + 28, fy + 22), 7, '#87659b')
+    p.draw.line([((bx + 14) * SCALE, (fy + 15) * SCALE), ((bx + 14) * SCALE, (fy + 2) * SCALE)], fill='white', width=2 * SCALE)
+    p.draw.line([((bx + 9) * SCALE, (fy + 7) * SCALE), ((bx + 14) * SCALE, (fy + 2) * SCALE), ((bx + 19) * SCALE, (fy + 7) * SCALE)], fill='white', width=2 * SCALE)
+    return p.image
+
+
+def render(name, profile):
+    suffix = '' if name == 'desktop' else '-' + name
+    output = ASSETS / ('kira-scenarios' + suffix + '.mp4')
+    layouts = [geometry(case, profile) for case in CASES]
+    completed = [conversation(case, 14, profile, layout) for case, layout in zip(CASES, layouts)]
+    command = ['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{profile["width"] * SCALE}x{profile["height"] * SCALE}', '-r', str(FPS), '-i', '-', '-an', '-c:v', 'libx264', '-preset', 'medium', '-crf', str(VIDEO_CRF), '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(output)]
+    initial = frame(0, profile, layouts, completed)
+    with subprocess.Popen(command, stdin=subprocess.PIPE) as movie:
+        assert movie.stdin is not None
+        for index in range(SECONDS * len(CASES) * FPS):
+            t = index / FPS
+            image = frame(t, profile, layouts, completed)
+            if t > SECONDS * len(CASES) - .5:
+                image = Image.blend(image, initial, (t - SECONDS * len(CASES) + .5) / .5)
+            movie.stdin.write(image.tobytes())
+        movie.stdin.close()
+        assert movie.wait() == 0
+    if name == 'desktop':
+        for i in range(len(CASES)):
+            frame(i * SECONDS + 14, profile, layouts, completed).save(ASSETS / f'kira-scenario-{i + 1}.png', optimize=True)
+    frame(7, profile, layouts, completed).save(ASSETS / ('kira-scenarios' + suffix + '-poster.png'), optimize=True)
+    print(f'{name}: {output.name}, {output.stat().st_size:,} bytes', flush=True)
+
 
 def main():
-    for case in CASES:
-        assert len(case['tokens'])<=3
-        frame(case,8)  # Validate the complete layout before replacing the video.
-    frames_per_case=14*FPS
-    command=['ffmpeg','-y','-hide_banner','-loglevel','error','-f','rawvideo','-pix_fmt','rgb24','-s',f'{W}x{H}','-r',str(FPS),'-i','-','-an','-c:v','libx264','-preset','fast','-crf','24','-pix_fmt','yuv420p','-movflags','+faststart',str(ASSETS/'kira-scenarios.mp4')]
-    with subprocess.Popen(command,stdin=subprocess.PIPE) as video:
-        for case_index,case in enumerate(CASES):
-            for index in range(frames_per_case):
-                t=index/FPS;im=frame(case,t)
-                if t<.25:im=Image.blend(Image.new('RGB',(W,H),'#fcfafc'),im,t/.25)
-                if t>13.65:im=Image.blend(im,Image.new('RGB',(W,H),'#fcfafc'),(t-13.65)/.35)
-                video.stdin.write(im.tobytes())
-            frame(case,8).save(ASSETS/f'kira-scenario-{case_index+1}.png',optimize=True)
-        video.stdin.close();assert video.wait()==0
-    frame(CASES[0],8).save(ASSETS/'kira-scenarios-poster.png',optimize=True)
-    write_manifest()
-    print('Rendered 42-second reconstructed scenario video and matching transcript.')
+    for name, profile in PROFILES.items():
+        render(name, profile)
+    manifest = {
+        'kind': 'synthetic_recorded_holdings_demo', 'seconds': SECONDS * len(CASES),
+        'seconds_per_case': SECONDS, 'fps': FPS, 'render_scale': SCALE,
+        'video_crf': VIDEO_CRF,
+        'presentation': 'One continuous chat stream. Earlier messages remain above; new questions and answers append below with internal automatic scrolling.',
+        'profiles': PROFILES, 'cases': CASES,
+        'notes': 'Synthetic questions, balances and prices. Recorded spot values are not executable sale quotes. No private portfolio is read. Public token artwork provenance remains in token-artwork-sources.json.',
+    }
+    (ASSETS / 'kira-scenarios.json').write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + '\n')
+    print('Rendered three 48-second continuous films with typing, research, appended results and a loop.', flush=True)
 
-def write_manifest():
-    (ASSETS/'kira-scenarios.json').write_text(json.dumps({'kind':'reconstructed_concept_demo','seconds':42,'fps':FPS,'illustrative_observed_at':'2026-10-05T00:00:00Z','cases':CASES,'notes':'All balances, prices, activity and outputs are illustrative. Linked market identities are public research references, not execution quotes. LP ownership and pools in the LP preview are concept-only. Dormancy, DEX quotes and LP discovery are previews. Artwork uses verified chain/contract metadata from lpTOKEN.fun, DEX Screener and CoinGecko; see token-artwork-sources.json.'},indent=2)+'\n')
-    import html,re
-    transcript='<details class="motion-transcript"><summary>Read the scenarios and assumptions</summary><div>'
-    for case in CASES:
-        transcript+='<h3>'+html.escape(case['label'])+'</h3><p>“'+html.escape(case['question'])+'”</p><p>'+html.escape(case['answer'])+'</p><ul>'
-        for token in case['tokens']:
-            text=' · '.join([token['symbol'],token['chain'],token['balance']+' × '+token['price']+' = '+token['value'],token['route'],token['output'],token['detail']])
-            identity=(' · Chain ID '+str(token['chain_id'])+' · Contract '+token['contract']) if 'contract' in token else ''
-            market=('<br><a href="'+html.escape(token['market_url'],quote=True)+'" target="_blank" rel="noreferrer">Public market reference ↗</a> · Pool '+html.escape(token['pool'])) if token.get('market_url') else ''
-            transcript+='<li>'+html.escape(text+identity)+market+'</li>'
-        transcript+='</ul><p>Illustrative observation: October 5, 2026, 00:00 UTC. Linked markets identify the token and venue; their live prices will differ.</p><p>'+html.escape(case['next'])+'</p>'
-    transcript+='</div></details>'
-    path=ROOT/'site/index.html';body=path.read_text()
-    body=re.sub(r'<details class="motion-transcript">.*?</details>',lambda _:transcript,body,flags=re.S)
-    path.write_text(body)
-if __name__=='__main__':main()
+if __name__ == '__main__':
+    main()

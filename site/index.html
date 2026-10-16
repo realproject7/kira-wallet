@@ -16,8 +16,8 @@
   <link rel="canonical" href="https://kirawallet.app">
   <link rel="icon" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/assets/kira-logo.png">
-  <link rel="stylesheet" href="/site.css?v=8cdd1eea16">
-  <script src="/demo.js?v=8cdd1eea16" defer></script>
+  <link rel="stylesheet" href="/site.css?v=8b1847be9c20">
+  <script src="/demo.js?v=8b1847be9c20" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -44,67 +44,71 @@
     <div id="demo" class="demo" role="region" aria-label="Kira product examples">
       <div class="demo-header">
         <div class="demo-brand"><img src="/assets/kira-logo.png" width="30" height="30" alt=""><span>Kira Chat</span></div>
-        <span class="demo-badge">Demo</span>
       </div>
-      <div class="demo-tabs" role="tablist" aria-label="Example questions">
-        <button id="demo-tab-tokens" role="tab" aria-selected="true" aria-controls="demo-tokens" tabindex="0">Find value</button>
-        <button id="demo-tab-blast" role="tab" aria-selected="false" aria-controls="demo-blast" tabindex="-1">Review Blast</button>
-        <button id="demo-tab-compare" role="tab" aria-selected="false" aria-controls="demo-compare" tabindex="-1">See changes</button>
+      <div id="demo-motion" class="demo-motion" hidden aria-hidden="true">
+        <div class="motion-scroll"><div class="motion-stream"></div></div>
+        <div class="demo-composer motion-composer">
+          <div class="motion-draft">Ask Kira about your wallets…</div>
+          <div class="motion-composer-footer"><small><span class="status-dot"></span>Your AI account</small><span class="demo-send">↑</span></div>
+        </div>
       </div>
-      <div class="demo-body">
-        <section id="demo-tokens" class="demo-panel" role="tabpanel" aria-labelledby="demo-tab-tokens">
+      <div class="demo-body" tabindex="0" role="region" aria-label="Demo conversation transcript">
+        <section id="demo-tokens" class="demo-panel" aria-label="Token values" data-working="Reading your holdings and recorded markets…">
           <p class="demo-question">What are my overlooked tokens worth? Show balances, prices and markets.</p>
           <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
-          <p class="demo-answer">Start with these three. CASHCAT has a market to review; SIGNET still needs a price.</p>
+          <p class="demo-answer">SIGNET uses a HUNT-backed Mint Club curve. CASHCAT and APE trade on DEX markets.</p>
           <div class="token-results">
+            <div class="results-header"><span>Holdings &amp; markets</span><span>Spot value</span></div>
             <article class="token-result">
               <div class="token-top"><img src="/assets/cashcat.png" width="36" height="36" alt=""><div class="token-identity"><strong>CASHCAT</strong><span>Robinhood · Daily wallet</span></div><strong class="token-value">$216.00</strong></div>
-              <div class="token-facts"><span>1,200 tokens</span><span>$0.1800 each</span></div>
+              <div class="token-facts"><span><small>Balance</small><strong>1,200 CASHCAT</strong></span><span><small>Unit price</small><strong>$0.1800</strong></span></div>
               <a class="token-market" href="https://lptoken.fun/trade/robinhood/0x020bfc650a365f8bb26819deaabf3e21291018b4" target="_blank" rel="noreferrer">Uniswap v4 · CASHCAT / USDG <span aria-hidden="true">↗</span></a>
             </article>
             <article class="token-result">
               <div class="token-top"><img src="/assets/ape.png" width="36" height="36" alt=""><div class="token-identity"><strong>APE</strong><span>Ethereum · Daily wallet</span></div><strong class="token-value">$17.00</strong></div>
-              <div class="token-facts"><span>20 tokens</span><span>$0.8500 each</span></div>
+              <div class="token-facts"><span><small>Balance</small><strong>20 APE</strong></span><span><small>Unit price</small><strong>$0.8500</strong></span></div>
               <span class="token-market">Uniswap v3 · APE / WETH</span>
             </article>
             <article class="token-result">
-              <div class="token-top"><img src="/assets/signet.png" width="36" height="36" alt=""><div class="token-identity"><strong>SIGNET</strong><span>Base · Trading wallet</span></div><span class="token-value unknown">Unpriced</span></div>
-              <div class="token-facts"><span>650 tokens</span><span>Price unavailable</span></div>
-              <span class="token-market muted">No funded market recorded</span>
+              <div class="token-top"><img src="/assets/signet.png" width="36" height="36" alt=""><div class="token-identity"><strong>SIGNET</strong><span>Base · Trading wallet</span></div><strong class="token-value">$39.65</strong></div>
+              <div class="token-facts"><span><small>Balance</small><strong>650 SIGNET</strong></span><span><small>Unit price</small><strong>$0.0610</strong></span></div>
+              <a class="token-market" href="https://mint.club/token/base/SIGNET" target="_blank" rel="noreferrer">Mint Club · 0.613 HUNT / SIGNET <span aria-hidden="true">↗</span></a>
             </article>
+            <div class="demo-summary"><span>Recorded spot value</span><strong>$272.65 <small>Includes SIGNET’s curve value</small></strong></div>
           </div>
-          <div class="demo-summary"><span>Recorded spot value</span><strong>$233.00 <small>+ 1 unpriced token</small></strong></div>
         </section>
-        <section id="demo-blast" class="demo-panel" role="tabpanel" aria-labelledby="demo-tab-blast" hidden>
+        <section id="demo-blast" class="demo-panel" aria-label="Blast holdings" data-working="Grouping your Blast wallets and token records…">
           <p class="demo-question">Review my Blast wallets. What do I hold, and where can these tokens trade?</p>
           <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
           <p class="demo-answer">Your Blast holdings, together. Keep some ETH for fees before moving funds.</p>
           <div class="token-results">
+            <div class="results-header"><span>Holdings &amp; markets</span><span>Spot value</span></div>
             <article class="token-result">
               <div class="token-top"><img src="/assets/eth.png" width="36" height="36" alt=""><div class="token-identity"><strong>ETH</strong><span>Blast · Daily wallet</span></div><strong class="token-value">$135.00</strong></div>
-              <div class="token-facts"><span>0.050 ETH</span><span>$2,700.00 each</span></div>
+              <div class="token-facts"><span><small>Balance</small><strong>0.050 ETH</strong></span><span><small>Unit price</small><strong>$2,700.00</strong></span></div>
               <span class="token-market">Native gas asset</span>
             </article>
             <article class="token-result">
               <div class="token-top"><img src="/assets/usdb.png" width="36" height="36" alt=""><div class="token-identity"><strong>USDB</strong><span>Blast · Daily wallet</span></div><strong class="token-value">$250.00</strong></div>
-              <div class="token-facts"><span>250 tokens</span><span>$1.0000 each</span></div>
+              <div class="token-facts"><span><small>Balance</small><strong>250 USDB</strong></span><span><small>Unit price</small><strong>$1.0000</strong></span></div>
               <a class="token-market" href="https://dexscreener.com/blast/0xf00da13d2960cf113edcef6e3f30d92e52906537" target="_blank" rel="noreferrer">Thruster v3 · USDB / WETH <span aria-hidden="true">↗</span></a>
             </article>
             <article class="token-result">
               <div class="token-top"><img src="/assets/blast.png" width="36" height="36" alt=""><div class="token-identity"><strong>BLAST</strong><span>Blast · Trading wallet</span></div><strong class="token-value">$15.66</strong></div>
-              <div class="token-facts"><span>100,000 tokens</span><span>$0.0001566 each</span></div>
+              <div class="token-facts"><span><small>Balance</small><strong>100,000 BLAST</strong></span><span><small>Unit price</small><strong>$0.0001566</strong></span></div>
               <a class="token-market" href="https://dexscreener.com/blast/0x9a0aa28d999a21d3cf6f2703cdbba9feaf4a32f7" target="_blank" rel="noreferrer">Thruster v3 · BLAST / WETH <span aria-hidden="true">↗</span></a>
             </article>
+            <div class="demo-summary"><span>Recorded spot value</span><strong>$400.66 <small>across 2 wallets</small></strong></div>
           </div>
-          <div class="demo-summary"><span>Recorded spot value</span><strong>$400.66 <small>across 2 wallets</small></strong></div>
         </section>
-        <section id="demo-compare" class="demo-panel" role="tabpanel" aria-labelledby="demo-tab-compare" hidden>
+        <section id="demo-compare" class="demo-panel" aria-label="Saved analysis changes" data-working="Comparing your saved balances and prices…">
           <p class="demo-question">What changed since the last time you checked my wallet?</p>
           <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
           <p class="demo-answer">Your balances stayed the same. Prices moved, and a few coverage gaps were filled.</p>
           <div class="token-results">
+            <div class="results-header"><span>Price changes</span><span>Change</span></div>
             <article class="token-result">
-              <div class="token-top"><img src="/assets/cashcat.png" width="36" height="36" alt=""><div class="token-identity"><strong>CASHCAT</strong><span>1,200 tokens · unchanged</span></div><strong class="token-value change">+$12.00</strong></div>
+              <div class="token-top"><img src="/assets/cashcat.png" width="36" height="36" alt=""><div class="token-identity"><strong>CASHCAT</strong><span>1,200 CASHCAT · unchanged</span></div><strong class="token-value change">+$12.00</strong></div>
               <div class="comparison-facts"><span>Price</span><strong>$0.1800 <span aria-hidden="true">→</span> $0.1900</strong></div>
               <span class="token-market">Robinhood · recorded spot value</span>
             </article>
@@ -114,8 +118,8 @@
               <span class="token-market">Blast · recorded spot value</span>
             </article>
             <article class="coverage-result"><span class="coverage-icon" aria-hidden="true">✓</span><div><strong>Two balances verified as zero</strong><p>Previously unknown. Now observed on-chain.</p></div></article>
+            <div class="demo-summary"><span>Change in priced value</span><strong class="change">+$14.50 <small>balances unchanged</small></strong></div>
           </div>
-          <div class="demo-summary"><span>Change in priced value</span><strong class="change">+$14.50 <small>balances unchanged</small></strong></div>
         </section>
       </div>
       <div class="demo-composer" aria-hidden="true"><span>Ask Kira about your wallets…</span><div><small><span class="status-dot"></span>Your AI account</small><span class="demo-send">↑</span></div></div>
@@ -150,7 +154,7 @@
   </section>
 
   <section id="install" class="install wrap" aria-labelledby="install-title">
-    <div class="install-copy"><p class="eyebrow">LET’S GET YOU SET UP</p><h2 id="install-title">Your next question<br>starts here.</h2><p>Install Kira, add a wallet, and connect your AI account. Your local workspace is ready when you are.</p><p class="requirements">macOS · Node.js 22+ · Python 3.11+</p><a class="source-link" href="https://github.com/realproject7/kira-wallet/blob/codex/kira-product-polish/docs/CLI.md" target="_blank" rel="noreferrer">Read the setup guide <span aria-hidden="true">↗</span></a></div>
+    <div class="install-copy"><p class="eyebrow">LET’S GET YOU SET UP</p><h2 id="install-title">Your next question<br>starts here.</h2><p>Install Kira, add a wallet, and connect your AI account. Your local workspace is ready when you are.</p><p class="requirements">macOS · Node.js 22+ · Python 3.11+</p><a class="source-link" href="https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/CLI.md" target="_blank" rel="noreferrer">Read the setup guide <span aria-hidden="true">↗</span></a></div>
     <div class="terminal"><div class="terminal-top"><span>GET KIRA</span><button id="copy-install" type="button" aria-label="Copy installation commands">Copy commands</button></div><pre><code id="install-command">npm install -g kira-wallet
 kira setup</code></pre><p>Open your local app. Add a wallet. Say hello to Kira.</p><span id="copy-status" class="sr-only" role="status"></span></div>
   </section>
