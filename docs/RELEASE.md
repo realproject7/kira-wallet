@@ -279,6 +279,13 @@ saved progress, pause and resume. Published 0.1.11 already contains this product
 code. Version 0.1.12 changes package metadata and release documentation so that
 the next npm archive is prepared from the merged source.
 
+The operator selected normal authenticated GitHub CLI merges for this
+consolidation. The strict history check can flag the same already-public author
+metadata. Retain its raw output and separately record each accepted merge SHA,
+its expected parents and tree, and the matching existing author. These
+acceptances cover only the authorized PR merges. Content and secret findings
+still block preparation. Checker defaults and account settings stay unchanged.
+
 Verify the landed source tree and preserve the original PR commits and published
 archives. Run the full suite, clean installation and source/history privacy
 checks. Confirm every archive member against that source and the installed
