@@ -79,9 +79,10 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep GitHub v0.1.1, its tag and its released archive immutable. Versions 0.1.2, 0.1.3, 0.1.4, 0.1.5 and 0.1.6 are also published and immutable. Do not rebuild them from later documentation
-commits. Future package changes need a new version. Release preparation does not
-publish a GitHub release, merge PR 19, promote the website or publish to npm.
+Keep published GitHub tags, release assets and npm versions through 0.1.11
+immutable. Do not rebuild them from later documentation commits. Future package
+changes need a new version. Release preparation does not publish a GitHub
+release, promote the website or publish to npm.
 Registry publication remains operator-only. The coding agent never publishes.
 
 Required preparation from a clean, validated source checkout:
@@ -94,12 +95,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.11.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.12.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.11.tgz --access public
+npm publish ./dist/kira-wallet-0.1.12.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
@@ -135,8 +136,9 @@ errors have failed receipts, and curve comparisons require comparable state
 rather than only a newer block or a different wallet-sized quote.
 macOS process-group cleanup checks for live writers before dismissing an
 already exited group, preserving short-operation yielding and explicit Stop.
-Release readiness requires the repository suite, clean installation, source and
-history privacy scans, independent review and the frozen archive manifest.
+Its historical acceptance included the repository suite, clean installation,
+source and history privacy scans, independent review and the frozen archive
+manifest. Current release gates follow the latest operator ruling below.
 No live-extension or human passphrase acceptance is inferred from these checks.
 
 ## Verified 0.1.0 publication
@@ -209,7 +211,13 @@ Publication is operator-only. Preserve the published 0.1.10 app and archive.
 The next release uses its own clean source commit, exact installation and
 manifest. Registry and GitHub publication are separate operations.
 
-## Release candidate: 0.1.11
+## Published 0.1.11
+
+Registry publication was verified on October 16, 2026. The published archive
+matches the prepared source at `61205e03cf369d46109fb010f4544326838c558b`,
+including SHA-256 `f18c3b00c97231951bddcf43a4406e741d5124c2ed0cb3564032cb08667e8464`,
+registry SHA-1 and SHA-512 integrity. A clean registry installation matched all
+87 package members and passed empty local viewer startup and shutdown.
 
 This branch adds durable, segmented discovery frontiers, block-range splitting
 past provider page limits, source-specific cursor and quota recovery, and a
@@ -242,7 +250,7 @@ Upgrades recover previously positive token identities from that wallet's own
 saved publications. They never reuse the old quantities as new balances or
 establish exhaustive new-wallet discovery.
 
-Release preparation requires the full suite, a clean exact-package installation,
+The behavior acceptance requires the full suite, a clean exact-package installation,
 tracked and history privacy scans, a default public-only basic-scan check and
 focused same-block quote equivalence. Existing discovery configuration and
 auxiliary-provider regressions remain in the suite. No credential changes or
@@ -260,3 +268,33 @@ their checks. No history rewrite or broad email exemption is required.
 Use only the archive matching the final `dist/release.json` source commit,
 SHA-256 and installed member hashes. A registry dry run does not publish or
 establish registry credentials. Registry publication remains operator-only.
+
+## Release candidate: 0.1.12
+
+This release consolidates the completed PR20 through PR29 stack into the default
+release branch. It includes the native HTML showcase, simpler local startup and
+OWS attribution, setup and connection improvements, free-source discovery and
+RPC recovery, truthful native research evidence, and optional deep scans with
+saved progress, pause and resume. Published 0.1.11 already contains this product
+code. Version 0.1.12 changes package metadata and release documentation so that
+the next npm archive is prepared from the merged source.
+
+The operator selected normal authenticated GitHub CLI merges for this
+consolidation. The strict history check can flag the same already-public author
+metadata. Retain its raw output and separately record each accepted merge SHA,
+its expected parents and tree, and the matching existing author. These
+acceptances cover only the authorized PR merges. Content and secret findings
+still block preparation. Checker defaults and account settings stay unchanged.
+
+Verify the landed source tree and preserve the original PR commits and published
+archives. Run the full suite, clean installation and source/history privacy
+checks. Confirm every archive member against that source and the installed
+package, then run npm publish in dry-run mode. Reuse the existing cold basic,
+same-block quote, price-retention and desktop/mobile deep-scan evidence only
+where the relevant source bytes match. No new exhaustive wallet benchmark is
+required for version and documentation changes. Review not selected.
+
+Prepare the final archive only after the release source has landed. Its exact
+commit and hashes belong in `dist/release.json`. Actual npm publication remains
+operator-only. Personal installations and paused automation are separate from
+release preparation.
