@@ -1,7 +1,8 @@
 'use strict';
 let agentState = null, agentProvider = 'codex', agentStep = 1, setupRevision = 0, agentVerified = false;
 let chatTurn = null, chatEpoch = 0, chatRequest = null, chatRetry = null, agentLoading = false, setupTesting = false, setupTurn = null, draftRevision = 0;
-let chatSignature = '', agentReady = false, chatDraftRevision = 0;
+let chatSignature = '', agentReady = false, chatDraftRevision = 0, modelCatalogRevision = 0, modelOpenRevision = 0;
+let modelChoices = [], modelChoicesProvider = null;
 const scopeNames = {none: 'No wallet context', wallet: 'One approved wallet', portfolio: 'Whole portfolio'};
 const questionStarters = {
   liquidity: 'Which tokens in my wallets may have been sitting idle, and what could I receive if I sold my full balance? Show each token’s chain, contract, quantity, price and timestamp, pool pair and venue, spot value, and any recorded full-balance output. Use actual transfer-history evidence for inactivity; if it is unavailable, say so. Keep sale proceeds, price impact, fees and gas unknown when there is no current executable quote.',
@@ -21,7 +22,7 @@ function scopeLabel(config) {
 }
 function renderAgent() {
   const config = agentState?.config;
-  $('chat-model-label').textContent = config ? (config.provider === 'codex' ? 'Codex' : 'Claude') + ' · ' + (config.model || 'CLI default') : 'Connect a model';
+  $('chat-model-label').textContent = config ? (config.provider === 'codex' ? 'Codex' : 'Claude') + ' · ' + modelName(config.model, config.provider) : 'Connect a model';
   $('chat-setup').classList.toggle('connected', Boolean(config));
   $('chat-context').textContent = scopeLabel(config);
   $('chat-choose-context').hidden = !config || !state?.wallets.length || !localSession?.controls;
@@ -44,6 +45,29 @@ function renderAgent() {
     scroller.scrollTop=follow?scroller.scrollHeight:previousTop;
   }
 }
+function modelName(id, provider = agentProvider) { return (provider === modelChoicesProvider ? modelChoices.find(row => row.id === id)?.name : null) || id || 'Default model'; }
+function renderModelChoice() {
+  const model = $('agent-model').value.trim();
+  $('agent-model-choice').innerHTML = '<option value="">Use default model</option>' + modelChoices.map(row => '<option value="' + escapeHTML(row.id) + '">' + escapeHTML(row.name) + '</option>').join('') + '<option value="__custom__">Custom model ID…</option>';
+  $('agent-model-choice').value = !model ? '' : modelChoices.some(row => row.id === model) ? model : '__custom__';
+  if ($('agent-model-choice').value === '__custom__') $('agent-model-advanced').open = true;
+  if (typeof KiraSelect !== 'undefined') KiraSelect.refresh();
+}
+async function loadModelChoices(recheck = false) {
+  const revision = ++modelCatalogRevision, provider = agentProvider;
+  modelChoices = []; modelChoicesProvider = provider; renderModelChoice();
+  $('agent-model-note').textContent = 'Loading model choices. You can continue with the default model.';
+  try {
+    const result = await localAPI('/api/agent/models?provider=' + provider + (recheck ? '&recheck=1' : ''));
+    if (revision !== modelCatalogRevision || provider !== agentProvider || !$('agent-dialog').open) return;
+    modelChoices = (Array.isArray(result.models) ? result.models : []).filter(row => row && typeof row.id === 'string' && typeof row.name === 'string');
+    $('agent-model-note').textContent = result.note || 'Check a response to verify access for your account.';
+  } catch {
+    if (revision !== modelCatalogRevision || !$('agent-dialog').open) return;
+    $('agent-model-note').textContent = 'Model choices are unavailable. Use the default model, recheck, or enter an ID under Advanced.';
+  }
+  renderModelChoice();
+}
 function renderProviders() {
   $('agent-providers').innerHTML = (agentState?.providers || []).map(row => {
     const ready = row.installed && row.supported && row.logged_in;
@@ -65,9 +89,10 @@ function updateStep() {
   const selected = agentState?.providers.find(p => p.id === agentProvider);
   $('agent-next').disabled = agentStep === 1 ? !(selected?.installed && selected.supported && selected.logged_in) : !$('agent-trust').checked || (currentSetup().scope === 'wallet' && !$('agent-wallet').value);
   $('agent-wallet-field').hidden = currentSetup().scope !== 'wallet';
+  $('agent-tools').disabled = currentSetup().scope === 'none';
   if (agentStep === 3) {
     const config = currentSetup();
-    $('agent-review').innerHTML = '<dt>Account</dt><dd>' + escapeHTML(selected?.name || '') + '</dd><dt>Model</dt><dd>' + escapeHTML(config.model || 'CLI default') + '</dd><dt>Context</dt><dd>' + escapeHTML(scopeLabel(config)) + '</dd><dt>History</dt><dd>' + (config.retain_history ? 'Saved on this computer' : 'Memory only') + '</dd>';
+    $('agent-review').innerHTML = '<dt>Account</dt><dd>' + escapeHTML(selected?.name || '') + '</dd><dt>Model</dt><dd>' + escapeHTML(modelName(config.model)) + '</dd><dt>Context</dt><dd>' + escapeHTML(scopeLabel(config)) + '</dd><dt>History</dt><dd>' + (config.retain_history ? 'Saved on this computer' : 'Memory only') + '</dd>';
   }
 }
 async function loadAgent(recheck = false) {
@@ -98,36 +123,47 @@ async function openAgent() {
   if (state?.demo) { toast('The sample workspace does not contact model services. Run kira setup for your personal workspace.'); return; }
   if (!localSession?.controls) { toast('Start your local workspace with kira setup to enable connection settings.'); return; }
   $('agent-error').textContent = ''; $('agent-providers').innerHTML = '<p>Checking installed accounts…</p>';
-  $('agent-dialog').showModal(); agentStep = 1; invalidateSetup();
+  const opening = ++modelOpenRevision;
+  $('agent-dialog').showModal(); agentStep = 1; invalidateSetup(); updateStep();
+  $('agent-next').disabled = true; $('agent-model').disabled = true; $('agent-model-choice').disabled = true;
+  if (typeof KiraSelect !== 'undefined') KiraSelect.refresh();
   try {
     await loadAgent();
+    if (opening !== modelOpenRevision || !$('agent-dialog').open) return;
     const config = agentState.config;
     agentProvider = config?.provider || agentState.providers.find(p => p.installed && p.supported && p.logged_in)?.id || 'codex';
     $('agent-model').value = config?.model || '';
     document.querySelector('[name="agent-scope"][value="' + (config?.scope || 'portfolio') + '"]').checked = true;
     $('agent-wallet').innerHTML = '<option value="">Choose a wallet</option>' + (state?.wallets || []).map(w => `<option value="${escapeHTML(w.key)}">${escapeHTML(w.name)}</option>`).join('');
-    $('agent-wallet').value = config?.wallet || ''; $('agent-retain').checked = config?.retain_history || false; $('agent-trust').checked = config?.trust_native_cli || false; $('agent-tools').checked = config ? config.wallet_tools === true : true;
-    renderProviders();
-  } catch (error) { $('agent-error').textContent = error.message; }
+    $('agent-wallet').value = config?.wallet || ''; $('agent-retain').checked = config ? config.retain_history === true : true; $('agent-trust').checked = config?.trust_native_cli || false; $('agent-tools').checked = config ? config.wallet_tools === true : true;
+    renderProviders(); loadModelChoices();
+  } catch (error) { if (opening === modelOpenRevision) $('agent-error').textContent = error.message; }
+  finally { if (opening === modelOpenRevision) { $('agent-model').disabled = false; $('agent-model-choice').disabled = false; if (typeof KiraSelect !== 'undefined') KiraSelect.refresh(); } }
 }
 $('chat-setup').addEventListener('click', openAgent);
 $('chat-choose-context').addEventListener('click', openAgent);
-$('settings-agent').addEventListener('click', () => { $('settings-dialog').close(); openAgent(); });
+$('settings-agent').addEventListener('click', () => { $('workspace-settings-dialog').close(); openAgent(); });
 $('agent-providers').addEventListener('click', event => {
   const button = event.target.closest('[data-provider]'); if (!button || setupTesting) return;
-  if (agentProvider !== button.dataset.provider) { agentProvider = button.dataset.provider; $('agent-model').value = ''; invalidateSetup(); renderProviders(); }
+  if (agentProvider !== button.dataset.provider) { agentProvider = button.dataset.provider; $('agent-model').value = ''; invalidateSetup(); renderProviders(); loadModelChoices(); }
 });
 $('agent-cli-help').addEventListener('click', async event => {
   const button = event.target.closest('[data-copy-cli]'); if (!button) return;
   try { await navigator.clipboard.writeText(button.dataset.copyCli); button.textContent = 'Copied'; } catch { toast('Select and copy the command in your terminal.'); }
 });
+$('agent-model-choice').addEventListener('change', () => {
+  const value = $('agent-model-choice').value;
+  if (value === '__custom__') { $('agent-model-advanced').open = true; $('agent-model').focus(); }
+  else { $('agent-model').value = value; invalidateSetup(); updateStep(); }
+});
+$('agent-model').addEventListener('input', renderModelChoice);
 for (const id of ['agent-model', 'agent-wallet', 'agent-retain', 'agent-trust', 'agent-tools']) $(id).addEventListener('input', () => { invalidateSetup(); updateStep(); });
 document.querySelectorAll('[name="agent-scope"]').forEach(input => input.addEventListener('change', () => { invalidateSetup(); updateStep(); }));
 $('agent-next').addEventListener('click', () => { if (!$('agent-next').disabled) { agentStep++; updateStep(); $('agent-dialog').scrollTop = 0; } });
 $('agent-back').addEventListener('click', () => { agentStep--; updateStep(); });
 $('agent-recheck').addEventListener('click', async () => {
   $('agent-recheck').disabled = true; $('agent-error').textContent = '';
-  try { await loadAgent(true); invalidateSetup(); renderProviders(); } catch (error) { $('agent-error').textContent = error.message; }
+  try { await loadAgent(true); invalidateSetup(); renderProviders(); loadModelChoices(true); } catch (error) { $('agent-error').textContent = error.message; }
   finally { $('agent-recheck').disabled = false; }
 });
 async function waitTurn(id, valid) {
@@ -154,7 +190,12 @@ $('agent-test').addEventListener('click', async () => {
   finally { setupTesting = false; setupTurn = null; $('agent-test').disabled = false; $('agent-back').disabled = false; }
 });
 $('agent-dialog').addEventListener('close', () => {
-  invalidateSetup(); if (setupTurn) agentPost('/api/chat/cancel', {id: setupTurn}).catch(() => {});
+  const query = new URLSearchParams(location.search);
+  if (query.get('setup') === '1') {
+    query.delete('setup');
+    history.replaceState(null, '', location.pathname + (query.size ? '?' + query : '') + location.hash);
+  }
+  modelOpenRevision++; modelCatalogRevision++; invalidateSetup(); if (setupTurn) agentPost('/api/chat/cancel', {id: setupTurn}).catch(() => {});
 });
 $('agent-save').addEventListener('click', async () => {
   if (!agentVerified) return; $('agent-save').disabled = true; $('agent-error').textContent = '';
@@ -221,9 +262,19 @@ $('chat-new').addEventListener('click', async () => {
   catch (error) { $('chat-error').textContent = error.message; }
 });
 async function initialAgent() {
-  if (agentLoading || agentReady || !localSession?.controls) return; agentLoading = true;
-  try { await loadAgent(); if (new URLSearchParams(location.search).get('setup') === '1') { history.replaceState(null, '', '/#/home'); await loadSetupReadiness(); renderSetupPath(); } }
+  const setupRequested = new URLSearchParams(location.search).get('setup') === '1';
+  if (agentLoading || !localSession?.controls || (agentReady && !setupRequested) || (setupRequested && !state)) return; agentLoading = true;
+  try {
+    await loadAgent();
+    if (setupRequested && new URLSearchParams(location.search).get('setup') === '1') {
+      history.replaceState(null, '', '/#/home'); readRoute();
+      if (!$('agent-dialog').open) await openAgent();
+    }
+  }
   catch { /* The normal local session polling can reconnect. */ }
   finally { agentLoading = false; }
 }
-renderAgent(); initialAgent(); const agentStartup = setInterval(() => { initialAgent(); if (agentReady) clearInterval(agentStartup); }, 1000);
+renderAgent(); initialAgent(); const agentStartup = setInterval(() => {
+  initialAgent();
+  if (agentReady && new URLSearchParams(location.search).get('setup') !== '1') clearInterval(agentStartup);
+}, 1000);

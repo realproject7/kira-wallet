@@ -347,6 +347,49 @@
         "idempotency_key"
       ],
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "operation": {
+          "const": "settings.provider"
+        },
+        "input": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "enum": [
+                "public",
+                "alchemy"
+              ]
+            },
+            "key_env": {
+              "type": "string",
+              "pattern": "^[A-Z_][A-Z0-9_]{0,99}$"
+            }
+          },
+          "required": [
+            "provider",
+            "key_env"
+          ],
+          "additionalProperties": false
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "schema_version",
+        "operation",
+        "input",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
     }
   ]
 }

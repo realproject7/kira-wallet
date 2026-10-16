@@ -287,9 +287,9 @@ main { margin-left: 232px; width: calc(100% - 232px); }
 .watching-dialog { width: min(520px, calc(100% - 32px)); }
 .watching-dialog [hidden], #wallet-session-panel[hidden] { display: none; }
 .watching-dialog .text-button { min-height: 44px; padding: 10px 2px; margin-right: 12px; }
-.wallet-entry-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: #eee9f3; padding: 4px; border-radius: 12px; margin: 22px 0; }
-.wallet-entry-modes button { min-height: 44px; padding: 9px 8px; border: 0; background: transparent; color: var(--secondary); border-radius: 9px; font: inherit; font-weight: 500; cursor: pointer; }
-.wallet-entry-modes button[aria-pressed=true] { color: var(--ink); background: #fff; box-shadow: 0 1px 4px #30213e12; }
+.wallet-entry-modes { display: flex; flex-wrap: wrap; gap: 9px; margin: 22px 0; }
+.wallet-entry-modes button { flex: 1 1 130px; min-height: 44px; }
+.wallet-entry-modes button[aria-pressed=true] { color: #fff; background: var(--accent, #6b5189); border-color: var(--accent, #6b5189); }
 .watching-dialog.is-review .wallet-entry-modes { margin: 16px 0; }
 .watching-dialog.is-review .wallet-preview { padding: 16px; }
 .watching-dialog h3 { font-size: 14px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 8px; }
@@ -468,3 +468,11 @@ main { margin-left: 232px; width: calc(100% - 232px); }
   .scene-caption small { max-width: 112px; }
 }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+.settings-section + .settings-section { margin-top:24px; padding-top:20px; border-top:1px solid #e2dce8; }
+.connection-guide { padding:14px; margin:14px 0; border:1px solid #d8cfdf; border-radius:12px; font-size:13px; line-height:1.6; }
+.connection-guide p { margin-bottom:0; }
+.connection-guide code { overflow-wrap:anywhere; }
+#connection-advanced { margin-top:22px; }
+#connection-advanced > label { margin-top:14px; }
+#settings-done { margin-top:8px; }

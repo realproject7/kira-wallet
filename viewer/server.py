@@ -100,7 +100,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.json({'instance':os.environ.get('KIRA_INSTANCE_ID'),'read_only':not getattr(self.server,'controls',False),'controls':getattr(self.server,'controls',False)});return
             if path=='/api/session':
                 self.json({'controls':getattr(self.server,'controls',False),'token':self.server.session_token if getattr(self.server,'controls',False) else None});return
-            if path.startswith('/api/jobs') or path.startswith('/api/chat/turn/') or path in ('/api/agent','/api/chat','/api/chat/history','/api/onboarding','/api/snapshots','/api/snapshot','/api/compare','/api/settings','/api/ows'):
+            if path.startswith('/api/jobs') or path.startswith('/api/chat/turn/') or path in ('/api/agent','/api/agent/models','/api/chat','/api/chat/history','/api/onboarding','/api/snapshots','/api/snapshot','/api/compare','/api/settings','/api/ows'):
                 if not self.authenticated():return
                 query=parse_qs(urlparse(self.path).query)
                 if path in ('/api/agent','/api/chat'):
@@ -108,6 +108,8 @@ class Handler(BaseHTTPRequestHandler):
                         self.json({'config':None,'providers':[],'conversation_id':None,'messages':[],'active_turn':None})
                     else:self.json(self.server.agent.status(query.get('recheck')==['1']))
                 elif path.startswith('/api/chat/turn/'):self.json(self.server.agent.read(path.removeprefix('/api/chat/turn/')))
+                elif path=='/api/agent/models':
+                    self.json({'models':[],'note':'Model choices are available in a personal workspace.'} if json.loads((ROOT/'wallets.json').read_text()).get('demo') else self.server.agent.models(query.get('provider',[''])[0],query.get('recheck')==['1']))
                 elif path=='/api/chat/history':self.json(self.server.agent.history(query.get('id',[None])[0]))
                 elif path=='/api/jobs':self.json(self.server.jobs.list())
                 elif path.startswith('/api/jobs/'):self.json(self.server.jobs.get(path.removeprefix('/api/jobs/')))

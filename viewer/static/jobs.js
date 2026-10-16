@@ -2,7 +2,7 @@
 let localSession=null, jobList=[], jobsSignature='', localPolling=false;
 let discoverySettingsRevision='';
 const pendingActions=new Set();
-const jobLabels={'wallet.add':'Wallet research','wallet.refresh':'Holdings refresh','prices.refresh':'Price refresh','wallet.setTags':'Wallet names','settings.rpc':'RPC settings','settings.discovery':'Token discovery'};
+const jobLabels={'wallet.add':'Wallet research','wallet.refresh':'Holdings refresh','prices.refresh':'Price refresh','wallet.setTags':'Wallet names','settings.rpc':'RPC settings','settings.discovery':'Token discovery','settings.provider':'Data provider connection'};
 const stageLabels={queued:'Waiting to start',starting:'Opening saved evidence',registered:'Wallet registered',discovery:'Token discovery',chain:'Checking on-chain holdings',dex_discovery:'Checking markets',token_images:'Preparing token artwork',published:'Evidence saved',failed:'Research stopped',stopped:'Research stopped',interrupted:'Ready for recovery'};
 async function localAPI(path,options={}){
   const response=await fetch(path,{cache:'no-store',...options,headers:{'X-Kira-Session':localSession?.token||'',...options.headers},signal:options.signal||AbortSignal.timeout(12000)});
@@ -16,7 +16,7 @@ async function submitOperation(operation,input){
   const key=sessionStorage.getItem(storageKey)||crypto.randomUUID();sessionStorage.setItem(storageKey,key);
   try{
     const result=await localAPI('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schema_version:1,operation,input,idempotency_key:key})});
-    sessionStorage.removeItem(storageKey);toast('Saved '+(jobLabels[operation]||'job').toLowerCase());await pollJobs();return result;
+    sessionStorage.removeItem(storageKey);toast((operation.startsWith('settings.')?'Queued ':'Saved ')+(jobLabels[operation]||'job').toLowerCase());await pollJobs();return result;
   }finally{pendingActions.delete(fingerprint);}
 }
 function refreshControlState(){
@@ -76,7 +76,7 @@ async function pollJobs(){
     if(!localSession){const response=await fetch('/api/session',{cache:'no-store',signal:AbortSignal.timeout(5000)});if(!response.ok)return;localSession=await response.json();}
     refreshControlState();if(!localSession.controls){renderJobs();return;}
     const jobs=await localAPI('/api/jobs');jobList=jobs;const reconnected=!jobsConnected;jobsConnected=true;lastJobsPoll=new Date().toISOString();
-    const setting=jobs.filter(j=>j.operation==='settings.discovery'&&j.state==='succeeded').map(j=>j.job_id+':'+j.updated_at).sort().join(',');
+    const setting=jobs.filter(j=>j.operation.startsWith('settings.')&&j.state==='succeeded').map(j=>j.job_id+':'+j.updated_at).sort().join(',');
     if(setting!==discoverySettingsRevision){discoverySettingsRevision=setting;if(typeof loadSetupReadiness==='function')await loadSetupReadiness();}
     const signature=JSON.stringify(jobs)+JSON.stringify(jobs.map(j=>KiraView.jobPresentation(j).quiet));if(signature!==jobsSignature||reconnected){jobsSignature=signature;renderJobs();}else{$('jobs-freshness').textContent='Checked '+stamp(lastJobsPoll);}
     refreshControlState();
@@ -108,12 +108,109 @@ $('refresh-prices').addEventListener('click',async()=>{try{await submitOperation
 $('edit-tags').addEventListener('click',()=>{if(!currentWallet())return;$('tags-dialog').dataset.wallet=selectedWallet;$('tag-values').value=currentWallet().tags.join('\n');$('tags-error').textContent='';$('tags-dialog').showModal();});
 formAction($('tags-form'),$('tags-error'),async()=>{await submitOperation('wallet.setTags',{wallet:$('tags-dialog').dataset.wallet,tags:$('tag-values').value.split('\n').filter(t=>t.length)});$('tags-dialog').close();});
 $('jobs-list').addEventListener('click',async event=>{const button=event.target.closest('[data-job-action]');if(!button)return;button.disabled=true;try{await submitOperation('job.'+button.dataset.jobAction,{job_id:button.dataset.jobId});}catch(error){button.disabled=false;toast(error.message);}});
-$('open-settings').addEventListener('click',async()=>{try{const config=await localAPI('/api/settings');$('rpc-mode').value=config.rpc.mode;$('rpc-custom-only').checked=!config.rpc.allow_public_fallback;$('rpc-references').value=Object.entries(config.rpc.chains).map(([chain,row])=>chain+' '+row.url_env).join('\n');$('discovery-provider').value=config.discovery.provider;$('discovery-key').value=config.discovery.key_env;$('settings-error').textContent='';if(typeof KiraSelect!=='undefined')KiraSelect.refresh();$('settings-dialog').showModal();if(typeof loadSetupReadiness==='function')loadSetupReadiness();}catch(error){toast(error.message);}});
-$('discovery-settings').addEventListener('click',()=>$('open-settings').click());
-$('wallet-discovery-settings').addEventListener('click',()=>{$('wallet-dialog').close();$('open-settings').click();});
+let connectionConfig = null, connectionReadiness = null, connectionRevision = 0, workspaceSettingsRevision = 0, pendingSetting = null, settingSaving = false, settingSaved = false, settingFailed = false;
+function connectionSummary(config) {
+  return config.discovery.provider === 'alchemy' ? 'Alchemy selected. Coverage is confirmed by holdings research.' : config.rpc.mode === 'custom' ? 'Custom RPC selected. Broader token discovery is off.' : 'Basic public connection. Broader token discovery is off.';
+}
+function renderConnectionForm() {
+  const alchemy = $('data-provider').value === 'alchemy';
+  const available = connectionReadiness?.local_key_available === true && $('discovery-key').value === connectionConfig?.discovery.key_env;
+  $('provider-description').textContent = alchemy ? 'One connection enables Alchemy RPC reads and broader ERC20 discovery on supported networks. Custom chain overrides stay in place.' : 'Use public RPC for native and known assets. Other ERC20 holdings may be missing.';
+  $('provider-key-status').textContent = !alchemy ? '' : available ? 'Local key found. Research results will confirm access and chain coverage.' : 'A local Alchemy key is required before this connection can be saved.';
+  $('provider-key-guide').hidden = !alchemy || available;
+  $('rpc-custom-fields').hidden = $('rpc-mode').value !== 'custom';
+  if (typeof KiraSelect !== 'undefined') KiraSelect.refresh();
+}
+async function openWorkspaceSettings() {
+  if (!localSession?.controls) return;
+  const revision = ++workspaceSettingsRevision;
+  if (!$('workspace-settings-dialog').open) $('workspace-settings-dialog').showModal();
+  $('workspace-model-summary').textContent = 'Checking saved model and permissions…';
+  $('workspace-data-summary').textContent = 'Checking the saved connection…';
+  const [modelResult, dataResult] = await Promise.allSettled([localAPI('/api/agent'), localAPI('/api/settings')]);
+  if (revision !== workspaceSettingsRevision || !$('workspace-settings-dialog').open) return;
+  if (modelResult.status === 'fulfilled') {
+    const config = modelResult.value.config;
+    $('workspace-model-summary').textContent = config ? (config.provider === 'codex' ? 'Codex' : 'Claude') + ' · ' + (config.model || 'Default model') + ' · ' + (config.scope === 'none' ? 'No wallet context' : config.scope === 'wallet' ? 'One wallet' : 'Whole portfolio') + ' · History ' + (config.retain_history ? 'saved locally' : 'off') + ' · Research ' + (config.wallet_tools && config.scope !== 'none' ? 'on' : 'off') : 'Connect Codex or Claude. Choose wallet context, local history and research access.';
+  } else $('workspace-model-summary').textContent = 'Could not check saved model settings. Reopen to retry.';
+  $('workspace-data-summary').textContent = dataResult.status === 'fulfilled' ? connectionSummary(dataResult.value) : 'Could not check the data connection. Reopen to retry.';
+
+}
+async function openDataConnections(advanced = false) {
+  if (!localSession?.controls) return;
+  const revision = ++connectionRevision;
+  $('settings-error').textContent = ''; $('provider-status').textContent = pendingSetting ? 'A saved request is pending. Save again to check its result.' : '';
+  $('provider-save').disabled = true; $('settings-dialog').showModal();
+  $('settings-done').textContent = $('wallet-dialog').open ? 'Back to wallet' : 'Done';
+  $('connection-advanced').open = advanced;
+  try {
+    const [config, readiness] = await Promise.all([localAPI('/api/settings'), localAPI('/api/onboarding')]);
+    if (revision !== connectionRevision || !$('settings-dialog').open) return;
+    connectionConfig = config; connectionReadiness = readiness;
+    $('data-provider').value = config.discovery.provider === 'alchemy' ? 'alchemy' : 'public';
+    $('rpc-mode').value = config.rpc.mode; $('rpc-custom-only').checked = !config.rpc.allow_public_fallback;
+    $('rpc-references').value = Object.entries(config.rpc.chains).map(([chain,row]) => chain+' '+row.url_env).join('\n');
+    $('discovery-key').value = config.discovery.key_env;
+    $('provider-status').textContent = pendingSetting ? 'A saved request is pending. Save again to check its result.' : connectionSummary(config);
+    renderConnectionForm(); $('provider-save').disabled = false;
+  } catch (error) { if (revision === connectionRevision) $('settings-error').textContent = error.message; }
+}
+async function saveConnectionSetting(operation, input) {
+  if (settingSaving) throw new Error('A settings request is already being checked. Wait for its result.');
+  settingSaving = true; settingSaved = false; settingFailed = false;
+  try {
+    await finishConnectionSetting(operation,input);
+  } catch (error) {
+    $('provider-status').textContent = settingSaved ? 'Connection saved. Status could not be refreshed; retry checks the same request.' : pendingSetting ? 'The saved request is pending. Retry checks the same request.' : settingFailed ? 'Connection settings were not saved.' : 'Could not confirm the settings request. Check Activity or retry the same choices.';
+    throw settingSaved ? new Error('Settings were saved. Reopen or retry to refresh the connection status.') : error;
+  }
+  finally { settingSaving = false; }
+}
+async function finishConnectionSetting(operation, input) {
+  const signature = JSON.stringify({operation,input});
+  if (!pendingSetting) {
+    const accepted = await submitOperation(operation, input);
+    pendingSetting = {id:accepted.job_id,signature};
+  }
+  const pending = pendingSetting;
+  $('provider-status').textContent = 'Connection settings are queued. Waiting for the saved result…';
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const result = await localAPI('/api/jobs/' + encodeURIComponent(pending.id));
+    if (['succeeded','failed','cancelled','interrupted','partial'].includes(result.state)) {
+      if (result.state !== 'succeeded') { settingFailed = true; if (pendingSetting === pending) pendingSetting = null; throw new Error(result.errors?.[0]?.message || 'Connection settings were not saved. Review Activity and retry.'); }
+      if (pending.signature !== signature) { if (pendingSetting === pending) pendingSetting = null; throw new Error('The previous settings request finished. Review your new choices and save again.'); }
+      settingSaved = true;
+      $('provider-status').textContent = 'Connection saved. Refresh holdings to check the new coverage.';
+      if (typeof loadSetupReadiness === 'function') await loadSetupReadiness();
+      connectionConfig = await localAPI('/api/settings'); connectionReadiness = await localAPI('/api/onboarding');
+      renderConnectionForm(); if (pendingSetting === pending) pendingSetting = null; return;
+    }
+    await new Promise(resolve => setTimeout(resolve, 400));
+  }
+  throw new Error('Settings are still queued. Check Activity or save again to check the same request.');
+}
+$('open-settings').addEventListener('click',openWorkspaceSettings);
+$('settings-data').addEventListener('click',()=>openDataConnections());
+$('discovery-settings').addEventListener('click',()=>openDataConnections($('discovery-settings').textContent === 'Review RPC settings'));
+$('wallet-discovery-settings').addEventListener('click',()=>openDataConnections());
+$('settings-done').addEventListener('click',()=>$('settings-dialog').close());
+$('workspace-settings-dialog').addEventListener('close',()=>{workspaceSettingsRevision++;});
+$('settings-dialog').addEventListener('close',()=>{connectionRevision++; if ($('workspace-settings-dialog').open) openWorkspaceSettings();});
+$('data-provider').addEventListener('change',renderConnectionForm);
+$('rpc-mode').addEventListener('change',renderConnectionForm);
+$('discovery-key').addEventListener('input',renderConnectionForm);
 $('discovery-refresh').addEventListener('click',()=>$('refresh-wallet').click());
-formAction($('rpc-form'),$('settings-error'),async()=>{const lines=$('rpc-references').value.split('\n').filter(s=>s.trim());const chains=lines.map(line=>{const parts=line.trim().split(/\s+/);if(parts.length!==2)throw new Error('Enter a chain ID and environment variable name on each line.');return {chain_id:Number(parts[0]),url_env:parts[1]};});await submitOperation('settings.rpc',{mode:$('rpc-mode').value,allow_public_fallback:!$('rpc-custom-only').checked,chains});});
-formAction($('discovery-form'),$('settings-error'),async()=>{await submitOperation('settings.discovery',{provider:$('discovery-provider').value,key_env:$('discovery-key').value});if(typeof loadSetupReadiness==='function')await loadSetupReadiness();});
+formAction($('provider-form'),$('settings-error'),async()=>{
+  const input = {provider:$('data-provider').value,key_env:$('discovery-key').value.trim()};
+  $('data-provider').disabled = true; $('discovery-key').disabled = true;
+  try { await saveConnectionSetting('settings.provider',input); }
+  finally { $('data-provider').disabled = false; $('discovery-key').disabled = false; if (typeof KiraSelect !== 'undefined') KiraSelect.refresh(); }
+});
+formAction($('rpc-form'),$('settings-error'),async()=>{
+  const lines=$('rpc-references').value.split('\n').filter(s=>s.trim());
+  const chains=lines.map(line=>{const parts=line.trim().split(/\s+/);if(parts.length!==2)throw new Error('Enter a chain ID and environment variable name on each line.');return {chain_id:Number(parts[0]),url_env:parts[1]};});
+  await saveConnectionSetting('settings.rpc',{mode:$('rpc-mode').value,allow_public_fallback:!$('rpc-custom-only').checked,chains});
+});
 $('view-history').addEventListener('click',async()=>{try{const rows=await localAPI('/api/snapshots?wallet='+encodeURIComponent(selectedWallet));$('history-list').innerHTML=rows.map(row=>`<article class="history-row"><strong>${stamp(row.compiled_at)}</strong><span>${escapeHTML(row.status==='completed'?'Saved':'Saved with coverage gaps')}</span><small>${escapeHTML(row.snapshot_id)}</small></article>`).join('')||'<p>No analysis has been published yet.</p>';$('compare-form').hidden=rows.length<2;for(const id of ['compare-before','compare-after'])$(id).innerHTML=rows.map(row=>`<option value="${escapeHTML(row.snapshot_id)}">${stamp(row.compiled_at)} · ${escapeHTML(row.snapshot_id.split('/').at(-1))}</option>`).join('');$('compare-after').selectedIndex=Math.max(0,rows.length-1);$('comparison-result').textContent='';$('history-error').textContent='';$('history-dialog').showModal();}catch(error){toast(error.message);}});
 formAction($('compare-form'),$('history-error'),async()=>{const comparison=await localAPI('/api/compare?before='+encodeURIComponent($('compare-before').value)+'&after='+encodeURIComponent($('compare-after').value));$('comparison-result').innerHTML=`<p>${escapeHTML(comparison.note)}</p><p>Coverage observations ${comparison.coverage_changed?'changed':'unchanged'} · native price references ${comparison.price_references_changed?'changed':'unchanged'}</p><div class="table-wrap"><table><thead><tr><th>Token / chain</th><th>Earlier balance</th><th>Later balance</th><th>Change</th></tr></thead><tbody>${comparison.positions.map(p=>`<tr><td>${escapeHTML(p.symbol||shortAddress(p.address))} · ${p.chain_id}<small>${escapeHTML(p.presence.replaceAll('_',' '))}${p.price_references_changed?' · price references changed':''}${p.valuation_method_changed?' · method changed':''}</small></td><td>${escapeHTML(p.before_balance??'Unknown')}</td><td>${escapeHTML(p.after_balance??'Unknown')}</td><td>${escapeHTML(p.balance_delta??'Unknown')}</td></tr>`).join('')}</tbody></table></div>`;});
 window.addEventListener('hashchange',()=>{refreshControlState();renderJobs();});

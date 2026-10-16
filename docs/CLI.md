@@ -10,7 +10,7 @@ npm install -g kira-wallet
 kira setup
 ```
 
-The operator published npm version 0.1.3 on 2026-10-06. GitHub v0.1.3 remains
+The operator published npm version 0.1.4. Version 0.1.5 is a preparation candidate. GitHub v0.1.3 remains
 a draft; the previous archive and checksum are available from the
 [0.1.2 GitHub release](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2).
 Registry publication remains an operator action. The code and original character assets use the MIT license.
@@ -42,14 +42,14 @@ address or use the browser wallet picker. Registration starts one explicit
 research job; follow it in Activity and read the saved portfolio report.
 No signature, seed phrase or private key is needed.
 
-Candidate 0.1.4 explains limited discovery before wallet registration and beside
-holdings. Missing coverage keeps the portfolio estimate partial. It is not yet
-published to npm. Existing snapshots require a holdings refresh after connecting
+Published 0.1.4 explains limited discovery before wallet registration and beside
+holdings. Missing coverage keeps the portfolio estimate partial. Existing snapshots require a holdings refresh after connecting
 an indexer; a price refresh does not discover missing tokens.
 
 Public RPC checks known assets and Mint Club. For broader ERC20 discovery,
-open Research connections, select Alchemy and name the private environment
-variable holding its key. Never paste the key into the browser. `kira doctor`
+open Data provider connection, select Alchemy and follow its local key guide.
+The 0.1.5 candidate uses one save for Alchemy RPC and discovery; chain overrides
+remain under Advanced. Never paste the key into the browser. `kira doctor`
 checks whether the configured key is available. Configuration alone does not
 prove complete coverage; inspect the recorded results and gaps.
 
@@ -68,8 +68,12 @@ authentication. Verified adapter versions are Codex 0.158.x and Claude Code
 verified. This is a native CLI connection, with no Kira account, API-key proxy or
 hosted portfolio backend.
 
-In setup, choose the CLI account and an optional model ID. The blank model field
-uses the CLI default. Choose no automatic wallet context, one registered wallet,
+In the 0.1.5 candidate, setup opens the existing Account / Permissions / Ready
+modal directly. Choose Codex or Claude, then Use default model or a readable
+model choice. Codex choices come from bounded native metadata; Claude offers
+Sonnet, Opus and Haiku aliases. A catalog is not proof of account access.
+Advanced accepts a custom identifier and preserves saved identifiers absent
+from the catalog. Workspace settings reopens the same selector and permissions. Choose no automatic wallet context, one registered wallet,
 or the whole recorded portfolio. A generic response check sends no wallet data
 and must pass before these settings are saved.
 
@@ -79,7 +83,10 @@ and contract identities, timestamps, unknown prices and coverage. Credentials,
 RPC endpoints, raw provider errors and local paths are excluded. Changing the
 provider, model, context or selected wallet creates a new conversation.
 
-Kira-local history is opt-in and uses private `conversations/` files. With history
+New setup in 0.1.5 recommends saving history and preselects it. Existing saved
+true and false choices are restored exactly. Saving lets you reopen chats after
+restart; it does not expand model memory or wallet access. The choice and
+research permission remain editable in Workspace settings. Kira-local history uses private `conversations/` files. With history
 off, conversations and drafts stay in memory. A new server process starts a fresh
 conversation; saved files remain available locally and are not automatically
 replayed. Native CLI, administrator policy and provider data policies remain a
@@ -135,8 +142,8 @@ kira config import-env --file /absolute/private/rpc.env --key-env ALCHEMY_API_KE
 ```
 
 The import references the file instead of copying keys. It configures Alchemy
-RPC and portfolio discovery separately, with public fallback enabled to match
-the historical engine. Environment overrides the file. Missing files or keys
+RPC and portfolio discovery together, preserving existing custom chain overrides
+and explicit fallback preferences. New configurations allow public fallback. Environment overrides the file. Missing files or keys
 produce limited coverage; malformed configuration fails with safe errors.
 The import does not contact providers. Private settings are never served.
 

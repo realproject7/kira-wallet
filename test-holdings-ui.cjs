@@ -58,7 +58,7 @@ context.renderWallet();assert.equal(node('discovery-notice').hidden,true,'A new 
 wallet.chains.forEach(c=>c.complete=false);
 wallet.chains[0].registry_complete=false;context.renderWallet();
 assert.match(node('discovery-notice-title').textContent,/balances/,'Registry failures need the same recovery guidance.');
-assert.equal(node('discovery-settings').textContent,'Review connections','Missing discovery and RPC errors must both have a recovery path.');
+assert.equal(node('discovery-settings').textContent,'Review data connection','Missing discovery and RPC errors must both have a recovery path.');
 wallet.chains[0].registry_complete=true;
 click({target:{closest:()=>({hasAttribute:()=>true})}});
 assert.equal(saved.size,0,'View filters stay temporary.');assert.equal(node('visible-count').textContent,3);

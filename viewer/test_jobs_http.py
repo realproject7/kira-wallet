@@ -78,13 +78,23 @@ class JobsHTTPTest(unittest.TestCase):
         self.assertEqual(self.request('/api/jobs',headers={'X-Kira-Session':''},method='GET')[0],403)
     def test_agent_endpoints_require_local_session_and_exact_origin(self):
         self.assertEqual(self.request('/api/agent',method='GET')[0],200)
-        for path in ('/api/agent','/api/chat','/api/chat/history'):
+        for path in ('/api/agent','/api/agent/models?provider=codex','/api/chat','/api/chat/history'):
             self.assertEqual(self.request(path,method='GET',headers={'X-Kira-Session':''})[0],403)
         for path in ('/api/agent/test','/api/agent/settings','/api/chat/send','/api/chat/reset','/api/chat/cancel','/api/chat/open'):
             self.assertEqual(self.request(path,body=b'{}',headers={'Origin':'https://foreign.test'})[0],403)
             self.assertEqual(self.request(path,body=b'{}',headers={'X-Kira-Session':''})[0],403)
         self.assertEqual(self.request('/api/chat/reset',body=b'{}')[0],200)
         self.assertEqual(self.request('/api/chat/reset',body=b'{"unexpected":1}')[0],400)
+    def test_model_metadata_demo_and_session_boundaries(self):
+        with patch.object(self.http.agent,'models',return_value={'models':[],'note':'Synthetic catalog'}) as metadata:
+            self.assertEqual(self.request('/api/agent/models?provider=codex',method='GET')[0],200)
+            metadata.assert_called_once_with('codex',False)
+            for headers in ({'X-Kira-Session':''},{'Origin':'https://foreign.test'},{'Sec-Fetch-Site':'cross-site'}):
+                self.assertEqual(self.request('/api/agent/models?provider=codex',method='GET',headers=headers)[0],403)
+            registry=json.loads((self.root/'wallets.json').read_text());registry['demo']=True;atomic(self.root/'wallets.json',registry)
+            self.assertEqual(self.request('/api/agent/models?provider=codex',method='GET')[1]['models'],[])
+            self.assertEqual(metadata.call_count,1)
+
     def test_session_origin_rebinding_and_cross_site_rejected(self):
         for headers in [{'X-Kira-Session':''},{'X-Kira-Session':'wrong-session'},{'Origin':'https://foreign.test'},
                         {'Host':'foreign.test:'+str(self.http.server_port)},{'Sec-Fetch-Site':'cross-site'},{'Origin':''}]:
