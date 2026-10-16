@@ -437,6 +437,42 @@
         "idempotency_key"
       ],
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "operation": {
+          "const": "job.deepen"
+        },
+        "input": {
+          "type": "object",
+          "properties": {
+            "job_id": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "job_id"
+          ],
+          "additionalProperties": false
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "schema_version",
+        "operation",
+        "input",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
     }
   ]
 }

@@ -1,4 +1,5 @@
 """Keyless discovery evidence boundaries, with no live provider calls."""
+import copy
 import tempfile
 import threading
 import time
@@ -7,6 +8,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 import public_discovery as public
+import discovery_state as storage
 import wallet
 
 ADDRESS='0x'+'1'*40
@@ -61,6 +63,47 @@ class PublicDiscoveryTests(unittest.TestCase):
         self.assertFalse(public.discover(ADDRESS,1,fetch=fetch,max_pages=1)['complete'])
         self.assertFalse(public.discover(ADDRESS,1,fetch=fetch,budget=0)['complete'])
 
+    def test_restart_uses_saved_cursor_and_unions_candidates_after_durable_page_boundary(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/'routescan-1.json'
+            save=lambda state:storage.save(path,state,ADDRESS,1,'routescan')
+            first=public.discover(ADDRESS,1,fetch=lambda *args:{'items':[self.item()],'link':{'nextToken':'opaque?&'}},max_pages=1,save=save)
+            self.assertEqual(first['discovery_status'],'history_pending')
+            state=storage.load(path,ADDRESS,1,'routescan');calls=[]
+            second=public.discover(ADDRESS,1,state=state,save=save,fetch=lambda url,timeout:calls.append(url) or {'items':[self.item(tokenAddress='0x'+'3'*40)],'link':{}})
+            self.assertIn('next=opaque%3F%26',calls[0]);self.assertTrue(second['complete'])
+            self.assertEqual(len(second['tokens']),2)
+            self.assertEqual(second['pagination']['pages_checked'],2)
+            self.assertTrue(storage.load(path,ADDRESS,1,'routescan')['complete'])
+            self.assertNotIn('tokenQuantity',str(second['tokens']))
+
+    def test_loop_detection_and_quota_backoff_survive_restart(self):
+        saved=[]
+        save=lambda state:saved.append(copy.deepcopy(state))
+        public.discover(ADDRESS,1,fetch=lambda *args:{'items':[self.item()],'link':{'nextToken':'loop'}},max_pages=1,save=save)
+        checkpoint=copy.deepcopy(saved[-1])
+        row=public.discover(ADDRESS,1,state=checkpoint,save=save,fetch=lambda *args:{'items':[],'link':{'nextToken':'loop'}})
+        self.assertFalse(row['complete']);self.assertEqual(saved[-1]['page'],2)
+        with patch.object(public.time,'time',return_value=1000):
+            row=public.discover(ADDRESS,1,state=checkpoint,save=save,fetch=lambda *args:{'error':{'http_status':429,'retry_after':120}})
+        self.assertEqual(row['discovery_status'],'throttled')
+        self.assertEqual(saved[-1]['retry_not_before'],1120)
+        with patch.object(public.time,'time',return_value=1119),patch.object(public,'fetch_page') as fetch:
+            row=public.discover(ADDRESS,1,state=saved[-1],fetch=fetch)
+        fetch.assert_not_called();self.assertFalse(row['complete']);self.assertEqual(len(row['tokens']),1)
+        with patch.object(public.time,'time',return_value=1121):
+            row=public.discover(ADDRESS,1,state=saved[-1],save=save,fetch=lambda *args:{'items':[],'link':{}})
+        self.assertTrue(row['complete'])
+
+    def test_malformed_saved_frontiers_are_preserved_without_provider_requests(self):
+        saved=[]
+        public.discover(ADDRESS,1,budget=0,save=lambda state:saved.append(copy.deepcopy(state)))
+        for changes in ({'started_at':None},{'retry_not_before':'later'},{'page':2,'cursor':None},{'wallet':'wrong'}):
+            with patch.object(public,'fetch_page') as fetch,patch.object(storage,'save') as save:
+                row=public.discover(ADDRESS,1,state={**saved[-1],**changes},fetch=fetch,save=save)
+            fetch.assert_not_called();save.assert_not_called()
+            self.assertEqual(row['discovery_status'],'checkpoint_error');self.assertFalse(row['complete'])
+
     def test_trickling_response_cannot_hold_initial_report_past_deadline(self):
         class Slow(BaseHTTPRequestHandler):
             def log_message(self,*args):pass
@@ -90,6 +133,30 @@ class PublicDiscoveryTests(unittest.TestCase):
             with patch.object(public,'discover') as fetch:
                 row=wallet.discover(ADDRESS,{'chain_id':1,'environment':'mainnet'},Path(temp))
             fetch.assert_not_called();self.assertFalse(row['complete'])
+
+    def test_overlapping_sources_union_identities_without_erasing_unfinished_coverage(self):
+        common={'chain_id':1,'address':TOKEN,'prices':[]}
+        transfer={'source':'etherscan','provider':'etherscan_keyless','complete':False,'tokens':[common],
+                  'pages':[{'page':1}],'discovery_status':'history_pending'}
+        routescan={'source':'routescan','provider':'routescan','complete':True,
+                   'tokens':[{**common,'suspicious_zero_check':True},{**common,'address':'0x'+'4'*40}],
+                   'pages':[{'page':1}],'discovery_status':'checked'}
+        with tempfile.TemporaryDirectory() as temp,patch.object(wallet,'ROOT',Path(temp)),patch('transfer_discovery.discover',return_value=transfer) as history,patch.object(public,'discover',return_value=routescan) as holdings:
+            row=wallet.free_sources(ADDRESS,1,60,continue_only=True)
+        self.assertEqual(len(row['tokens']),2);self.assertTrue(row['tokens'][0]['suspicious_zero_check'])
+        self.assertFalse(row['complete']);self.assertEqual(row['discovery_status'],'history_pending')
+        self.assertEqual(row['provider'],'multiple');self.assertEqual(len(row['sources']),2)
+        self.assertTrue(row['sources'][1]['complete']);self.assertFalse(row['complete_inventory_guaranteed'])
+        self.assertEqual(history.call_args.kwargs['budget'],30);self.assertEqual(holdings.call_args.kwargs['budget'],30)
+        self.assertTrue(history.call_args.kwargs['continue_only'])
+
+    def test_admitted_testnet_route_and_corrupt_source_do_not_silence_other_sources(self):
+        import transfer_discovery
+        for cid in (130,33139,4663,11155111,84532,43113):self.assertIn(cid,transfer_discovery.CHAINS)
+        with tempfile.TemporaryDirectory() as temp,patch.object(wallet,'ROOT',Path(temp)),patch.object(storage,'load',side_effect=[ValueError('synthetic corrupt state'),None]),patch('transfer_discovery.discover') as history,patch.object(public,'discover',return_value={'source':'routescan','provider':'routescan','complete':True,'tokens':[{'chain_id':1,'address':TOKEN}], 'pages':[],'discovery_status':'checked'}):
+            row=wallet.free_sources(ADDRESS,1,60)
+        history.assert_not_called();self.assertEqual(len(row['tokens']),1)
+        self.assertFalse(row['complete']);self.assertEqual(row['sources'][0]['discovery_status'],'checkpoint_error')
 
 
 if __name__=='__main__':unittest.main()

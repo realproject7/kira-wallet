@@ -84,7 +84,7 @@ commits. Future package changes need a new version. Release preparation does not
 publish a GitHub release, merge PR 19, promote the website or publish to npm.
 Registry publication remains operator-only. The coding agent never publishes.
 
-Required preparation from a clean, reviewed source checkout:
+Required preparation from a clean, validated source checkout:
 
 ```sh
 npm test
@@ -94,12 +94,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.10.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.11.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.10.tgz --access public
+npm publish ./dist/kira-wallet-0.1.11.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
@@ -195,9 +195,9 @@ sums as wealth floors. Private wallets, financial screenshots and local tickets
 stay outside the package and public review.
 
 
-## Next candidate: 0.1.10
+## Published 0.1.10
 
-This candidate adds saved keyless ERC20 transfer discovery on six core chains,
+Published 0.1.10 adds saved keyless ERC20 transfer discovery on six core chains,
 canonical RPC balance verification and explicit unfinished-history feedback.
 It fixes public-first cold qualification budgeting, exposes sanitized saved
 provider routes and authoritative coverage counts to native tools, and adds
@@ -205,9 +205,58 @@ bounded read plans with individual completion receipts. Failed account probes
 are distinct from unsupported versions. Reviewed lifecycle notices and targeted
 suspicious-zero checks preserve unknown and historical observations.
 
-Publication is operator-only. Prepare the archive from the final reviewed clean
-commit, run the required install and public checks, and test that exact archive
-in isolated public-only and Alchemy auxiliary workspaces. The personal published
-0.1.9 app and archive remain intact. The final release manifest records the
-candidate source commit, digest and package members. Do not publish an
-unreviewed development pack.
+Publication is operator-only. Preserve the published 0.1.10 app and archive.
+The next release uses its own clean source commit, exact installation and
+manifest. Registry and GitHub publication are separate operations.
+
+## Release candidate: 0.1.11
+
+This branch adds durable, segmented discovery frontiers, block-range splitting
+past provider page limits, source-specific cursor and quota recovery, and a
+union of admitted free candidate sources. Pinned registry and balance batches
+receive bounded scheduling turns. Resumes accept added market candidates while
+rejecting changed quantities or blocks, preserve saved positive observations
+through failed registry rereads, and continue normal slice boundaries with
+bounded no-progress detection. The non-default key import guide selects the
+saved key reference explicitly. General NFT IDs and DeFi positions are outside
+this release scope.
+
+The operator revised the target to USD 1 amount-specific liquidation candidates,
+including funded Mint Club burns, and removed 48-hour stability from this task.
+Fresh research uses wallet history and prior positive identities rather than
+blanket registry balances. It retains full inventory as an explicit mode and
+records unsupported discovery and liquidation paths as unknown. Same-block
+quotes compose supported DEX and nested funded-burn outputs into terminal assets;
+spot reserve prices alone do not establish cash proceeds.
+
+Basic scans save usable balances first. Users explicitly select a deep scan,
+which finishes after representative asset checks with quoted or unknown
+outcomes. Cumulative progress survives pause, restart and bounded engine slices.
+Available prices, representative estimates and unresolved checks remain separate.
+Missing rereads retain earlier dated evidence without marking it fresh.
+
+Quote fallback preserves all sampled input sizes and their order. A successful
+full-input quote returns immediately; smaller V3 and Aerodrome inputs use bounded
+read-only batches with the existing provider pacing and payload-limit splitting.
+Upgrades recover previously positive token identities from that wallet's own
+saved publications. They never reuse the old quantities as new balances or
+establish exhaustive new-wallet discovery.
+
+Release preparation requires the full suite, a clean exact-package installation,
+tracked and history privacy scans, a default public-only basic-scan check and
+focused same-block quote equivalence. Existing discovery configuration and
+auxiliary-provider regressions remain in the suite. No credential changes or
+paid-provider acceptance are part of this release preparation. Earlier actual
+natural completion and protected desktop/mobile pause and resume evidence are
+retained; rerun affected behavior on the final package. Review not selected under
+the operator's current ruling. No additional independent review is implied.
+
+The operator delegated resolution of the legacy author-metadata finding on
+October 16, 2026. The privacy checker accepts only the existing author identity
+of immutable merge commit `2ed52a24bc38ac4101aceff781cb7ff58941be57` and reports
+the exception separately. New identities, commit contents and secrets retain
+their checks. No history rewrite or broad email exemption is required.
+
+Use only the archive matching the final `dist/release.json` source commit,
+SHA-256 and installed member hashes. A registry dry run does not publish or
+establish registry credentials. Registry publication remains operator-only.

@@ -37,6 +37,88 @@ class JobFixtures:
         atomic(self.root/job['checkpoint']/'run.json',{'wallet_address':ADDRESS,**({'completed_at':'now'} if completed_manifest else {'status':'running'})})
         registry=json.loads((self.root/'wallets.json').read_text());registry['wallets'][0]['latest_snapshot']={'directory':job['checkpoint']};atomic(self.root/'wallets.json',registry)
 class JobsTest(JobFixtures, unittest.TestCase):
+    def test_cumulative_asset_checks_survive_pause_resume_and_step_resets(self):
+        job=self.running();counts={'total':10,'checked':7,'quoted':2,'unknown':5}
+        self.store.event(job['job_id'],{'stage':'onchain_progress','operation':'asset_inventory','chain_id':1,'total':20})
+        self.store.event(job['job_id'],{'stage':'onchain_progress','operation':'asset_review','chain_id':8453,**counts})
+        self.store.event(job['job_id'],{'stage':'onchain_progress','operation':'pool_checks','chain_id':1,'checked':0,'total':12})
+        expected={'1':{'total':20,'checked':0,'quoted':0,'unknown':0},'8453':counts}
+        saved=self.store.get(job['job_id']);self.assertEqual(saved['asset_progress'],expected)
+        saved.update(state='cancelled',cancel_requested=True);self.store.save(saved)
+        resumed=self.store.submit(self.request('job.resume',{'job_id':job['job_id']},'resume-counts'))
+        self.assertEqual(resumed['asset_progress'],saved['asset_progress'])
+        for bad in ({'quoted':8},{'checked':11},{'unknown':-1},{'total':True}):
+            self.store.event(job['job_id'],{'stage':'onchain_progress','operation':'asset_review','chain_id':8453,**counts,**bad})
+            self.assertEqual(self.store.get(job['job_id'])['asset_progress'],expected)
+        self.store.event(job['job_id'],{'stage':'onchain_progress','operation':'asset_inventory','chain_id':8453,'total':12})
+        inventory=self.store.get(job['job_id'])['asset_progress']['8453']
+        self.assertEqual(inventory,{**counts,'total':12})
+        resumed['asset_progress']['8453']['quoted']=7;self.store.save(resumed)
+        with self.assertRaises(JobError):self.store.get(job['job_id'])
+
+    def test_progress_retains_units_scope_and_attempt_without_provider_diagnostics(self):
+        job=self.running()
+        for operation in ('factory_queries','pool_checks','cashout_routes','history','market_discovery'):
+            self.store.event(job['job_id'],{'stage':'onchain_progress','operation':operation,'chain_id':8453,'checked':3,
+                'total':10,'pending_ranges':2,'provider':'etherscan_keyless','url':'PRIVATE-DIAGNOSTIC'})
+            event=self.store.get(job['job_id'])['events'][-1]
+            self.assertEqual(event['context']['operation'],operation);self.assertEqual(event['context']['attempt'],1)
+            self.assertEqual(event['counts']['pending_ranges'],2)
+            self.assertNotIn('PRIVATE-DIAGNOSTIC',json.dumps(event))
+
+    def test_automatic_continuation_preserves_backoff_and_stops_unchanged_work(self):
+        job=self.running();job['analysis_phase']='enrichment'
+        checkpoint=self.root/job['checkpoint']/'continuation.json'
+        atomic(checkpoint,{'fingerprint':'a'*64,'not_before':1120})
+        error=JobError('research_pending','Saved range boundary')
+        with patch('kira_jobs.time.time',return_value=1000):
+            self.store.queue_continuation(job,error);self.store.save(job)
+            saved=self.store.get(job['job_id'])
+            self.assertEqual(saved['state'],'queued');self.assertEqual(saved['stage'],'waiting')
+            self.assertEqual(saved['continuation']['not_before'],1120)
+            for expected in range(1,4):
+                self.store.queue_continuation(saved,error)
+                self.assertEqual(saved['continuation']['unchanged_turns'],expected)
+        self.assertEqual(saved['state'],'interrupted');self.assertEqual(saved['errors'][0]['code'],'no_progress')
+        self.store.save(saved)
+        resumed=self.store.submit(self.request('job.resume',{'job_id':job['job_id']},'explicit-retry'))
+        self.assertEqual(resumed['state'],'queued');self.assertNotIn('continuation',resumed)
+        atomic(checkpoint,{'fingerprint':'b'*64,'not_before':0})
+        self.store.queue_continuation(resumed,error)
+        self.assertEqual(resumed['continuation']['unchanged_turns'],0)
+        checkpoint.write_text('{broken')
+        self.store.queue_continuation(resumed,error)
+        self.assertEqual(resumed['state'],'interrupted');self.assertEqual(resumed['errors'][0]['code'],'invalid_envelope')
+
+    def test_cancel_racing_a_normal_slice_does_not_resurrect_the_job(self):
+        job=self.store.submit(self.request(),phase='enrichment')
+        atomic(self.root/job['checkpoint']/'continuation.json',{'fingerprint':'a'*64,'not_before':0})
+        calls=[]
+        def paused(*args):
+            calls.append(1)
+            self.store.submit(self.request('job.cancel',{'job_id':job['job_id']},'cancel-boundary'))
+            raise JobError('market_budget','Synthetic normal boundary')
+        with patch.object(self.store,'execute',side_effect=paused):self.store.worker()
+        self.assertEqual(len(calls),1);self.assertEqual(self.store.get(job['job_id'])['state'],'cancelled')
+
+    def test_waiting_work_releases_writer_and_allows_short_jobs_then_cancellation(self):
+        import time
+        delayed=self.store.submit(self.request(),phase='enrichment')
+        delayed['continuation']={'fingerprint':'a'*64,'not_before':int(time.time())+120,'unchanged_turns':0}
+        self.store.save(delayed)
+        short=self.store.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Changed']},'short-job'))
+        executed=[]
+        original=self.store.execute
+        def execute(job,*args):
+            executed.append(job['job_id']);return original(job,*args)
+        def waiting(_):
+            # The worker waits outside its writer and envelope locks.
+            import fcntl
+            with (self.root/'.analysis.lock').open('a') as writer:fcntl.flock(writer,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            self.store.submit(self.request('job.cancel',{'job_id':delayed['job_id']},'cancel-wait'))
+        with patch.object(self.store,'execute',side_effect=execute),patch('kira_jobs.time.sleep',side_effect=waiting):self.store.worker()
+        self.assertEqual(executed,[short['job_id']]);self.assertEqual(self.store.get(delayed['job_id'])['state'],'cancelled')
+
     def test_exited_process_group_permission_requires_no_live_writer(self):
         from kira_jobs import signal_process_group
         import signal
@@ -112,17 +194,92 @@ class JobsTest(JobFixtures, unittest.TestCase):
         self.assertEqual(registry['wallets'][0]['latest_snapshot']['directory'],'snapshots/new')
         self.assertEqual(registry['research_runs'][-1]['snapshot'],'snapshots/older')
 
-    def test_continuation_is_durable_and_never_recursively_admitted(self):
+    def test_legacy_basic_result_can_start_one_explicit_continuation(self):
         parent=self.store.submit(self.request());self.publish(parent)
         result=json.loads((self.root/parent['checkpoint']/'results.json').read_text())
         result['pipeline']={'phase':'baseline'};atomic(self.root/parent['checkpoint']/'results.json',result)
         parent.update(state='partial',result=self.store.publication(parent));self.store.save(parent)
-        self.store.continue_research();self.store.continue_research()
+        # Pre-upgrade envelopes also require an explicit choice for new deep work.
+        parent.pop('scan_policy');self.store.save(parent)
+        self.store.continue_research();self.assertEqual(len(self.store.list()),1)
+        self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'legacy-deep-one'))
+        self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'legacy-deep-two'))
+        self.store.continue_research()
         rows=self.store.list();self.assertEqual(len(rows),2)
         child=next(j for j in rows if j.get('parent_job_id')==parent['job_id'])
         self.assertEqual(child['analysis_phase'],'enrichment')
         self.assertEqual(self.store.get(parent['job_id'])['continuation_id'],child['job_id'])
         self.assertIn('enrichment',self.store.engine_command(child))
+
+    def basic_result(self):
+        parent=self.store.submit(self.request());self.publish(parent)
+        parent.update(state='partial',result=self.store.publication(parent));self.store.save(parent)
+        return parent
+
+    def test_new_basic_scan_never_starts_deep_work_without_a_choice(self):
+        parent=self.basic_result()
+        self.store.continue_research();JobStore(self.root).continue_research()
+        self.assertEqual(len(self.store.list()),1)
+        self.assertEqual(self.store.get(parent['job_id'])['scan_policy'],'optional_depth_v1')
+
+    def test_deep_scan_concurrent_clicks_and_restart_admit_one_child(self):
+        parent=self.basic_result()
+        def start(i):return self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'deep-click-'+str(i)))
+        with ThreadPoolExecutor(max_workers=8) as executor:children=list(executor.map(start,range(8)))
+        self.assertEqual(len({j['job_id'] for j in children}),1);child=children[0]
+        self.assertEqual(child['analysis_phase'],'enrichment');self.assertEqual(child['parent_job_id'],parent['job_id'])
+        self.assertEqual(child['previous_result']['directory'],parent['checkpoint'])
+        # Simulate a crash after the child envelope but before its receipt/link.
+        (self.store.jobs/'requests'/(digest('deep-click-0')+'.json')).unlink()
+        parent=self.store.get(parent['job_id']);parent.pop('continuation_id');self.store.save(parent)
+        restored=JobStore(self.root).submit(self.request('job.deepen',{'job_id':parent['job_id']},'deep-after-restart'))
+        self.assertEqual(restored['job_id'],child['job_id']);self.assertEqual(len(self.store.list()),2)
+        self.assertEqual(self.store.get(parent['job_id'])['continuation_id'],child['job_id'])
+
+    def test_paused_deep_scan_requires_resume_and_preserves_earlier_result(self):
+        parent=self.basic_result();child=self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'start-depth'))
+        self.store.submit(self.request('job.cancel',{'job_id':child['job_id']},'pause-depth'))
+        self.store.continue_research();self.store.recover()
+        repeated=self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'another-start'))
+        self.assertEqual(repeated['state'],'cancelled')
+        resumed=self.store.submit(self.request('job.resume',{'job_id':child['job_id']},'resume-depth'))
+        self.assertEqual(resumed['job_id'],child['job_id']);self.assertEqual(resumed['state'],'queued')
+        self.assertEqual(resumed['stage'],'queued')
+        self.assertEqual(resumed['previous_result'],child['previous_result']);self.assertFalse(resumed['cancel_requested'])
+
+    def test_deep_scan_requires_saved_basic_result_and_current_generation(self):
+        parent=self.store.submit(self.request())
+        with self.assertRaises(JobError) as error:self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'early-depth'))
+        self.assertEqual(error.exception.code,'basic_scan_required')
+        self.publish(parent);parent.update(state='partial',result=self.store.publication(parent));self.store.save(parent)
+        child=self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'valid-depth'))
+        self.store.submit(self.request('job.cancel',{'job_id':child['job_id']},'pause-old-depth'))
+        self.store.submit(self.request(key='new-basic-scan'))
+        for operation,target in [('job.deepen',parent),('job.resume',child)]:
+            with self.assertRaises(JobError) as error:self.store.submit(self.request(operation,{'job_id':target['job_id']},'stale-'+operation))
+            self.assertEqual(error.exception.code,'superseded')
+
+    def test_progress_clock_does_not_advance_on_repeated_waits(self):
+        job=self.running();event={'stage':'onchain_progress','operation':'balances','chain_id':8453,'checked':3,'total':10}
+        with patch('kira_jobs.now',return_value='2026-10-15T00:00:00Z'):self.store.event(job['job_id'],event)
+        with patch('kira_jobs.now',return_value='2026-10-15T00:01:00Z'):
+            self.store.event(job['job_id'],event);self.store.event(job['job_id'],{'stage':'market_paused'})
+        self.assertEqual(self.store.get(job['job_id'])['progress_observed_at'],'2026-10-15T00:00:00Z')
+
+    def test_app_restart_exposes_resume_without_starting_providers(self):
+        parent=self.basic_result();child=self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'restart-deep'))
+        with patch.object(self.store,'launch') as launch:
+            self.assertTrue(self.store.reconcile_idle());launch.assert_not_called()
+        saved=self.store.get(child['job_id']);self.assertEqual(saved['state'],'interrupted')
+        self.assertEqual(saved['previous_result'],child['previous_result'])
+        self.assertEqual(self.store.get(parent['job_id'])['state'],'partial')
+        self.store.submit(self.request('job.resume',{'job_id':child['job_id']},'restart-resume'))
+        import fcntl
+        for lock in ('.job-worker.lock','.analysis.lock'):
+            with (self.root/lock).open('a') as held:
+                fcntl.flock(held,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                self.assertFalse(self.store.reconcile_idle())
+                self.assertEqual(self.store.get(child['job_id'])['state'],'queued')
 
     def test_duplicate_and_key_conflict(self):
         a=self.store.submit(self.request());b=self.store.submit(self.request());self.assertEqual(a['job_id'],b['job_id'])
@@ -151,7 +308,7 @@ class JobsTest(JobFixtures, unittest.TestCase):
     def test_restart_interrupted_and_explicit_resume(self):
         job=self.running();self.store.recover();self.assertEqual(self.store.get(job['job_id'])['state'],'interrupted')
         resumed=self.store.submit(self.request('job.resume',{'job_id':job['job_id']},'resume-test'))
-        self.assertEqual(resumed['state'],'queued');self.assertEqual(resumed['previous_result']['directory'],'snapshots/prior')
+        self.assertEqual(resumed['state'],'queued');self.assertEqual(resumed['stage'],'queued');self.assertEqual(resumed['previous_result']['directory'],'snapshots/prior')
         self.assertEqual(self.store.submit(self.request('job.resume',{'job_id':job['job_id']},'resume-test'))['attempt'],1)
     def test_partial_publication_recovers_without_rerun(self):
         job=self.running();self.publish(job);self.store.recover();saved=self.store.get(job['job_id'])
@@ -291,7 +448,8 @@ class WorkerProcessTest(JobFixtures, unittest.TestCase):
     def test_short_settings_and_prices_preempt_enrichment_then_it_resumes(self):
         parent=self.store.submit(self.request());self.publish(parent)
         result=json.loads((self.root/parent['checkpoint']/'results.json').read_text());result['pipeline']={'phase':'baseline'};atomic(self.root/parent['checkpoint']/'results.json',result)
-        parent.update(state='partial',result=self.store.publication(parent));self.store.save(parent);self.store.continue_research()
+        parent.update(state='partial',result=self.store.publication(parent));self.store.save(parent)
+        self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'start-preemption-depth'))
         child=self.store.get(self.store.get(parent['job_id'])['continuation_id']);worker=self.worker_process('wait')
         try:
             self.wait_for(lambda:self.store.get(child['job_id'])['state']=='running')

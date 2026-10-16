@@ -9,6 +9,15 @@ from kira_config import ASSETS, data_root, secret_values, redact
 
 ROOT = data_root()
 
+
+class ResearchPause(ValueError):
+    """Saved unfinished research ready for another bounded slice."""
+
+
+class MarketPause(ResearchPause):
+    """A resumable market time budget, shared by CLI and imported engine code."""
+
+
 def now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 

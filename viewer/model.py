@@ -12,6 +12,7 @@ from token_images import image_for, read_catalog
 from chain_images import chain_image
 from native_assets import native_identity
 from details import project_details
+from cashout import classify as cashout_classification
 
 ROOT = Path(os.environ.get('KIRA_DATA_DIR',Path(__file__).resolve().parents[1])).expanduser().resolve()
 EXPLORERS = {1:'https://etherscan.io',8453:'https://basescan.org',81457:'https://blastscan.io',
@@ -82,7 +83,11 @@ def exit_quote(token):
             'gas_included': False}
 
 def dex_price(token, observed):
-    """Reject an extreme one-sided TVL as a USD price reference. Keep its evidence."""
+    """Use the selected source observation, never a later publication clock.
+
+    observed is an optional raw-response timestamp for callers normalizing a
+    response. Snapshot callers pass None when original source time is unknown.
+    """
     candidates=[]; suspect=False
     for p in token.get('dex_pools',[]):
         price=number(p.get('reported_price_usd'))
@@ -97,7 +102,7 @@ def dex_price(token, observed):
         if tvl and pool_has_liquidity(p): candidates.append((tvl,price,p))
     if candidates:
         _,price,p=max(candidates,key=lambda v:v[0])
-        return {'usd':price,'basis':'DEX market','source':p['source_url'],'observed_at':observed,'quality':'estimated'}
+        return {'usd':price,'basis':'DEX market','source':p['source_url'],'observed_at':p.get('observed_at') or observed,'quality':'estimated'}
     if suspect:return {'usd':None,'basis':'Thin quote side','quality':'unreliable','observed_at':observed}
     for p in token.get('indexer_price_references',[]):
         price=number(p.get('value'))
@@ -131,16 +136,18 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         if override and (override.get('basis')!='Curve spot' or override.get('retained_from_previous')):
             cache[k]=override;return override
         if mint:
-            reserve=mint['reserve_symbol'];reserve_price=None
+            reserve=mint['reserve_symbol'];reserve_price=None;retained_reserve=None
             reserve_identity=(t['chain_id'],mint['reserve_token'].lower())
             if reserve_identity==(8453,'0x4200000000000000000000000000000000000006'):reserve_price=eth
             elif reserve_identity==(8453,'0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf'):reserve_price=number(refs.get('cbBTC_USD',{}).get('value'))
             rt=prices.get((t['chain_id'],mint['reserve_token'].lower()))
-            if rt and rt.get('usd') is not None:reserve_price=number(rt['usd'])
+            if rt and rt.get('usd') is not None:
+                reserve_price=number(rt['usd']);retained_reserve=rt if rt.get('retained_from_previous') else None
             parent=by_address.get((t['chain_id'],mint['reserve_token'].lower()))
             if parent:
                 parent_price=price_for(parent,seen)
-                if parent_price:reserve_price=parent_price.get('usd')
+                if parent_price:
+                    reserve_price=parent_price.get('usd');retained_reserve=parent_price if parent_price.get('retained_from_previous') else None
             if reserve_price is not None:
                 spot=number((override or {}).get('curve_price_in_reserve',mint['price_for_next_mint_in_reserve_token']))
                 funded=number(override['curve_reserve'])>0 if override and 'curve_reserve' in override else mint.get('funded')
@@ -148,8 +155,9 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
                    'source':mint['source_url'],'observed_at':(override or {}).get('observed_at',mint['observed_at']),
                    'quality':'estimated' if funded else 'unfunded'}
                 if not funded:p['usd']=None
+                elif retained_reserve:p.update(retained_from_previous=True,latest_price_status='unavailable',observed_at=retained_reserve.get('observed_at'))
                 cache[k]=p;return p
-        p=dex_price(t,snapshot.get('compiled_at'))
+        p=dex_price(t,None)
         cache[k]=p;return p
 
     assets=[]
@@ -178,7 +186,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
                              'image_url':image_for(images,t['chain_id'],coin.get('address'))})
             market_pools.append({'venue':label_venue,'pool':pool.get('pool'),'url':pool['source_url'],
                 'pair':pair,'liquidity_usd':number((pool.get('reported_liquidity') or {}).get('usd')),
-                'price_usd':number(pool.get('reported_price_usd')),'observed_at':pool.get('observed_at') or snapshot.get('compiled_at')})
+                'price_usd':number(pool.get('reported_price_usd')),'observed_at':pool.get('observed_at')})
         market_pools.sort(key=lambda row:-(row['liquidity_usd'] or 0))
         links += [{'label':k,'url':v[1]} for k,v in found.items()]
         explorer=EXPLORERS.get(t['chain_id'])
@@ -187,8 +195,10 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             'symbol':label,'name':name,'address':t['token_address'],'balance':t['wallet_balance'],
             'price':p,'value_usd':value,'is_native':False,'links':links,'market_pools':market_pools,
             'balance_observed_at':t.get('balance_observed_at') or snapshot.get('compiled_at'),
+            'quantity_retained':bool(t.get('metadata_evidence_retained') or t.get('balance_evidence_retained')),
             'burn_quote':(t.get('mintclub') or {}).get('wallet_full_burn'),
             'exit_quote':exit_quote(t),
+            'cashout_eligibility':cashout_classification(t,market,environment=next((c.get('environment') for c in snapshot.get('coverage',[]) if c.get('chain_id')==t['chain_id']),'unknown')),
             'exit_route': 'mintclub_burn' if t.get('mintclub') else 'dex_unquoted' if t.get('dex_liquidity_found') or any(pool_has_liquidity(pool) for pool in t.get('dex_pools',[])) else 'unverified',
             'image_url':image_for(images,t['chain_id'],t['token_address'],mint=bool(t.get('mintclub'))),
             'curve_reserve': {'amount':market_token.get('curve_reserve',t['mintclub']['reserve_balance']),'symbol':t['mintclub']['reserve_symbol']} if t.get('mintclub') else None})
@@ -228,13 +238,16 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             'image_url':chain_image(c['chain_id']),
             'assets':len(rows),'value_usd':sum(a['value_usd'] for a in rows if a['value_usd'] is not None) if c['environment']=='mainnet' and any(a['value_usd'] is not None for a in rows) else None,
             'complete':c['general_erc20_discovery']=='indexer_checked','rpc_available':c['rpc_status']=='available',
-            'discovery_status':c.get('discovery_status') if c.get('discovery_status') in ('checked','disabled','missing_credential','unsupported','provider_error','history_pending') else 'incomplete',
+            'discovery_status':c.get('discovery_status') if c.get('discovery_status') in ('checked','disabled','missing_credential','unsupported','provider_error','history_pending','throttled','checkpoint_error','source_limited') else 'incomplete',
             'rpc_routes':safe_routes(c.get('rpc_routes')),
             'head_status':c.get('head_status') if c.get('head_status') in ('stale','observed','saved_observation') else None,
             'head_age_seconds':c.get('head_age_seconds') if type(c.get('head_age_seconds')) is int else None,
             'lifecycle':lifecycle(c['chain_id']),
-            'discovery_provider':c.get('discovery_provider') if c.get('discovery_provider') in ('etherscan_keyless','routescan') else 'alchemy' if c.get('indexer_source')=='Alchemy Portfolio Tokens By Wallet' else None,
-            'history_window':{k:v for k,v in (c.get('history_window') or {}).items() if k in ('startblock','endblock','page','complete','records','started_at','pagination_limit_reached') and type(v) in (int,bool)} if isinstance(c.get('history_window'),dict) else None,
+            'discovery_provider':c.get('discovery_provider') if c.get('discovery_provider') in ('etherscan_keyless','routescan','explorer','multiple') else 'alchemy' if c.get('indexer_source')=='Alchemy Portfolio Tokens By Wallet' else None,
+            'discovery_sources':[{'provider':s['provider'],'complete':s.get('complete') is True,
+                                  'status':s.get('discovery_status') if s.get('discovery_status') in ('checked','history_pending','throttled','provider_error','checkpoint_error','source_limited') else 'incomplete'}
+                                 for s in (c.get('discovery_sources') if isinstance(c.get('discovery_sources'),list) else []) if isinstance(s,dict) and s.get('provider') in ('etherscan_keyless','routescan','explorer')][:3],
+            'history_window':{k:v for k,v in (c.get('history_window') or {}).items() if k in ('startblock','endblock','page','complete','records','started_at','pagination_limit_reached','pages_checked','pending_ranges','completed_ranges','blocked_ranges') and type(v) in (int,bool)} if isinstance(c.get('history_window'),dict) else None,
             'recent_window':{k:v for k,v in (c.get('recent_window') or {}).items() if k in ('startblock','endblock','page','complete','records') and type(v) in (int,bool)} if isinstance(c.get('recent_window'),dict) else None,
             'discovery_filters':{'spam_filter':False,'minimum_value':None,'minimum_liquidity':None} if c.get('discovery_provider')=='etherscan_keyless' else None,
             'registry_complete':(c.get('mintclub_registry_scan') or {}).get('complete') is True,

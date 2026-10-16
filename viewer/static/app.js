@@ -144,6 +144,7 @@ function renderWallet(){
   if(selectedChain!=='all'&&!chainOptions.some(c=>String(c.id)===selectedChain))selectedChain='all';
   $('chain-filter').innerHTML='<option value="all">All chains</option>'+chainOptions.map(c=>`<option value="${c.id}">${escapeHTML(c.name)}${c.environment==='testnet'?' · Testnet':''}${KiraView.coverageGap(c)?' · Incomplete':''}</option>`).join('');
   $('chain-filter').value=selectedChain;renderHoldings();renderDiscoveryCoverage(w);
+  if(typeof renderWalletScan==='function')renderWalletScan();
 }
 function renderHomeCoverage(){
   const readiness=typeof setupReadiness!=='undefined'?setupReadiness:null;
@@ -179,8 +180,9 @@ function renderDiscoveryCoverage(w) {
     else if(c.rpc_pending)reasons.push('not yet checked; follow or resume detailed research in Activity');
     else if(!c.rpc_available)reasons.push('balance reads failed; retry holdings, then review RPC settings if this continues');
     if(c.head_status==='stale')reasons.push('provider returned an old head ('+c.head_age_seconds+' seconds old); this does not establish retirement');
-    if(!c.complete)reasons.push(({disabled:'token discovery off',missing_credential:'indexer credential unavailable',unsupported:'indexer unsupported',provider_error:'indexer request failed',history_pending:'free transfer history unfinished; refresh holdings to continue the saved page'})[c.discovery_status]||'token discovery incomplete');
-    if(c.history_window)reasons.push('history window '+c.history_window.startblock+'–'+c.history_window.endblock+', next page '+c.history_window.page+'; transfer identities are candidates, not balances');
+    if(!c.complete)reasons.push(({disabled:'token discovery off',missing_credential:'indexer credential unavailable',unsupported:'indexer unsupported',provider_error:'indexer request failed',history_pending:'free transfer history has unfinished ranges',throttled:'discovery is waiting for the provider retry interval',checkpoint_error:'discovery checkpoint needs recovery; saved evidence is preserved',source_limited:'a single block exceeds the discovery source limit'})[c.discovery_status]||'token discovery incomplete');
+    if(c.history_window)reasons.push('history window '+c.history_window.startblock+'–'+c.history_window.endblock+(c.history_window.pending_ranges!==undefined?'; pending ranges: '+c.history_window.pending_ranges+'; unresolved ranges: '+(c.history_window.blocked_ranges||0):', next page '+c.history_window.page)+'; transfer identities are candidates, not balances');
+    if(c.discovery_sources?.length>1)reasons.push(c.discovery_sources.map(s=>({etherscan_keyless:'Etherscan',routescan:'Routescan',explorer:'Explorer'}[s.provider]||'Source')+': '+(s.complete?'source pages checked':s.status.replaceAll('_',' '))).join('; '));
     if(c.recent_window)reasons.push('newer window '+c.recent_window.startblock+'–'+c.recent_window.endblock+' '+(c.recent_window.complete?'checked':'partly checked')+' while earlier history resumes');
     if(c.registry_phase==='deferred')reasons.push('full Mint Club discovery pending; check or resume it in Activity');
     else if(c.registry_complete===false&&c.rpc_available)reasons.push('Mint Club balances partly unchecked; retry holdings'+(c.registry_errors||c.balance_errors?' ('+(c.registry_errors||0)+' asset checks and '+(c.balance_errors||0)+' balance reads failed)':''));
@@ -220,11 +222,11 @@ function bindImages(){
 }
 function assetRow(a){
   const p=a.price;
-  const source=p?.usd!=null ? (p.retained_from_previous?'Previous '+(p.basis||'estimate'):p.basis) : p?.quality==='unreliable'?'Thin quote side':p?.quality==='unfunded'?'No funded reserve':'No price';
+  const source=p?.usd!=null ? (p.retained_from_previous?'Previous '+(p.basis||'estimate')+' · '+stamp(p.observed_at):p.basis) : p?.quality==='unreliable'?'Thin quote side':p?.quality==='unfunded'?'No funded reserve':'No price';
   const links=a.links.filter(l=>l.label!=='Explorer');
   if(!links.length){const e=a.links.find(l=>l.label==='Explorer');if(e)links.push(e);}
   const reserve=a.curve_reserve?`Curve reserve: ${a.curve_reserve.amount} ${a.curve_reserve.symbol}`:'';
-  return `<tr data-asset-id="${escapeHTML(a.id)}" data-value="${a.value_usd ?? ''}"><td><a class="token-name token-link" href="${tokenHref(a.id)}" aria-label="Open ${escapeHTML(a.symbol)} token overview">${coinIcon(a)}<div class="coin-title"><div class="symbol" title="${escapeHTML(a.symbol)}">${escapeHTML(a.symbol)}</div><div class="token-description" title="${escapeHTML((a.address||'Native asset')+' '+reserve)}">${escapeHTML(a.archived?'Archived observation':a.is_native?'Native asset':a.name)}</div></div></a></td><td><span class="mobile-label">Balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span></td><td><span class="mobile-label">Price</span><span class="token-price ${p?.usd==null?'unpriced':''}" title="${escapeHTML(p?.observed_at||'')}">${unitPrice(p?.usd)}</span><div class="price-basis">${escapeHTML(source)}</div></td><td><span class="token-value ${a.value_usd==null?'unpriced':''}">${money(a.value_usd)}</span>${a.archived?'<div class="price-basis">Archived · historical '+money(a.historical_value_usd)+'</div>':''}</td><td><div class="market-links">${marketLinks(links,a)}</div></td></tr>`;
+  return `<tr data-asset-id="${escapeHTML(a.id)}" data-value="${a.value_usd ?? ''}"><td><a class="token-name token-link" href="${tokenHref(a.id)}" aria-label="Open ${escapeHTML(a.symbol)} token overview">${coinIcon(a)}<div class="coin-title"><div class="symbol" title="${escapeHTML(a.symbol)}">${escapeHTML(a.symbol)}</div><div class="token-description" title="${escapeHTML((a.address||'Native asset')+' '+reserve)}">${escapeHTML(a.archived?'Archived observation':a.is_native?'Native asset':a.name)}</div></div></a></td><td><span class="mobile-label">Balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span>${a.quantity_retained?'<span class="retained-note">Saved quantity · '+escapeHTML(stamp(a.balance_observed_at))+'</span>':''}</td><td><span class="mobile-label">Price</span><span class="token-price ${p?.usd==null?'unpriced':''}" title="${escapeHTML(p?.observed_at||'')}">${unitPrice(p?.usd)}</span><div class="price-basis">${escapeHTML(source)}</div>${p?.retained_from_previous?'<span class="retained-note">Current price unavailable. Showing the earlier estimate.</span>':''}</td><td><span class="token-value ${a.value_usd==null?'unpriced':''}">${money(a.value_usd)}</span>${a.archived?'<div class="price-basis">Archived · historical '+money(a.historical_value_usd)+'</div>':''}</td><td><div class="market-links">${marketLinks(links,a)}</div></td></tr>`;
 }
 function renderHoldings(){
   const w=currentWallet();if(!w)return;

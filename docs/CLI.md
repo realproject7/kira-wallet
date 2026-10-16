@@ -17,6 +17,18 @@ Registry publication remains an operator action. The code and original character
 
 ## Lifecycle
 
+Wallet registration and holdings refresh run a basic scan first. Use the saved
+result immediately, then choose **Start deep scan** in the wallet or Activity
+to check remaining networks and more complex markets. Deep scanning is optional,
+has no overall time limit, and supports **Pause scan** and **Resume deep scan**.
+It runs while Kira is running on this computer. App restart preserves saved
+results and requires an explicit resume for interrupted work.
+
+CLI equivalents are `kira jobs deepen BASIC_JOB_ID`, `kira jobs cancel JOB_ID`
+and `kira jobs resume JOB_ID`. A repeated deepen request uses the same child;
+it does not restart paused or finished work. Refreshing holdings starts a new
+basic scan. Neither basic nor deep completion guarantees all holdings or prices.
+
 Use `kira setup` for your first setup. For everyday use, `kira start` starts
 the local app with browser controls and opens it in your browser. The default
 port is 8787. Use `--port` to choose another port, or `--no-open` to print the

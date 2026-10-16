@@ -80,7 +80,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.json(result,202 if path in ('/api/agent/test','/api/chat/send') else 200);return
             if json.loads((ROOT/'wallets.json').read_text()).get('demo'):
                 operation=request.get('operation')
-                if operation=='job.resume' and isinstance(request.get('input'),dict):
+                if operation in ('job.resume','job.deepen') and isinstance(request.get('input'),dict):
                     operation=self.server.jobs.get(request['input'].get('job_id'))['operation']
                 if operation in ('wallet.add','wallet.refresh','prices.refresh'):
                     raise JobError('demo_read_only','Sample research cannot contact providers. Use a separate personal data directory.')
@@ -173,6 +173,7 @@ if __name__=='__main__':
     server=ThreadingHTTPServer(('127.0.0.1',args.port),Handler)
     server.controls=args.controls;server.session_token=secrets.token_urlsafe(32)
     if args.controls:server.jobs=JobStore(ROOT);server.agent=AgentStore(ROOT);server.ows=OwsStore(ROOT)
+    if args.controls:server.jobs.reconcile_idle()
     if args.controls and os.environ.get('KIRA_CHAT_RESUME')=='1':restore_upgrade_chat(server.agent,ROOT)
     def stop_viewer(*_):raise KeyboardInterrupt()
     signal.signal(signal.SIGTERM,stop_viewer)

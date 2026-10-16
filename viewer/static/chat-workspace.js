@@ -10,12 +10,12 @@ function renderResearchChat() {
   $('kira-panel').dataset.speaking=String(working);
   const tray=$('chat-research');tray.hidden=!active.length;
   tray.innerHTML=active.slice(0,2).map(job=>{
-    const p=KiraView.jobPresentation(job,Date.now(),jobsConnected);
+    const p=KiraView.jobPresentation(job,Date.now(),jobsConnected),progress=KiraView.jobProgress(job,Date.now(),jobsConnected);
     const key=String(job.input.wallet||job.input.address||'').toLowerCase();
     const name=state?.wallets.find(w=>w.key===key)?.name||job.input.tag||'Wallet research';
     const counts=job.events?.at(-1)?.counts||{};
-    const detail=['checked','held'].filter(k=>Number.isFinite(counts[k])).map(k=>counts[k]+' '+k).join(' · ');
-    return `<a class="chat-research-row" href="#/activity"><span class="spinner" aria-hidden="true"></span><span><strong>${escapeHTML(name)}</strong><span>${escapeHTML(jobStage(job))}${detail?' · '+escapeHTML(detail):''}</span><small data-job-timer="${escapeHTML(job.job_id)}">${escapeHTML(p.timerLabel)} ${KiraView.duration(p.elapsed)}</small>${p.freshness?'<small>'+escapeHTML(p.freshness)+'</small>':''}</span><span aria-hidden="true">↗</span></a>`;
+    const detail=progress.count;
+    return `<div class="chat-research-item"><a class="chat-research-row" href="#/wallet/${escapeHTML(key)}">${p.spinner?'<span class="spinner" aria-hidden="true"></span>':''}<span><strong>${escapeHTML(name)}</strong><span>${escapeHTML(jobStage(job))}${detail?' · '+escapeHTML(detail):''}</span><small data-job-timer="${escapeHTML(job.job_id)}">${escapeHTML(p.timerLabel)} ${KiraView.duration(p.elapsed)}</small><small data-job-estimate="${escapeHTML(job.job_id)}">${escapeHTML(progress.eta)}</small>${p.freshness?'<small>'+escapeHTML(p.freshness)+'</small>':''}</span><span aria-hidden="true">↗</span></a>${jobControls(job)}</div>`;
   }).join('')+(active.length>2?`<a class="text-button" href="#/activity">${active.length-2} more in Activity</a>`:'');
 }
 function expandChat(expand,animate=true) {

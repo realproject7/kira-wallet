@@ -165,7 +165,7 @@ def main():
     for mutation in (add,refresh,prices):mutation.add_argument('--idempotency-key');mutation.add_argument('--enqueue',action='store_true')
     jobs=sub.add_parser('jobs');jobsub=jobs.add_subparsers(dest='action',required=True)
     jobsub.add_parser('list');jobsub.add_parser('run')
-    for action in ('read','resume','cancel'):
+    for action in ('read','resume','cancel','deepen'):
         item=jobsub.add_parser(action);item.add_argument('job_id');item.add_argument('--idempotency-key')
     config=sub.add_parser('config');configsub=config.add_subparsers(dest='setting',required=True)
     configsub.add_parser('show')
@@ -230,7 +230,7 @@ def main():
             elif args.action=='run':store.launch();result={'status':'worker_started'}
             else:
                 result=store.submit({'schema_version':1,'operation':'job.'+args.action,'input':{'job_id':args.job_id},'idempotency_key':args.idempotency_key or str(uuid.uuid4())})
-                if args.action=='resume':store.launch()
+                if args.action in ('resume','deepen'):store.launch()
             print(json.dumps(result,indent=2))
         elif args.command in ('rpc','discovery','config'):
             cfg=load_config()

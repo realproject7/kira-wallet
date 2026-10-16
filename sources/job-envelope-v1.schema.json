@@ -269,6 +269,70 @@
     "continuation_id": {
       "type": "string",
       "format": "uuid"
+    },
+    "continuation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fingerprint",
+        "not_before",
+        "unchanged_turns"
+      ],
+      "properties": {
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "not_before": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unchanged_turns": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "scan_policy": {
+      "const": "optional_depth_v1"
+    },
+    "progress_observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "asset_progress": {
+      "type": "object",
+      "patternProperties": {
+        "^[1-9][0-9]*$": {
+          "type": "object",
+          "required": [
+            "total",
+            "checked",
+            "quoted",
+            "unknown"
+          ],
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "checked": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "quoted": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unknown": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

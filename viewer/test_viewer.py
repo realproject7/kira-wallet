@@ -27,6 +27,34 @@ class ViewerTests(unittest.TestCase):
         (self.directory/'results.json').write_text(json.dumps(self.snapshot))
     def tearDown(self):self.temp.cleanup()
 
+    def test_cached_dex_price_keeps_the_selected_source_clock_when_republished(self):
+        address='0x'+'2'*40
+        token={'token_address':address,'dex_pools':[
+            {'paired_tokens':[{'address':address},{'address':'0x'+'3'*40}],
+             'reported_price_usd':'2','reported_liquidity':{'usd':100,'base':20},
+             'source_url':'https://example.com/pool','observed_at':'2026-10-14T05:06:00Z'}]}
+        first=model.dex_price(token,'2026-10-14T05:10:00Z')
+        second=model.dex_price(token,'2026-10-14T05:20:00Z')
+        self.assertEqual(first,second)
+        self.assertEqual(second['observed_at'],'2026-10-14T05:06:00Z')
+        token['dex_pools'][0]['observed_at']='2026-10-14T05:21:00Z'
+        self.assertEqual(model.dex_price(token,None)['observed_at'],'2026-10-14T05:21:00Z')
+
+    def test_projection_does_not_invent_a_dex_observation_when_source_time_is_missing(self):
+        token=self.snapshot['tokens'][0]
+        token['mintclub']=None
+        token['indexer_price_references']=[]
+        token['dex_pools']=[{
+            'pool':'0x'+'3'*40,'venue':'uniswap','paired_tokens':[
+                {'address':token['token_address'],'symbol':token['symbol']},
+                {'address':'0x'+'4'*40,'symbol':'QUOTE'}],
+            'reported_price_usd':'2','reported_liquidity':{'usd':100,'base':20},
+            'source_url':'https://example.com/pool'}]
+        projected=model.project_wallet(self.entry,self.snapshot,self.root)
+        asset=next(a for a in projected['assets'] if a['address']==token['token_address'].lower())
+        self.assertIsNone(asset['price']['observed_at'])
+        self.assertIsNone(asset['market_pools'][0]['observed_at'])
+
     def test_native_zero_observations_survive_without_becoming_holdings(self):
         self.snapshot['tokens']=[]
         zero,held=self.snapshot['coverage']
@@ -59,6 +87,22 @@ class ViewerTests(unittest.TestCase):
         self.assertEqual(wallet['chains'][0]['candidate_balance_errors'],9)
         self.assertEqual(wallet['chains'][1]['discovery_status'],'incomplete')
         self.assertNotIn('SECRET-MARKER',json.dumps(wallet))
+
+    def test_source_completion_and_unresolved_ranges_are_projected_independently(self):
+        first=self.snapshot['coverage'][0]
+        first.update(discovery_provider='multiple',discovery_status='source_limited',general_erc20_discovery='incomplete',
+                     history_window={'startblock':0,'endblock':100,'pending_ranges':0,'blocked_ranges':1,'debug':'SECRET-MARKER'},
+                     discovery_sources=[{'provider':'etherscan_keyless','complete':False,'discovery_status':'source_limited','error':'SECRET-MARKER'},
+                                        {'provider':'routescan','complete':True,'discovery_status':'checked'},
+                                        {'provider':'SECRET-MARKER','complete':True}])
+        self.snapshot['coverage'][1]['discovery_sources']=None
+        projected=model.project_wallet(self.entry,self.snapshot,self.root)
+        chain=projected['chains'][0]
+        self.assertFalse(chain['complete']);self.assertEqual(chain['discovery_status'],'source_limited')
+        self.assertEqual(chain['history_window']['blocked_ranges'],1)
+        self.assertEqual(len(chain['discovery_sources']),2);self.assertTrue(chain['discovery_sources'][1]['complete'])
+        self.assertEqual(projected['chains'][1]['discovery_sources'],[])
+        self.assertNotIn('SECRET-MARKER',json.dumps(projected))
 
     def test_legacy_balance_failure_count_is_safe_without_rewriting_snapshot(self):
         first=self.snapshot['coverage'][0]

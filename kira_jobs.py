@@ -76,6 +76,10 @@ class Job(TypedDict):
     control_receipts: NotRequired[dict[str,str]]
     control_raw: NotRequired[dict[str,str]]
     provider_configuration: NotRequired[dict]
+    continuation: NotRequired[dict]
+    scan_policy: NotRequired[str]
+    progress_observed_at: NotRequired[str]
+    asset_progress: NotRequired[dict]
 
 class JobError(ValueError):
     def __init__(self, code, message):
@@ -135,7 +139,7 @@ class JobStore:
         job = read(path)
         if not isinstance(job,dict) or type(job.get('schema_version')) is not int or job.get('schema_version') != 1: raise JobError('unsupported_version', 'Unsupported persisted job version.')
         required={'schema_version','job_id','operation','input','state','attempt','sequence','result','previous_result','key_hash','request_hash','created_at','updated_at','cancel_requested','checkpoint','stage','events','errors','chains'}
-        optional={'raw_hash','control_receipts','control_raw','provider_configuration','started_at','analysis_phase','parent_job_id','continuation_id'}
+        optional={'raw_hash','control_receipts','control_raw','provider_configuration','started_at','analysis_phase','parent_job_id','continuation_id','continuation','scan_policy','progress_observed_at','asset_progress'}
         if required-set(job) or set(job)-required-optional or job['job_id']!=job_id or job['checkpoint']!='snapshots/jobs/'+job_id or not isinstance(job['operation'],str) or job['operation'] not in {'wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv'} or not isinstance(job['state'],str) or job['state'] not in TERMINAL|{'queued','running'} or any(type(job[k]) is not int or job[k]<0 for k in ('attempt','sequence')) or type(job['cancel_requested']) is not bool or not isinstance(job['input'],dict) or any(not isinstance(job[k],list) for k in ('events','errors')) or not isinstance(job['chains'],dict):
             raise JobError('invalid_envelope','Persisted job validation failed. Preserve the file for recovery.')
         names={'wallet.add':['address','tag'],'wallet.refresh':['wallet'],'prices.refresh':['wallet'],'wallet.setTags':['wallet','tags'],
@@ -143,6 +147,20 @@ class JobStore:
         if job['operation']=='settings.rpc' and 'priority' in job['input']:names=names+['priority']
         fields(job['input'],names)
         if 'analysis_phase' in job and job['analysis_phase'] not in ('baseline','enrichment'):raise JobError('invalid_envelope','Invalid analysis phase.')
+        if 'scan_policy' in job and job['scan_policy']!='optional_depth_v1':raise JobError('invalid_envelope','Invalid scan policy.')
+        if 'asset_progress' in job:
+            progress=job['asset_progress']
+            if not isinstance(progress,dict) or any(not isinstance(k,str) or not re.fullmatch(r'[1-9][0-9]*',k) or not isinstance(v,dict) or set(v)!={'total','checked','quoted','unknown'} or any(type(x) is not int or x<0 for x in v.values()) or v['checked']>v['total'] or v['quoted']+v['unknown']!=v['checked'] for k,v in progress.items()):
+                raise JobError('invalid_envelope','Invalid saved asset progress.')
+        if 'progress_observed_at' in job:
+            try:datetime.fromisoformat(job['progress_observed_at'].replace('Z','+00:00'))
+            except (ValueError,TypeError,AttributeError):raise JobError('invalid_envelope','Invalid progress timestamp.') from None
+        if 'continuation' in job:
+            c=job['continuation']
+            if (not isinstance(c,dict) or set(c)!={'fingerprint','not_before','unchanged_turns'}
+                    or not isinstance(c['fingerprint'],str) or not re.fullmatch(r'[0-9a-f]{64}',c['fingerprint'])
+                    or any(type(c[k]) is not int or c[k]<0 for k in ('not_before','unchanged_turns'))):
+                raise JobError('invalid_envelope','Invalid continuation checkpoint.')
         for field in ('parent_job_id','continuation_id'):
             if field in job:identifier(job[field])
         wallet=job['input'].get('wallet') or job['input'].get('address')
@@ -223,7 +241,7 @@ class JobStore:
                     raise JobError('invalid_tags', 'Supply 1 to 20 unique exact non-empty tags.')
                 result['tags'] = tags
             return result
-        if operation in {'job.resume', 'job.cancel'}:
+        if operation in {'job.resume', 'job.cancel', 'job.deepen'}:
             fields(value, ['job_id']); identifier(value['job_id'])
             return value.copy()
         raise JobError('unsupported_operation', 'Unsupported job operation.')
@@ -266,6 +284,10 @@ class JobStore:
             elif entry is None and job['operation']=='wallet.add':
                 register(registry,address,job['input']['tag'])
                 atomic(self.root/'wallets.json',registry)
+        if job.get('parent_job_id'):
+            parent=self.get(job['parent_job_id'])
+            if not parent.get('continuation_id'):
+                parent['continuation_id']=job['job_id'];self.save(parent)
         return job
 
     def submit(self, request, *, phase='baseline', parent=None):
@@ -299,36 +321,61 @@ class JobStore:
                 recorded=existing.get('control_receipts',{}).get(key_hash,existing['request_hash'])
                 if recorded != fingerprint: raise JobError('idempotency_conflict', 'This request key already belongs to another operation.')
                 job = existing
+            elif operation=='job.deepen':
+                parent_job=self.get(value['job_id'])
+                if parent_job.get('analysis_phase')!='baseline' or parent_job['state'] not in {'succeeded','partial'} or not parent_job.get('result'):
+                    raise JobError('basic_scan_required','Finish or resume the basic scan before starting a deep scan.')
+                wallet=self.wallet(parent_job['input'].get('wallet') or parent_job['input'].get('address'))
+                if wallet.get('research_generation') not in (None,parent_job['job_id']):
+                    raise JobError('superseded','A newer basic scan is available. Start deep scanning from its saved result.')
+                # Recover admission if the child was saved before its parent link.
+                job=next((j for p in self.jobs.glob('*.json') if (j:=self.get(p.stem)).get('parent_job_id')==parent_job['job_id']),None)
+                if job is None:
+                    job=self.new_job('wallet.refresh',{'wallet':wallet['address_key']},key_hash,fingerprint,raw_hash,'enrichment',parent_job['job_id'])
+                job.setdefault('control_receipts',{})[key_hash]=fingerprint
+                job.setdefault('control_raw',{})[key_hash]=raw_hash
+                self.save(job)
+                parent_job['continuation_id']=job['job_id'];self.save(parent_job)
             elif operation in {'job.resume', 'job.cancel'}:
                 job = self.get(value['job_id'])
                 if operation == 'job.resume':
                     if job['state'] not in {'interrupted', 'failed', 'cancelled'}:
                         raise JobError('not_resumable', 'Only interrupted, failed or cancelled jobs can resume.')
-                    job.update(state='queued', cancel_requested=False, errors=[])
+                    if job.get('parent_job_id') and self.wallet(job['input']['wallet']).get('research_generation') not in (None,job['parent_job_id']):
+                        raise JobError('superseded','A newer basic scan replaced this work. Open its saved result to start a deep scan.')
+                    job.update(state='queued', stage='queued', cancel_requested=False, errors=[])
+                    job.pop('continuation',None)
                 elif job['state'] == 'queued': job.update(state='cancelled', cancel_requested=True)
                 elif job['state'] == 'running': job['cancel_requested'] = True
                 job.setdefault('control_receipts',{})[key_hash]=fingerprint
                 job.setdefault('control_raw',{})[key_hash]=raw_hash
                 self.save(job)
             else:
-                previous = None
-                if operation=='wallet.add':
-                    existing_wallet=next((w for w in read(self.root/'wallets.json')['wallets'] if w['address_key']==value['address'].lower()),None)
-                    if existing_wallet:previous=existing_wallet.get('latest_snapshot')
-                if operation in {'wallet.refresh','prices.refresh','wallet.setTags'}:
-                    previous = self.wallet(value['wallet']).get('latest_snapshot')
-                job_id = str(uuid.uuid4())
-                job = {'schema_version': 1, 'job_id': job_id, 'operation': operation, 'input': value,
-                    'key_hash': key_hash, 'request_hash': fingerprint,'raw_hash':raw_hash, 'state': 'queued', 'attempt': 0,
-                    'created_at': now(), 'updated_at': now(), 'sequence': 0, 'cancel_requested': False,
-                    'stage': 'queued', 'events': [], 'checkpoint': 'snapshots/jobs/' + job_id,
-                    'result': None, 'previous_result': previous, 'errors': [],'chains':{}}
-                if operation in ('wallet.add','wallet.refresh'):job['analysis_phase']=phase
-                if parent:job['parent_job_id']=parent
-                self.save(job)
+                job=self.new_job(operation,value,key_hash,fingerprint,raw_hash,phase,parent)
             self.admit_wallet(job)
             atomic(receipt, {'schema_version': 1, 'request_hash': fingerprint,'raw_hash':raw_hash, 'job_id': job['job_id']})
             return job
+
+    def new_job(self,operation,value,key_hash,fingerprint,raw_hash,phase,parent):
+        """Called under the request lock; child admission is serialized too."""
+        previous = None
+        if operation=='wallet.add':
+            existing_wallet=next((w for w in read(self.root/'wallets.json')['wallets'] if w['address_key']==value['address'].lower()),None)
+            if existing_wallet:previous=existing_wallet.get('latest_snapshot')
+        if operation in {'wallet.refresh','prices.refresh','wallet.setTags'}:
+            previous = self.wallet(value['wallet']).get('latest_snapshot')
+        job_id = str(uuid.uuid4())
+        job = {'schema_version': 1, 'job_id': job_id, 'operation': operation, 'input': value,
+            'key_hash': key_hash, 'request_hash': fingerprint,'raw_hash':raw_hash, 'state': 'queued', 'attempt': 0,
+            'created_at': now(), 'updated_at': now(), 'sequence': 0, 'cancel_requested': False,
+            'stage': 'queued', 'events': [], 'checkpoint': 'snapshots/jobs/' + job_id,
+            'result': None, 'previous_result': previous, 'errors': [],'chains':{}}
+        if operation in ('wallet.add','wallet.refresh'):
+            job['analysis_phase']=phase
+            job['scan_policy']='optional_depth_v1'
+        if parent:job['parent_job_id']=parent
+        self.save(job)
+        return job
 
     def snapshot(self, snapshot_id):
         if not isinstance(snapshot_id, str) or not snapshot_id.startswith('snapshots/'):
@@ -431,6 +478,26 @@ class JobStore:
         if not published: return None
         return {'snapshot_id': job['checkpoint'], 'status': result['status']}
 
+    def reconcile_idle(self):
+        """Reconcile app restart without launching providers or disturbing a worker.
+
+        The inherited worker lease also protects a still-running engine orphan.
+        Both locks are nonblocking so opening the app never waits for a scan.
+        """
+        with (self.root/'.job-worker.lock').open('a') as lease,(self.root/'.analysis.lock').open('a') as writer:
+            try:
+                fcntl.flock(lease,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                fcntl.flock(writer,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:return False
+            self.recover()
+            with self.locked():
+                for path in self.jobs.glob('*.json'):
+                    job=self.get(path.stem)
+                    if job['state']=='queued' and job.get('scan_policy')=='optional_depth_v1':
+                        job.update(state='interrupted',stage='interrupted',errors=[{'code':'interrupted',
+                            'message':'Kira restarted before this scan continued. Resume here when ready. Saved results are safe.'}]);self.save(job)
+            return True
+
     def recover(self):
         with self.locked():
             for path in self.jobs.glob('*.json'):
@@ -444,11 +511,15 @@ class JobStore:
                 self.save(job)
 
     def event(self, job_id, event):
-        allowed = {'registered', 'discovery', 'chain', 'onchain_progress', 'first_evidence', 'dex_discovery', 'market_paused', 'token_images', 'published', 'failed'}
+        allowed = {'registered', 'discovery', 'chain', 'onchain_progress', 'first_evidence', 'dex_discovery', 'market_paused', 'research_paused', 'token_images', 'published', 'failed'}
         if event.get('stage') not in allowed: return
+        if event.get('operation')=='asset_review':
+            if type(event.get('chain_id')) is not int or event['chain_id']<=0 or any(type(event.get(k)) is not int or event[k]<0 for k in ('total','checked','quoted','unknown')) or event['checked']>event['total'] or event['quoted']+event['unknown']!=event['checked']:return
+        if event.get('operation')=='asset_inventory':
+            if type(event.get('chain_id')) is not int or event['chain_id']<=0 or type(event.get('total')) is not int or event['total']<0:return
         with self.locked():
             job = self.get(job_id)
-            counts = {k: v for k, v in event.items() if k in {'complete_chains', 'candidates', 'tokens','chain_id','registry','checked','held','block_number','total'} and type(v) is int and v >= 0}
+            counts = {k: v for k, v in event.items() if k in {'complete_chains', 'candidates', 'tokens','chain_id','registry','checked','held','block_number','total','pending_ranges','quoted','unknown'} and type(v) is int and v >= 0}
             job['stage'] = event['stage']
             if event['stage']=='chain' and type(event.get('chain_id')) is int:
                 block=event.get('block_number');block=str(block) if type(block) is int and block>=0 else block
@@ -456,12 +527,22 @@ class JobStore:
                     'endpoint_index':event.get('endpoint_index') if type(event.get('endpoint_index')) is int else None,
                     'status':event.get('status') if event.get('status') in ('complete','partial','unavailable') else 'unknown'}
             job['events'].append({'stage': event['stage'], 'observed_at': now(), 'counts': counts})
-            if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets','reserves'):
-                job['events'][-1]['context']={'operation':event['operation'],'chain_id':counts.get('chain_id')}
+            if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets','reserves','history','market_discovery','factory_queries','pool_checks','cashout_routes','mintclub_membership','asset_review','asset_inventory'):
+                context={'operation':event['operation'],'chain_id':counts.get('chain_id'),'attempt':job['attempt']}
+                if event['operation']=='asset_inventory':
+                    prior=job.setdefault('asset_progress',{}).setdefault(str(event['chain_id']),{'total':0,'checked':0,'quoted':0,'unknown':0})
+                    prior['total']=max(prior['total'],counts['total'])
+                if event['operation']=='asset_review':job.setdefault('asset_progress',{})[str(event['chain_id'])]={k:counts[k] for k in ('total','checked','quoted','unknown')}
+                if event.get('provider') in ('etherscan_keyless','etherscan_keyless_erc1155_id0'):context['provider']=event['provider']
+                job['events'][-1]['context']=context
+                prior=[e for e in job['events'][:-1] if e.get('context')==context and type(e.get('counts',{}).get('checked')) is int]
+                if type(counts.get('checked')) is int and counts['checked']>max((e['counts']['checked'] for e in prior),default=0):
+                    job['progress_observed_at']=job['events'][-1]['observed_at']
             if event['stage']=='first_evidence' and isinstance(event.get('snapshot'),str) and (event['snapshot']==job['checkpoint']+'/initial' or re.fullmatch(re.escape(job['checkpoint'])+r'/market-initial-[0-9]{4}',event['snapshot'])):
                 saved=self.snapshot(event['snapshot'])
                 wallet=job['input'].get('wallet') or job['input'].get('address')
                 if saved.get('wallet_address','').lower()==wallet.lower():job['result']={'snapshot_id':event['snapshot'],'status':saved['status'],'phase':'initial'}
+                job['progress_observed_at']=job['events'][-1]['observed_at']
             if event['stage']=='chain' and type(event.get('chain_id')) is int:job['events'][-1]['context']={'chain_id':event['chain_id'],**job['chains'][str(event['chain_id'])]}
             job['events'] = job['events'][-100:]
             self.save(job)
@@ -479,17 +560,12 @@ class JobStore:
         return {'wallet': wallet['address_key'], 'tags': tags, 'status': 'completed'}
 
     def continue_research(self):
-        """A durable continuation of the admitted analysis, behind initial reports."""
-        for parent in self.list():
-            if parent.get('analysis_phase')!='baseline' or parent['state'] not in ('succeeded','partial') or parent.get('cancel_requested') or parent.get('continuation_id'):continue
-            result=parent.get('result')
-            if not result or not result.get('snapshot_id'):continue
-            saved=self.snapshot(result['snapshot_id'])
-            if saved.get('pipeline',{}).get('phase')!='baseline':continue
-            wallet=parent['input'].get('address') or parent['input'].get('wallet')
-            child=self.submit({'schema_version':1,'operation':'wallet.refresh','input':{'wallet':wallet},'idempotency_key':'enrichment:'+parent['job_id']},phase='enrichment',parent=parent['job_id'])
-            with self.locked():
-                parent=self.get(parent['job_id']);parent['continuation_id']=child['job_id'];self.save(parent)
+        """Compatibility hook. Deep work now requires explicit job.deepen.
+
+        Existing child jobs are preserved; unstarted legacy parents do not gain
+        new background work merely because the worker or app restarts.
+        """
+        return
 
     def engine_command(self, job):
         if job['operation'] == 'prices.refresh':
@@ -581,9 +657,35 @@ class JobStore:
             if cancelled or self.get(job['job_id'])['cancel_requested']: raise JobError('cancelled', 'Job stopped. Previous published results and saved evidence were preserved.')
             if yielded:raise JobError('yielded','Detailed research yielded to a short operation. Saved checkpoints are retained and detailed research resumes automatically.')
             if self.get(job['job_id'])['stage']=='market_paused':raise JobError('market_budget','Balances are saved. Market verification reached its time budget. Resume this job in Activity to continue saved checks. Pending pools are not verified absent.')
+            if self.get(job['job_id'])['stage']=='research_paused':raise JobError('research_pending','Research has saved unfinished ranges ready for continuation.')
             raise JobError('engine_failed', 'Analysis stopped before publication. Check connection settings and resume saved evidence.')
         finally:
             stop_child(); selector.close(); child.stdout.close()
+
+    def queue_continuation(self, job, error):
+        """Only explicit slice boundaries resume automatically, with bounded stalls."""
+        path=self.root/job['checkpoint']/'continuation.json'
+        if job.get('analysis_phase')!='enrichment' or not path.is_file():
+            job.update(state='interrupted',stage='market_paused' if error.code=='market_budget' else 'research_paused',
+                       errors=[{'code':error.code,'message':str(error)}])
+            return
+        try:saved=read(path)
+        except (OSError,ValueError):saved=None
+        if (not isinstance(saved,dict) or not isinstance(saved.get('fingerprint'),str)
+                or not re.fullmatch(r'[0-9a-f]{64}',saved['fingerprint'])
+                or type(saved.get('not_before')) is not int or not 0<=saved['not_before']<=time.time()+86400):
+            job.update(state='interrupted',stage='research_paused',errors=[{'code':'invalid_envelope',
+                       'message':'Saved continuation boundary is invalid. Preserve the evidence for recovery.'}])
+            return
+        prior=job.get('continuation',{})
+        unchanged=prior.get('unchanged_turns',0)+1 if prior.get('fingerprint')==saved['fingerprint'] else 0
+        job['continuation']={'fingerprint':saved['fingerprint'],'unchanged_turns':unchanged,
+                             'not_before':max(saved['not_before'],int(time.time())+min(60,2**unchanged))}
+        if unchanged>=3:
+            job.update(state='interrupted',stage='research_stalled',errors=[{'code':'no_progress',
+                       'message':'Three continuation attempts made no new progress. Saved evidence is intact; unresolved reads remain unknown. Resume explicitly after checking the source.'}])
+        else:
+            job.update(state='queued',stage='waiting' if saved['not_before']>time.time() else 'queued',errors=[])
 
     def worker(self):
         with (self.root / '.job-worker.lock').open('a') as lease:
@@ -597,18 +699,25 @@ class JobStore:
                 writer = (self.root / '.analysis.lock').open('a')
                 fcntl.flock(writer, fcntl.LOCK_EX)
                 with self.locked():
-                    queued = sorted((self.get(p.stem) for p in self.jobs.glob('*.json')), key=lambda j: (j.get('analysis_phase')=='enrichment',j['created_at']))
-                    job = next((j for j in queued if j['state'] == 'queued'), None)
-                    if not job:writer.close();return
-                    if job.get('analysis_phase')=='enrichment':
+                    queued = sorted((self.get(p.stem) for p in self.jobs.glob('*.json')), key=lambda j: (j.get('analysis_phase')=='enrichment',j['updated_at'] if j.get('analysis_phase')=='enrichment' else j['created_at']))
+                    job = next((j for j in queued if j['state']=='queued' and j.get('continuation',{}).get('not_before',0)<=time.time()), None)
+                    waiting=any(j['state']=='queued' for j in queued)
+                    if not job:
+                        writer.close()
+                        if not waiting:return
+                    if job and job.get('analysis_phase')=='enrichment':
                         entry=self.wallet(job['input']['wallet'])
                         if entry.get('research_generation') not in (None,job.get('parent_job_id')):
                             job.update(state='cancelled',stage='stopped',errors=[{'code':'superseded','message':'Newer holdings research replaced this detailed run. Earlier evidence is preserved.'}]);self.save(job);writer.close();continue
-                    from kira_config import load_config
-                    config=load_config()
-                    job['provider_configuration']={'rpc_mode':config['rpc']['mode'],'discovery_provider':config['discovery']['provider'],
-                        'public_fallback':config['rpc']['allow_public_fallback'],'endpoint_refs':{cid:row['url_env'] for cid,row in config['rpc']['chains'].items()}}
-                    job.update(state='running', stage='starting', started_at=now(), attempt=job['attempt'] + 1, errors=[]); self.save(job)
+                    if job:
+                        from kira_config import load_config
+                        config=load_config()
+                        job['provider_configuration']={'rpc_mode':config['rpc']['mode'],'discovery_provider':config['discovery']['provider'],
+                            'public_fallback':config['rpc']['allow_public_fallback'],'endpoint_refs':{cid:row['url_env'] for cid,row in config['rpc']['chains'].items()}}
+                        job.update(state='running', stage='starting', started_at=now(), attempt=job['attempt'] + 1, errors=[]); self.save(job)
+                if not job:
+                    time.sleep(.5)
+                    continue
                 try:
                     result = self.execute(job, lease, writer)
                     with self.locked():
@@ -617,8 +726,9 @@ class JobStore:
                 except JobError as error:
                     with self.locked():
                         job = self.get(job['job_id'])
-                        if error.code=='yielded':job.update(state='queued',stage='queued',errors=[])
-                        elif error.code=='market_budget':job.update(state='interrupted',stage='market_paused',errors=[{'code':error.code,'message':str(error)}])
+                        if job['cancel_requested']:job.update(state='cancelled',stage='stopped',errors=[{'code':'cancelled','message':'Job stopped at your request. Resume saved evidence explicitly.'}])
+                        elif error.code=='yielded':job.update(state='queued',stage='queued',errors=[])
+                        elif error.code in ('market_budget','research_pending'):self.queue_continuation(job,error)
                         else:job.update(state='cancelled' if error.code == 'cancelled' else 'failed', stage='stopped', errors=[{'code': error.code, 'message': str(error)}])
                         self.save(job)
                 except (Exception, KeyboardInterrupt):
