@@ -72,9 +72,11 @@ for w in selected:
    shadow={'token_address':address,'dex_pools':[{'reported_price_usd':p.get('priceUsd'),'paired_tokens':[p['baseToken'],p['quoteToken']],'reported_liquidity':p.get('liquidity'),'source_url':p['url']} for p in options]}
    p=dex_price(shadow,h.now())
    if p:prices.append({'chain_id':chain_id,'address':address,**p,'reserve_symbol':symbol})
- node=subprocess.run(['node',str(Path(__file__).with_name('refresh-curve-prices.cjs')),str(path)],capture_output=True,text=True,timeout=60)
- rpc=json.loads(node.stdout)
- if node.returncode!=0:raise SystemExit('Curve refresh failed: '+h.redact(rpc))
+ try:node=subprocess.run(['node',str(Path(__file__).with_name('refresh-curve-prices.cjs')),str(path)],capture_output=True,text=True,timeout=180)
+ except subprocess.TimeoutExpired:rpc={'tokens':[],'errors':[{'code':'curve_budget','message':'Fresh curve checks reached their bound. Previous usable quotes are retained.'}]}
+ else:
+  rpc=json.loads(node.stdout)
+  if node.returncode!=0:raise SystemExit('Curve refresh failed: '+h.redact(rpc))
  by_address={(p['chain_id'],p['address'].lower()):p for p in prices}
  # Preserve the established Base WETH market reference. Native metadata fills gaps.
  eth_reference=next((p for p in prices if p.get('chain_id')==8453 and p['address'].lower()=='0x4200000000000000000000000000000000000006' and p.get('usd') is not None),None)
@@ -100,7 +102,7 @@ for w in selected:
  for key,row in fresh_native.items():
   native_prices[key.removesuffix('_USD')]={**row,'usd':row['value']};native_prices[key.removesuffix('_USD')].pop('value')
  output={'observed_at':h.now(),'wallet_address':w['address'],'balance_refresh':False,
-         'native_usd':native_prices,'tokens':list(by_address.values()),
+         'native_usd':native_prices,'tokens':list(by_address.values()),'markets':previous_market.get('markets',[]),
          'source_requests':fetched,'rpc_price_state':rpc,
          'note':'Prices only. Balances and research coverage remain at their recorded analysis time.'}
  destination=folder/'market-prices.json';temporary=destination.with_suffix('.json.tmp')
@@ -119,7 +121,13 @@ for w in selected:
  if missing:
   from wallet import MarketPause
   try:output=enrich({**snapshot,'tokens':missing},output,evidence_folder)
-  except MarketPause:output['reserve_price_status']='partial'
+  except MarketPause:
+   output['reserve_price_status']='partial'
+   graph_file=evidence_folder/'reserve-graph.json'
+   if graph_file.exists():
+    partial={(p['chain_id'],p['address'].lower()):p for p in output['tokens']}
+    for p in resolve(json.loads(graph_file.read_text()).get('tokens',[]),output['tokens']):partial[(p['chain_id'],p['address'].lower())]=p
+    output['tokens']=list(partial.values())
  # Preserve historical quotes on a provider gap, after fresh reserve derivation.
  # Fresh unfunded/unreliable evidence must invalidate an old estimate.
  published={(p['chain_id'],p['address'].lower()):p for p in output['tokens']}

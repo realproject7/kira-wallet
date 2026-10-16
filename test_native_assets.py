@@ -63,7 +63,7 @@ class NativeMarketTests(unittest.TestCase):
             self.assertEqual(market_metadata(coverage)['prices'], {})
         fetch.assert_not_called()
 
-    def run_price_job(self, rows, *, dex=None, previous=None, images_error=None, tokens=None, rpc_tokens=None, enrich_error=None):
+    def run_price_job(self, rows, *, dex=None, previous=None, images_error=None, tokens=None, rpc_tokens=None, enrich_error=None, node_error=None, partial_graph=None):
         import research
         sys.path.insert(0, str(Path(__file__).parent/'viewer'))
         with tempfile.TemporaryDirectory() as temporary:
@@ -76,12 +76,14 @@ class NativeMarketTests(unittest.TestCase):
                 'tags':['Fixture'],'latest_snapshot':{'directory':'snapshots/fixture','result':'snapshots/fixture/results.json'}}]}))
             def fetch(source, *args, **kwargs):return rows if '/coins/markets?' in source else dex or []
             def enrich_prices(snapshot,market,folder):
+                if partial_graph is not None:
+                    folder.mkdir(parents=True,exist_ok=True);(folder/'reserve-graph.json').write_text(json.dumps({'tokens':partial_graph,'market_pending':True}))
                 if enrich_error:raise enrich_error
                 return market
             error=None;real_fdopen=os.fdopen
             with (root/'.analysis.lock').open('a') as lock,\
                  patch.object(research,'ROOT',root),patch.object(research,'fetch',side_effect=fetch),\
-                 patch('subprocess.run',return_value=SimpleNamespace(returncode=0,stdout=json.dumps({'tokens':rpc_tokens or [],'errors':[]}))),\
+                 patch('subprocess.run',side_effect=node_error,return_value=SimpleNamespace(returncode=0,stdout=json.dumps({'tokens':rpc_tokens or [],'errors':[]}))),\
                  patch('curve_pricing.enrich',side_effect=enrich_prices) as enrich,\
                  patch('token_images.refresh_catalog',return_value={},side_effect=images_error) as images,\
                  patch.object(sys,'argv',['refresh_prices.py','--wallet','Fixture']),\
@@ -127,6 +129,34 @@ class NativeMarketTests(unittest.TestCase):
         self.assertEqual(market['reserve_price_status'],'partial')
         self.assertEqual(overlay['job_result_status'],'completed_with_coverage_gaps')
 
+    def test_curve_helper_timeout_keeps_previous_quotes_and_new_native_prices(self):
+        import subprocess
+        old={'tokens':[{'chain_id':8453,'address':'0x'+'2'*40,'usd':100,'basis':'Curve spot',
+                       'observed_at':'2026-10-01T00:00:00Z','quality':'estimated'}]}
+        market,overlay,_,error=self.run_price_job(self.fresh_rows(),previous=old,
+            node_error=subprocess.TimeoutExpired('synthetic-curve-helper',180))
+        self.assertIsNone(error)
+        self.assertEqual(market['native_usd']['ETH']['usd'],2)
+        self.assertEqual(market['retained_price_records'],1)
+        self.assertEqual(market['tokens'][0]['observed_at'],old['tokens'][0]['observed_at'])
+        self.assertEqual(overlay['job_result_status'],'completed_with_coverage_gaps')
+
+    def test_partial_reserve_graph_still_invalidates_a_newly_unfunded_curve(self):
+        from wallet import MarketPause
+        address='0x'+'2'*40;reserve='0x'+'3'*40
+        token={'chain_id':8453,'token_address':address,'dex_pools':[],
+               'mintclub':{'reserve_token':reserve,'reserve_symbol':'UNKNOWN'}}
+        old={'tokens':[{'chain_id':8453,'address':address,'usd':100,'basis':'Curve spot','quality':'estimated'}]}
+        graph=[{'chain_id':8453,'address':address,'is_curve':True,'funded':False,'curve_reserve':'0',
+                'source':'https://mint.club/token/base/'+address,'observed_at':'2026-10-16T12:00:00Z'}]
+        market,overlay,_,error=self.run_price_job(self.fresh_rows(),tokens=[token],previous=old,
+            partial_graph=graph,enrich_error=MarketPause('Partial reserve checks.'))
+        self.assertIsNone(error)
+        price=next(p for p in market['tokens'] if p['address']==address)
+        self.assertIsNone(price['usd']);self.assertEqual(price['quality'],'unfunded')
+        self.assertEqual(market['retained_price_records'],0)
+        self.assertEqual(overlay['job_result_status'],'completed_with_coverage_gaps')
+
     def test_price_job_repairs_native_quotes_without_changing_balances(self):
         rows=self.fresh_rows();market,overlay,images,error=self.run_price_job(rows)
         self.assertIsNone(error)
@@ -165,13 +195,15 @@ class NativeMarketTests(unittest.TestCase):
                'mintclub':{'reserve_token':'0x4200000000000000000000000000000000000006','reserve_symbol':'WETH'}}
         old_price={'chain_id':8453,'address':token['token_address'],'usd':100,'basis':'Curve spot',
                    'quality':'estimated','observed_at':'2026-10-01T00:00:00Z'}
-        old={'native_usd':{'ETH':{'usd':1000,'observed_at':old_price['observed_at']}},'tokens':[old_price]}
+        old={'native_usd':{'ETH':{'usd':1000,'observed_at':old_price['observed_at']}},'tokens':[old_price],
+             'markets':[{'id':'8453:'+token['token_address'],'pools':[{'pool':'0x'+'3'*40,'observed_at':old_price['observed_at']}]}]}
         rpc={'chain_id':8453,'address':token['token_address'],'price_in_weth':1,'basis':'Curve spot'}
         market,overlay,_,error=self.run_price_job(self.fresh_rows()[:1],previous=old,tokens=[token],rpc_tokens=[rpc])
         self.assertIsNone(error)
         preserved=next(p for p in market['tokens'] if p['address']==token['token_address'])
         self.assertEqual(preserved,{**old_price,'retained_from_previous':True})
         self.assertEqual(market['native_usd']['ETH'],old['native_usd']['ETH'])
+        self.assertEqual(market['markets'],old['markets'])
         self.assertEqual(overlay['job_result_status'],'completed_with_coverage_gaps')
         self.assertEqual(market['retained_price_records'],1)
 
