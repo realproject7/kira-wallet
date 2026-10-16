@@ -147,7 +147,7 @@ class WalletPipelineTests(unittest.TestCase):
             wallet.atomic(destination/'baseline-chain-8453.json',chain)
             on_chain({'stage':'chain','chain_id':8453})
             wallet.atomic(destination/'onchain-summary.json',{'chains':[chain]})
-        with patch.object(wallet,'ROOT',self.folder),patch.object(wallet,'source_check'),patch.object(wallet,'validate_address',return_value=self.address),patch.object(wallet,'run_node',side_effect=scan),patch.object(wallet,'discover',return_value={'chain_id':8453,'complete':False,'tokens':[]}),patch('native_assets.market_metadata',return_value={'prices':{}}),patch.object(sys,'argv',['wallet.py','add',self.address,'--tag','Fixture','--phase','baseline']),contextlib.redirect_stdout(io.StringIO()):
+        with patch.object(wallet,'ROOT',self.folder),patch.object(wallet,'source_check'),patch.object(wallet,'validate_address',return_value=self.address),patch.object(wallet,'run_node',side_effect=scan),patch.object(wallet,'discover',return_value={'chain_id':8453,'complete':False,'tokens':[]}),patch('native_assets.market_metadata',return_value={'prices':{}}),patch.object(wallet,'fetch',return_value=[]),patch('token_images.refresh_catalog',return_value={}) as images,patch.object(sys,'argv',['wallet.py','add',self.address,'--tag','Fixture','--phase','baseline']),contextlib.redirect_stdout(io.StringIO()):
             wallet.main()
         entry=wallet.read(self.folder/'wallets.json')['wallets'][0]
         folder=self.folder/entry['latest_snapshot']['directory']
@@ -155,6 +155,48 @@ class WalletPipelineTests(unittest.TestCase):
         self.assertEqual(wallet.read(folder/'results.json')['pipeline']['phase'],'baseline')
         self.assertEqual(wallet.read(folder/'initial/results.json')['tokens'][0]['wallet_balance'],'1')
         self.assertEqual(len(wallet.read(self.folder/'wallets.json')['research_runs']),2)
+        images.assert_called_once()
+        self.assertTrue((folder/'token-market-metadata.json').exists())
+
+    def test_basic_metadata_prices_a_curve_from_its_reserve_without_full_market_review(self):
+        reserve='0x'+'2'*40;child='0x'+'3'*40;unpriced='0x'+'4'*40
+        observed='2026-10-16T12:00:00Z'
+        mint={'reserve_token':reserve,'reserve_symbol':'HUNT','price_for_next_mint_in_reserve_token':'0.25',
+              'funded':True,'reserve_balance':'20','source_url':'https://mint.club/token/base/'+child,
+              'observed_at':observed,'block_number':'123'}
+        snapshot={'wallet_address':self.address,'coverage':[self.network],
+                  'tokens':[{'chain_id':8453,'token_address':child,'token_type':'ERC20','wallet_balance':'7','mintclub':mint},
+                            {'chain_id':8453,'token_address':unpriced,'token_type':'ERC20','mintclub':None}]}
+        snapshot['coverage'].append({'chain_id':84532,'environment':'testnet'})
+        snapshot['tokens'].append({'chain_id':84532,'token_address':child,'token_type':'ERC20','mintclub':mint})
+        pair={'chainId':'base','pairAddress':'0x'+'5'*40,'dexId':'uniswap',
+              'baseToken':{'address':reserve,'symbol':'HUNT'},'quoteToken':{'address':'0x'+'6'*40},
+              'liquidity':{'usd':10000,'base':2000},'priceUsd':'2','url':'https://example.org/pool'}
+        before=json.dumps(snapshot,sort_keys=True)
+        with patch.object(wallet,'fetch',return_value=[pair,{**pair,'chainId':'ethereum','priceUsd':'999'}]),\
+             patch.object(wallet.h,'now',return_value='2026-10-16T12:01:00Z'),\
+             patch('curve_pricing.enrich') as enrich,patch('token_images.refresh_catalog',return_value={}) as images,\
+             patch.object(wallet,'event'):
+            market=wallet.refresh_metadata(snapshot,{'tokens':[]},self.folder,discover_prices=True)
+        rows={(p['chain_id'],p['address']):p for p in market['tokens']}
+        self.assertEqual(rows[(8453,child)]['usd'],0.5)
+        self.assertEqual(rows[(8453,child)]['observed_at'],observed)
+        self.assertEqual(rows[(8453,reserve)]['usd'],2)
+        self.assertNotIn((8453,unpriced),rows)
+        self.assertNotIn((84532,child),rows)
+        self.assertNotIn((84532,reserve),rows)
+        self.assertEqual(json.dumps(snapshot,sort_keys=True),before)
+        enrich.assert_not_called();images.assert_called_once()
+
+    def test_metadata_provider_gap_keeps_saved_price_and_still_refreshes_artwork(self):
+        address='0x'+'2'*40
+        snapshot={'wallet_address':self.address,'coverage':[self.network],
+                  'tokens':[{'chain_id':8453,'token_address':address,'token_type':'ERC20','mintclub':None}]}
+        old={'chain_id':8453,'address':address,'usd':2,'quality':'estimated','observed_at':'2026-10-01T00:00:00Z'}
+        with patch.object(wallet,'fetch',return_value={'transport_error':{'status':429}}),\
+             patch('token_images.refresh_catalog',return_value={}) as images,patch.object(wallet,'event'):
+            market=wallet.refresh_metadata(snapshot,{'tokens':[old]},self.folder,discover_prices=True)
+        self.assertEqual(market['tokens'],[old]);images.assert_called_once()
 
     def test_partial_200_preserves_candidates_without_claiming_complete(self):
         data={'data':{'tokens':[self.token()]},'error':{'partialErrors':[{'network':'base-mainnet','message':'timeout'}]}}
@@ -359,11 +401,11 @@ class WalletPipelineTests(unittest.TestCase):
             fetches.append(t['token_address']);return {'response':[],'observed_at':'2026-10-14T01:00:00Z'}
         with patch.object(wallet,'ROOT',self.folder),patch.object(wallet,'run_node',side_effect=node),patch.object(wallet,'dex_fetch',side_effect=dex),\
              patch.object(wallet,'event'),patch.object(wallet,'report'),patch('native_assets.market_metadata',return_value={'prices':{},'images':{},'evidence':None}),\
-             patch('curve_pricing.enrich') as enrich,patch('token_images.refresh_catalog'):
+             patch('curve_pricing.enrich',side_effect=lambda snapshot,market,folder,**kwargs:market) as enrich,patch('token_images.refresh_catalog'):
             with self.assertRaises(wallet.MarketPause):wallet.finish(entry,folder,[{**self.network,'name':'Base'}],[{'chain_id':8453,'complete':True,'source':None,'pages':[],'native':[]}])
         self.assertEqual([command for command,_ in calls],['liquidate','dex','liquidate'])
         self.assertLessEqual(calls[1][1],60000);self.assertIn(reserve,fetches)
-        enrich.assert_not_called()
+        enrich.assert_called_once()
 
 
 if __name__=='__main__':unittest.main()

@@ -278,7 +278,8 @@ class ViewerTests(unittest.TestCase):
         catalog={'tokens':{f'8453:{address}':{'image_url':url}}}
         self.assertEqual(token_images.image_for(catalog,8453,address),url)
         self.assertIsNone(token_images.image_for(catalog,1,address))
-        self.assertIn('/tokens/logo?chainId=8453&address=',token_images.image_for(catalog,8453,address,mint=True))
+        self.assertEqual(token_images.image_for(catalog,8453,address,mint=True),
+                         f'https://fc.hunt.town/tokens/logo/8453/{address}/image')
         self.assertIsNone(token_images.safe_image('https://tokens.1inch.io.evil.example/logo.png'))
         self.assertIsNone(token_images.safe_image('http://tokens.1inch.io/logo.png'))
         self.assertIsNone(token_images.safe_image('https://secret@mint.club/logo.png'))
@@ -298,6 +299,23 @@ class ViewerTests(unittest.TestCase):
             self.assertIsNone(token_images.image_for(catalog,1,native_symbol='APE'))
             self.assertIsNone(token_images.image_for(catalog,33139,'0x'+'1'*40))
             fetch.assert_not_called()
+
+    def test_mint_metadata_uses_checksum_with_lowercase_catalog_identity(self):
+        address='0x52908400098527886e0f7030069857d2e4169ee7'
+        checksum='0x52908400098527886E0F7030069857D2E4169EE7'
+        reserve='0x'+'2'*40
+        source=f'https://mint.club/api/tokens/details/8453/{checksum}'
+        requests=[]
+        def fetch(url):
+            requests.append(url)
+            if url==source:return {'chainId':8453,'tokenAddress':checksum,
+                'reserveToken':{'chainId':8453,'tokenAddress':reserve,'logo':'https://mint.club/reserve.png'}}
+            return []
+        token_images.refresh_catalog([{'tokens':[{'chain_id':8453,'token_address':address,'mintclub':{'reserve_token':reserve}}]}],self.root,fetch=fetch)
+        catalog=token_images.read_catalog(self.root)
+        self.assertIn(source,requests)
+        self.assertIn('8453:'+address,catalog['mint_details'])
+        self.assertEqual(token_images.image_for(catalog,8453,reserve),'https://mint.club/reserve.png')
 
     def test_contract_scoped_lp_and_dex_artwork_preserves_cache_on_failure(self):
         address='0x'+'1'*40;other='0x'+'2'*40

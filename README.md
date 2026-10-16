@@ -48,7 +48,9 @@ include the same package and its checksum.
    stays visible. An AI or browser wallet connection does not enable an indexer.
 2. **Add a watching wallet.** Paste a public address and give it a name. Add more
    wallets whenever you need them. The form starts free research of native, common tokens and Mint Club assets, with keyless ERC20 transfer discovery on Ethereum, Base, Optimism, Arbitrum, Polygon and BNB. RPC checks candidate balances; unfinished history remains visible. First balances appear before detailed research finishes.
-   The basic scan saves usable results first. Choose **Start deep scan** for
+   The basic scan checks Base, Ethereum and Blast, up to 128 candidates per
+   chain, with bounded price and artwork lookup. This initial scope also applies
+   when Alchemy is connected. Choose **Start deep scan** for other configured networks,
    additional discovery and one representative sell estimate per asset. Deep
    scans show saved asset checks, available prices and unresolved checks. Pause
    and resume from saved work at any time. Unknown coverage stays visible.

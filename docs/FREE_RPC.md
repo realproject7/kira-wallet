@@ -147,6 +147,9 @@ RPC-verified balances. Other Routescan chains are not presumed supported.
 Explicit keyless opt-outs and custom-only preferences remain respected.
 
 Initial reports check Base, Ethereum and Blast, up to 128 candidates per chain.
+This scheduling scope also applies to Alchemy discovery. It is not a three-chain
+limit of public RPC. Initial price and artwork metadata has a separate bounded
+lookup, so unfinished sell-estimate research cannot suppress those lookups.
 Selected common contracts take priority. Remaining candidates and networks are
 explicitly pending. A user-selected deep scan checks every configured
 network, its recorded inventory policy and markets. In full mode, pinned registry counts,

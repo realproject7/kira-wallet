@@ -4,10 +4,11 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlparse
 import json
 import os
 import re
+import subprocess
 import urllib.request
 from native_assets import NATIVE_ASSETS, native_identity
 from chain_images import chain_image
@@ -47,7 +48,10 @@ def safe_image(raw):
 
 def mint_logo(chain_id, address):
     if not identity(chain_id, address): return None
-    return API + '/tokens/logo?' + urlencode({'chainId': chain_id, 'address': address})
+    # Mint Club's direct endpoint requires EIP-55 casing. Hunt normalizes the
+    # same chain/contract identity and serves the identical artwork for old
+    # snapshots whose addresses were stored in lowercase.
+    return reserve_logo(chain_id, address)
 
 
 def reserve_logo(chain_id, address):
@@ -83,6 +87,17 @@ def fetch_metadata(url):
         request = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 KiraWallet/0.1', 'Accept':'application/json'})
         with urllib.request.urlopen(request, timeout=15) as response: return json.load(response)
     except (OSError, ValueError): return None
+
+
+def checksum_addresses(addresses):
+    """Normalize metadata requests in one local viem call, never per render."""
+    if not addresses:return {}
+    try:
+        script='const fs=require("node:fs"),{getAddress}=require("viem");const rows=JSON.parse(fs.readFileSync(0,"utf8"));process.stdout.write(JSON.stringify(Object.fromEntries(rows.map(a=>[a.toLowerCase(),getAddress(a.toLowerCase())]))));'
+        result=subprocess.run(['node','-e',script],cwd=Path(__file__).resolve().parents[1],
+                              input=json.dumps(addresses),capture_output=True,text=True,timeout=10,check=True)
+        return json.loads(result.stdout)
+    except (OSError,ValueError,subprocess.SubprocessError):return {}
 
 
 def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, native_images=None):
@@ -160,8 +175,10 @@ def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, 
                   for snapshot in snapshots for t in snapshot.get('tokens', []) if t.get('mintclub')}
     checked = catalog.setdefault('mint_details', {})
     candidates = [t for key, t in candidates.items() if key and (force or not fresh(checked.get(key)))]
+    checksums=checksum_addresses([t['token_address'] for t in candidates])
     def get(t):
-        source = f"{API}/tokens/details/{t['chain_id']}/{t['token_address']}"
+        address=checksums.get(t['token_address'].lower(),t['token_address'])
+        source = f"{API}/tokens/details/{t['chain_id']}/{address}"
         return t, source, fetch(source)
     with ThreadPoolExecutor(max_workers=4) as pool:
         for token, source, detail in pool.map(get, candidates):

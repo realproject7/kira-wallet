@@ -411,8 +411,76 @@ def publish_snapshot(wallet, folder, result):
         atomic(ROOT/'wallets.json',registry)
 
 
+def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_prices=False):
+    """Price and illustrate saved holdings independently of deep market review."""
+    from curve_pricing import enrich, resolve
+    sys.path.insert(0,str(ASSETS/'viewer'))
+    from model import dex_price
+    from token_images import refresh_catalog
+    deadline=time.monotonic()+45
+    price_deadline=deadline-10
+    tokens=snapshot['tokens'];rows={(p['chain_id'],p['address'].lower()):p for p in market.get('tokens',[])}
+    mainnets={c['chain_id'] for c in snapshot.get('coverage',[]) if c.get('environment')=='mainnet'}
+    wanted={(t['chain_id'],t['token_address'].lower()):t for t in tokens
+            if t['chain_id'] in mainnets and t.get('token_type')!='ERC1155'}
+    for t in tokens:
+        mint=t.get('mintclub')
+        if mint and t['chain_id'] in mainnets:
+            key=(t['chain_id'],mint['reserve_token'].lower())
+            wanted.setdefault(key,{'chain_id':key[0],'token_address':key[1]})
+    if discover_prices and wanted:
+        event('dex_discovery',tokens=len(wanted))
+        requests=[]
+        for cid,slug in DEX.items():
+            addresses=sorted(address for chain,address in wanted if chain==cid)
+            requests.extend((cid,slug,set(addresses[i:i+30]),'https://api.dexscreener.com/tokens/v1/'+slug+'/'+','.join(addresses[i:i+30])) for i in range(0,len(addresses),30))
+        def get(request):
+            response=fetch(request[3],deadline=price_deadline)
+            return request,{'source':request[3],'observed_at':h.now(),'response':response}
+        evidence=[]
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            for (cid,slug,addresses,source),record in executor.map(get,requests):
+                evidence.append(record)
+                pools={}
+                for pair in record['response'] if isinstance(record['response'],list) else []:
+                    try:
+                        address=pair['baseToken']['address'].lower()
+                        if pair['chainId']==slug and address in addresses:pools.setdefault(address,[]).append(pool_row(pair,record['observed_at']))
+                    except (KeyError,TypeError,AttributeError):continue
+                for address,group in pools.items():
+                    p=dex_price({'token_address':address,'dex_pools':group},record['observed_at'])
+                    if p:rows[(cid,address)]={'chain_id':cid,'address':address,**p}
+        atomic(folder/'token-market-metadata.json',evidence)
+        for key,t in wanted.items():
+            if key not in rows:
+                p=dex_price(t,None)
+                if p:rows[key]={'chain_id':key[0],'address':key[1],**p}
+    graph=[]
+    for t in tokens:
+        mint=t.get('mintclub')
+        if mint and t['chain_id'] in mainnets and type(mint.get('funded')) is bool and mint.get('price_for_next_mint_in_reserve_token') is not None:
+            graph.append({'chain_id':t['chain_id'],'address':t['token_address'],'is_curve':True,
+                'reserve_token':mint['reserve_token'],'reserve_symbol':mint['reserve_symbol'],
+                'price_in_reserve':mint['price_for_next_mint_in_reserve_token'],'funded':mint.get('funded'),
+                'curve_reserve':mint['reserve_balance'],'source':mint['source_url'],
+                'observed_at':mint['observed_at'],'block_number':mint.get('block_number')})
+    for p in resolve(graph,list(rows.values())):rows[(p['chain_id'],p['address'].lower())]=p
+    market={**market,'tokens':list(rows.values())}
+    pricing_tokens=[t for t in tokens if t['chain_id'] in mainnets]
+    missing=any(t['mintclub'].get('funded') and rows.get((t['chain_id'],t['token_address'].lower()),{}).get('usd') is None for t in pricing_tokens if t.get('mintclub'))
+    if missing and time.monotonic()<price_deadline:
+        try:market=enrich({**snapshot,'tokens':pricing_tokens},market,folder,deadline=price_deadline)
+        except (MarketPause,OSError,ValueError):market['reserve_price_status']='partial'
+    if tokens or native_images:
+        try:
+            event('token_images',tokens=len(tokens))
+            event('token_images',**refresh_catalog([snapshot],ROOT,native_images=native_images or {},fetch=lambda url:fetch(url,deadline=deadline)))
+        except (OSError,ValueError):market['image_refresh_status']='unavailable'
+    return market
+
+
 def initial_result(wallet, folder, networks, discovered, chains, *, phase='baseline', prices=False):
-    """Publish recorded partial facts without waiting for registry or market work."""
+    """Publish first balances, then bounded price and artwork metadata."""
     by_chain={c['chain_id']:c for c in chains};by_discovery={d['chain_id']:d for d in discovered}
     coverage=[];tokens=[{**t,'dex_liquidity_found':t.get('dex_liquidity_found',False)} for c in chains for t in c['tokens']]
     for n in networks:
@@ -445,14 +513,19 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
         'actions':{'signatures':0,'approvals':0,'swaps':0,'transfers':0,'rpc_read_only':True},
         'pipeline':{'version':2,'phase':phase,'enrichment_pending':True,'resumable':True},'evidence_files':['onchain-summary.json']}
     refs={}
+    native_market={}
     if prices:
         from native_assets import market_metadata
-        refs=market_metadata(coverage,fetch=lambda url:h.fetch(url,timeout=8))['prices']
+        native_market=market_metadata(coverage,fetch=lambda url:h.fetch(url,timeout=8))
+        refs=native_market['prices']
         result['price_references']=refs
+        if native_market.get('evidence'):atomic(folder/'native-market.json',native_market['evidence'])
+    market={'observed_at':result['compiled_at'],'wallet_address':wallet['address'],
+        'native_usd':{k.removesuffix('_USD'):{'usd':float(v['value']),'observed_at':v.get('observed_at'),'basis':v.get('basis'),'source':v.get('source')} for k,v in refs.items()},'tokens':[]}
+    if prices:market=refresh_metadata(result,market,folder,native_images=native_market.get('images'),discover_prices=True)
     atomic(folder/'onchain-summary.json',{'wallet':wallet['address'],'chains':chains})
     atomic(folder/'results.json',result)
-    atomic(folder/'market-prices.json',{'observed_at':result['compiled_at'],'wallet_address':wallet['address'],
-        'native_usd':{k.removesuffix('_USD'):{'usd':float(v['value']),'observed_at':v.get('observed_at'),'basis':v.get('basis'),'source':v.get('source')} for k,v in refs.items()},'tokens':[]})
+    atomic(folder/'market-prices.json',market)
     report(result,folder)
     publish_snapshot(wallet,folder,result)
     return result
@@ -698,16 +771,7 @@ def finish(wallet, folder, networks, discovered):
         'native_usd':{k.removesuffix('_USD'):{'usd':float(p['value']),'observed_at':p.get('observed_at'),
             'source':p.get('source'),'asset_id':p.get('asset_id'),'basis':p.get('basis','Market index')} for k,p in refs.items()},
         'tokens':prices+reserve_prices,'note':'DEX and reserve prices observed during this run. Curve spot prices use recorded on-chain state. Unknown prices remain null.'})
-    from curve_pricing import enrich
-    if not market_pending and market_scope!='representative_v1':
-        try:atomic(folder/'market-prices.json',enrich(result,read(folder/'market-prices.json'),folder,deadline=deadline))
-        except MarketPause:market_pending=True
-    from token_images import refresh_catalog
-    try:
-        if not market_pending and time.monotonic()<deadline:
-            event('token_images',tokens=len(tokens))
-            event('token_images',**refresh_catalog([result],ROOT,native_images=native_market['images'],fetch=lambda url:fetch(url,deadline=deadline)))
-    except (OSError,ValueError):event('token_images',status='unavailable')
+    atomic(folder/'market-prices.json',refresh_metadata(result,read(folder/'market-prices.json'),folder,native_images=native_market['images']))
     atomic(folder/'market-prices.json',retain_price_evidence(read(folder/'market-prices.json'),previous_prices))
     from cashout import annotate
     annotate(result,read(folder/'market-prices.json'))

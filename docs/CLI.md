@@ -65,6 +65,12 @@ remain under Advanced. Never paste the key into the browser. `kira doctor`
 checks whether the configured key is available. Configuration alone does not
 prove complete coverage; inspect the recorded results and gaps.
 
+The basic scan checks Base, Ethereum and Blast with at most 128 candidates per
+chain, including with Alchemy. Price and artwork lookup runs independently of
+deep sell-estimate checks. Start a deep scan to check other configured networks
+and remaining candidates. The default wallet-candidate policy does not enumerate
+the full Mint Club registry; `--inventory full` explicitly requests that scope.
+
 Connecting Codex or Claude is optional. Use Connect your AI when ready, verify
 a generic response and explicitly choose context permissions. Assistant answers
 render a safe Markdown subset; raw HTML, images and links remain inert text.
