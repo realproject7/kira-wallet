@@ -18,8 +18,20 @@ from typing import Literal, TypedDict, NotRequired
 import uuid
 
 ASSETS = Path(__file__).resolve().parent
+
+def signal_process_group(pgid, sig):
+    try:os.killpg(pgid,sig)
+    except ProcessLookupError:return
+    except PermissionError:
+        # macOS can return EPERM for an already exited process group. Only
+        # dismiss it after proving no live member can continue writing.
+        status=subprocess.run(['ps','-axo','pgid=,stat='],capture_output=True,text=True,timeout=3)
+        rows=[line.split() for line in status.stdout.splitlines() if line.strip()]
+        valid=bool(rows) and all(len(row)==2 and re.fullmatch(r'\d+',row[0]) and re.fullmatch(r'[DRISTUWZX][<NnLs+ElWXV]*',row[1]) for row in rows)
+        if status.returncode or not valid or any(int(row[0])==pgid and not row[1].startswith('Z') for row in rows):raise
+
 State = Literal['queued', 'running', 'interrupted', 'succeeded', 'partial', 'failed', 'cancelled']
-Operation = Literal['wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider']
+Operation = Literal['wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv']
 TERMINAL = {'succeeded', 'partial', 'failed', 'cancelled', 'interrupted'}
 ADDRESS = re.compile(r'0x[0-9a-fA-F]{40}')
 
@@ -124,10 +136,10 @@ class JobStore:
         if not isinstance(job,dict) or type(job.get('schema_version')) is not int or job.get('schema_version') != 1: raise JobError('unsupported_version', 'Unsupported persisted job version.')
         required={'schema_version','job_id','operation','input','state','attempt','sequence','result','previous_result','key_hash','request_hash','created_at','updated_at','cancel_requested','checkpoint','stage','events','errors','chains'}
         optional={'raw_hash','control_receipts','control_raw','provider_configuration','started_at','analysis_phase','parent_job_id','continuation_id'}
-        if required-set(job) or set(job)-required-optional or job['job_id']!=job_id or job['checkpoint']!='snapshots/jobs/'+job_id or not isinstance(job['operation'],str) or job['operation'] not in {'wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider'} or not isinstance(job['state'],str) or job['state'] not in TERMINAL|{'queued','running'} or any(type(job[k]) is not int or job[k]<0 for k in ('attempt','sequence')) or type(job['cancel_requested']) is not bool or not isinstance(job['input'],dict) or any(not isinstance(job[k],list) for k in ('events','errors')) or not isinstance(job['chains'],dict):
+        if required-set(job) or set(job)-required-optional or job['job_id']!=job_id or job['checkpoint']!='snapshots/jobs/'+job_id or not isinstance(job['operation'],str) or job['operation'] not in {'wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv'} or not isinstance(job['state'],str) or job['state'] not in TERMINAL|{'queued','running'} or any(type(job[k]) is not int or job[k]<0 for k in ('attempt','sequence')) or type(job['cancel_requested']) is not bool or not isinstance(job['input'],dict) or any(not isinstance(job[k],list) for k in ('events','errors')) or not isinstance(job['chains'],dict):
             raise JobError('invalid_envelope','Persisted job validation failed. Preserve the file for recovery.')
         names={'wallet.add':['address','tag'],'wallet.refresh':['wallet'],'prices.refresh':['wallet'],'wallet.setTags':['wallet','tags'],
-            'settings.rpc':['mode','chains','allow_public_fallback'],'settings.discovery':['provider','key_env'],'settings.provider':['provider','key_env']}[job['operation']]
+            'settings.rpc':['mode','chains','allow_public_fallback'],'settings.discovery':['provider','key_env'],'settings.provider':['provider','key_env'],'settings.importEnv':['import_id','key_env']}[job['operation']]
         if job['operation']=='settings.rpc' and 'priority' in job['input']:names=names+['priority']
         fields(job['input'],names)
         if 'analysis_phase' in job and job['analysis_phase'] not in ('baseline','enrichment'):raise JobError('invalid_envelope','Invalid analysis phase.')
@@ -158,6 +170,13 @@ class JobStore:
         return matches[0]
 
     def normalize(self, operation, value):
+        if operation == 'settings.importEnv':
+            fields(value,['import_id','key_env'])
+            identifier(value['import_id'])
+            if not isinstance(value['key_env'],str) or not re.fullmatch(r'[A-Z_][A-Z0-9_]{0,99}',value['key_env']):
+                raise JobError('invalid_settings','Use a local credential reference.')
+            self.import_reference(value)
+            return value.copy()
         if operation == 'settings.provider':
             fields(value,['provider','key_env'])
             if value['provider'] not in ('public','alchemy') or not isinstance(value['key_env'],str) or not re.fullmatch(r'[A-Z_][A-Z0-9_]{0,99}',value['key_env']):
@@ -208,6 +227,26 @@ class JobStore:
             fields(value, ['job_id']); identifier(value['job_id'])
             return value.copy()
         raise JobError('unsupported_operation', 'Unsupported job operation.')
+
+    def import_reference(self, value):
+        file=self.root/'.config-imports'/(identifier(value['import_id'])+'.json')
+        if not file.is_file() or file.is_symlink() or file.resolve().parent != (self.root/'.config-imports').resolve():
+            raise JobError('invalid_import','Run kira config import-env locally to create a connection request.')
+        record=read(file)
+        if record.get('key_env')!=value['key_env'] or not isinstance(record.get('file'),str) or not Path(record['file']).is_file():
+            raise JobError('invalid_import','The local environment file is no longer available. Run kira config import-env again.')
+        return record['file']
+
+    def queue_import(self, file, key_env):
+        if not isinstance(key_env,str) or not re.fullmatch(r'[A-Z_][A-Z0-9_]{0,99}',key_env):
+            raise JobError('invalid_settings','Use a local credential reference.')
+        file=Path(file).expanduser().resolve()
+        if not file.is_file():raise JobError('invalid_import','Secret environment file does not exist.')
+        identity=str(uuid.uuid4())
+        # Only the reference stays in this private record. The browser job has no
+        # file path or credential value, and the existing writer stays exclusive.
+        atomic(self.root/'.config-imports'/(identity+'.json'),{'file':str(file),'key_env':key_env})
+        return self.submit({'schema_version':1,'operation':'settings.importEnv','input':{'import_id':identity,'key_env':key_env},'idempotency_key':identity})
 
     def admit_wallet(self, job):
         if job['operation'] not in ('wallet.add','wallet.refresh'):return job
@@ -383,11 +422,12 @@ class JobStore:
                 receipt = self.publication(job)
                 if receipt:
                     job.update(result=receipt, state='partial' if receipt['status'] != 'completed' else 'succeeded', stage='published')
+                elif job['cancel_requested']:job.update(state='cancelled',stage='stopped',errors=[{'code':'cancelled','message':'Job stopped at your request. Saved evidence is available to resume.'}])
                 else: job.update(state='interrupted', stage='interrupted', errors=[{'code': 'interrupted', 'message': 'Worker stopped. Saved evidence is available for an explicit resume.'}])
                 self.save(job)
 
     def event(self, job_id, event):
-        allowed = {'registered', 'discovery', 'chain', 'onchain_progress', 'first_evidence', 'dex_discovery', 'token_images', 'published', 'failed'}
+        allowed = {'registered', 'discovery', 'chain', 'onchain_progress', 'first_evidence', 'dex_discovery', 'market_paused', 'token_images', 'published', 'failed'}
         if event.get('stage') not in allowed: return
         with self.locked():
             job = self.get(job_id)
@@ -399,9 +439,9 @@ class JobStore:
                     'endpoint_index':event.get('endpoint_index') if type(event.get('endpoint_index')) is int else None,
                     'status':event.get('status') if event.get('status') in ('complete','partial','unavailable') else 'unknown'}
             job['events'].append({'stage': event['stage'], 'observed_at': now(), 'counts': counts})
-            if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets'):
+            if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets','reserves'):
                 job['events'][-1]['context']={'operation':event['operation'],'chain_id':counts.get('chain_id')}
-            if event['stage']=='first_evidence' and event.get('snapshot')==job['checkpoint']+'/initial':
+            if event['stage']=='first_evidence' and isinstance(event.get('snapshot'),str) and (event['snapshot']==job['checkpoint']+'/initial' or re.fullmatch(re.escape(job['checkpoint'])+r'/market-initial-[0-9]{4}',event['snapshot'])):
                 saved=self.snapshot(event['snapshot'])
                 wallet=job['input'].get('wallet') or job['input'].get('address')
                 if saved.get('wallet_address','').lower()==wallet.lower():job['result']={'snapshot_id':event['snapshot'],'status':saved['status'],'phase':'initial'}
@@ -453,7 +493,13 @@ class JobStore:
         if job['operation'].startswith('settings.'):
             from kira_config import config_path,load_config
             config=load_config()
-            if job['operation']=='settings.rpc':
+            if job['operation']=='settings.importEnv':
+                from kira_config import provider_config,secret_values
+                config=provider_config(config,'alchemy',job['input']['key_env'])
+                config['secret_env_file']=self.import_reference(job['input']);config['discovery']['explorers']=True
+                if not secret_values(config).get(job['input']['key_env']):
+                    raise JobError('connection_key_missing','The local file does not contain the selected Alchemy key. Check the file and run import-env again. Existing settings are unchanged.')
+            elif job['operation']=='settings.rpc':
                 updated={**job['input'],'chains':{key:dict(row) for key,row in job['input']['chains'].items()}}
                 updated.setdefault('priority',config['rpc'].get('priority','public_first'))
                 for key,row in updated['chains'].items():
@@ -478,24 +524,21 @@ class JobStore:
             nonlocal stopped
             if stopped:return
             stopped=True
-            try:os.killpg(child.pid, signal.SIGTERM)
-            except ProcessLookupError:pass
+            signal_process_group(child.pid, signal.SIGTERM)
             if child.poll() is None:
                 try: child.wait(timeout=5)
                 except subprocess.TimeoutExpired:
-                    try:os.killpg(child.pid, signal.SIGKILL)
-                    except ProcessLookupError:pass
+                    signal_process_group(child.pid, signal.SIGKILL)
                     child.wait()
             # A failed engine leader can leave a Node descendant in its group.
-            try:os.killpg(child.pid,signal.SIGKILL)
-            except ProcessLookupError:pass
+            signal_process_group(child.pid,signal.SIGKILL)
         try:
             while child.poll() is None:
                 if self.get(job['job_id'])['cancel_requested']:
                     cancelled = True; stop_child(); break
                 if job.get('analysis_phase')=='enrichment' and time.monotonic()>=next_check:
                     next_check=time.monotonic()+2
-                    if any(j['state']=='queued' and j.get('analysis_phase')=='baseline' for j in self.list()):
+                    if any(j['state']=='queued' and (j.get('analysis_phase')=='baseline' or j['operation']=='prices.refresh' or j['operation'].startswith('settings.')) for j in self.list()):
                         yielded=True;stop_child();break
                 for key, _ in selector.select(.2):
                     chunk = os.read(key.fileobj.fileno(), 65536)
@@ -518,8 +561,9 @@ class JobStore:
                 if len(buffer)>65536:buffer=b''
             receipt = self.publication(job)
             if receipt: return receipt
-            if cancelled: raise JobError('cancelled', 'Job stopped. Previous published results and saved evidence were preserved.')
-            if yielded:raise JobError('yielded','Detailed research yielded to a new initial report. Saved identity checkpoints are retained.')
+            if cancelled or self.get(job['job_id'])['cancel_requested']: raise JobError('cancelled', 'Job stopped. Previous published results and saved evidence were preserved.')
+            if yielded:raise JobError('yielded','Detailed research yielded to a short operation. Saved checkpoints are retained and detailed research resumes automatically.')
+            if self.get(job['job_id'])['stage']=='market_paused':raise JobError('market_budget','Balances are saved. Market verification reached its time budget. Resume this job in Activity to continue saved checks. Pending pools are not verified absent.')
             raise JobError('engine_failed', 'Analysis stopped before publication. Check connection settings and resume saved evidence.')
         finally:
             stop_child(); selector.close(); child.stdout.close()
@@ -557,6 +601,7 @@ class JobStore:
                     with self.locked():
                         job = self.get(job['job_id'])
                         if error.code=='yielded':job.update(state='queued',stage='queued',errors=[])
+                        elif error.code=='market_budget':job.update(state='interrupted',stage='market_paused',errors=[{'code':error.code,'message':str(error)}])
                         else:job.update(state='cancelled' if error.code == 'cancelled' else 'failed', stage='stopped', errors=[{'code': error.code, 'message': str(error)}])
                         self.save(job)
                 except (Exception, KeyboardInterrupt):
@@ -565,6 +610,7 @@ class JobStore:
                         try:saved=self.publication(job)
                         except (ValueError,OSError):saved=None
                         if saved:job.update(result=saved,state='succeeded' if saved['status']=='completed' else 'partial',stage='published',errors=[])
+                        elif job['cancel_requested']:job.update(state='cancelled',stage='stopped',errors=[{'code':'cancelled','message':'Job stopped at your request. Resume saved evidence explicitly.'}])
                         else:job.update(state='interrupted', stage='interrupted', errors=[{'code': 'interrupted', 'message': 'Worker stopped. Resume saved evidence explicitly.'}])
                         self.save(job)
                     return

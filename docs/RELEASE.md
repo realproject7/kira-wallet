@@ -94,21 +94,21 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.7.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.8.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.7.tgz --access public
+npm publish ./dist/kira-wallet-0.1.8.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
 After publication, verify the registry archive and perform a fresh install
 before marking the new onboarding flow as available to npm users.
 
-## Proposed 0.1.7 behavior
+## Published 0.1.7 behavior
 
-The candidate enables useful keyless research by default, expands the curated
+Published 0.1.7 enables useful keyless research by default, expands the curated
 contract inventory and separates first recorded balances from exhaustive
 background research. Pending candidates, registry work and other networks stay
 visible. Current wallet evidence cannot roll back when an older continuation
@@ -121,7 +121,20 @@ names and outcomes, without raw arguments. Job checkpoints and normalized token
 discovery flags have separate meanings. Imported connection references reconcile
 with untouched settings fields while preserving edited drafts.
 
-The next archive is **0.1.7**, unpublished until the operator runs the command.
+The operator published **0.1.7** on October 9, 2026. Its archive is immutable.
+
+## Proposed 0.1.8 behavior
+
+The next archive is **0.1.8**, unpublished until the operator runs the command.
+It queues local connection imports during research, lets settings and price
+updates preempt enrichment, preserves explicit cancellation, and checkpoints
+wallet balance batches and market verification at fixed blocks. A 180-second
+market budget publishes immutable recorded balances with an explicit pending
+market notice and Resume action. Agent inventories use bounded pages, context
+errors have failed receipts, and curve comparisons require comparable state
+rather than only a newer block or a different wallet-sized quote.
+macOS process-group cleanup checks for live writers before dismissing an
+already exited group, preserving short-operation yielding and explicit Stop.
 Release readiness requires the repository suite, clean installation, source and
 history privacy scans, independent review and the frozen archive manifest.
 No live-extension or human passphrase acceptance is inferred from these checks.

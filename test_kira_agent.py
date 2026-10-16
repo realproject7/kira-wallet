@@ -69,7 +69,9 @@ class AgentTest(unittest.TestCase):
             wallet['assets'].append(asset)
         with patch('model.load_state',return_value=(state,stamp,stale)):
             facts=projection(self.root,settings(scope='portfolio'))
-            self.assertEqual(len(facts['wallets'][0]['assets']),100)
+            self.assertEqual(len(facts['wallets'][0]['assets']),12)
+            self.assertEqual(facts['wallets'][0]['asset_count'],100)
+            self.assertEqual(facts['wallets'][0]['next_offset'],12)
             self.assertLessEqual(len(json.dumps(facts,ensure_ascii=False).encode()),240_000)
             self.assertGreater(sum(a['pools_omitted'] for a in facts['wallets'][0]['assets']),0)
             detail=projection(self.root,settings(scope='portfolio'),token_id=wallet['assets'][-1]['id'])
@@ -92,7 +94,7 @@ class AgentTest(unittest.TestCase):
         self.assertFalse(quote['gas_included'])
         self.assertNotIn('source_url',json.dumps(scoped))
 
-    def test_large_inventory_keeps_every_holding_and_defers_detail_without_changing_scope(self):
+    def test_large_inventory_pages_without_changing_scope_or_unknown_values(self):
         from copy import deepcopy
         import model
         state,stamp,stale=model.load_state(self.root)
@@ -108,12 +110,14 @@ class AgentTest(unittest.TestCase):
         config=settings(scope='portfolio',wallet_tools=True)
         with patch('model.load_state',return_value=(state,stamp,stale)):
             facts=projection(self.root,config)
-            self.assertEqual(facts['scope'],'portfolio');self.assertEqual(facts['detail_level'],'holdings')
+            self.assertEqual(facts['scope'],'portfolio')
             holdings=facts['wallets'][0]['assets']
-            self.assertEqual([a['id'] for a in holdings],[a['id'] for a in wallet['assets']])
-            self.assertEqual(len(holdings),800);self.assertEqual(holdings[-1]['balance'],'1.2345')
+            self.assertEqual([a['id'] for a in holdings],[a['id'] for a in wallet['assets'][:12]])
+            self.assertEqual(facts['wallets'][0]['asset_count'],800)
+            self.assertEqual(facts['wallets'][0]['assets_omitted'],788)
+            self.assertEqual(holdings[-1]['balance'],'1.2345')
             self.assertIsNone(holdings[-1]['value_usd']);self.assertIsNone(holdings[-1]['price'])
-            self.assertNotIn('exit_quote',holdings[-1]);self.assertLessEqual(len(json.dumps(facts,ensure_ascii=False).encode()),240_000)
+            self.assertLessEqual(len(json.dumps(facts,ensure_ascii=False).encode()),40_000)
             detail=projection(self.root,config,token_id=holdings[-1]['id'])
             self.assertEqual(detail['wallets'][0]['assets'][0]['exit_quote']['output_amount'],'0.1234')
             self.store.config=config

@@ -76,6 +76,8 @@ class PublicDiscoveryTests(unittest.TestCase):
             with patch.object(public,'_last',0):
                 start=time.monotonic();row=public.fetch_page('http://127.0.0.1:'+str(server.server_port),.4)
             self.assertLess(time.monotonic()-start,1);self.assertIn('error',row)
+            start=time.monotonic();row=wallet.fetch('http://127.0.0.1:'+str(server.server_port),deadline=time.monotonic()+.4)
+            self.assertLess(time.monotonic()-start,1);self.assertTrue(row.get('research_pending'))
         finally:server.shutdown();server.server_close();thread.join()
 
     def test_default_and_custom_only_preserve_distinct_coverage(self):

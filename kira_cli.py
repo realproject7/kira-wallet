@@ -187,7 +187,15 @@ def main():
         import fcntl
         operation_lock=(root/'.analysis.lock').open('a')
         try:fcntl.flock(operation_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
-        except BlockingIOError:raise ValueError('An analysis or configuration writer is active. Retry after it finishes.') from None
+        except BlockingIOError:
+            operation_lock.close()
+            if args.command=='config' and args.setting=='import-env':
+                from kira_jobs import JobStore
+                store=JobStore(root);job=store.queue_import(args.file,args.key_env);store.launch()
+                print(json.dumps({'status':'configuration_queued','job_id':job['job_id'],
+                    'note':'Connection setup is queued in Activity. Detailed research will pause safely, apply the connection, then resume. Recheck the connection after this job finishes.'}))
+                return 0
+            raise ValueError('An analysis or configuration writer is active. Check Activity and stop or wait for the active job before retrying.') from None
     if args.command in ('start','stop','demo','setup'):
         import fcntl
         viewer_lock=(root/'.viewer.lock').open('a')

@@ -18,7 +18,7 @@
   }
   const active = job => ['queued', 'running'].includes(job.state);
   const rpcGap = chain => (chain.rpc_available===false&&!chain.rpc_pending)||(chain.registry_complete===false&&!chain.rpc_pending&&chain.registry_phase!=='deferred')||chain.candidate_balance_errors>0;
-  const coverageGap = chain => !chain.complete||rpcGap(chain)||chain.candidate_deferred>0;
+  const coverageGap = chain => !chain.complete||rpcGap(chain)||chain.candidate_deferred>0||chain.market_pending||chain.market_errors>0;
   function discoveryNotice(wallet, readiness = null) {
     const chains=(wallet?.chains||[]).filter(c=>c.environment==='mainnet');
     const gaps=chains.filter(coverageGap);
@@ -27,12 +27,14 @@
     const disabled=(readiness?.public_discovery===false&&readiness?.discovery_provider==='none'&&chains.every(c=>!c.complete))||(!readiness&&chains.every(c=>c.discovery_status==='disabled'));
     const noKey=readiness?.discovery_configured&&!readiness.discovery_key_available;
     const rpc=chains.filter(rpcGap);
+    if(chains.some(c=>c.market_pending))return {title:'Balances saved; market checks paused',message:'Recorded balances and completed registry checks are available. Remaining market verification reached its time budget. Resume the job in Activity to continue saved checks. Pending markets are not verified absent, and missing prices remain unknown.',action:'none',settings:false};
     if(rpc.length){
       const connection=missing&&(disabled||noKey);
       return {title:'Some balances could not be checked',
         message:'On-chain checks did not finish on '+rpc.length+(rpc.length===1?' network.':' networks.')+' Missing balances are unknown, so this portfolio is partial. Wait a moment, then retry holdings. '+(readiness?.discovery_key_available?'Review your Alchemy connection if errors continue. Public and custom providers can both have outages or limits.':'We recommend connecting Alchemy for backup RPC reads and broader token coverage on supported networks.')+(connection?' Other ERC20 holdings may also be missing.':''),
         action:'refresh',settings:true,rpcIssues:true,refreshLabel:'Retry holdings',settingsLabel:readiness?.discovery_key_available?'Review Alchemy connection':'Set up Alchemy'};
     }
+    if(chains.some(c=>c.market_errors>0))return {title:'Some market checks did not complete',message:'Recorded holdings remain available. Some pool reads failed, so missing market and price details remain unknown. Retry holdings. If this continues, review your data connection and its RPC access.',action:'refresh',settings:true,settingsLabel:'Review data connection'};
     if(!disabled&&!noKey&&chains.some(c=>c.rpc_pending||c.registry_phase==='deferred'))return {title:'First results are available',message:'This initial report has recorded balances. Other networks, remaining token candidates, the full Mint Club registry and markets need detailed research. Check Activity for progress or to resume stopped work. You can also refresh holdings. Missing holdings and prices remain unknown. Alchemy is optional for broader coverage.',action:'none',settings:true,settingsLabel:'Review optional connection'};
     if(missing&&disabled)return {title:'Some tokens may be missing',message:'Free research checks native balances, selected common tokens and Mint Club assets, with keyless token discovery on supported networks. Public RPC cannot list all wallet tokens. We recommend Alchemy for broader token coverage on supported networks. Connect it, then refresh holdings. Missing tokens are not zero balances.',action:'settings',settingsLabel:'Set up Alchemy'};
     if(missing&&noKey)return {title:'Token discovery needs a connection',message:'The local Alchemy key is unavailable. Follow the setup guide, check the key, then refresh holdings. Other tokens may be missing from this partial portfolio.',action:'settings',settingsLabel:'Set up Alchemy'};

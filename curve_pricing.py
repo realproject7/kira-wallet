@@ -40,15 +40,18 @@ def resolve(graph, prices):
     return list(cache.values())
 
 
-def enrich(snapshot,market,folder):
-    from wallet import ALCHEMY, DEX, atomic, fetch, pool_row, run_node
+def enrich(snapshot,market,folder,deadline=None):
+    import time
+    from wallet import ALCHEMY, DEX, atomic, fetch, pool_row, run_node, MarketPause
     sys.path.insert(0,str(h.ASSETS/'viewer'))
     from model import dex_price
     networks=json.loads((h.ASSETS/'sources/rpc-candidates.json').read_text())
     input_path=folder/'reserve-graph-input.json'
-    atomic(input_path,{'wallet':snapshot['wallet_address'],'tokens':snapshot['tokens'],'networks':networks})
-    run_node('reserves',input_path,folder/'reserve-graph.json')
-    graph=json.loads((folder/'reserve-graph.json').read_text())['tokens']
+    atomic(input_path,{'wallet':snapshot['wallet_address'],'tokens':snapshot['tokens'],'networks':networks,
+        'market_budget_ms':max(0,int((deadline-time.monotonic())*1000)) if deadline is not None else 180_000})
+    run_node('reserves',input_path,folder/'reserve-graph.json',deadline=deadline)
+    recorded=json.loads((folder/'reserve-graph.json').read_text());graph=recorded['tokens']
+    if recorded.get('market_pending'):raise MarketPause('Reserve checks reached the market time budget. Resume saved checks in Activity.')
     ordinary=[r for r in graph if r.get('address') and r.get('is_curve') is False and r['chain_id'] in ALCHEMY]
     prices=list(market.get('tokens',[]))
     # Only reserve assets are requested. Identify prices by network and contract, never symbol.
@@ -57,8 +60,15 @@ def enrich(snapshot,market,folder):
     responses=[]
     key=h.secrets().get('ALCHEMY_CUSTOM_APY_KEY')
     for i in range(0,len(requests) if key else 0,25):
-        response=fetch('https://api.g.alchemy.com/prices/v1/'+h.secrets()['ALCHEMY_CUSTOM_APY_KEY']+'/tokens/by-address',{'addresses':requests[i:i+25]})
-        responses.append({'observed_at':h.now(),'source':'Alchemy token prices by address','request':requests[i:i+25],'response':response})
+        import hashlib
+        batch=requests[i:i+25];identity=hashlib.sha256(json.dumps(batch,sort_keys=True).encode()).hexdigest()
+        file=folder/('reserve-price-cache-'+identity+'.json')
+        record=json.loads(file.read_text()) if file.exists() else None
+        if not record:
+            response=fetch('https://api.g.alchemy.com/prices/v1/'+h.secrets()['ALCHEMY_CUSTOM_APY_KEY']+'/tokens/by-address',{'addresses':batch},deadline=deadline)
+            record={'observed_at':h.now(),'source':'Alchemy token prices by address','request':batch,'response':response}
+            if isinstance(response,dict) and isinstance(response.get('data'),list):atomic(file,record)
+        response=record['response'];responses.append(record)
         for record in response.get('data') or []:
             p=next((p for p in record.get('prices',[]) if p.get('currency')=='usd' and p.get('value') is not None),None)
             if p and not record.get('error'):
@@ -71,10 +81,13 @@ def enrich(snapshot,market,folder):
         chain=DEX.get(row['chain_id'])
         if not chain:return None
         url='https://api.dexscreener.com/token-pairs/v1/'+chain+'/'+row['address']
-        return {'row':row,'source':url,'observed_at':h.now(),'response':fetch(url)}
+        from wallet import dex_fetch
+        recorded=dex_fetch({'chain_id':row['chain_id'],'token_address':row['address'],'token_type':'ERC20'},folder,deadline)
+        return {'row':row,'source':url,'observed_at':recorded.get('observed_at'),'response':recorded['response']}
     keys={(p['chain_id'],p['address'].lower()) for p in prices if p.get('usd') is not None}
     missing=[r for r in ordinary if (r['chain_id'],r['address'].lower()) not in keys]
     with ThreadPoolExecutor(max_workers=4) as executor:fetched=list(executor.map(get,missing))
+    if deadline is not None and time.monotonic()>=deadline:raise MarketPause('Reserve pricing reached the market time budget. Resume saved checks in Activity.')
     atomic(folder/'reserve-dex-prices.json',fetched)
     for r in fetched:
         if not r or not isinstance(r['response'],list):continue

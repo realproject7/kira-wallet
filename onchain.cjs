@@ -30,9 +30,10 @@ function client(chainId,url) {
 async function connect(chainId){
   const c=client(chainId);await c.getChainId();return c;
 }
-async function snapshotBlock(c){
-  const header=await c.getBlock({blockTag:'latest'}),state=clientState.get(c);
+async function snapshotBlock(c,saved=null){
+  const header=await c.getBlock(saved?{blockNumber:BigInt(saved.block_number)}:{blockTag:'latest'}),state=clientState.get(c);
   if(!state||header.number==null)throw new Error('Snapshot block identity unavailable.');
+  if(saved&&header.hash!==saved.block_hash)throw new Error('Saved snapshot block is no longer canonical. Start a new holdings analysis.');
   pool.pin(state.chainId,header.number,header.hash,state.last);
   return {number:header.number,hash:header.hash};
 }

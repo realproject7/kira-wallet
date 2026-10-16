@@ -40,9 +40,16 @@ def fetch_page(url, timeout, body=None):
     finally:_permit.release()
     remaining=end-time.monotonic()
     if remaining<=0:return {'error':{'code':'deadline'}}
+    return fetch_bounded(url,remaining,body)
+
+
+def fetch_bounded(url, timeout, body=None):
+    """An isolated, size-limited reader with a total body deadline, no pacing."""
+    end=time.monotonic()+timeout
+    if timeout<=0:return {'error':{'code':'deadline'}}
     ctx=multiprocessing.get_context('spawn')
     incoming,outgoing=ctx.Pipe(duplex=False)
-    reader=ctx.Process(target=_fetch_body,args=(url,remaining,outgoing,body),daemon=True)
+    reader=ctx.Process(target=_fetch_body,args=(url,timeout,outgoing,body),daemon=True)
     try:
         reader.start();outgoing.close()
         if not incoming.poll(max(0,end-time.monotonic())):return {'error':{'code':'deadline'}}
