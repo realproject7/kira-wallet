@@ -17,17 +17,22 @@ Registry publication remains an operator action. The code and original character
 
 ## Lifecycle
 
-Wallet registration and holdings refresh run a basic scan first. Use the saved
-result immediately, then choose **Start deep scan** in the wallet or Activity
-to check remaining networks and more complex markets. Deep scanning is optional,
-has no overall time limit, and supports **Pause scan** and **Resume deep scan**.
-It runs while Kira is running on this computer. App restart preserves saved
-results and requires an explicit resume for interrupted work.
+Connect Alchemy once with `kira connect alchemy`. The operator enters the app
+key at a hidden terminal prompt. New wallet and price research requires this
+connection; saved portfolios remain readable without it.
 
-CLI equivalents are `kira jobs deepen BASIC_JOB_ID`, `kira jobs cancel JOB_ID`
-and `kira jobs resume JOB_ID`. A repeated deepen request uses the same child;
-it does not restart paused or finished work. Refreshing holdings starts a new
-basic scan. Neither basic nor deep completion guarantees all holdings or prices.
+Wallet registration and holdings refresh check every configured network and all
+returned candidates, including the reachable Mint Club registry. There is no
+128-candidate cap. Saved balances appear as checks finish; price and artwork
+lookup is independent of optional sell analysis.
+
+Choose **Analyze sell routes** only for sale or redemption estimates. Internally,
+`kira jobs deepen HOLDINGS_JOB_ID` admits one child using that wallet’s immutable
+holdings source. It does not discover tokens or reread balances. Use `kira jobs
+cancel JOB_ID` to pause and `kira jobs resume JOB_ID` to continue. A newer holdings
+lookup supersedes earlier analysis. Old limited scans require a holdings refresh
+before the new sell-analysis action. Slices remain bounded, with no overall
+completion deadline or exhaustive-market guarantee.
 
 Use `kira setup` for your first setup. For everyday use, `kira start` starts
 the local app with browser controls and opens it in your browser. The default
@@ -58,18 +63,10 @@ Published 0.1.4 explains limited discovery before wallet registration and beside
 holdings. Missing coverage keeps the portfolio estimate partial. Existing snapshots require a holdings refresh after connecting
 an indexer; a price refresh does not discover missing tokens.
 
-Free research checks known assets, Mint Club and keyless token candidates on supported networks. Alchemy is optional. For broader ERC20 discovery,
-open Custom RPC & token coverage, select Alchemy and follow its local key guide.
-Published 0.1.5 uses one save for Alchemy RPC and discovery; chain overrides
-remain under Advanced. Never paste the key into the browser. `kira doctor`
-checks whether the configured key is available. Configuration alone does not
-prove complete coverage; inspect the recorded results and gaps.
-
-The basic scan checks Base, Ethereum and Blast with at most 128 candidates per
-chain, including with Alchemy. Price and artwork lookup runs independently of
-deep sell-estimate checks. Start a deep scan to check other configured networks
-and remaining candidates. The default wallet-candidate policy does not enumerate
-the full Mint Club registry; `--inventory full` explicitly requests that scope.
+Alchemy is required for new research. Open **Workspace settings → Alchemy** and
+follow the [setup guide](ALCHEMY_SETUP.md). Alchemy reads run first; verified
+public RPC remains an allowed fallback. Existing custom-only preferences are
+preserved. Missing networks and token prices remain explicit in saved results.
 
 Connecting Codex or Claude is optional. Use Connect your AI when ready, verify
 a generic response and explicitly choose context permissions. Assistant answers
@@ -121,7 +118,6 @@ assets and writable runtime files use separate roots.
 
 ```sh
 kira rpc public
-kira discovery none
 kira doctor
 kira doctor --live --chains 1,8453,81457 --budget 30
 ```
@@ -232,11 +228,11 @@ original encryption passphrase. No signing, key export or account deletion
 endpoint is exposed. OWS absence does not block ordinary address or browser
 wallet onboarding.
 
-## Free reads and broader token coverage
+## Provider reads and coverage
 
-Public RPC is preferred for ordinary reads, including when a custom backup is
-configured. Advanced settings can select custom first or custom only. For CLI
-configuration, use `kira rpc set --chain 8453 --url-env KIRA_BASE_RPC --priority
-public_first`. Existing custom-only choices remain unchanged. Alchemy token
-discovery uses the configured key directly. See [free RPC behavior](FREE_RPC.md)
-and the [Alchemy setup guide](ALCHEMY_SETUP.md).
+Alchemy token discovery uses your key directly. Configured Alchemy RPC reads
+run before public fallback. The browser exposes one Alchemy connection rather
+than free and expanded modes. Existing low-level RPC references remain available
+through the CLI. See [Alchemy setup](ALCHEMY_SETUP.md). `FREE_RPC.md` retains the
+historical free-discovery implementation and its evidence; it is not the current
+onboarding policy.

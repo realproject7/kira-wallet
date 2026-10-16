@@ -16,7 +16,7 @@ from chain_images import chain_image
 ROOT = Path(os.environ.get('KIRA_DATA_DIR',Path(__file__).resolve().parents[1])).expanduser().resolve()
 API = 'https://mint.club/api'
 IMAGE_HOSTS = ('mint.club', 'tokens.1inch.io', 'coin-images.coingecko.com', 'fc.hunt.town',
-               'mint-club-v2.s3.us-west-2.amazonaws.com', 'cdn.dexscreener.com')
+               'mint-club-v2.s3.us-west-2.amazonaws.com', 'cdn.dexscreener.com','static.alchemyapi.io')
 DEX_CHAINS = {1:'ethereum', 8453:'base', 81457:'blast', 4663:'robinhood',
               10:'optimism', 42161:'arbitrum', 56:'bsc', 137:'polygon',
               43114:'avalanche', 130:'unichain', 33139:'apechain'}
@@ -72,8 +72,8 @@ def image_for(catalog, chain_id, address=None, *, mint=False, native_symbol=None
         if image: return image
         # Artwork fallback is selected by the native currency, not the L2 logo.
         return chain_image(1 if native_symbol == 'ETH' else chain_id)
-    if mint: return mint_logo(chain_id, address)
     row = catalog.get('tokens', {}).get(identity(chain_id, address)) or {}
+    if mint:return safe_image(row.get('image_url')) or mint_logo(chain_id,address)
     image = safe_image(row.get('image_url')) or KNOWN_TOKEN_ARTWORK.get(identity(chain_id,address))
     # Mint Club still returns legacy 1inch URLs that reject requests with HTTP 403.
     # Its Hunt token-image endpoint serves the same reserve contract's logo.
@@ -109,6 +109,11 @@ def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, 
         try: return 0 <= (now - datetime.fromisoformat(raw)).total_seconds() < 86400
         except (ValueError, TypeError): return False
     records = catalog.setdefault('tokens', {})
+    for snapshot in snapshots:
+        for token in snapshot.get('tokens',[]):
+            key=identity(token.get('chain_id'),token.get('token_address'))
+            image=safe_image(token.get('indexer_image_url'))
+            if key and image:records[key]={'image_url':image,'source':'Alchemy token metadata','observed_at':observed}
     artwork_checked=catalog.setdefault('artwork_checked',{})
     wanted = {identity(t.get('chain_id'),t.get('token_address')):t
               for snapshot in snapshots for t in snapshot.get('tokens',[])

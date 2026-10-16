@@ -11,7 +11,7 @@ const compactQuantity = raw => raw!=null&&Number(raw)>=100000 ? new Intl.NumberF
 const shortAddress = address => address.slice(0,6)+'…'+address.slice(-4);
 const stamp = raw => raw ? new Date(raw).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}) : 'Not analysed yet';
 const safeURL = raw => {try{const url=new URL(raw,location.origin);return (url.origin===location.origin||url.protocol==='https:') ? url.href : '#';}catch{return '#';}};
-const imageHosts = new Set(['mint.club','tokens.1inch.io','coin-images.coingecko.com','fc.hunt.town','mint-club-v2.s3.us-west-2.amazonaws.com','cdn.dexscreener.com']);
+const imageHosts = new Set(['mint.club','tokens.1inch.io','coin-images.coingecko.com','fc.hunt.town','mint-club-v2.s3.us-west-2.amazonaws.com','cdn.dexscreener.com','static.alchemyapi.io']);
 const safeImage = raw => {try{const url=new URL(raw);return url.protocol==='https:'&&imageHosts.has(url.hostname)&&!url.username&&!url.password&&(!url.port||url.port==='443') ? url.href : null;}catch{return null;}};
 const walletGlyph = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6.5h13a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 1.4-1.9L15 1.8v4.7"/><path d="M19 10h-4a2 2 0 0 0 0 4h4"/><path d="M15.5 12h.01"/></svg>';
 
@@ -188,6 +188,7 @@ function renderDiscoveryCoverage(w) {
     else if(c.registry_complete===false&&c.rpc_available)reasons.push('Mint Club balances partly unchecked; retry holdings'+(c.registry_errors||c.balance_errors?' ('+(c.registry_errors||0)+' asset checks and '+(c.balance_errors||0)+' balance reads failed)':''));
     if(c.candidate_deferred>0)reasons.push(c.candidate_deferred+' token candidates await balance checks in Activity');
     if(c.candidate_balance_errors>0)reasons.push(c.candidate_balance_errors+' token balance reads failed; missing balances remain unknown');
+    if(c.token_detail_errors>0)reasons.push(c.token_detail_errors+' token details unavailable; missing quantities and prices remain unknown');
     if(c.market_pending)reasons.push('balances saved; remaining market checks paused at the time budget; resume in Activity');
     if(c.market_errors>0)reasons.push(c.market_errors+' token market checks had failed reads; prices remain unknown where evidence is missing');
     return c.name+': '+reasons.join('; ');
@@ -209,15 +210,17 @@ function icon(asset){
   return ['',asset.symbol.slice(0,2).toUpperCase()];
 }
 function coinIcon(asset){
-  const [cls,glyph]=icon(asset),url=safeImage(asset.image_url);
-  return `<span class="coin-icon ${cls}" aria-hidden="true"><span class="coin-fallback">${escapeHTML(glyph)}</span>${url?`<img src="${escapeHTML(url)}" alt="" width="34" height="34" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-token-image>`:''}</span>`;
+  const [cls,glyph]=icon(asset),fallback=Number.isSafeInteger(asset.chain_id)&&/^0x[0-9a-fA-F]{40}$/.test(asset.address||'')?'https://fc.hunt.town/tokens/logo/'+asset.chain_id+'/'+asset.address.toLowerCase()+'/image':null;
+  const url=safeImage(asset.image_url)||fallback;
+  return `<span class="coin-icon ${cls}" aria-hidden="true"><span class="coin-fallback">${escapeHTML(glyph)}</span>${url?`<img src="${escapeHTML(url)}" ${fallback&&fallback!==url?`data-image-fallback="${escapeHTML(fallback)}"`:''} alt="" width="34" height="34" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-token-image>`:''}</span>`;
 }
 function bindImages(){
   document.querySelectorAll('img[data-token-image],img[data-chain-image]').forEach(img=>{
     if(img.dataset.bound)return;img.dataset.bound='true';
     const show=()=>{const ok=img.naturalWidth>0;img.hidden=!ok;img.parentElement.classList.toggle('has-image',ok);};
-    img.addEventListener('load',show,{once:true});img.addEventListener('error',show,{once:true});
-    if(img.complete)show();
+    const failed=()=>{const fallback=safeImage(img.dataset.imageFallback);delete img.dataset.imageFallback;if(fallback&&img.src!==fallback){img.src=fallback;return;}show();};
+    img.addEventListener('load',show);img.addEventListener('error',failed);
+    if(img.complete){if(img.naturalWidth)show();else failed();}
   });
 }
 function assetRow(a){

@@ -43,3 +43,7 @@ token safety, current balance, value or an exhaustive inventory. No service SDK
 or credential is distributed. Selected new known identities use issuer documents,
 PancakeSwap integration references and freshly verified on-chain metadata; their
 per-contract provenance is in the catalog.
+
+## Alchemy setup illustration
+
+`viewer/static/alchemy-create-app.png` is an unmodified example screenshot from Alchemy’s public API key walkthrough, used to explain app setup. Source: https://www.alchemy.com/docs/create-an-api-key . The image contains no Kira operator account or credential. Alchemy retains rights to its interface and illustration.

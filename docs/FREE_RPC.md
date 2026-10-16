@@ -1,4 +1,11 @@
-# Free RPC reads and token coverage
+# Historical free RPC reads and token coverage
+
+Current research requires Alchemy. Holdings check every configured network and
+all returned candidates with full reachable Mint Club enumeration. Alchemy reads
+run first. Sell analysis is optional and uses saved holdings only. See
+[Alchemy setup](ALCHEMY_SETUP.md). The free-discovery policies and acceptance
+limits below are retained as historical implementation evidence, not current
+onboarding defaults.
 
 Kira contacts public providers directly from the local research process. No
 Kira relay or shared credential is required. Free public services are best

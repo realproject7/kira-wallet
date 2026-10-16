@@ -96,7 +96,7 @@ class WalletPipelineTests(unittest.TestCase):
             self.assertNotEqual(first['fingerprint'],third['fingerprint']);self.assertEqual(third['not_before'],0)
 
     def test_inventory_resume_preserves_old_scope_and_rejects_policy_changes(self):
-        self.assertEqual(wallet.inventory_policy(),'wallet_candidates_v1')
+        self.assertEqual(wallet.inventory_policy(),'full_registry')
         self.assertEqual(wallet.inventory_policy('full'),'full_registry')
         self.assertEqual(wallet.inventory_policy(manifest={}), 'full_registry')
         self.assertEqual(wallet.inventory_policy(manifest={'inventory_policy':'wallet_candidates_v1'}),'wallet_candidates_v1')
@@ -141,18 +141,19 @@ class WalletPipelineTests(unittest.TestCase):
         chain={'chain_id':8453,'rpc_status':'available','native_balance':'1','tokens':[token],
                'registry_scan':{'checked':0,'registry_count':None,'complete':False,'phase':'deferred'}}
         def scan(mode,source,destination,on_chain=None):
-            self.assertEqual(mode,'baseline')
+            self.assertEqual(mode,'scan')
             network_ids=[n['chain_id'] for n in wallet.read(source)['networks']]
-            self.assertEqual(network_ids,[8453,1,81457])
-            wallet.atomic(destination/'baseline-chain-8453.json',chain)
+            self.assertEqual(set(network_ids),{n['chain_id'] for n in wallet.read(self.folder/'networks.json')['networks']})
+            self.assertEqual(wallet.read(source)['inventory_policy'],'full_registry')
+            wallet.atomic(destination/'chain-8453.json',chain)
             on_chain({'stage':'chain','chain_id':8453})
             wallet.atomic(destination/'onchain-summary.json',{'chains':[chain]})
-        with patch.object(wallet,'ROOT',self.folder),patch.object(wallet,'source_check'),patch.object(wallet,'validate_address',return_value=self.address),patch.object(wallet,'run_node',side_effect=scan),patch.object(wallet,'discover',return_value={'chain_id':8453,'complete':False,'tokens':[]}),patch('native_assets.market_metadata',return_value={'prices':{}}),patch.object(wallet,'fetch',return_value=[]),patch('token_images.refresh_catalog',return_value={}) as images,patch.object(sys,'argv',['wallet.py','add',self.address,'--tag','Fixture','--phase','baseline']),contextlib.redirect_stdout(io.StringIO()):
+        with patch.object(wallet,'ROOT',self.folder),patch('kira_config.require_alchemy'),patch.object(wallet,'source_check'),patch.object(wallet,'validate_address',return_value=self.address),patch.object(wallet,'run_node',side_effect=scan),patch.object(wallet,'discover',return_value={'chain_id':8453,'complete':False,'tokens':[]}),patch('native_assets.market_metadata',return_value={'prices':{}}),patch.object(wallet,'fetch',return_value=[]),patch('token_images.refresh_catalog',return_value={}) as images,patch.object(sys,'argv',['wallet.py','add',self.address,'--tag','Fixture','--phase','baseline']),contextlib.redirect_stdout(io.StringIO()):
             wallet.main()
         entry=wallet.read(self.folder/'wallets.json')['wallets'][0]
         folder=self.folder/entry['latest_snapshot']['directory']
         self.assertIn('completed_at',wallet.read(folder/'run.json'))
-        self.assertEqual(wallet.read(folder/'results.json')['pipeline']['phase'],'baseline')
+        self.assertEqual(wallet.read(folder/'results.json')['pipeline']['phase'],'holdings')
         self.assertEqual(wallet.read(folder/'initial/results.json')['tokens'][0]['wallet_balance'],'1')
         self.assertEqual(len(wallet.read(self.folder/'wallets.json')['research_runs']),2)
         images.assert_called_once()

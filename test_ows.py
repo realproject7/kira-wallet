@@ -13,6 +13,9 @@ class OwsTest(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
         atomic(self.root/'wallets.json',{'schema_version':1,'wallets':[],'research_runs':[]})
         self.rows=[];self.created=0;self.fail=False
+        from kira_config import default_config,provider_config
+        cfg=provider_config(default_config(),'alchemy','KIRA_FIXTURE_KEY');cfg['secret_env_file']=str(self.root/'fixture.env')
+        atomic(self.root/'.kira.local.json',cfg);(self.root/'fixture.env').write_text('KIRA_FIXTURE_KEY=fixture-only-key\n')
         def runner(request):
             if request['action']=='create':
                 existing=next((w for w in self.rows if w['name']==request['name']),None)

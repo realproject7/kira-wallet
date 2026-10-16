@@ -15,6 +15,61 @@ import server
 import token_images
 
 class ViewerTests(unittest.TestCase):
+    def test_tiny_market_cannot_inflate_current_or_legacy_cached_totals(self):
+        token=self.snapshot['tokens'][0]
+        token.update(chain_id=1,symbol='CAI',wallet_balance='2',mintclub=None,dex_pools=[],indexer_price_references=[])
+        self.snapshot['tokens']=[token];self.snapshot['coverage']=[c for c in self.snapshot['coverage'] if c['chain_id']==1];self.snapshot['price_references']={}
+        price={'chain_id':1,'address':token['token_address'],'usd':1481349.43,'quality':'estimated','basis':'DEX market','source':'https://example.org/tiny-pool','observed_at':'2026-10-16T00:00:00Z'}
+        pair={'chainId':'ethereum','pairAddress':'0x'+'3'*40,'dexId':'uniswap',
+              'baseToken':{'address':token['token_address']},'quoteToken':{'address':'0x'+'4'*40},
+              'priceUsd':'1481349.43','liquidity':{'usd':0.02,'base':0.000000009842},'url':price['source']}
+        market=self.directory/'market-prices.json';market.write_text(json.dumps({'tokens':[price]}))
+        (self.directory/'token-market-metadata.json').write_text(json.dumps([{'response':[pair],'observed_at':price['observed_at']}]))
+        before=market.read_bytes()
+        for row in (price,{**price,'liquidity_usd':0.02}):
+            market.write_text(json.dumps({'tokens':[row]}))
+            projected=model.project_wallet(self.entry,self.snapshot,self.root)
+            asset=projected['assets'][0]
+            self.assertEqual(asset['balance'],'2');self.assertIsNone(asset['value_usd'])
+            self.assertEqual(asset['price']['quality'],'unreliable')
+            self.assertIsNone(projected['known_value_usd'])
+        market.write_bytes(before)
+        token['dex_pools']=[{'paired_tokens':[pair['baseToken'],pair['quoteToken']],
+            'reported_price_usd':pair['priceUsd'],'reported_liquidity':pair['liquidity'],'source_url':price['source']}]
+        token['indexer_price_references']=[{'currency':'usd','value':'1481349.43'}]
+        self.assertIsNone(model.dex_price(token,None)['usd'],'A rejected thin pool cannot fall back to the same indexed price.')
+        self.assertEqual(market.read_bytes(),before)
+
+    def test_alchemy_artwork_keeps_chain_identity_and_does_not_need_a_catalog_fetch(self):
+        token=self.snapshot['tokens'][0]
+        image='https://static.alchemyapi.io/images/assets/fixture.png'
+        token['indexer_image_url']=image
+        projected=model.project_wallet(self.entry,self.snapshot,self.root)
+        self.assertEqual(next(a for a in projected['assets'] if a['address']==token['token_address'])['image_url'],image)
+        token['indexer_image_url']='https://static.alchemyapi.io.evil.test/image.png'
+        projected=model.project_wallet(self.entry,self.snapshot,self.root)
+        self.assertNotEqual(next(a for a in projected['assets'] if a['address']==token['token_address'])['image_url'],token['indexer_image_url'])
+
+    def test_initial_balances_wait_for_price_checks_before_entering_the_total(self):
+        self.snapshot['pipeline']={'phase':'initial'}
+        projected=model.project_wallet(self.entry,self.snapshot,self.root)
+        self.assertTrue(all(a['value_usd'] is None for a in projected['assets'] if not a['is_native']))
+
+    def test_failed_all_network_read_is_not_displayed_as_unstarted_work(self):
+        self.snapshot['pipeline']={'phase':'holdings'}
+        chain=self.snapshot['coverage'][0];chain['rpc_status']='pending'
+        before=json.dumps(self.snapshot,sort_keys=True)
+        evidence=self.directory/f"chain-{chain['chain_id']}.json"
+        evidence.write_text(json.dumps({'wallet':self.entry['address_key'],'status':'unavailable'}))
+        projected=model.project_wallet(self.entry,self.snapshot,self.root)
+        row=next(c for c in projected['chains'] if c['id']==chain['chain_id'])
+        self.assertEqual(row['rpc_status'],'unavailable');self.assertFalse(row['rpc_pending'])
+        self.assertEqual(projected['lookup_mode'],'all_networks')
+        self.assertEqual(json.dumps(self.snapshot,sort_keys=True),before)
+        evidence.write_text(json.dumps({'wallet':'0x'+'2'*40,'status':'unavailable'}))
+        projected=model.project_wallet(self.entry,self.snapshot,self.root)
+        self.assertTrue(next(c for c in projected['chains'] if c['id']==chain['chain_id'])['rpc_pending'])
+
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
         self.snapshot=fixture_snapshot()
@@ -279,7 +334,8 @@ class ViewerTests(unittest.TestCase):
         self.assertEqual(token_images.image_for(catalog,8453,address),url)
         self.assertIsNone(token_images.image_for(catalog,1,address))
         self.assertEqual(token_images.image_for(catalog,8453,address,mint=True),
-                         f'https://fc.hunt.town/tokens/logo/8453/{address}/image')
+                         url)
+        self.assertEqual(token_images.image_for({},8453,address,mint=True),f'https://fc.hunt.town/tokens/logo/8453/{address}/image')
         self.assertIsNone(token_images.safe_image('https://tokens.1inch.io.evil.example/logo.png'))
         self.assertIsNone(token_images.safe_image('http://tokens.1inch.io/logo.png'))
         self.assertIsNone(token_images.safe_image('https://secret@mint.club/logo.png'))
@@ -412,7 +468,7 @@ class ViewerTests(unittest.TestCase):
 
     def test_price_records_are_separate_per_chain(self):
         hex_token=next(t for t in self.snapshot['tokens'] if t['symbol']=='HEX')
-        (self.directory/'market-prices.json').write_text(json.dumps({'tokens':[{'chain_id':1,'address':hex_token['token_address'],'usd':7,'basis':'DEX market','quality':'estimated'}]}))
+        (self.directory/'market-prices.json').write_text(json.dumps({'tokens':[{'chain_id':1,'address':hex_token['token_address'],'usd':7,'basis':'DEX market','quality':'estimated','liquidity_usd':10000}]}))
         w=model.project_wallet(self.entry,self.snapshot,self.root)
         self.assertEqual(next(t for t in w['assets'] if t['symbol']=='HEX')['value_usd'],7)
 

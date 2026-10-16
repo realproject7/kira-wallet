@@ -24,6 +24,7 @@ PROVIDERS = {
 }
 CODEX_DISABLED = ('shell_tool', 'unified_exec', 'shell_snapshot', 'apps', 'plugins', 'remote_plugin', 'browser_use', 'browser_use_external', 'computer_use', 'image_generation', 'view_image', 'multi_agent', 'hooks', 'memories', 'skill_search', 'skill_mcp_dependency_install', 'code_mode', 'code_mode_host', 'goals')
 SYSTEM = ('You are Kira, a careful wallet research partner. Answer in the language of the user. '
+    'Alchemy connection is required for new holdings and price research. Holdings lookups cover every configured network without a 128-candidate cap. Sell-route analysis is optional and uses saved holdings; it is not needed for token discovery, prices or artwork. '
     'Use only the provided recorded facts. Unknown data is not zero. Preserve chain and contract identities, '
     'observation times, coverage gaps, and the difference between curve spot estimates and executable prices. '
     'The current recorded context supersedes older facts in the conversation. '

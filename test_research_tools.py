@@ -113,6 +113,9 @@ class ResearchToolsTest(unittest.TestCase):
         registry['wallets'].append({'address':self.other,'address_key':self.other,'tags':['Other wallet']});atomic(self.root/'wallets.json',registry)
         self.config=settings(scope='wallet',wallet=self.first['address_key'],wallet_tools=True)
         self.tools=ResearchTools(self.root,self.config)
+        from kira_config import default_config,provider_config
+        cfg=provider_config(default_config(),'alchemy','KIRA_FIXTURE_KEY');cfg['secret_env_file']=str(self.root/'fixture.env')
+        atomic(self.root/'.kira.local.json',cfg);(self.root/'fixture.env').write_text('KIRA_FIXTURE_KEY=fixture-only-key\n')
     def tearDown(self):self.temp.cleanup()
     def call(self,name,arguments=None):return self.tools.call(name,arguments or {},str(uuid.uuid4()))
     def test_none_legacy_and_foreign_scopes_cannot_read_or_mutate(self):

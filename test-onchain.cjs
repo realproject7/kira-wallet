@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict');
 const fs=require('fs'),os=require('os'),path=require('path');
 const h=require('./onchain.cjs');
-const {calls,registry,connect,scanChain,balanceReads,dexChain,reserveChain,MarketBudget}=require('./pipeline-onchain.cjs');
+const {calls,registry,connect,scanChain,balanceReads,factReads,dexChain,reserveChain,MarketBudget}=require('./pipeline-onchain.cjs');
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'wallet-registry-test-'));
 const original=h.root;h.root=root;
 const addresses=['0x0000000000000000000000000000000000000001','0x0000000000000000000000000000000000000002','0x0000000000000000000000000000000000000003'];
@@ -40,6 +40,14 @@ const seed=()=>{fs.mkdirSync(path.dirname(cacheFile),{recursive:true});fs.writeF
   const outage={multicall:async()=>{outages++;const e=new Error('offline');e.name='HttpRequestError';throw e;}};
   const failed=await calls(outage,Array.from({length:100},()=>({})),102n);
   assert.equal(outages,1);assert.equal(failed.length,100);assert(failed.every(r=>r.status==='failure'));
+  const facts={};let factCalls=0;
+  const factQueries=addresses.map(address=>({address,abi:[],functionName:'getDetail',args:[]}));
+  const recovering={multicall:async({contracts,blockNumber})=>{assert.equal(blockNumber,102n);factCalls++;return contracts.map((q,i)=>factCalls===1&&i>0?{status:'failure',error:new Error('transient aggregate failure')}:{status:'success',result:q.address});}};
+  const recovered=await factReads(recovering,factQueries,102n,facts,path.join(root,'facts.json'),network,'curves');
+  assert(recovered.every(r=>r.status==='success'));assert.equal(factCalls,2);
+  const firstFact=recovered[0].observed_at;
+  assert((await factReads({multicall:async()=>assert.fail('Cached facts must not be read again')},factQueries,102n,facts,path.join(root,'facts.json'),network,'curves')).every(r=>r.status==='success'));
+  assert.equal((await factReads(recovering,[factQueries[0]],102n,facts,path.join(root,'facts.json'),network,'curves'))[0].observed_at,firstFact);
   let wrappedRequests=0;
   const wrapped={multicall:async()=>{wrappedRequests++;const cause=Object.assign(new Error('offline'),{name:'HttpRequestError',status:429});throw Object.assign(new Error('HTTP request failed'),{name:'ContractFunctionExecutionError',cause});}};
   assert((await calls(wrapped,[{},{},{}],102n)).every(r=>r.status==='failure'));assert.equal(wrappedRequests,1);
@@ -81,8 +89,8 @@ const seed=()=>{fs.mkdirSync(path.dirname(cacheFile),{recursive:true});fs.writeF
     h.client=()=>({getChainId:async()=>999,getBalance:async()=>1n,
       multicall:async({contracts})=>contracts.map(c=>({status:'success',result:c.functionName==='balanceOf'?1n:c.functionName==='decimals'?18:c.functionName==='exists'?false:'TEST'}))});
     const row=await scanChain({wallet:addresses[0],candidates:candidateContracts},network,path.join(root,'initial'),true);
-    assert.equal(row.tokens.length,128);assert.equal(row.candidate_scan.total,200);
-    assert.equal(row.candidate_scan.deferred,72);assert.equal(row.candidate_scan.complete,false);
+    assert.equal(row.tokens.length,200);assert.equal(row.candidate_scan.total,200);
+    assert.equal(row.candidate_scan.deferred,0);assert.equal(row.candidate_scan.complete,true);
     assert.equal(row.registry_scan.phase,'deferred');assert.equal(row.registry_scan.complete,false);
     assert.equal(row.status,'partial');
   } finally {h.endpoints=originalEndpoints;h.client=originalClient;h.snapshotBlock=originalSnapshot;}
@@ -114,7 +122,7 @@ const seed=()=>{fs.mkdirSync(path.dirname(cacheFile),{recursive:true});fs.writeF
     const observed=first.tokens[0].balance_observed_at;
     unavailable=true;
     const next=await scanChain({wallet:addresses[2],candidates:[{chain_id:999,address:addresses[1]}]},network,output);
-    assert.equal(next.status,'complete');assert.equal(next.registry_scan.registry_count,1);assert.equal(next.registry_scan.checked,1);
+    assert.equal(next.status,'partial');assert.equal(next.token_detail_errors,1);assert.equal(next.registry_scan.registry_count,1);assert.equal(next.registry_scan.checked,1);
     assert.equal(next.tokens.find(t=>t.token_type==='ERC1155').balance_observed_at,observed);
     // Legacy 0.1.10 checkpoints lack registry identities but still retain their
     // immutable positive observation when the resumed tokenCount call fails.

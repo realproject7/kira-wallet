@@ -22,6 +22,9 @@ class JobFixtures:
         atomic(self.root/'wallets.json',{'schema_version':1,'wallets':[{'address':ADDRESS,'address_key':ADDRESS,'tags':['Original'],
             'latest_snapshot':{'directory':'snapshots/prior','result':'snapshots/prior/results.json'}}],'research_runs':[]})
         self.snapshot('snapshots/prior','1.000000000000000001')
+        from kira_config import default_config,provider_config
+        config=provider_config(default_config(),'alchemy','KIRA_SYNTHETIC_KEY');config['secret_env_file']=str(self.root/'synthetic.env')
+        atomic(self.root/'.kira.local.json',config);(self.root/'synthetic.env').write_text('KIRA_SYNTHETIC_KEY=fixture-only-key\n')
         self.env=patch.dict(os.environ,{'KIRA_DATA_DIR':str(self.root),'KIRA_CONFIG':str(self.root/'.kira.local.json')});self.env.start()
     def tearDown(self):self.env.stop();self.directory.cleanup()
     def snapshot(self,path,balance,status='completed_with_coverage_gaps'):
@@ -181,7 +184,8 @@ class JobsTest(JobFixtures, unittest.TestCase):
         job=self.store.submit(self.request('wallet.add',{'address':OTHER,'tag':'OriginalAdd'}))
         job.pop('analysis_phase');job.update(state='failed',attempt=1);self.store.save(job)
         registry=json.loads((self.root/'wallets.json').read_text());registry.pop('wallet_admissions');registry['wallets'][1]['tags']=['Renamed'];atomic(self.root/'wallets.json',registry)
-        self.store.submit(self.request('job.resume',{'job_id':job['job_id']},'legacy-resume'))
+        with self.assertRaises(JobError) as error:self.store.submit(self.request('job.resume',{'job_id':job['job_id']},'legacy-resume'))
+        self.assertEqual(error.exception.code,'holdings_refresh_required')
         self.assertEqual(json.loads((self.root/'wallets.json').read_text())['wallets'][1]['tags'],['Renamed'])
 
     def test_older_generation_can_preserve_history_without_replacing_latest(self):
@@ -194,22 +198,11 @@ class JobsTest(JobFixtures, unittest.TestCase):
         self.assertEqual(registry['wallets'][0]['latest_snapshot']['directory'],'snapshots/new')
         self.assertEqual(registry['research_runs'][-1]['snapshot'],'snapshots/older')
 
-    def test_legacy_basic_result_can_start_one_explicit_continuation(self):
-        parent=self.store.submit(self.request());self.publish(parent)
-        result=json.loads((self.root/parent['checkpoint']/'results.json').read_text())
-        result['pipeline']={'phase':'baseline'};atomic(self.root/parent['checkpoint']/'results.json',result)
-        parent.update(state='partial',result=self.store.publication(parent));self.store.save(parent)
-        # Pre-upgrade envelopes also require an explicit choice for new deep work.
-        parent.pop('scan_policy');self.store.save(parent)
-        self.store.continue_research();self.assertEqual(len(self.store.list()),1)
-        self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'legacy-deep-one'))
-        self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'legacy-deep-two'))
-        self.store.continue_research()
-        rows=self.store.list();self.assertEqual(len(rows),2)
-        child=next(j for j in rows if j.get('parent_job_id')==parent['job_id'])
-        self.assertEqual(child['analysis_phase'],'enrichment')
-        self.assertEqual(self.store.get(parent['job_id'])['continuation_id'],child['job_id'])
-        self.assertIn('enrichment',self.store.engine_command(child))
+    def test_legacy_partial_inventory_requires_a_new_holdings_lookup(self):
+        parent=self.basic_result();parent.pop('scan_policy');self.store.save(parent)
+        with self.assertRaises(JobError) as error:self.store.submit(self.request('job.deepen',{'job_id':parent['job_id']},'legacy-sell-request'))
+        self.assertEqual(error.exception.code,'holdings_refresh_required')
+        self.assertEqual(len(self.store.list()),1)
 
     def basic_result(self):
         parent=self.store.submit(self.request());self.publish(parent)
@@ -220,7 +213,7 @@ class JobsTest(JobFixtures, unittest.TestCase):
         parent=self.basic_result()
         self.store.continue_research();JobStore(self.root).continue_research()
         self.assertEqual(len(self.store.list()),1)
-        self.assertEqual(self.store.get(parent['job_id'])['scan_policy'],'optional_depth_v1')
+        self.assertEqual(self.store.get(parent['job_id'])['scan_policy'],'alchemy_inventory_v1')
 
     def test_deep_scan_concurrent_clicks_and_restart_admit_one_child(self):
         parent=self.basic_result()
@@ -412,11 +405,8 @@ class JobsTest(JobFixtures, unittest.TestCase):
         self.assertEqual(saved['rpc']['chains']['777'],{'url_env':'UNRELATED'})
         self.assertEqual(saved['rpc']['chains']['1']['url_env'],'TEST_INDEXER_KEY')
         self.assertNotIn('synthetic-secret',(self.root/'.kira.local.json').read_text())
-        basic=self.store.submit(self.request('settings.provider',{'provider':'public','key_env':'TEST_INDEXER_KEY'},'public-setting'));self.store.worker()
-        self.assertEqual(self.store.get(basic['job_id'])['state'],'succeeded')
-        basic_config=json.loads((self.root/'.kira.local.json').read_text())
-        self.assertEqual(basic_config['rpc']['mode'],'public');self.assertEqual(basic_config['discovery']['provider'],'none')
-        self.assertEqual(basic_config['rpc']['chains'],saved['rpc']['chains'])
+        with self.assertRaises(JobError):self.store.submit(self.request('settings.provider',{'provider':'public','key_env':'TEST_INDEXER_KEY'},'public-setting'))
+        self.assertEqual(json.loads((self.root/'.kira.local.json').read_text()),saved)
 
     def test_missing_key_and_cancel_leave_both_settings_unchanged(self):
         from kira_config import default_config
@@ -425,7 +415,7 @@ class JobsTest(JobFixtures, unittest.TestCase):
         self.assertEqual(self.store.get(job['job_id'])['state'],'failed')
         self.assertEqual(self.store.get(job['job_id'])['errors'][0]['code'],'connection_key_missing')
         self.assertEqual((self.root/'.kira.local.json').read_bytes(),before)
-        job=self.store.submit(self.request('settings.provider',{'provider':'public','key_env':'TEST_KEY'},'cancel-setting'))
+        job=self.store.submit(self.request('settings.provider',{'provider':'alchemy','key_env':'TEST_KEY'},'cancel-setting'))
         self.store.submit(self.request('job.cancel',{'job_id':job['job_id']},'cancel-action'));self.store.worker()
         self.assertEqual((self.root/'.kira.local.json').read_bytes(),before)
         for value in ({'provider':'unknown','key_env':'KEY'},{'provider':'alchemy','key_env':'secret value'},{'provider':'alchemy','key_env':'KEY','secret':'value'}):
@@ -453,7 +443,7 @@ class WorkerProcessTest(JobFixtures, unittest.TestCase):
         child=self.store.get(self.store.get(parent['job_id'])['continuation_id']);worker=self.worker_process('wait')
         try:
             self.wait_for(lambda:self.store.get(child['job_id'])['state']=='running')
-            setting=self.store.submit(self.request('settings.provider',{'provider':'public','key_env':'TEST_KEY'},'short-setting'))
+            setting=self.store.submit(self.request('settings.provider',{'provider':'alchemy','key_env':'KIRA_SYNTHETIC_KEY'},'short-setting'))
             self.wait_for(lambda:self.store.get(setting['job_id'])['state']=='succeeded',12)
             self.wait_for(lambda:self.store.get(child['job_id'])['attempt']==2)
             price=self.store.submit(self.request('prices.refresh',{'wallet':ADDRESS},'short-price'))

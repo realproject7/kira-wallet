@@ -22,6 +22,16 @@ class CurvePricingTests(unittest.TestCase):
         graph=[self.curve('child','reserve')]
         self.assertEqual(resolve(graph,[{'chain_id':1,'address':'reserve','usd':100}]),[])
 
+    def test_rejected_reserve_price_cannot_survive_through_a_cached_curve(self):
+        graph=[self.curve('child','parent'),self.curve('parent','bad'),{'chain_id':8453,'address':'bad','is_curve':False}]
+        prices=[{'chain_id':8453,'address':'bad','usd':None,'quality':'unreliable'},
+                {'chain_id':8453,'address':'parent','usd':1000000,'basis':'Curve spot','quality':'estimated'}]
+        result={r['address']:r for r in resolve(graph,prices)}
+        self.assertIsNone(result['child']['usd']);self.assertEqual(result['child']['quality'],'unreliable')
+        self.assertIsNone(result['parent']['usd'])
+        independent={'chain_id':8453,'address':'child','usd':2,'basis':'DEX market','quality':'estimated'}
+        self.assertEqual(next(r for r in resolve(graph,prices+[independent]) if r['address']=='child')['usd'],2)
+
     def test_supported_market_price_is_kept_and_unfunded_curve_is_unknown(self):
         graph=[self.curve('market','reserve'),self.curve('empty','reserve',funded=False)]
         prices=[{'chain_id':8453,'address':'market','usd':3,'basis':'DEX market','quality':'estimated'},

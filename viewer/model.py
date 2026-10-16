@@ -8,7 +8,7 @@ import json
 import math
 import os
 import re
-from token_images import image_for, read_catalog
+from token_images import image_for, read_catalog, safe_image
 from chain_images import chain_image
 from native_assets import native_identity
 from details import project_details
@@ -82,28 +82,47 @@ def exit_quote(token):
             'observed_at': mint['observed_at'], 'royalty_included': True,
             'gas_included': False}
 
+MIN_PRICE_LIQUIDITY_USD=1000
+
+def checked_price(price, pools=()):
+    """A spot quote needs a meaningful observed market, including saved quotes."""
+    if not price or price.get('basis')!='DEX market':return price
+    liquidity=number(price.get('liquidity_usd'))
+    if liquidity is None:
+        pool=next((p for p in pools if p.get('source_url')==price.get('source')),None)
+        liquidity=number((pool.get('reported_liquidity') or {}).get('usd')) if pool else None
+        base=number((pool.get('reported_liquidity') or {}).get('base')) if pool else None
+        usd=number(price.get('usd'))
+        if liquidity and base is not None and usd is not None and base*usd/liquidity>0.98:
+            return {**price,'usd':None,'quality':'unreliable','basis':'Insufficient market liquidity','liquidity_usd':liquidity}
+    if liquidity is None or liquidity<MIN_PRICE_LIQUIDITY_USD:
+        return {**price,'usd':None,'quality':'unreliable','basis':'Insufficient market liquidity','liquidity_usd':liquidity}
+    return {**price,'liquidity_usd':liquidity}
+
 def dex_price(token, observed):
     """Use the selected source observation, never a later publication clock.
 
     observed is an optional raw-response timestamp for callers normalizing a
     response. Snapshot callers pass None when original source time is unknown.
     """
-    candidates=[]; suspect=False
+    candidates=[]; suspect=None
     for p in token.get('dex_pools',[]):
         price=number(p.get('reported_price_usd'))
         pair=p.get('paired_tokens',[])
         if price is None or len(pair)!=2 or pair[0]['address'].lower()!=token['token_address'].lower(): continue
         liq=p.get('reported_liquidity') or {}
         tvl=number(liq.get('usd')); base=number(liq.get('base'))
+        if tvl is not None and tvl<MIN_PRICE_LIQUIDITY_USD:
+            suspect={'source':p.get('source_url'),'observed_at':p.get('observed_at') or observed,'liquidity_usd':tvl};continue
         # Source-reported TVL can consist almost entirely of the self-priced token.
         # Do not use such a pool as the wallet's market value.
         if tvl and base is not None and base*price/tvl>0.98:
-            suspect=True; continue
+            suspect={'source':p.get('source_url'),'observed_at':p.get('observed_at') or observed,'liquidity_usd':tvl}; continue
         if tvl and pool_has_liquidity(p): candidates.append((tvl,price,p))
     if candidates:
         _,price,p=max(candidates,key=lambda v:v[0])
-        return {'usd':price,'basis':'DEX market','source':p['source_url'],'observed_at':p.get('observed_at') or observed,'quality':'estimated'}
-    if suspect:return {'usd':None,'basis':'Thin quote side','quality':'unreliable','observed_at':observed}
+        return {'usd':price,'basis':'DEX market','source':p['source_url'],'observed_at':p.get('observed_at') or observed,'quality':'estimated','liquidity_usd':number(p['reported_liquidity']['usd'])}
+    if suspect:return {'usd':None,'basis':'Insufficient market liquidity','quality':'unreliable',**suspect}
     for p in token.get('indexer_price_references',[]):
         price=number(p.get('value'))
         if p.get('currency')=='usd' and price is not None and price>0:
@@ -114,9 +133,22 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
     images=read_catalog(root) if images is None else images
     latest=entry.get('latest_snapshot') or {}
     snapshot_dir=within(root,latest.get('directory','snapshots'))
+    all_networks=snapshot.get('pipeline',{}).get('phase') in ('holdings','sell') or snapshot.get('pipeline',{}).get('holdings_scope')=='all_configured'
     market_path=snapshot_dir/'market-prices.json'
     market=read(market_path) if market_path.exists() else {}
     prices={(p.get('chain_id',8453),p['address'].lower()):p for p in market.get('tokens',[])}
+    recorded_markets={p['id']:p.get('pools',[]) for p in market.get('markets',[])}
+    legacy_pools={}
+    metadata=snapshot_dir/'token-market-metadata.json'
+    if metadata.is_file() and any(p.get('basis')=='DEX market' and 'liquidity_usd' not in p for p in prices.values()):
+        from wallet import DEX, pool_row
+        inverse={slug:cid for cid,slug in DEX.items()}
+        for record in read(metadata):
+            for pair in record.get('response',[]) if isinstance(record.get('response'),list) else []:
+                try:
+                    key=(inverse[pair['chainId']],pair['baseToken']['address'].lower())
+                    legacy_pools.setdefault(key,[]).append(pool_row(pair,record.get('observed_at')))
+                except (KeyError,TypeError,AttributeError):continue
     refs=snapshot.get('price_references',{})
     eth=number(market.get('native_usd',{}).get('ETH',{}).get('usd')) or number(refs.get('ETH_USD',{}).get('value'))
     price_time=market.get('observed_at') or refs.get('ETH_USD',{}).get('observed_at') or snapshot.get('compiled_at')
@@ -124,12 +156,13 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
     by_address={(t['chain_id'],t['token_address'].lower()):t for t in tokens}
     cache={}
     def price_for(t,seen=None):
+        if snapshot.get('pipeline',{}).get('phase')=='initial':return None
         k=(t['chain_id'],t['token_address'].lower())
         if k in cache:return cache[k]
         seen=set(seen or set())
         if k in seen:return None
         seen.add(k)
-        override=prices.get(k)
+        override=checked_price(prices.get(k),t.get('dex_pools',[])+legacy_pools.get(k,[]))
         mint=t.get('mintclub')
         if override and override.get('quality') in ('unfunded','unreliable'):
             cache[k]={**override,'usd':None};return cache[k]
@@ -140,7 +173,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             reserve_identity=(t['chain_id'],mint['reserve_token'].lower())
             if reserve_identity==(8453,'0x4200000000000000000000000000000000000006'):reserve_price=eth
             elif reserve_identity==(8453,'0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf'):reserve_price=number(refs.get('cbBTC_USD',{}).get('value'))
-            rt=prices.get((t['chain_id'],mint['reserve_token'].lower()))
+            rt=checked_price(prices.get(reserve_identity),legacy_pools.get(reserve_identity,[]))
             if rt and rt.get('usd') is not None:
                 reserve_price=number(rt['usd']);retained_reserve=rt if rt.get('retained_from_previous') else None
             parent=by_address.get((t['chain_id'],mint['reserve_token'].lower()))
@@ -162,6 +195,8 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
 
     assets=[]
     for t in tokens:
+        saved=t.get('dex_pools',[]);known_pools={p.get('pool') for p in saved}
+        t={**t,'dex_pools':saved+[p for p in recorded_markets.get(f"{t['chain_id']}:{t['token_address'].lower()}",[]) if p.get('pool') not in known_pools]}
         p=price_for(t);quantity=number(t['wallet_balance'])
         value=quantity*p['usd'] if p and p.get('usd') is not None and quantity is not None else None
         label=t['symbol'];name=t.get('name') or label
@@ -200,14 +235,19 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             'exit_quote':exit_quote(t),
             'cashout_eligibility':cashout_classification(t,market,environment=next((c.get('environment') for c in snapshot.get('coverage',[]) if c.get('chain_id')==t['chain_id']),'unknown')),
             'exit_route': 'mintclub_burn' if t.get('mintclub') else 'dex_unquoted' if t.get('dex_liquidity_found') or any(pool_has_liquidity(pool) for pool in t.get('dex_pools',[])) else 'unverified',
-            'image_url':image_for(images,t['chain_id'],t['token_address'],mint=bool(t.get('mintclub'))),
+            'image_url':safe_image(t.get('indexer_image_url')) or image_for(images,t['chain_id'],t['token_address'],mint=bool(t.get('mintclub'))),
             'curve_reserve': {'amount':market_token.get('curve_reserve',t['mintclub']['reserve_balance']),'symbol':t['mintclub']['reserve_symbol']} if t.get('mintclub') else None})
         if t.get('mintclub'):
             mint=t['mintclub']
             assets[-1]['curve_state']={k:mint.get(k) for k in ('reserve_token','reserve_symbol','reserve_balance','current_supply','price_for_next_mint_in_reserve_token','burn_royalty_bps','block_number','observed_at')}
-    coverage=snapshot.get('coverage',[])
+    coverage=[dict(c) for c in snapshot.get('coverage',[])]
     market_pending=(snapshot.get('pipeline') or {}).get('market_pending') is True
     for c in coverage:
+        if all_networks and c.get('rpc_status')=='pending':
+            evidence=snapshot_dir/f"chain-{c['chain_id']}.json"
+            if evidence.is_file():
+                raw=read(evidence)
+                if raw.get('wallet','').lower()==entry['address_key'] and raw.get('status')=='unavailable':c['rpc_status']='unavailable'
         raw=c.get('native_balance');quantity=number(raw)
         if quantity is None or quantity<=0:continue
         sym=c['native_symbol'];ref=market.get('native_usd',{}).get(sym)
@@ -259,6 +299,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             'registry_errors':(c.get('mintclub_registry_scan') or {}).get('registry_errors',0),
             'balance_errors':(c.get('mintclub_registry_scan') or {}).get('balance_errors',0),
             'candidate_balance_errors':failed_balances,
+            'token_detail_errors':sum(bool(t.get('mintclub_error')) or t.get('wallet_balance') is None for t in tokens if t['chain_id']==c['chain_id']),
             'candidate_deferred':(c.get('candidate_scan') or {}).get('deferred',0),
             'native_symbol':c.get('native_symbol'),
             'native_balance':c.get('native_balance') if c['rpc_status']=='available' and number(c.get('native_balance')) is not None else None,
@@ -268,6 +309,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
     values=[a['value_usd'] for a in assets if a['environment']=='mainnet' and a['value_usd'] is not None]
     total=sum(values) if values else None
     return {'address':entry['address'],'key':entry['address_key'],'tags':entry.get('tags',[]),
+        'lookup_mode':'all_networks' if all_networks else 'legacy',
         'snapshot_id':(entry.get('latest_snapshot') or {}).get('directory'),
         'name':(entry.get('tags') or [entry['address'][:10]])[0],'analysed_at':snapshot.get('compiled_at'),
         'prices_at':price_time,'balance_observed_at':max((t.get('balance_observed_at','') for t in tokens),default=snapshot.get('compiled_at')),

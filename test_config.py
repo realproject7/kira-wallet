@@ -32,7 +32,8 @@ class ConfigurationTests(unittest.TestCase):
             self.save(cfg)
             status=config.public_status()
             self.assertFalse(status['discovery_key_available'])
-            self.assertIn('--key-env '+key_env,status['guide'])
+            self.assertIn('kira connect alchemy',status['guide'])
+            self.assertIn('--key-env '+key_env,status['import_command'])
             secret_file=self.root/'fixture.env';secret_file.write_text(key_env+'=synthetic-guide-fixture\n')
             command=shlex.split(status['import_command'])
             command[command.index('PATH')]=str(secret_file)
@@ -64,7 +65,7 @@ class ConfigurationTests(unittest.TestCase):
         cfg=config.default_config();cfg['secret_env_file']=str(file);cfg['discovery']['provider']='alchemy'
         cfg['rpc'].update(mode='custom',chains={'8453':{'url_env':'ALCHEMY_API_KEY','alchemy_network':'base-mainnet'}});self.save(cfg)
         with patch.dict(os.environ,{'ALCHEMY_API_KEY':'fixture-env-key'}):
-            self.assertIn('fixture-env-key',config.endpoints(self.network)[-1])
+            self.assertIn('fixture-env-key',config.endpoints(self.network)[0])
             self.assertNotIn('fixture-env-key',config.redact('Bearer fixture-env-key'))
         file.unlink();self.assertEqual(config.endpoints(self.network),['https://public.example'])
     def test_malformed_or_insecure_configuration_has_safe_errors(self):

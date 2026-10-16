@@ -18,6 +18,8 @@ DEX_CHAINS={1:'ethereum',8453:'base',10:'optimism',42161:'arbitrum',137:'polygon
 
 parser=argparse.ArgumentParser();parser.add_argument('--wallet',help='Registered wallet address or tag. Omit to refresh all registered snapshots.')
 args=parser.parse_args()
+from kira_config import require_alchemy
+require_alchemy()
 analysis_lock=os.fdopen(int(os.environ['KIRA_ANALYSIS_FD']), 'a') if os.environ.get('KIRA_ANALYSIS_FD') else (h.ROOT/'.analysis.lock').open('a')
 try:fcntl.flock(analysis_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
 except BlockingIOError:raise SystemExit('Another wallet or price analysis is running. Retry after it finishes.')
@@ -39,6 +41,9 @@ for w in selected:
   if chain:
    pools.setdefault(chain,set()).update(p['pool'] for p in t['dex_pools'])
  requests=[]
+ for chain_id,chain in DEX_CHAINS.items():
+  addresses=sorted({t['token_address'].lower() for t in snapshot['tokens'] if t['chain_id']==chain_id and t.get('token_type')!='ERC1155'})
+  requests += ['https://api.dexscreener.com/tokens/v1/'+chain+'/'+','.join(addresses[i:i+30]) for i in range(0,len(addresses),30)]
  for chain,addresses in pools.items():
   addresses=sorted(addresses)
   requests += ['https://api.dexscreener.com/latest/dex/pairs/'+chain+'/'+','.join(addresses[i:i+25]) for i in range(0,len(addresses),25)]

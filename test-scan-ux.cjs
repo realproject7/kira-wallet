@@ -4,11 +4,11 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const KiraView=require('./viewer/static/workspace-model.js');
 const A='0x'+'1'.repeat(40),wallet={key:A,analysed_at:'2026-10-15T00:00:00Z',assets:[{}],unpriced_count:1};
-const basic={job_id:'basic',operation:'wallet.refresh',input:{wallet:A},analysis_phase:'baseline',scan_policy:'optional_depth_v1',state:'partial',created_at:'2026-10-15T00:00:00Z',result:{snapshot_id:'saved'},events:[],attempt:1};
+const basic={job_id:'basic',operation:'wallet.refresh',input:{wallet:A},analysis_phase:'baseline',scan_policy:'alchemy_inventory_v1',state:'partial',created_at:'2026-10-15T00:00:00Z',result:{snapshot_id:'saved'},events:[],attempt:1};
 const deep={...basic,job_id:'deep',analysis_phase:'enrichment',parent_job_id:'basic',state:'running',created_at:'2026-10-15T00:01:00Z',result:null};
 test('basic saved results offer optional depth without implying complete coverage',()=>{
  const p=KiraView.researchSession([basic],wallet);
- assert.equal(p.mode,'ready');assert.equal(p.action,'deepen');assert.match(p.description,/optional/);assert.equal(p.basicReady,true);
+ assert.equal(p.mode,'ready');assert.equal(p.action,'deepen');assert.match(p.description,/only if/);assert.equal(p.basicReady,true);
  assert.equal(KiraView.researchSession([basic],{key:'other'}),null);
  const interrupted=KiraView.researchSession([{...basic,state:'interrupted'}],wallet);
  assert.equal(interrupted.action,'resume');assert.equal(interrupted.basicReady,false);
@@ -16,11 +16,11 @@ test('basic saved results offer optional depth without implying complete coverag
 test('deep waits, pause, disconnect recovery and new basic generations stay distinct',()=>{
  const p=KiraView.researchSession([deep,basic],wallet);assert.equal(p.action,'cancel');assert.equal(p.isDeep,true);
  const paused=KiraView.researchSession([{...deep,state:'cancelled'},basic],wallet);
- assert.equal(paused.mode,'paused');assert.equal(paused.action,'resume');assert.match(paused.description,/without starting over/);
+ assert.equal(paused.mode,'paused');assert.equal(paused.action,'resume');assert.match(paused.description,/progress is saved/);
  const waiting=KiraView.researchSession([{...deep,state:'queued',continuation:{not_before:Date.now()/1000+120}},basic],wallet);
- assert.match(waiting.title,/waiting to continue/);
+ assert.match(waiting.title,/Analyzing sell routes/);
  const stalled=KiraView.researchSession([{...deep,state:'interrupted',errors:[{code:'no_progress'}]},basic],wallet);
- assert.equal(stalled.actionLabel,'Retry saved scan');assert.match(stalled.description,/no new progress/);
+ assert.equal(stalled.actionLabel,'Resume');assert.match(stalled.description,/No new evidence/);
  const newer={...basic,job_id:'new-basic',state:'queued',created_at:'2026-10-15T00:02:00Z'};
  assert.equal(KiraView.researchSession([basic,deep,newer],wallet).job.job_id,'new-basic');
  const done=KiraView.researchSession([{...deep,state:'partial'},basic],wallet);
@@ -40,16 +40,16 @@ function harness(){
  return {context,el,setJobs:context.setJobs,run:s=>vm.runInContext(s,context),renders:()=>rendered};
 }
 test('wallet card keeps unknowns visible and disables writes while disconnected or read-only',()=>{
- const h=harness();h.run('renderWalletScan()');assert.match(h.el('wallet-scan').innerHTML,/Start deep scan/);
- assert.match(h.el('wallet-scan').innerHTML,/1 position saved · 1 unpriced/);
- assert.match(h.el('wallet-scan').innerHTML,/no overall time limit/);
- h.context.jobsConnected=false;h.run('renderWalletScan()');assert.match(h.el('wallet-scan').innerHTML,/Reconnecting/);assert.match(h.el('wallet-scan').innerHTML,/disabled/);
+ const h=harness();h.run('renderWalletScan()');assert.match(h.el('wallet-scan').innerHTML,/Analyze sell routes/);
+ assert.match(h.el('wallet-scan').innerHTML,/does not look for more tokens/);
+ assert.match(h.el('wallet-scan').innerHTML,/Pause and resume/);
+ h.context.jobsConnected=false;h.run('renderWalletScan()');assert.match(h.el('wallet-scan').innerHTML,/Connection lost/);assert.match(h.el('wallet-scan').innerHTML,/disabled/);
  h.run('localSession={controls:false};renderWalletScan()');assert.doesNotMatch(h.el('wallet-scan').innerHTML,/data-job-action/);
  h.run('localSession={controls:true};state.demo=true;renderWalletScan()');assert.doesNotMatch(h.el('wallet-scan').innerHTML,/data-job-action/);
  h.context.jobsConnected=true;h.run('state.demo=false');h.context.testJobs=[deep,basic];h.setJobs?.(h.context.testJobs);
- h.run('jobList=testJobs;renderWalletScan()');assert.match(h.el('wallet-scan').innerHTML,/Overall remaining time is unknown/);assert.doesNotMatch(h.el('wallet-scan').innerHTML,/<progress/);
+ h.run('jobList=testJobs;renderWalletScan()');assert.doesNotMatch(h.el('wallet-scan').innerHTML,/Overall remaining time is unknown/);assert.doesNotMatch(h.el('wallet-scan').innerHTML,/<progress/);
  h.setJobs([{...deep,state:'cancelled',cancel_requested:true},basic]);h.run('renderWalletScan()');
- assert.match(h.el('wallet-scan').innerHTML,/Resume deep scan/);assert.doesNotMatch(h.el('wallet-scan').innerHTML,/disabled/);
+ assert.match(h.el('wallet-scan').innerHTML,/Resume/);assert.doesNotMatch(h.el('wallet-scan').innerHTML,/disabled/);
  h.setJobs([{...deep,state:'queued',stage:'stopped',events:[{stage:'onchain_progress',counts:{checked:7,total:20},context:{operation:'pool_checks',attempt:deep.attempt}}]},basic]);h.run('renderWalletScan()');
  assert.match(h.el('wallet-scan').innerHTML,/Waiting to start/);assert.doesNotMatch(h.el('wallet-scan').innerHTML,/Research stopped|7 \/ 20|<progress|are being checked/);
 });
@@ -60,8 +60,8 @@ test('cumulative reviews remain visible through step resets, pause and resume',(
   const job={...deep,state,asset_progress,events:[{stage:'onchain_progress',counts:{checked:0,total:10},context:{operation:'pool_checks',attempt:2}}]};
   assert.deepEqual(KiraView.jobProgress(job).assets,{total:120,checked:81,quoted:14,unknown:67});
   h.setJobs([job,basic]);h.run('renderWalletScan()');const html=h.el('wallet-scan').innerHTML;
-  assert.match(html,/81 \/ 120 assets reviewed/);assert.match(html,/>14<\/strong> sell estimates/);assert.match(html,/>67<\/strong> unresolved checks/);
-  assert.match(html,/the total can grow/);
+  assert.match(html,/81 \/ 120 assets reviewed/);assert.match(html,/14 sell estimates/);assert.match(html,/67 unresolved checks/);
+  assert.match(html,/does not look for more tokens/);
  }
  assert.equal(KiraView.assetProgress({...deep,asset_progress:{'1':{total:2,checked:2,quoted:2,unknown:1}}}),null);
 });

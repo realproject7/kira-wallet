@@ -127,8 +127,9 @@ function renderWatching() {
   $('wallet-register').disabled = !!submission || !permitted || !valid || !!existing;
   const discovery=typeof setupReadiness!=='undefined'?setupReadiness:null,ready=discovery?.discovery_key_available===true;
   $('wallet-discovery-warning').hidden=ready||!!submission||state?.demo===true;
-  $('wallet-discovery-warning-title').textContent=!discovery?'Free research starts when you add this wallet':discovery.discovery_configured?'Alchemy is unavailable; free research can continue':discovery.public_discovery===false?'Broader token discovery is disabled':'Free token research is ready';
-  $('wallet-discovery-warning-text').textContent=discovery?.discovery_configured?'The selected Alchemy key is unavailable. Free checks can still run when public access is allowed. Fix the connection for broader coverage. Missing tokens remain unknown.':'No key is needed. Kira checks common tokens, native balances and Mint Club assets, and uses free token discovery on supported networks. Other tokens may still be missing. Alchemy is optional for broader coverage.';
+  $('wallet-register').disabled=$('wallet-register').disabled||!ready;
+  $('wallet-discovery-warning-title').textContent='Connect Alchemy first';
+  $('wallet-discovery-warning-text').textContent='Alchemy is required to look up all your tokens. Your public address and any saved results stay available.';
   $('wallet-register').textContent = watchingSubmitting ? 'Saving wallet…' : 'Add and research';
   if (browser && $('wallet-dialog').open && watchingLastStatus === 'requesting' && current.status === 'accounts')
     $('wallet-accounts').querySelector('button')?.focus();

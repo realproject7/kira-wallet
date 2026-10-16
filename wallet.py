@@ -170,12 +170,12 @@ def acquire_candidate_slices(wallet, networks, folder, policy, acquire, prior, k
     return ordered
 
 
-def discover(wallet, n, folder, budget=None, *, continue_only=False):
+def discover(wallet, n, folder, budget=None, *, continue_only=False, indexed_only=False):
     cid = n['chain_id']
     evidence = folder/f'discovery-{cid}.json'
     if evidence.exists():
         cached=read(evidence)
-        if cached['wallet'].lower()==wallet.lower() and cached['complete'] and cached.get('coverage_version')==2:
+        if cached['wallet'].lower()==wallet.lower() and cached['complete'] and cached.get('coverage_version')==2 and (not indexed_only or cached.get('source')=='Alchemy Portfolio Tokens By Wallet' or cached.get('provider')=='explorer'):
             return cached
     row = {'wallet':wallet,'chain_id':cid,'observed_at':h.now(),'complete':False,'tokens':[],'native':[], 'pages':[],'source':None,'discovery_status':'incomplete'}
     cfg=load_config();deadline=time.monotonic()+budget if budget else None
@@ -222,7 +222,7 @@ def discover(wallet, n, folder, budget=None, *, continue_only=False):
                         row['error']={'message':'A token contract address was invalid.'};continue
                     meta=t.get('tokenMetadata') or {}
                     row['tokens'].append({'chain_id':cid,'address':t['tokenAddress'],'name':meta.get('name'),'symbol':meta.get('symbol'),'suspicious_zero_check':True,
-                                          'decimals':meta.get('decimals'),'prices':t.get('tokenPrices') or []})
+                                          'decimals':meta.get('decimals'),'image_url':meta.get('logo'),'prices':t.get('tokenPrices') or []})
             if response.get('error') or response.get('transport_error') or row.get('error'):
                 row['error']=response.get('error') or response.get('transport_error') or row['error']
                 break
@@ -237,6 +237,8 @@ def discover(wallet, n, folder, budget=None, *, continue_only=False):
             body['pageKey']=cursor
         else:
             row['error']={'message':'Pagination safety limit reached; discovery incomplete'}
+    elif indexed_only:
+        row.update(free_sources(wallet,cid,budget or 25,continue_only=continue_only,public=False,explorers=True))
     elif n.get('environment') in ('mainnet','testnet') and (cfg['discovery'].get('public',True) or cfg['discovery'].get('explorers')) and not (cfg.get('rpc',{}).get('mode')=='custom' and cfg['rpc'].get('allow_public_fallback') is False):
         row.update(free_sources(wallet,cid,budget or 25,continue_only=continue_only,
                                public=cfg['discovery'].get('public',True),explorers=cfg['discovery'].get('explorers',False)))
@@ -318,7 +320,7 @@ def inventory_policy(requested=None, manifest=None):
     chosen={'market':'wallet_candidates_v1','full':'full_registry'}.get(requested)
     if manifest is not None and chosen is not None and chosen!=saved:
         raise ValueError('Resume inventory scope mismatch. Start a new holdings analysis.')
-    policy=saved or chosen or 'wallet_candidates_v1'
+    policy=saved or chosen or 'full_registry'
     if policy not in ('wallet_candidates_v1','full_registry'):raise ValueError('Invalid saved inventory scope.')
     return policy
 
@@ -415,11 +417,12 @@ def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_p
     """Price and illustrate saved holdings independently of deep market review."""
     from curve_pricing import enrich, resolve
     sys.path.insert(0,str(ASSETS/'viewer'))
-    from model import dex_price
+    from model import dex_price, checked_price
     from token_images import refresh_catalog
     deadline=time.monotonic()+45
     price_deadline=deadline-10
-    tokens=snapshot['tokens'];rows={(p['chain_id'],p['address'].lower()):p for p in market.get('tokens',[])}
+    tokens=snapshot['tokens'];rows={(p['chain_id'],p['address'].lower()):checked_price(p) for p in market.get('tokens',[])}
+    markets={p['id']:p for p in market.get('markets',[])}
     mainnets={c['chain_id'] for c in snapshot.get('coverage',[]) if c.get('environment')=='mainnet'}
     wanted={(t['chain_id'],t['token_address'].lower()):t for t in tokens
             if t['chain_id'] in mainnets and t.get('token_type')!='ERC1155'}
@@ -448,6 +451,8 @@ def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_p
                         if pair['chainId']==slug and address in addresses:pools.setdefault(address,[]).append(pool_row(pair,record['observed_at']))
                     except (KeyError,TypeError,AttributeError):continue
                 for address,group in pools.items():
+                    identity=f'{cid}:{address}'
+                    markets[identity]={'id':identity,'pools':group}
                     p=dex_price({'token_address':address,'dex_pools':group},record['observed_at'])
                     if p:rows[(cid,address)]={'chain_id':cid,'address':address,**p}
         atomic(folder/'token-market-metadata.json',evidence)
@@ -465,7 +470,7 @@ def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_p
                 'curve_reserve':mint['reserve_balance'],'source':mint['source_url'],
                 'observed_at':mint['observed_at'],'block_number':mint.get('block_number')})
     for p in resolve(graph,list(rows.values())):rows[(p['chain_id'],p['address'].lower())]=p
-    market={**market,'tokens':list(rows.values())}
+    market={**market,'tokens':list(rows.values()),'markets':list(markets.values())}
     pricing_tokens=[t for t in tokens if t['chain_id'] in mainnets]
     missing=any(t['mintclub'].get('funded') and rows.get((t['chain_id'],t['token_address'].lower()),{}).get('usd') is None for t in pricing_tokens if t.get('mintclub'))
     if missing and time.monotonic()<price_deadline:
@@ -486,7 +491,7 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
     for n in networks:
         c=by_chain.get(n['chain_id'],{});d=by_discovery.get(n['chain_id'],{})
         coverage.append({**{k:v for k,v in n.items() if k not in ('public_rpc','explorer')},
-            'rpc_status':c.get('rpc_status','pending'),'native_symbol':NATIVE.get(n['chain_id'],'ETH'),
+            'rpc_status':c.get('rpc_status','unavailable' if c else 'pending'),'native_symbol':NATIVE.get(n['chain_id'],'ETH'),
             'native_balance':c.get('native_balance'),'native_observed_at':c.get('observed_at'),
             'native_block_number':c.get('block_number'),'native_block_hash':c.get('block_hash'),
             'rpc_endpoint_indices':c.get('rpc_endpoint_indices',[]),'rpc_routes':c.get('rpc_routes',[]),
@@ -494,12 +499,13 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
             'general_erc20_discovery':'indexer_checked' if d.get('complete') else 'incomplete',
             'indexer_source':d.get('source'),'indexer_complete':d.get('complete',False),'indexer_pages':len(d.get('pages',[])),
             'discovery_status':d.get('discovery_status','pending'),'candidate_balance_errors':len(c.get('balance_errors',[])),
+            'token_detail_errors':c.get('token_detail_errors',0),
             'discovery_provider':d.get('provider'), 'history_window':d.get('history_window'), 'recent_window':d.get('recent_window'), 'discovery_filters':d.get('filters'),
             'discovery_sources':d.get('sources',[]),'discovery_completion_scope':d.get('completion_scope'),'complete_inventory_guaranteed':False,
             'candidate_scan':c.get('candidate_scan'),'mintclub_registry_scan':c.get('registry_scan'),
             'inventory_policy':c.get('inventory_policy','full_registry'),'mintclub_wallet_discovery':id0_coverage(d),
             'mintclub_membership_scan':c.get('mintclub_membership_scan'),
-            'notes':['Initial balances. Remaining wallet candidate balances and market enrichment remain pending. Inventory scope is recorded separately.']})
+            'notes':['Holdings lookup is still running. Remaining balances, prices and artwork are pending.']})
     result={'schema_version':1,'wallet_address':wallet['address'],'tags':wallet['tags'],'compiled_at':h.now(),
         'status':'completed_with_coverage_gaps','scope':'Recorded initial direct holdings. Unchecked holdings and prices remain unknown.',
         'tokens':tokens,'coverage':coverage,'price_references':{},'nested_curve_independent_redemption_estimates':[],
@@ -508,10 +514,10 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
             'mainnets_with_general_indexer':sum(c['environment']=='mainnet' and c['indexer_complete'] for c in coverage),
             'mintclub_tokens':sum(bool(t.get('mintclub')) for t in tokens),'mintclub_tokens_with_nonzero_reserve':sum(bool((t.get('mintclub') or {}).get('funded')) for t in tokens),
             'dex_tokens_with_liquidity_evidence':0,'mintclub_registry_assets_checked':0},
-        'limitations':['Initial evidence is partial. Optional deep scanning can check additional candidates and markets under the recorded inventory policy. Missing holdings and prices are unknown, not zero.',
-            'Free candidate discovery and known-token catalogs do not guarantee every arbitrary ERC20 contract.'],
+        'limitations':['Holdings lookup is still running across all configured networks. Missing balances and prices remain unknown.',
+            'Indexers and unavailable networks can omit holdings. Testnet assets are excluded from USD totals.'],
         'actions':{'signatures':0,'approvals':0,'swaps':0,'transfers':0,'rpc_read_only':True},
-        'pipeline':{'version':2,'phase':phase,'enrichment_pending':True,'resumable':True},'evidence_files':['onchain-summary.json']}
+        'pipeline':{'version':2,'phase':phase,'holdings_scope':'all_configured','enrichment_pending':True,'resumable':True},'evidence_files':['onchain-summary.json']}
     refs={}
     native_market={}
     if prices:
@@ -523,12 +529,74 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
     market={'observed_at':result['compiled_at'],'wallet_address':wallet['address'],
         'native_usd':{k.removesuffix('_USD'):{'usd':float(v['value']),'observed_at':v.get('observed_at'),'basis':v.get('basis'),'source':v.get('source')} for k,v in refs.items()},'tokens':[]}
     if prices:market=refresh_metadata(result,market,folder,native_images=native_market.get('images'),discover_prices=True)
+    if phase=='holdings':
+        result['scope']='Direct holdings across every configured network. Alchemy and available explorer indexes are independently verified by on-chain balance reads.'
+        result['pipeline'].update(phase='holdings',enrichment_pending=False,sell_analysis_optional=True)
+        result['counts']['mintclub_registry_assets_checked']=sum((c.get('registry_scan') or {}).get('checked',0) for c in chains)
+        for row in coverage:
+            row['notes']=[]
+            if not row['indexer_complete']:row['notes'].append('Token indexing is unavailable or incomplete on this network. Missing holdings remain unknown.')
+            if row['rpc_status']!='available' or row['candidate_balance_errors']:row['notes'].append('Some on-chain balances could not be verified.')
+            if row['token_detail_errors']:row['notes'].append('Some token or curve details could not be checked. Missing prices remain unknown.')
+            if not (row.get('mintclub_registry_scan') or {}).get('complete'):row['notes'].append('Mint Club registry checks are incomplete.')
+        result['status']='completed_with_coverage_gaps' if any(c['notes'] for c in coverage) else 'completed'
+        result['limitations']=['Indexers and unavailable networks can omit holdings. Missing balances and prices remain unknown.',
+            'USD values use observed market or funded curve spot prices. Very thin DEX pools are excluded. These values are not executable sale proceeds.',
+            'Sell-route analysis is optional and does not discover additional holdings. Testnet assets are excluded from USD totals.']
     atomic(folder/'onchain-summary.json',{'wallet':wallet['address'],'chains':chains})
     atomic(folder/'results.json',result)
     atomic(folder/'market-prices.json',market)
     report(result,folder)
     publish_snapshot(wallet,folder,result)
     return result
+
+
+def research_holdings(wallet, folder, networks):
+    """Enumerate all configured networks and all candidates, without market-route work."""
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        discovered=list(executor.map(lambda n:discover(wallet['address'],n,folder,indexed_only=True),networks))
+    event('discovery',complete_chains=sum(d['complete'] for d in discovered),candidates=sum(len(d['tokens']) for d in discovered))
+    known=read(ASSETS/'sources/known-tokens.json')['tokens']
+    atomic(folder/'scan-input.json',candidate_input(wallet['address'],networks,'full_registry',discovered,prior_candidates(wallet),known))
+    published={}
+    def first_evidence(message):
+        path=folder/f"chain-{message.get('chain_id')}.json"
+        if not path.exists():return
+        chain=read(path)
+        if chain.get('rpc_status')!='available':return
+        key=(chain.get('status'),len(chain['tokens']))
+        if published.get(chain['chain_id'])==key:return
+        published[chain['chain_id']]=key
+        first=folder/'initial'
+        if (first/'results.json').exists():
+            index=1
+            while (folder/f'holdings-initial-{index:04d}').exists():index+=1
+            first=folder/f'holdings-initial-{index:04d}'
+        chains=[read(folder/f"chain-{n['chain_id']}.json") for n in networks if (folder/f"chain-{n['chain_id']}.json").exists()]
+        initial_result(wallet,first,networks,discovered,chains,phase='initial')
+        event('first_evidence',snapshot=str(first.relative_to(ROOT)),tokens=sum(len(c['tokens']) for c in chains))
+    run_node('scan',folder/'scan-input.json',folder,on_chain=first_evidence)
+    return initial_result(wallet,folder,networks,discovered,read(folder/'onchain-summary.json')['chains'],phase='holdings',prices=True)
+
+
+def saved_holdings(wallet, snapshot_id, folder):
+    """Sell analysis uses this wallet's immutable holdings, with original blocks and clocks."""
+    source=(ROOT/(snapshot_id or '')).resolve()
+    if not source.is_relative_to((ROOT/'snapshots').resolve()) or source==folder.resolve():
+        raise ValueError('Choose a saved holdings analysis from this workspace.')
+    snapshot=read(source/'results.json')
+    if snapshot['wallet_address'].lower()!=wallet['address_key'] or snapshot.get('pipeline',{}).get('phase')!='holdings':
+        raise ValueError('Refresh this wallet across all networks before analyzing sell routes.')
+    raw=read(source/'onchain-summary.json')
+    if raw['wallet'].lower()!=wallet['address_key']:raise ValueError('Saved holdings wallet mismatch.')
+    atomic(folder/'onchain-summary.json',raw)
+    atomic(folder/'market-prices.json',read(source/'market-prices.json'))
+    discovered=[]
+    for evidence in source.glob('discovery-*.json'):
+        row=read(evidence)
+        if row.get('wallet','').lower()!=wallet['address_key']:raise ValueError('Saved discovery wallet mismatch.')
+        atomic(folder/evidence.name,row);discovered.append(row)
+    return discovered
 
 
 def source_check(networks, folder):
@@ -618,13 +686,13 @@ def retain_price_evidence(current, previous):
     return {**current,'tokens':list(rows.values())}
 
 
-def finish(wallet, folder, networks, discovered):
+def finish(wallet, folder, networks, discovered, *, holdings_source=None):
     deadline=time.monotonic()+180
     market_scope='representative_v1'
     previous_prices=read(folder/'market-prices.json') if (folder/'market-prices.json').exists() else {}
     checkpoint_folder=folder
     raw=read(folder/'onchain-summary.json')
-    research_pending=any(s.get('discovery_status') in ('history_pending','throttled') for d in discovered for s in discovery_sources(d)) or any(c.get('research_pending') and not c.get('continuation_stalled') for c in raw['chains'])
+    research_pending=not holdings_source and (any(s.get('discovery_status') in ('history_pending','throttled') for d in discovered for s in discovery_sources(d)) or any(c.get('research_pending') and not c.get('continuation_stalled') for c in raw['chains']))
     tokens=[t for c in raw['chains'] for t in c['tokens']]
     for n in networks:
         if n['environment']=='mainnet':event('onchain_progress',operation='asset_inventory',chain_id=n['chain_id'],total=sum(t['chain_id']==n['chain_id'] for t in tokens))
@@ -762,6 +830,7 @@ def finish(wallet, folder, networks, discovered):
         'actions':{'paid_provider_calls':None,'provider_billing':'Not determined; provider allowance can be consumed.','signatures':0,'approvals':0,'swaps':0,'transfers':0,'rpc_read_only':True},
         'pipeline':{'version':2,'entrypoint':'wallet.py','market_scope':market_scope,'resumable':True,'market_pending':market_pending,'registry_cache':'Shared append-only asset identity cache. Wallet balances are not reused between wallets.'},
         'evidence_files':[f.name for f in sorted(folder.glob('*.json')) if f.name not in ('results.json','market-prices.json')]}
+    if holdings_source:result['pipeline'].update(phase='sell',holdings_snapshot=holdings_source)
     atomic(folder/'results.json',result)
     prices=[]
     for t in tokens:
@@ -785,7 +854,7 @@ def finish(wallet, folder, networks, discovered):
     atomic(folder/'results.json',result)
     report(result,folder)
     if market_pending or research_pending:
-        continuation_checkpoint(checkpoint_folder,discovered,market_pending)
+        continuation_checkpoint(checkpoint_folder,[] if holdings_source else discovered,market_pending)
         result['pipeline']['market_pending']=market_pending
         result['pipeline']['research_pending']=research_pending
         result['status']='completed_with_coverage_gaps'
@@ -843,9 +912,12 @@ def main():
     refresh=sub.add_parser('refresh');refresh.add_argument('wallet',help='Registered address or exact tag')
     for p in (add,refresh):
         p.add_argument('--resume',help='Existing snapshot directory relative to the research root')
-        p.add_argument('--phase',choices=('baseline','enrichment','full'),default='full')
-        p.add_argument('--inventory',choices=('market','full'),help='Wallet-history candidates (fresh default), or full Mint Club registry. A resume retains its saved scope.')
+        p.add_argument('--phase',choices=('holdings','sell','baseline','enrichment','full'),default='holdings')
+        p.add_argument('--holdings-snapshot',help='Immutable holdings source for sell-route analysis.')
+        p.add_argument('--inventory',choices=('market','full'),help='Full registry for holdings; market retains an explicitly requested legacy candidate scope. A resume retains its saved scope.')
     args=parser.parse_args()
+    from kira_config import require_alchemy
+    require_alchemy()
     # Serialize shared registry and cache writers for the entire run.
     with (os.fdopen(int(os.environ['KIRA_ANALYSIS_FD']), 'a') if os.environ.get('KIRA_ANALYSIS_FD') else (ROOT/'.analysis.lock').open('a')) as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -876,7 +948,7 @@ def main():
             if manifest.get('completed_at') or published:raise ValueError('Published snapshots are immutable. Use refresh without --resume for a new analysis.')
             policy=inventory_policy(args.inventory,manifest)
         else:
-            policy=inventory_policy(args.inventory)
+            policy=inventory_policy('full' if args.phase in ('holdings','baseline','sell') else args.inventory)
             if os.environ.get('KIRA_JOB_SNAPSHOT'):
                 folder=(ROOT/os.environ['KIRA_JOB_SNAPSHOT']).resolve()
                 if not folder.is_relative_to(ROOT/'snapshots'):raise ValueError('Job path must be within snapshots/.')
@@ -885,48 +957,41 @@ def main():
                 folder=ROOT/'snapshots'/slug/(time.strftime('%Y-%m-%dT%H%M%S')+'-'+wallet['address_key'][2:10])
             folder.mkdir(parents=True,exist_ok=bool(os.environ.get('KIRA_JOB_SNAPSHOT')))
         relative=str(folder.relative_to(ROOT))
-        atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,'started_or_resumed_at':h.now(),'status':'running'})
+        atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,**({'holdings_snapshot':args.holdings_snapshot or (manifest or {}).get('holdings_snapshot')} if args.phase=='sell' else {}),'started_or_resumed_at':h.now(),'status':'running'})
         event('registered',wallet=wallet['address'],tags=wallet['tags'],snapshot=str(folder.relative_to(ROOT)))
         try:
-            source_check(networks,folder)
-            # Initial reports cover three active mainnets; the continuation handles
-            # every configured network, saved inventory scope and markets.
-            initial_networks=[n for cid in (8453,1,81457) for n in networks if n['chain_id']==cid]
-            phase_networks=initial_networks if args.phase=='baseline' else networks
-            known=read(ASSETS/'sources/known-tokens.json')['tokens']
-            # Earlier positive identities are candidates, never reused balances.
-            prior=prior_candidates(wallet)
-            market=policy=='wallet_candidates_v1' and args.phase!='baseline'
-            def acquire(n):
-                row=discover(wallet['address'],n,folder,budget=25 if args.phase=='baseline' else 45 if market else 60,continue_only=bool(args.resume))
-                if market:row['mintclub_id0_discovery']=discover_mintclub_id0(wallet['address'],n,folder,continue_only=bool(args.resume))
-                return row
-            if market:
-                discovered=acquire_candidate_slices(wallet['address'],phase_networks,folder,policy,acquire,prior,known)
+            if args.phase in ('holdings','baseline'):
+                source_check(networks,folder)
+                result=research_holdings(wallet,folder,networks)
+            elif args.phase=='sell':
+                source=args.holdings_snapshot or (manifest or {}).get('holdings_snapshot')
+                if not source:raise ValueError('Sell-route analysis requires a saved holdings source.')
+                discovered=saved_holdings(wallet,source,folder)
+                result=finish(wallet,folder,networks,discovered,holdings_source=source)
             else:
-                with ThreadPoolExecutor(max_workers=5) as executor:discovered=list(executor.map(acquire,phase_networks))
-                atomic(folder/'scan-input.json',candidate_input(wallet['address'],phase_networks,policy,discovered,prior,known))
-            event('discovery',complete_chains=sum(d['complete'] for d in discovered),candidates=sum(len(d['tokens']) for d in discovered))
-            if args.phase=='baseline':
-                first=folder/'initial'
-                def first_evidence(message):
-                    if (first/'results.json').exists():return
-                    cid=message.get('chain_id');path=folder/f'baseline-chain-{cid}.json'
-                    if not path.exists():return
-                    chain=read(path)
-                    if chain.get('rpc_status')!='available':return
-                    initial_result(wallet,first,networks,discovered,[chain],phase='initial')
-                    event('first_evidence',snapshot=str(first.relative_to(ROOT)),tokens=len(chain['tokens']))
-                run_node('baseline',folder/'scan-input.json',folder,on_chain=first_evidence)
-                result=initial_result(wallet,folder,networks,discovered,read(folder/'onchain-summary.json')['chains'],prices=True)
-            else:
+                source_check(networks,folder)
+                phase_networks=networks
+                known=read(ASSETS/'sources/known-tokens.json')['tokens']
+                # Earlier positive identities are candidates, never reused balances.
+                prior=prior_candidates(wallet)
+                market=policy=='wallet_candidates_v1'
+                def acquire(n):
+                    row=discover(wallet['address'],n,folder,budget=45 if market else 60,continue_only=bool(args.resume))
+                    if market:row['mintclub_id0_discovery']=discover_mintclub_id0(wallet['address'],n,folder,continue_only=bool(args.resume))
+                    return row
+                if market:
+                    discovered=acquire_candidate_slices(wallet['address'],phase_networks,folder,policy,acquire,prior,known)
+                else:
+                    with ThreadPoolExecutor(max_workers=5) as executor:discovered=list(executor.map(acquire,phase_networks))
+                    atomic(folder/'scan-input.json',candidate_input(wallet['address'],phase_networks,policy,discovered,prior,known))
+                event('discovery',complete_chains=sum(d['complete'] for d in discovered),candidates=sum(len(d['tokens']) for d in discovered))
                 if not market:run_node('scan',folder/'scan-input.json',folder)
                 result=finish(wallet,folder,networks,discovered)
             publish_snapshot(wallet,folder,result)
             atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,'completed_at':h.now(),'status':result['status']})
             event('published',snapshot=relative,counts=result['counts'],status=result['status'],viewer='http://127.0.0.1:8765')
         except Exception as error:
-            atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,'failed_at':h.now(),'status':'failed','error':h.redact(str(error))})
+            atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,**({'holdings_snapshot':args.holdings_snapshot or (manifest or {}).get('holdings_snapshot')} if args.phase=='sell' else {}),'failed_at':h.now(),'status':'failed','error':h.redact(str(error))})
             event('market_paused' if isinstance(error,MarketPause) else 'research_paused' if isinstance(error,ResearchPause) else 'failed',error=h.redact(str(error)),resume=str(folder.relative_to(ROOT)))
             raise SystemExit(1)
 

@@ -43,17 +43,16 @@ For a viewer without wallet or research actions, use `kira start --read-only`.
 Prefer an archive? [GitHub releases](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2)
 include the same package and its checksum.
 
-1. **Review optional coverage.** Free research is enabled by default. In **Workspace settings**, connect Alchemy for broader
-   ERC20 discovery. Free token sources have limited coverage; incomplete coverage
-   stays visible. An AI or browser wallet connection does not enable an indexer.
-2. **Add a watching wallet.** Paste a public address and give it a name. Add more
-   wallets whenever you need them. The form starts free research of native, common tokens and Mint Club assets, with keyless ERC20 transfer discovery on Ethereum, Base, Optimism, Arbitrum, Polygon and BNB. RPC checks candidate balances; unfinished history remains visible. First balances appear before detailed research finishes.
-   The basic scan checks Base, Ethereum and Blast, up to 128 candidates per
-   chain, with bounded price and artwork lookup. This initial scope also applies
-   when Alchemy is connected. Choose **Start deep scan** for other configured networks,
-   additional discovery and one representative sell estimate per asset. Deep
-   scans show saved asset checks, available prices and unresolved checks. Pause
-   and resume from saved work at any time. Unknown coverage stays visible.
+1. **Connect Alchemy.** Alchemy supplies the token index across networks.
+   Open **Connect Alchemy** in Kira and follow the [simple setup guide](docs/ALCHEMY_SETUP.md).
+   Run `kira connect alchemy` in your terminal and enter your app key at the
+   hidden prompt. The key stays in a private local file. No wallet key is needed.
+2. **Add a watching wallet.** Paste a public EVM address and give it a name.
+   Kira checks every configured network and all discovered token candidates,
+   including the full reachable Mint Club registry. There is no 128-candidate
+   limit. Balances appear as they are checked; prices and artwork follow.
+   **Analyze sell routes** is optional. It estimates sales and redemptions from
+   saved holdings and does not discover more tokens. Pause and resume work in Activity.
 3. **Connect your AI.** Install and sign in to the
    [Codex CLI](https://developers.openai.com/codex/cli) or
    [Claude Code](https://code.claude.com/docs/en/quickstart), then choose your
@@ -146,13 +145,17 @@ Original code and Kira character assets are available under the [MIT license](LI
 Third-party artwork and references retain their own terms; see
 [Third-party notices](THIRD_PARTY_NOTICES.md).
 
-### Token coverage and optional Alchemy setup
+### Alchemy and token coverage
 
-Kira uses free public RPC with bounded fallback and checks a selected common-token
-list alongside native assets and Mint Club. Other ERC20 holdings can be missing.
-Incomplete results show recovery guidance on Home and the wallet page. Connect
-your own Alchemy account for broader discovery on supported networks, then
-refresh holdings. Public RPC remains the first choice for ordinary reads;
-Alchemy is a backup and supplies the dedicated token inventory API. See the
-[step-by-step Alchemy guide](docs/ALCHEMY_SETUP.md) and
-[RPC behavior](docs/FREE_RPC.md).
+An Alchemy connection is required for new holdings and price lookups. Alchemy
+RPC is preferred on configured supported networks; verified public endpoints
+remain a fallback where allowed. Dedicated indexes provide token candidates,
+then on-chain reads verify balances. Other configured networks still receive
+native and Mint Club registry checks, plus an available explorer index.
+Unsupported discovery and failed reads remain unknown.
+
+DEX spot prices require at least $1,000 of source-reported pool liquidity.
+Extremely one-sided pools are also excluded. This is a conservative estimate
+policy, not a claim that holdings can be sold at the displayed price. Saved
+thin-pool quotes are excluded from totals without changing their raw evidence.
+See the [Alchemy setup guide](docs/ALCHEMY_SETUP.md).
