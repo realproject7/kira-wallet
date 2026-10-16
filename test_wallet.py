@@ -337,8 +337,10 @@ class WalletPipelineTests(unittest.TestCase):
              patch('token_images.refresh_catalog',return_value={}):
             result=wallet.finish({'address':self.address,'tags':['Fixture']},self.folder,
                 [{**self.network,'name':'Base','mintclub_network':'base'}],
-                [{'chain_id':8453,'complete':True,'source':None,'pages':[],'native':[]}])
+                [{'chain_id':8453,'complete':True,'source':None,'pages':[],'native':[]}],holdings_source='snapshots/same-wallet-holdings')
         prices=wallet.read(self.folder/'market-prices.json')
+        self.assertFalse(prices['balance_refresh'])
+        self.assertEqual(result['pipeline']['holdings_snapshot'],'snapshots/same-wallet-holdings')
         self.assertEqual(result['compiled_at'],'2026-10-14T05:20:00Z')
         self.assertEqual(prices['tokens'][0]['observed_at'],observed)
         self.assertEqual(prices['tokens'][0]['usd'],2000)

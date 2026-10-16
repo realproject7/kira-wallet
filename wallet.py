@@ -836,7 +836,7 @@ def finish(wallet, folder, networks, discovered, *, holdings_source=None):
     for t in tokens:
         p=dex_price(t,None)
         if p:prices.append({'chain_id':t['chain_id'],'address':t['token_address'],**p})
-    atomic(folder/'market-prices.json',{'observed_at':result['compiled_at'],'wallet_address':wallet['address'],'balance_refresh':True,
+    atomic(folder/'market-prices.json',{'observed_at':result['compiled_at'],'wallet_address':wallet['address'],'balance_refresh':not bool(holdings_source),
         'native_usd':{k.removesuffix('_USD'):{'usd':float(p['value']),'observed_at':p.get('observed_at'),
             'source':p.get('source'),'asset_id':p.get('asset_id'),'basis':p.get('basis','Market index')} for k,p in refs.items()},
         'tokens':prices+reserve_prices,'note':'DEX and reserve prices observed during this run. Curve spot prices use recorded on-chain state. Unknown prices remain null.'})

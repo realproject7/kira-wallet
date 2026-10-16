@@ -153,10 +153,10 @@ function renderHomeCoverage(){
   $('home-discovery-notice').hidden=!notice;
   if(!notice)return;
   $('home-discovery-title').textContent=notice.title;
-  $('home-discovery-text').textContent=notice.message;
+  $('home-discovery-text').textContent=notice.action==='settings'?notice.message:'Some network or token checks are incomplete. Available holdings are saved; missing balances and prices remain unknown.';
   $('home-discovery-settings').textContent=notice.settingsLabel||'Review data connection';
   $('home-discovery-settings').dataset.wallet=affected.key;
-  $('home-discovery-settings').hidden=typeof localSession==='undefined'||localSession?.controls!==true||state.demo===true;
+  $('home-discovery-settings').hidden=(notice.action!=='settings'&&!notice.settings)||typeof localSession==='undefined'||localSession?.controls!==true||state.demo===true;
   $('home-discovery-review').href='#/wallet/'+encodeURIComponent(affected.key);
 }
 function renderDiscoveryCoverage(w) {
