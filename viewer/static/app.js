@@ -11,7 +11,7 @@ const compactQuantity = raw => raw!=null&&Number(raw)>=100000 ? new Intl.NumberF
 const shortAddress = address => address.slice(0,6)+'…'+address.slice(-4);
 const stamp = raw => raw ? new Date(raw).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}) : 'Not analysed yet';
 const safeURL = raw => {try{const url=new URL(raw,location.origin);return (url.origin===location.origin||url.protocol==='https:') ? url.href : '#';}catch{return '#';}};
-const imageHosts = new Set(['mint.club','tokens.1inch.io','coin-images.coingecko.com','fc.hunt.town','mint-club-v2.s3.us-west-2.amazonaws.com','cdn.dexscreener.com','static.alchemyapi.io']);
+const imageHosts = new Set(['mint.club','tokens.1inch.io','coin-images.coingecko.com','fc.hunt.town','mint-club-v2.s3.us-west-2.amazonaws.com','cdn.dexscreener.com','static.alchemyapi.io','s2.coinmarketcap.com']);
 const safeImage = raw => {try{const url=new URL(raw);return url.protocol==='https:'&&imageHosts.has(url.hostname)&&!url.username&&!url.password&&(!url.port||url.port==='443') ? url.href : null;}catch{return null;}};
 const walletGlyph = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6.5h13a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 1.4-1.9L15 1.8v4.7"/><path d="M19 10h-4a2 2 0 0 0 0 4h4"/><path d="M15.5 12h.01"/></svg>';
 

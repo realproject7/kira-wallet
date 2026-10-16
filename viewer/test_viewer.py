@@ -42,10 +42,10 @@ class ViewerTests(unittest.TestCase):
 
     def test_alchemy_artwork_keeps_chain_identity_and_does_not_need_a_catalog_fetch(self):
         token=self.snapshot['tokens'][0]
-        image='https://static.alchemyapi.io/images/assets/fixture.png'
-        token['indexer_image_url']=image
-        projected=model.project_wallet(self.entry,self.snapshot,self.root)
-        self.assertEqual(next(a for a in projected['assets'] if a['address']==token['token_address'])['image_url'],image)
+        for image in ('https://static.alchemyapi.io/images/assets/fixture.png','https://s2.coinmarketcap.com/static/img/coins/64x64/fixture.png'):
+            token['indexer_image_url']=image
+            projected=model.project_wallet(self.entry,self.snapshot,self.root)
+            self.assertEqual(next(a for a in projected['assets'] if a['address']==token['token_address'])['image_url'],image)
         token['indexer_image_url']='https://static.alchemyapi.io.evil.test/image.png'
         projected=model.project_wallet(self.entry,self.snapshot,self.root)
         self.assertNotEqual(next(a for a in projected['assets'] if a['address']==token['token_address'])['image_url'],token['indexer_image_url'])

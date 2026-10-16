@@ -16,7 +16,7 @@ from chain_images import chain_image
 ROOT = Path(os.environ.get('KIRA_DATA_DIR',Path(__file__).resolve().parents[1])).expanduser().resolve()
 API = 'https://mint.club/api'
 IMAGE_HOSTS = ('mint.club', 'tokens.1inch.io', 'coin-images.coingecko.com', 'fc.hunt.town',
-               'mint-club-v2.s3.us-west-2.amazonaws.com', 'cdn.dexscreener.com','static.alchemyapi.io')
+               'mint-club-v2.s3.us-west-2.amazonaws.com', 'cdn.dexscreener.com','static.alchemyapi.io','s2.coinmarketcap.com')
 DEX_CHAINS = {1:'ethereum', 8453:'base', 81457:'blast', 4663:'robinhood',
               10:'optimism', 42161:'arbitrum', 56:'bsc', 137:'polygon',
               43114:'avalanche', 130:'unichain', 33139:'apechain'}
