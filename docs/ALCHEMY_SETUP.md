@@ -61,3 +61,11 @@ required for tokens, prices or logos and does not expand the holdings inventory.
 
 Kira makes requests locally through your account. Review Alchemy’s current
 [plans and limits](https://www.alchemy.com/docs/reference/pricing-plans).
+
+The research engine spaces its private Alchemy node reads at least 250 ms apart
+in one shared lane across Alchemy networks. An Alchemy throughput response cools
+that lane before queued reads can use another Alchemy host. Public and other
+custom RPC endpoints keep their existing pacing and fallback behavior. Canonical
+block checks and provider backoff still apply. This is a local scheduling policy,
+not a guarantee about an account's available capacity. Alchemy's
+[throughput allowance is shared across apps and chains](https://support.alchemy.com/articles/3788245542-is-alchemy-s-throughput-cu-s-limit-shared-across-all-apps-or-set-per-chain).

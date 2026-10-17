@@ -21,8 +21,15 @@ DEX_CHAINS = {1:'ethereum', 8453:'base', 81457:'blast', 4663:'robinhood',
               10:'optimism', 42161:'arbitrum', 56:'bsc', 137:'polygon',
               43114:'avalanche', 130:'unichain', 33139:'apechain'}
 LP_CATALOG = 'https://lptoken.fun/api/markets?sort=volume&limit=100'
-# Contract-verified CoinGecko artwork fallback, checked 2026-10-05.
+# Contract-verified artwork fallback. Successful catalog metadata takes priority.
 KNOWN_TOKEN_ARTWORK = {
+    # Circle mainnet identities, checked 2026-10-17:
+    # https://developers.circle.com/stablecoins/usdc-contract-addresses
+    '8453:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913':
+        'https://static.alchemyapi.io/images/assets/3408.png',
+    '130:0x078d782b760474a361dda0af3839290b0ef57ad6':
+        'https://static.alchemyapi.io/images/assets/3408.png',
+    # CoinGecko Blast artwork, checked 2026-10-05.
     '81457:0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad':
         'https://coin-images.coingecko.com/coins/images/35494/small/Blast.jpg?1719385662',
     '81457:0x4300000000000000000000000000000000000003':
@@ -74,7 +81,12 @@ def image_for(catalog, chain_id, address=None, *, mint=False, native_symbol=None
         return chain_image(1 if native_symbol == 'ETH' else chain_id)
     row = catalog.get('tokens', {}).get(identity(chain_id, address)) or {}
     if mint:return safe_image(row.get('image_url')) or mint_logo(chain_id,address)
-    image = safe_image(row.get('image_url')) or KNOWN_TOKEN_ARTWORK.get(identity(chain_id,address))
+    image = safe_image(row.get('image_url'))
+    known = KNOWN_TOKEN_ARTWORK.get(identity(chain_id,address))
+    # Reserve catalogs can synthesize Hunt URLs even when no logo was supplied.
+    # A verified identity has a canonical fallback before that unverified URL.
+    if known and (not image or urlparse(image).hostname in ('fc.hunt.town','tokens.1inch.io')):
+        return known
     # Mint Club still returns legacy 1inch URLs that reject requests with HTTP 403.
     # Its Hunt token-image endpoint serves the same reserve contract's logo.
     if image and urlparse(image).hostname == 'tokens.1inch.io':

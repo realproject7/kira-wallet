@@ -341,6 +341,18 @@ class ViewerTests(unittest.TestCase):
         self.assertIsNone(next(c for c in summary['networks'] if c['id']==1)['value_usd'])
         self.assertIsNone(model.dashboard([])['known_value_usd'])
 
+    def test_canonical_artwork_precedes_a_synthetic_reserve_fallback(self):
+        address='0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+        key=token_images.identity(8453,address)
+        catalog={'tokens':{key:{'image_url':token_images.reserve_logo(8453,address)}}}
+        expected='https://static.alchemyapi.io/images/assets/3408.png'
+        self.assertEqual(token_images.image_for({},8453,address),expected)
+        self.assertEqual(token_images.image_for(catalog,8453,address),expected)
+        self.assertIsNone(token_images.image_for(catalog,1,address))
+        direct='https://coin-images.coingecko.com/updated-usdc.png'
+        catalog['tokens'][key]['image_url']=direct
+        self.assertEqual(token_images.image_for(catalog,8453,address),direct)
+
     def test_images_use_api_and_reserve_contract_identity(self):
         address='0x0000000000000000000000000000000000000001'
         url='https://coin-images.coingecko.com/fixture.png'
