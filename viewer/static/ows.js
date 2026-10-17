@@ -51,6 +51,7 @@ async function loadOws() {
 }
 async function openOws() {
   if (!watchingCanAct()) return;
+  if(typeof setupReadiness!=='undefined'&&setupReadiness?.discovery_key_available!==true){await openDataConnections();return;}
   $('wallet-dialog').close(); $('ows-error').textContent = ''; $('ows-dialog').showModal();
   try { await loadOws(); } catch { $('ows-error').textContent = 'The local vault could not be checked. You can still use a browser wallet or public address.'; }
 }

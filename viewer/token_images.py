@@ -4,10 +4,11 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlparse
 import json
 import os
 import re
+import subprocess
 import urllib.request
 from native_assets import NATIVE_ASSETS, native_identity
 from chain_images import chain_image
@@ -15,7 +16,7 @@ from chain_images import chain_image
 ROOT = Path(os.environ.get('KIRA_DATA_DIR',Path(__file__).resolve().parents[1])).expanduser().resolve()
 API = 'https://mint.club/api'
 IMAGE_HOSTS = ('mint.club', 'tokens.1inch.io', 'coin-images.coingecko.com', 'fc.hunt.town',
-               'mint-club-v2.s3.us-west-2.amazonaws.com', 'cdn.dexscreener.com')
+               'mint-club-v2.s3.us-west-2.amazonaws.com', 'cdn.dexscreener.com','static.alchemyapi.io','s2.coinmarketcap.com')
 DEX_CHAINS = {1:'ethereum', 8453:'base', 81457:'blast', 4663:'robinhood',
               10:'optimism', 42161:'arbitrum', 56:'bsc', 137:'polygon',
               43114:'avalanche', 130:'unichain', 33139:'apechain'}
@@ -47,7 +48,10 @@ def safe_image(raw):
 
 def mint_logo(chain_id, address):
     if not identity(chain_id, address): return None
-    return API + '/tokens/logo?' + urlencode({'chainId': chain_id, 'address': address})
+    # Mint Club's direct endpoint requires EIP-55 casing. Hunt normalizes the
+    # same chain/contract identity and serves the identical artwork for old
+    # snapshots whose addresses were stored in lowercase.
+    return reserve_logo(chain_id, address)
 
 
 def reserve_logo(chain_id, address):
@@ -68,8 +72,8 @@ def image_for(catalog, chain_id, address=None, *, mint=False, native_symbol=None
         if image: return image
         # Artwork fallback is selected by the native currency, not the L2 logo.
         return chain_image(1 if native_symbol == 'ETH' else chain_id)
-    if mint: return mint_logo(chain_id, address)
     row = catalog.get('tokens', {}).get(identity(chain_id, address)) or {}
+    if mint:return safe_image(row.get('image_url')) or mint_logo(chain_id,address)
     image = safe_image(row.get('image_url')) or KNOWN_TOKEN_ARTWORK.get(identity(chain_id,address))
     # Mint Club still returns legacy 1inch URLs that reject requests with HTTP 403.
     # Its Hunt token-image endpoint serves the same reserve contract's logo.
@@ -85,6 +89,17 @@ def fetch_metadata(url):
     except (OSError, ValueError): return None
 
 
+def checksum_addresses(addresses):
+    """Normalize metadata requests in one local viem call, never per render."""
+    if not addresses:return {}
+    try:
+        script='const fs=require("node:fs"),{getAddress}=require("viem");const rows=JSON.parse(fs.readFileSync(0,"utf8"));process.stdout.write(JSON.stringify(Object.fromEntries(rows.map(a=>[a.toLowerCase(),getAddress(a.toLowerCase())]))));'
+        result=subprocess.run(['node','-e',script],cwd=Path(__file__).resolve().parents[1],
+                              input=json.dumps(addresses),capture_output=True,text=True,timeout=10,check=True)
+        return json.loads(result.stdout)
+    except (OSError,ValueError,subprocess.SubprocessError):return {}
+
+
 def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, native_images=None):
     """Share images by chain/address. Reuse successful metadata for 24 hours."""
     catalog = read_catalog(root)
@@ -94,6 +109,11 @@ def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, 
         try: return 0 <= (now - datetime.fromisoformat(raw)).total_seconds() < 86400
         except (ValueError, TypeError): return False
     records = catalog.setdefault('tokens', {})
+    for snapshot in snapshots:
+        for token in snapshot.get('tokens',[]):
+            key=identity(token.get('chain_id'),token.get('token_address'))
+            image=safe_image(token.get('indexer_image_url'))
+            if key and image:records[key]={'image_url':image,'source':'Alchemy token metadata','observed_at':observed}
     artwork_checked=catalog.setdefault('artwork_checked',{})
     wanted = {identity(t.get('chain_id'),t.get('token_address')):t
               for snapshot in snapshots for t in snapshot.get('tokens',[])
@@ -160,8 +180,10 @@ def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, 
                   for snapshot in snapshots for t in snapshot.get('tokens', []) if t.get('mintclub')}
     checked = catalog.setdefault('mint_details', {})
     candidates = [t for key, t in candidates.items() if key and (force or not fresh(checked.get(key)))]
+    checksums=checksum_addresses([t['token_address'] for t in candidates])
     def get(t):
-        source = f"{API}/tokens/details/{t['chain_id']}/{t['token_address']}"
+        address=checksums.get(t['token_address'].lower(),t['token_address'])
+        source = f"{API}/tokens/details/{t['chain_id']}/{address}"
         return t, source, fetch(source)
     with ThreadPoolExecutor(max_workers=4) as pool:
         for token, source, detail in pool.map(get, candidates):

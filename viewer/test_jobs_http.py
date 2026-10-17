@@ -23,6 +23,9 @@ class JobsHTTPTest(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
         atomic(self.root/'wallets.json',{'schema_version':1,'wallets':[{'address':ADDRESS,'address_key':ADDRESS,'tags':['Synthetic']}],'research_runs':[]})
         self.root_patch=patch.object(server,'ROOT',self.root);self.root_patch.start()
+        from kira_config import default_config,provider_config
+        config=provider_config(default_config(),'alchemy','KIRA_HTTP_FIXTURE_KEY');config['secret_env_file']=str(self.root/'fixture.env')
+        atomic(self.root/'.kira.local.json',config);(self.root/'fixture.env').write_text('KIRA_HTTP_FIXTURE_KEY=fixture-only-key\n')
         self.http=ThreadingHTTPServer(('127.0.0.1',0),server.Handler);self.http.controls=True;self.http.session_token=secrets.token_urlsafe(32);self.http.jobs=JobStore(self.root)
         self.http.agent=AgentStore(self.root,detector=lambda:[])
         self.http.ows=OwsStore(self.root,vault=self.root/"synthetic-vault",runner=lambda request:{"wallets":[]})

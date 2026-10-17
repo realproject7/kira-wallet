@@ -9,7 +9,7 @@ def readiness():
     local_available = bool(secret_values(config).get(discovery['key_env']))
     available = configured and local_available
     public = discovery.get('public',True) and not (config['rpc']['mode']=='custom' and config['rpc'].get('allow_public_fallback',True) is False)
-    return {'public_discovery':public, 'rpc_mode': config['rpc']['mode'],
+    return {'public_discovery':False,'required_provider':'alchemy', 'rpc_mode': config['rpc']['mode'],
             'discovery_provider': discovery['provider'],
             'discovery_configured': configured,
             'discovery_key_available': bool(available),

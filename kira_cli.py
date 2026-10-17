@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import signal
@@ -144,6 +145,22 @@ def sample(root):
     atomic(root/'wallets.json',{'schema_version':1,'demo':True,'wallets':[{'address':address,'address_key':address,'tags':['Demo wallet'],
         'latest_snapshot':{'directory':folder,'result':folder+'/results.json'}}]})
 
+def connect_alchemy(root):
+    """Only the operator types the key, at a hidden terminal prompt."""
+    import getpass
+    from kira_jobs import JobStore
+    if not sys.stdin.isatty():raise ValueError('Run kira connect alchemy in an interactive terminal. The API key is entered privately there.')
+    key=getpass.getpass('Alchemy API key (hidden): ').strip()
+    if not key or len(key)>512 or not re.fullmatch(r'[A-Za-z0-9_-]+',key):raise ValueError('Enter the app API key, without an endpoint URL.')
+    directory=root/'.secrets';directory.mkdir(mode=0o700,exist_ok=True)
+    if directory.is_symlink():raise ValueError('The private key directory must not be a symlink.')
+    import tempfile
+    fd,name=tempfile.mkstemp(prefix='alchemy-',suffix='.env',dir=directory)
+    with os.fdopen(fd,'w') as stream:
+        stream.write('ALCHEMY_API_KEY='+key+'\n');stream.flush();os.fsync(stream.fileno())
+    store=JobStore(root);job=store.queue_import(name,'ALCHEMY_API_KEY');store.launch()
+    print(json.dumps({'status':'configuration_queued','job_id':job['job_id'],'note':'Your key is stored privately on this computer. Return to Kira and check the connection.'}))
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data-dir',default=os.environ.get('KIRA_DATA_DIR',str(Path.home()/'.local/share/kira-wallet')))
@@ -157,6 +174,7 @@ def main():
     setup=sub.add_parser('setup');setup.add_argument('--port',type=int,default=8787);setup.add_argument('--no-open',action='store_true')
     sub.add_parser('stop');sub.add_parser('status');sub.add_parser('wallets')
     sub.add_parser('tools')
+    connection=sub.add_parser('connect');connection.add_argument('provider',choices=['alchemy'])
     d=sub.add_parser('doctor');d.add_argument('--live',action='store_true');d.add_argument('--chains',default='1,8453,81457');d.add_argument('--budget',type=int,default=30)
     demo=sub.add_parser('demo');demo.add_argument('--port',type=int,default=8790)
     add=sub.add_parser('add');add.add_argument('address');add.add_argument('--tag',required=True);add.add_argument('--resume')
@@ -204,7 +222,8 @@ def main():
     from kira_config import load_config,config_path,redact
     try:
         initialize(root)
-        if args.command=='init':print(json.dumps({'status':'initialized','rpc_mode':load_config()['rpc']['mode']}))
+        if args.command=='connect':connect_alchemy(root)
+        elif args.command=='init':print(json.dumps({'status':'initialized','rpc_mode':load_config()['rpc']['mode']}))
         elif args.command=='start':
             url=start(root,args.port,args.controls)
             if not args.no_open:
@@ -215,7 +234,7 @@ def main():
             if not args.no_open:
                 import webbrowser
                 webbrowser.open(url)
-            print(json.dumps({'setup_url':url,'note':'Choose your native CLI account and context permissions in the local setup screen.'}))
+            print(json.dumps({'setup_url':url,'note':'Connect Alchemy, then add a public wallet. AI connection is optional.'}))
         elif args.command=='stop':stop(root)
         elif args.command=='status':
             item=live_record(root);print(json.dumps({'status':'running' if item else 'stopped','url':f"http://127.0.0.1:{item['port']}" if item else None}))

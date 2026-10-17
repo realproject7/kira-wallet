@@ -12,13 +12,21 @@ def resolve(graph, prices):
     nodes={(r['chain_id'],r['address'].lower()):r for r in graph if r.get('address')}
     known={(r['chain_id'],r['address'].lower()):r for r in prices}
     cache={}
+    def rejected_reserve(key,seen):
+        if key in seen:return False
+        node=nodes.get(key);price=known.get(key)
+        if not node or not node.get('is_curve'):return bool(price and price.get('quality')=='unreliable')
+        if price and price.get('usd') is not None and price.get('basis')!='Curve spot' and price.get('quality') not in ('unfunded','unreliable'):return False
+        return rejected_reserve((key[0],node['reserve_token'].lower()),seen|{key})
     def visit(key,seen):
         if key in cache:return cache[key]
         if key in seen:return None
         existing=known.get(key)
         node=nodes.get(key)
+        if existing and existing.get('quality')=='unreliable' and not (node and node.get('is_curve')):
+            cache[key]={**existing,'usd':None};return cache[key]
         unfunded=node and not node.get('error') and node.get('is_curve') and node.get('funded') is False
-        if existing and existing.get('usd') is not None and existing.get('quality') not in ('unfunded','unreliable') and (existing.get('basis')!='Curve spot' or not unfunded):
+        if existing and existing.get('usd') is not None and existing.get('quality') not in ('unfunded','unreliable') and (existing.get('basis')!='Curve spot' or not unfunded and not rejected_reserve(key,set())):
             cache[key]=existing;return existing
         if not node or node.get('error') or not node.get('is_curve'):return None
         if not node['funded']:
@@ -27,6 +35,10 @@ def resolve(graph, prices):
                     'observed_at':node.get('observed_at'),'block_number':node.get('block_number')}
             cache[key]=record;return record
         parent=visit((key[0],node['reserve_token'].lower()),seen|{key})
+        if parent and parent.get('quality')=='unreliable':
+            record={'chain_id':key[0],'address':node['address'],'usd':None,'basis':'Curve spot','quality':'unreliable',
+                    'source':node.get('source'),'observed_at':node.get('observed_at'),'block_number':node.get('block_number')}
+            cache[key]=record;return record
         if not parent or parent.get('usd') is None:return None
         usd=float(node['price_in_reserve'])*parent['usd']
         if not math.isfinite(usd) or usd<0:return None
@@ -54,6 +66,8 @@ def enrich(snapshot,market,folder,deadline=None):
     if recorded.get('market_pending'):raise MarketPause('Reserve checks reached the market time budget. Resume saved checks in Activity.')
     ordinary=[r for r in graph if r.get('address') and r.get('is_curve') is False and r['chain_id'] in ALCHEMY]
     prices=list(market.get('tokens',[]))
+    rejected={(p['chain_id'],p['address'].lower()) for p in prices if p.get('quality')=='unreliable'}
+    ordinary=[r for r in ordinary if (r['chain_id'],r['address'].lower()) not in rejected]
     # Only reserve assets are requested. Identify prices by network and contract, never symbol.
     requests=[{'network':ALCHEMY[r['chain_id']],'address':r['address']} for r in ordinary]
     inverse={value:key for key,value in ALCHEMY.items()}

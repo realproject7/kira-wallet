@@ -33,7 +33,7 @@ function harness() {
   }
   document.createElement=()=>element('generated-'+(++generated));
   const context=vm.createContext({KiraWatching, window:new EventTarget(), document, $:element,
-    state:{demo:false,wallets:[]}, selectedWallet:null, selectedView:'home',
+    setupReadiness:{discovery_key_available:true},state:{demo:false,wallets:[]}, selectedWallet:null, selectedView:'home',
     currentWallet:()=>null, setInterval:()=>0, AbortSignal,
     crypto:{randomUUID:()=>ID}, shortAddress:address=>address.slice(0,6)+"…"+address.slice(-4),
     sessionStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},
@@ -71,11 +71,11 @@ test('coverage recovery opens Alchemy guidance and rechecks local readiness with
   const h=harness();
   h.run("currentWallet=()=>({key:A});localAPI=async path=>path==='/api/settings'?{rpc:{mode:'public',allow_public_fallback:true,chains:{}},discovery:{provider:'none',key_env:'ALCHEMY_API_KEY'}}:{local_key_available:false,discovery_key_available:false};");
   await h.run('openDataConnections(false,true,A)');
-  assert.equal(h.element('data-provider').value,'alchemy');assert.equal(h.element('provider-key-guide').open,true);
+  assert.equal(h.element('data-provider').value,'alchemy');assert.match(h.element('provider-key-status').textContent,/Run the command/);
   assert.equal(h.element('provider-save').disabled,true);assert.equal(h.posts.length,0);
   h.run("localAPI=async path=>path==='/api/settings'?{rpc:{mode:'custom',allow_public_fallback:true,priority:'public_first',chains:{}},discovery:{provider:'alchemy',key_env:'ALCHEMY_API_KEY'}}:{local_key_available:true,discovery_key_available:true};");
   await h.element('provider-recheck').listeners.click();
-  assert.equal(h.element('provider-save').disabled,false);assert.equal(h.element('provider-key-guide').open,false);
+  assert.equal(h.element('provider-save').disabled,false);assert.match(h.element('provider-key-status').textContent,/Alchemy is connected/);
   assert.equal(h.element('settings-refresh').hidden,false);assert.equal(h.element('settings-refresh').disabled,false);assert.equal(h.posts.length,0);
 });
 test('settings refresh retains its chosen wallet and is explicit',async()=>{

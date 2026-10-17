@@ -11,18 +11,16 @@ function renderHomeTokens(){
 }
 function renderSetupPath() {
   if(!state)return;
-  const wallet=state.wallets.length>0,analysed=state.dashboard.analysed_wallet_count>0;
-  const discovery=setupReadiness?.discovery_key_available===true,configured=setupReadiness?.discovery_configured===true,ai=typeof agentState!=='undefined'&&!!agentState?.config;
-  $('setup-path').hidden=state.demo||!localSession?.controls||(wallet&&analysed&&discovery&&ai);
+  const wallet=state.wallets.length>0,connected=setupReadiness?.discovery_key_available===true;
+  $('home-heading').hidden=!wallet;$('home-summary').hidden=!wallet;
+  $('setup-path').hidden=state.demo||!localSession?.controls||(wallet&&connected);
   $('home-empty').hidden=wallet||!$('setup-path').hidden;
-  $('setup-path').innerHTML='<details '+(!wallet||!discovery?'open':'')+'><summary>'+ (wallet?'Finish your setup':'Set up your first wallet')+'</summary><div class="section-heading"><h2>'+ (wallet?'Finish your setup':'Start with one wallet')+'</h2><span class="section-note">Your keys stay yours</span></div><ol class="setup-checklist">'+
-    '<li><span class="setup-check">'+(wallet?'✓':'1')+'</span><div><strong>Add a public wallet</strong><p>'+(wallet?'Saved locally.':'Paste an EVM address or choose a browser wallet. No signature or seed phrase.')+'</p></div><button class="quiet-button" id="setup-wallet" type="button">'+(wallet?'Add another':'Add wallet')+'</button></li>'+
-    '<li><span class="setup-check">'+(discovery?'✓':'2')+'</span><div><strong>Data provider connection <small>optional</small></strong><p>'+(!setupReadiness?(setupUnavailable?'Could not check the connection. Retrying…':'Checking the data connection…'):discovery?'Local Alchemy key found. Actual chain coverage is confirmed by research results.':configured?'Alchemy selected, but its local key is unavailable. Review the connection guide.':'Free research checks common tokens and uses keyless discovery on supported networks. Alchemy is optional for broader coverage.')+'</p></div><button class="quiet-button" id="setup-discovery" type="button">Review connection</button></li>'+
-    '<li><span class="setup-check">'+(analysed?'✓':'3')+'</span><div><strong>Read your first report</strong><p>'+(analysed?'Saved balances, prices and coverage are ready.':'Adding a wallet starts one explicit research job. Follow its progress in Activity; gaps are shown in the report.')+'</p></div><a class="quiet-button" href="#/activity">View Activity</a></li>'+
-    '<li><span class="setup-check">'+(ai?'✓':'4')+'</span><div><strong>Connect your AI <small>optional</small></strong><p>'+(ai?'Connected. Wallet context still follows your explicit permissions.':'Use your installed Codex or Claude account when you are ready. Tracking works without it.')+'</p></div><button class="quiet-button" id="setup-ai" type="button">'+(ai?'Permissions':'Connect AI')+'</button></li></ol></details>';
+  if($('setup-path').hidden)return;
+  $('setup-path').innerHTML='<div class="section-heading"><h1>Your wallets, in one place.</h1></div><p>Connect Alchemy once, then add your public wallet. AI is optional.</p><ol class="setup-checklist">'+
+    '<li><span class="setup-check">'+(connected?'✓':'1')+'</span><div><strong>Connect Alchemy</strong><p>'+(connected?'Connected on this computer.':!setupReadiness?(setupUnavailable?'Could not check the connection. Retrying…':'Checking the connection…'):'Alchemy supplies the token list across networks. Your API key stays on this computer.')+'</p></div><button class="'+(connected?'quiet':'primary')+'-button" id="setup-discovery" type="button">'+(connected?'Connected':'Connect Alchemy')+'</button></li>'+
+    '<li><span class="setup-check">'+(wallet?'✓':'2')+'</span><div><strong>Add your wallet</strong><p>Use a public EVM address. No signature or seed phrase.</p></div><button class="quiet-button" id="setup-wallet" type="button" '+(!connected?'disabled':'')+'>'+ (wallet?'Add another':'Add wallet')+'</button></li></ol><p class="form-note">Connect a model in Kira Chat whenever you want AI help.</p>';
   $('setup-wallet').addEventListener('click',openAdd);
   $('setup-discovery').addEventListener('click',()=>openDataConnections());
-  $('setup-ai').addEventListener('click',openAgent);
 }
 async function loadSetupReadiness(){
   if(setupLoading||!localSession?.controls)return false;setupLoading=true;

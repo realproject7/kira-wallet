@@ -25,12 +25,19 @@ def provider_config(config, provider, key_env):
             'discovery':{**config['discovery'],'provider':'alchemy' if provider=='alchemy' else 'none','key_env':key_env}}
     result['rpc']['mode']='custom' if provider=='alchemy' else 'public'
     if provider=='alchemy':
+        result['rpc']['priority']='custom_first'
+        result['discovery'].update(public=False,explorers=True)
         from wallet import ALCHEMY
         for cid,network in ALCHEMY.items():
             previous=result['rpc']['chains'].get(str(cid))
             if not previous or previous.get('alchemy_network'):
                 result['rpc']['chains'][str(cid)]={'url_env':key_env,'alchemy_network':network}
     return result
+
+def require_alchemy(root=None):
+    """Require an operator-configured Alchemy reference before provider research."""
+    if public_status(root).get('discovery_key_available') is not True:
+        raise ValueError('Connect Alchemy before researching wallets. Open Workspace settings > Alchemy, or follow the Alchemy setup guide. Saved portfolios remain available.')
 
 def load_config(path=None):
     path=Path(path) if path is not None else config_path()
@@ -63,13 +70,13 @@ def public_status(root=None):
     rpc=cfg['rpc'];discovery=cfg['discovery']
     public=rpc['mode']=='public' or rpc['allow_public_fallback']
     import_command=f"kira config import-env --file PATH --key-env {discovery['key_env']}"
-    return {'status':'configured','rpc_mode':rpc['mode'],'read_order':rpc.get('priority','public_first') if public else 'custom_only',
+    return {'status':'configured','rpc_mode':rpc['mode'],'read_order':('custom_first' if discovery['provider']=='alchemy' else rpc.get('priority','public_first')) if public else 'custom_only',
             'custom_chain_count':len(rpc['chains']) if rpc['mode']=='custom' else 0,
             'discovery_provider':discovery['provider'],'discovery_key_available':discovery['provider']=='alchemy' and available,
-            'key_env':discovery['key_env'],'public_discovery':public and discovery.get('public',True),
+            'key_env':discovery['key_env'],'public_discovery':False,'required_provider':'alchemy',
             'import_command':import_command,
-            'guide':f'Workspace settings > Manage data connection > Alchemy. Add the key to a private local environment file, then run {import_command}. In the browser enter only the environment variable name, check availability and save. A saved reference does not establish that the key is available or that API access works. Refresh holdings to test API access. Never enter or request a key in chat.',
-            'keyless_providers':['etherscan_keyless','routescan'], 'complete_inventory_guaranteed':False}
+            'guide':'Open Workspace settings > Alchemy. Run kira connect alchemy in a terminal and enter the app key at its hidden prompt. Return to Kira to check the connection, then refresh holdings. Actual results establish network access. Never enter or request a key in chat or the browser.',
+            'keyless_providers':[], 'complete_inventory_guaranteed':False}
 
 def secret_values(cfg=None):
     cfg=cfg or load_config();values={}
@@ -117,7 +124,7 @@ def endpoints(network,cfg=None):
         # opt-out for operators who require custom providers only.
         if not rpc['allow_public_fallback']:return urls
     public=network.get('public_rpc') or []
-    urls=public+urls if rpc.get('priority','public_first')=='public_first' else urls+public
+    urls=public+urls if rpc.get('priority','public_first')=='public_first' and cfg['discovery']['provider']!='alchemy' else urls+public
     return list(dict.fromkeys(urls))
 
 def runtime():

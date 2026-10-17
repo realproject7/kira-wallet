@@ -71,6 +71,7 @@ class OwsStore:
             if not isinstance(request['passphrase'],str) or not 12<=len(request['passphrase'].strip())<=1024:raise JobError('passphrase_required','Use an encryption passphrase of at least 12 characters.')
         elif not isinstance(request['wallet_id'],str) or len(request['wallet_id'])>100:raise JobError('invalid_wallet','Choose a local OWS wallet.')
         public={k:request[k] for k in request if k!='passphrase'};fingerprint=hashlib.sha256(json.dumps([create,public],sort_keys=True).encode()).hexdigest()
+        JobStore(self.root).require_connection()
         with self.owner_lock():
             self.receipts.mkdir(parents=True,exist_ok=True,mode=0o700);path=self.receipts/(key+'.json')
             receipt=json.loads(path.read_text()) if path.is_file() else None

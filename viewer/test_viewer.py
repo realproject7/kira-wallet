@@ -15,6 +15,75 @@ import server
 import token_images
 
 class ViewerTests(unittest.TestCase):
+    def test_tiny_market_cannot_inflate_current_or_legacy_cached_totals(self):
+        token=self.snapshot['tokens'][0]
+        token.update(chain_id=1,symbol='CAI',wallet_balance='2',mintclub=None,dex_pools=[],indexer_price_references=[])
+        self.snapshot['tokens']=[token];self.snapshot['coverage']=[c for c in self.snapshot['coverage'] if c['chain_id']==1];self.snapshot['price_references']={}
+        price={'chain_id':1,'address':token['token_address'],'usd':1481349.43,'quality':'estimated','basis':'DEX market','source':'https://example.org/tiny-pool','observed_at':'2026-10-16T00:00:00Z'}
+        pair={'chainId':'ethereum','pairAddress':'0x'+'3'*40,'dexId':'uniswap',
+              'baseToken':{'address':token['token_address']},'quoteToken':{'address':'0x'+'4'*40},
+              'priceUsd':'1481349.43','liquidity':{'usd':0.02,'base':0.000000009842},'url':price['source']}
+        market=self.directory/'market-prices.json';market.write_text(json.dumps({'tokens':[price]}))
+        (self.directory/'token-market-metadata.json').write_text(json.dumps([{'response':[pair],'observed_at':price['observed_at']}]))
+        before=market.read_bytes()
+        for row in (price,{**price,'liquidity_usd':0.02}):
+            market.write_text(json.dumps({'tokens':[row]}))
+            projected=model.project_wallet(self.entry,self.snapshot,self.root)
+            asset=projected['assets'][0]
+            self.assertEqual(asset['balance'],'2');self.assertIsNone(asset['value_usd'])
+            self.assertEqual(asset['price']['quality'],'unreliable')
+            self.assertIsNone(projected['known_value_usd'])
+        market.write_bytes(before)
+        token['dex_pools']=[{'paired_tokens':[pair['baseToken'],pair['quoteToken']],
+            'reported_price_usd':pair['priceUsd'],'reported_liquidity':pair['liquidity'],'source_url':price['source']}]
+        token['indexer_price_references']=[{'currency':'usd','value':'1481349.43'}]
+        self.assertIsNone(model.dex_price(token,None)['usd'],'A rejected thin pool cannot fall back to the same indexed price.')
+        self.assertEqual(market.read_bytes(),before)
+
+    def test_alchemy_artwork_keeps_chain_identity_and_does_not_need_a_catalog_fetch(self):
+        token=self.snapshot['tokens'][0]
+        for image in ('https://static.alchemyapi.io/images/assets/fixture.png','https://s2.coinmarketcap.com/static/img/coins/64x64/fixture.png'):
+            token['indexer_image_url']=image
+            projected=model.project_wallet(self.entry,self.snapshot,self.root)
+            self.assertEqual(next(a for a in projected['assets'] if a['address']==token['token_address'])['image_url'],image)
+        token['indexer_image_url']='https://static.alchemyapi.io.evil.test/image.png'
+        projected=model.project_wallet(self.entry,self.snapshot,self.root)
+        self.assertNotEqual(next(a for a in projected['assets'] if a['address']==token['token_address'])['image_url'],token['indexer_image_url'])
+
+    def test_initial_balances_wait_for_price_checks_before_entering_the_total(self):
+        self.snapshot['pipeline']={'phase':'initial'}
+        projected=model.project_wallet(self.entry,self.snapshot,self.root)
+        self.assertTrue(all(a['value_usd'] is None for a in projected['assets'] if not a['is_native']))
+
+    def test_optional_sell_work_does_not_invalidate_saved_holdings_coverage(self):
+        self.snapshot['pipeline']={'phase':'sell','market_pending':True}
+        self.snapshot['tokens'][0]['dex_verification_error']={'message':'A sale estimate is unavailable.'}
+        before=json.dumps(self.snapshot,sort_keys=True)
+        projected=model.project_wallet(self.entry,self.snapshot,self.root)
+        self.assertTrue(projected['sell_analysis_pending'])
+        self.assertTrue(all(not c['market_pending'] and c['market_errors']==0 for c in projected['chains']))
+        self.assertEqual(sum(c['sell_analysis_errors'] for c in projected['chains']),1)
+        self.assertEqual(json.dumps(self.snapshot,sort_keys=True),before)
+        self.snapshot['pipeline']={'market_pending':True}
+        legacy=model.project_wallet(self.entry,self.snapshot,self.root)
+        self.assertTrue(all(c['market_pending'] for c in legacy['chains']))
+        self.assertEqual(sum(c['market_errors'] for c in legacy['chains']),1)
+
+    def test_failed_all_network_read_is_not_displayed_as_unstarted_work(self):
+        self.snapshot['pipeline']={'phase':'holdings'}
+        chain=self.snapshot['coverage'][0];chain['rpc_status']='pending'
+        before=json.dumps(self.snapshot,sort_keys=True)
+        evidence=self.directory/f"chain-{chain['chain_id']}.json"
+        evidence.write_text(json.dumps({'wallet':self.entry['address_key'],'status':'unavailable'}))
+        projected=model.project_wallet(self.entry,self.snapshot,self.root)
+        row=next(c for c in projected['chains'] if c['id']==chain['chain_id'])
+        self.assertEqual(row['rpc_status'],'unavailable');self.assertFalse(row['rpc_pending'])
+        self.assertEqual(projected['lookup_mode'],'all_networks')
+        self.assertEqual(json.dumps(self.snapshot,sort_keys=True),before)
+        evidence.write_text(json.dumps({'wallet':'0x'+'2'*40,'status':'unavailable'}))
+        projected=model.project_wallet(self.entry,self.snapshot,self.root)
+        self.assertTrue(next(c for c in projected['chains'] if c['id']==chain['chain_id'])['rpc_pending'])
+
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
         self.snapshot=fixture_snapshot()
@@ -278,7 +347,9 @@ class ViewerTests(unittest.TestCase):
         catalog={'tokens':{f'8453:{address}':{'image_url':url}}}
         self.assertEqual(token_images.image_for(catalog,8453,address),url)
         self.assertIsNone(token_images.image_for(catalog,1,address))
-        self.assertIn('/tokens/logo?chainId=8453&address=',token_images.image_for(catalog,8453,address,mint=True))
+        self.assertEqual(token_images.image_for(catalog,8453,address,mint=True),
+                         url)
+        self.assertEqual(token_images.image_for({},8453,address,mint=True),f'https://fc.hunt.town/tokens/logo/8453/{address}/image')
         self.assertIsNone(token_images.safe_image('https://tokens.1inch.io.evil.example/logo.png'))
         self.assertIsNone(token_images.safe_image('http://tokens.1inch.io/logo.png'))
         self.assertIsNone(token_images.safe_image('https://secret@mint.club/logo.png'))
@@ -298,6 +369,23 @@ class ViewerTests(unittest.TestCase):
             self.assertIsNone(token_images.image_for(catalog,1,native_symbol='APE'))
             self.assertIsNone(token_images.image_for(catalog,33139,'0x'+'1'*40))
             fetch.assert_not_called()
+
+    def test_mint_metadata_uses_checksum_with_lowercase_catalog_identity(self):
+        address='0x52908400098527886e0f7030069857d2e4169ee7'
+        checksum='0x52908400098527886E0F7030069857D2E4169EE7'
+        reserve='0x'+'2'*40
+        source=f'https://mint.club/api/tokens/details/8453/{checksum}'
+        requests=[]
+        def fetch(url):
+            requests.append(url)
+            if url==source:return {'chainId':8453,'tokenAddress':checksum,
+                'reserveToken':{'chainId':8453,'tokenAddress':reserve,'logo':'https://mint.club/reserve.png'}}
+            return []
+        token_images.refresh_catalog([{'tokens':[{'chain_id':8453,'token_address':address,'mintclub':{'reserve_token':reserve}}]}],self.root,fetch=fetch)
+        catalog=token_images.read_catalog(self.root)
+        self.assertIn(source,requests)
+        self.assertIn('8453:'+address,catalog['mint_details'])
+        self.assertEqual(token_images.image_for(catalog,8453,reserve),'https://mint.club/reserve.png')
 
     def test_contract_scoped_lp_and_dex_artwork_preserves_cache_on_failure(self):
         address='0x'+'1'*40;other='0x'+'2'*40
@@ -394,7 +482,7 @@ class ViewerTests(unittest.TestCase):
 
     def test_price_records_are_separate_per_chain(self):
         hex_token=next(t for t in self.snapshot['tokens'] if t['symbol']=='HEX')
-        (self.directory/'market-prices.json').write_text(json.dumps({'tokens':[{'chain_id':1,'address':hex_token['token_address'],'usd':7,'basis':'DEX market','quality':'estimated'}]}))
+        (self.directory/'market-prices.json').write_text(json.dumps({'tokens':[{'chain_id':1,'address':hex_token['token_address'],'usd':7,'basis':'DEX market','quality':'estimated','liquidity_usd':10000}]}))
         w=model.project_wallet(self.entry,self.snapshot,self.root)
         self.assertEqual(next(t for t in w['assets'] if t['symbol']=='HEX')['value_usd'],7)
 

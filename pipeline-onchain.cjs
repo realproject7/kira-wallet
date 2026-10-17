@@ -98,12 +98,23 @@ async function factReads(c,contracts,block,checkpoint,file,n,operation) {
   const key=q=>crypto.createHash('sha256').update(h.serialize({address:q.address.toLowerCase(),name:q.functionName,args:q.args||[]})).digest('hex');
   const pending=contracts.filter(q=>checkpoint.facts[key(q)]===undefined);
   let checked=contracts.length-pending.length;emitProgress(n,operation,checked,contracts.length);
+  const failures=new Map();
+  const capture=(group,rows)=>rows.forEach((row,i)=>{
+    if(row.status==='success'){checkpoint.facts[key(group[i])]={value:cacheEncode(row.result),observed_at:stamp()};failures.delete(key(group[i]));}
+    else failures.set(key(group[i]),row.error);
+  });
   for(let start=0;start<pending.length;start+=128){
     const group=pending.slice(start,start+128),rows=await calls(c,group,block);
-    rows.forEach((row,i)=>{if(row.status==='success')checkpoint.facts[key(group[i])]={value:cacheEncode(row.result),observed_at:stamp()};});
+    capture(group,rows);
     write(file,checkpoint);checked+=group.length;emitProgress(n,operation,checked,contracts.length);
   }
-  return contracts.map(q=>{const fact=checkpoint.facts[key(q)];return fact?{status:'success',result:cacheDecode(fact.value),observed_at:fact.observed_at}:{status:'failure',error:new Error('Pinned token details unavailable.')};});
+  // Retry only failed facts once in smaller groups. A transient aggregate
+  // failure must not permanently strip curve prices from verified holdings.
+  const retry=pending.filter(q=>checkpoint.facts[key(q)]===undefined);
+  for(let start=0;start<retry.length;start+=8){
+    const group=retry.slice(start,start+8);capture(group,await calls(c,group,block));write(file,checkpoint);
+  }
+  return contracts.map(q=>{const fact=checkpoint.facts[key(q)];return fact?{status:'success',result:cacheDecode(fact.value),observed_at:fact.observed_at}:{status:'failure',error:failures.get(key(q))||new Error('Pinned token details unavailable.')};});
 }
 async function balanceReads(c,tokens,wallet,block,checkpoint,file,n,{maxBatches=Infinity}={}) {
   checkpoint.balance_times=checkpoint.balance_times||{};
@@ -287,7 +298,7 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
     const initial=new Map(input.candidates.filter(t=>t.chain_id===n.chain_id).map(t=>[t.address.toLowerCase(),{...t,token_type:'ERC20'}]));
     id0Plan.forEach((t,i)=>{if(id0Membership[i].status==='success'&&id0Membership[i].registered)initial.set(t.address.toLowerCase(),{...t,decimals:0,registered_mintclub:true});});
     const allCandidates=[...initial.values()];
-    const initialTokens=baseline?allCandidates.slice(0,128):allCandidates;
+    const initialTokens=allCandidates;
     if(baseline){initial.clear();for(const t of initialTokens)initial.set(t.address.toLowerCase(),t);}
     const initialBalances=await balanceReads(c,initialTokens,input.wallet,block,checkpoint,checkpointFile,n,{maxBatches});
     const firstReads=new Map(initialTokens.map((t,i)=>[t.address.toLowerCase(),initialBalances[i]]));
@@ -356,7 +367,7 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
     row.zero_verification=checkpoint.zero_checks||{};
     for (const [heldIndex,t] of held.entries()) {
       const item = {chain_id:n.chain_id,network:n.network,token_address:t.address,token_type:t.token_type,token_id:t.token_type==='ERC1155'?'0':null,
-        wallet_balance_raw:t.balance_raw,balance_block_number:block,balance_block_hash:snapshot.hash,balance_observed_at:firstReads.get(t.address.toLowerCase())?.observed_at||checkpoint.observed_at,indexer_price_references:t.prices||[],mintclub:null,dex_pools:[]};
+        wallet_balance_raw:t.balance_raw,balance_block_number:block,balance_block_hash:snapshot.hash,balance_observed_at:firstReads.get(t.address.toLowerCase())?.observed_at||checkpoint.observed_at,indexer_price_references:t.prices||[],indexer_image_url:t.image_url||null,mintclub:null,dex_pools:[]};
       const meta=metadata.slice(heldIndex*3,heldIndex*3+3);
       item.decimals = meta[0].status==='success'?meta[0].result:t.decimals;
       item.dex_liquidity_found=false;
@@ -386,7 +397,8 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
       }
       row.tokens.push(item);
     }
-    row.status = !workPending && row.registry_scan.complete && errors.length===0?'complete':'partial';
+    row.token_detail_errors=row.tokens.filter(t=>t.mintclub_error||t.wallet_balance===null).length;
+    row.status = !workPending && row.registry_scan.complete && errors.length===0 && row.token_detail_errors===0?'complete':'partial';
     if(market)row.candidate_scan.completion_scope='Recorded wallet candidates only. Exhaustive inventory and qualifying cash-out assets remain unproven.';
   } catch(e) {row.error=h.safeError(e);}
   // A failed reread must not erase successful observations from this same
@@ -913,4 +925,4 @@ async function main() {
   }else throw new Error('Expected scan or dex mode');
 }
 if(require.main===module)main().catch(e=>{console.error(h.serialize(h.safeError(e)));process.exitCode=1;});
-module.exports={scanNetworks,parallel,calls,registry,connect,scanChain,batches,balanceReads,mintclubMembership,dexChain,reserveChain,liquidationChain,routePools,boundedMarket,MarketBudget};
+module.exports={scanNetworks,parallel,calls,registry,connect,scanChain,batches,balanceReads,factReads,mintclubMembership,dexChain,reserveChain,liquidationChain,routePools,boundedMarket,MarketBudget};

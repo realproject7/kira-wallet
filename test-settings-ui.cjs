@@ -17,7 +17,7 @@ function reset(){el('provider-recheck').disabled=false;ctx.connectionConfig=stru
  assert.equal(el('data-provider').value,'alchemy');
  assert.equal(el('discovery-key').value,'EXISTING_KEY');assert.equal(el('provider-save').disabled,false);
  assert.match(el('provider-status').textContent,/Saved connection: Alchemy selected/);
- assert.equal(el('rpc-mode').value,'custom');assert.equal(el('new-wallet-address').value,'untouched-wallet-draft');
+ assert.equal(el('new-wallet-address').value,'untouched-wallet-draft');
  reset();el('discovery-key').value='EDITED_KEY';el('rpc-references').value='8453 PERSONAL_RPC';el('rpc-priority').value='custom_first';
  await el('provider-recheck').click();
  assert.equal(el('data-provider').value,'alchemy');assert.equal(el('discovery-key').value,'EDITED_KEY');assert.equal(el('rpc-references').value,'8453 PERSONAL_RPC');assert.equal(el('rpc-priority').value,'custom_first');assert.equal(el('provider-save').disabled,true);

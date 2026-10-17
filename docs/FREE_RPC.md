@@ -1,4 +1,11 @@
-# Free RPC reads and token coverage
+# Historical free RPC reads and token coverage
+
+Current research requires Alchemy. Holdings check every configured network and
+all returned candidates with full reachable Mint Club enumeration. Alchemy reads
+run first. Sell analysis is optional and uses saved holdings only. See
+[Alchemy setup](ALCHEMY_SETUP.md). The free-discovery policies and acceptance
+limits below are retained as historical implementation evidence, not current
+onboarding defaults.
 
 Kira contacts public providers directly from the local research process. No
 Kira relay or shared credential is required. Free public services are best
@@ -147,6 +154,9 @@ RPC-verified balances. Other Routescan chains are not presumed supported.
 Explicit keyless opt-outs and custom-only preferences remain respected.
 
 Initial reports check Base, Ethereum and Blast, up to 128 candidates per chain.
+This scheduling scope also applies to Alchemy discovery. It is not a three-chain
+limit of public RPC. Initial price and artwork metadata has a separate bounded
+lookup, so unfinished sell-estimate research cannot suppress those lookups.
 Selected common contracts take priority. Remaining candidates and networks are
 explicitly pending. A user-selected deep scan checks every configured
 network, its recorded inventory policy and markets. In full mode, pinned registry counts,

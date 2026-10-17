@@ -18,7 +18,7 @@
   }
   const active = job => ['queued', 'running'].includes(job.state);
   const rpcGap = chain => chain.lifecycle?.status!=='retired'&&chain.lifecycle?.status!=='retirement_reported'&&((chain.rpc_available===false&&!chain.rpc_pending)||(chain.registry_complete===false&&!chain.rpc_pending&&chain.registry_phase!=='deferred')||chain.candidate_balance_errors>0);
-  const coverageGap = chain => chain.head_status==='stale'||['retired','retirement_reported'].includes(chain.lifecycle?.status)||!chain.complete||rpcGap(chain)||chain.candidate_deferred>0||chain.market_pending||chain.market_errors>0;
+  const coverageGap = chain => chain.head_status==='stale'||['retired','retirement_reported'].includes(chain.lifecycle?.status)||!chain.complete||rpcGap(chain)||chain.candidate_deferred>0||chain.market_pending||chain.market_errors>0||chain.token_detail_errors>0;
   function networkEmpty(network, recordedCount) {
     if(recordedCount)return {title:'No tokens match these filters',message:'Lower the minimum value or clear your search to see recorded holdings.',activity:false};
     const rows=network.wallets||[];
@@ -37,33 +37,13 @@
     return coverageNotice(wallet,readiness);
   }
   function coverageNotice(wallet, readiness = null) {
-    const chains=(wallet?.chains||[]).filter(c=>c.environment==='mainnet');
-    const gaps=chains.filter(coverageGap);
-    if(!wallet?.analysed_at||!gaps.length)return null;
-    const retired=chains.filter(c=>c.lifecycle?.status==='retired');
-    const reported=chains.filter(c=>c.lifecycle?.status==='retirement_reported');
-    if(retired.length)return {title:'Retired network records are archived',message:retired.map(c=>c.name).join(', ')+': retained balances are historical and excluded from current value. Review the official notice and last observation in network coverage. Connecting another provider cannot restart a retired network.',action:'none',settings:false};
-    const missing=chains.some(c=>!c.complete);
-    const disabled=(readiness?.public_discovery===false&&readiness?.discovery_provider==='none'&&chains.every(c=>!c.complete))||(!readiness&&chains.every(c=>c.discovery_status==='disabled'));
-    const noKey=readiness?.discovery_configured&&!readiness.discovery_key_available;
-    const rpc=chains.filter(rpcGap);
-    if(chains.some(c=>c.market_pending))return {title:'Some market checks are still open',message:'Recorded balances and completed checks are available. Start or resume an optional deep scan to investigate remaining markets. Pending markets and missing prices remain unknown.',action:'none',settings:false};
-    if(rpc.length){
-      const connection=missing&&(disabled||noKey);
-      return {title:'Some balances could not be checked',
-        message:'On-chain checks did not finish on '+rpc.length+(rpc.length===1?' network.':' networks.')+' Missing balances are unknown, so this portfolio is partial. Wait a moment, then retry holdings. '+(readiness?.discovery_key_available?'Review your Alchemy connection if errors continue. Public and custom providers can both have outages or limits.':'We recommend connecting Alchemy for backup RPC reads and broader token coverage on supported networks.')+(connection?' Other ERC20 holdings may also be missing.':''),
-        action:'refresh',settings:true,rpcIssues:true,refreshLabel:'Retry holdings',settingsLabel:readiness?.discovery_key_available?'Review Alchemy connection':'Set up Alchemy'};
-    }
-    if(reported.length)return {title:'Network retirement was reported',message:reported.map(c=>c.name).join(', ')+': a shutdown was reported, but no verified official closure notice is recorded. Saved balances remain dated evidence. RPC failure alone cannot establish closure, and Alchemy is not a verified recovery path. Check network coverage before retrying.',action:'none',settings:false};
-    if(chains.some(c=>c.head_status==='stale'))return {title:'A provider returned an old block head',message:'These balances use a dated block observation. A stale head does not prove the network has shut down. Review the recorded block and time, then retry later or review your data connection.',action:'refresh',settings:true,settingsLabel:'Review data connection'};
-    if(chains.some(c=>c.market_errors>0))return {title:'Some market checks did not complete',message:'Recorded holdings remain available. Some pool reads failed, so missing market and price details remain unknown. Retry holdings. If this continues, review your data connection and its RPC access.',action:'refresh',settings:true,settingsLabel:'Review data connection'};
-    if(chains.some(c=>c.discovery_status==='history_pending'))return {title:'More token history is available to check',message:'Known balances remain available. An optional deep scan can investigate remaining transfer history and verify additional token balances. Transfer records alone do not prove current holdings. Missing tokens remain unknown.',action:'none',settings:false};
-    if(!disabled&&!noKey&&chains.some(c=>c.rpc_pending||c.registry_phase==='deferred'))return {title:'Your saved results cover the initial checks',message:'An optional deep scan checks remaining networks, additional tokens and harder-to-price holdings. You can keep using the saved results below. Unchecked holdings and prices remain unknown.',action:'none',settings:false};
-    if(missing&&disabled)return {title:'Some tokens may be missing',message:'Free research checks native balances, selected common tokens and Mint Club assets, with keyless token discovery on supported networks. Public RPC cannot list all wallet tokens. We recommend Alchemy for broader token coverage on supported networks. Connect it, then refresh holdings. Missing tokens are not zero balances.',action:'settings',settingsLabel:'Set up Alchemy'};
-    if(missing&&noKey)return {title:'Token discovery needs a connection',message:'The local Alchemy key is unavailable. Follow the setup guide, check the key, then refresh holdings. Other tokens may be missing from this partial portfolio.',action:'settings',settingsLabel:'Set up Alchemy'};
-    if(missing&&readiness?.discovery_key_available&&chains.some(c=>['disabled','missing_credential'].includes(c.discovery_status)))return {title:'Refresh holdings to discover other tokens',message:'Your discovery connection is now available. This saved analysis predates it and remains partial until you refresh holdings.',action:'refresh'};
-    const unsupported=gaps.every(c=>c.discovery_status==='unsupported');
-    return {title:unsupported?'Some networks have limited token coverage':'Your portfolio is partial',message:unsupported?'Broader token discovery is unavailable on these networks. An Alchemy connection cannot cover every network or token. Available balances remain visible; missing holdings remain unknown.':'Some token discovery did not complete. Other holdings may be missing. '+(readiness?.discovery_key_available?'Retry holdings, then check your Alchemy app access, networks and usage limits if this continues.':'Free research remains available. Optional Alchemy can broaden token coverage on supported networks; connect it and refresh holdings if you need more coverage.'),action:readiness?.discovery_key_available?'refresh':'settings',settings:true,settingsLabel:readiness?.discovery_key_available?'Review Alchemy connection':'Set up Alchemy'};
+    if(!wallet?.analysed_at)return null;
+    const chains=(wallet.chains||[]).filter(c=>c.environment==='mainnet'),gaps=chains.filter(coverageGap);
+    if(readiness&&readiness.discovery_key_available!==true)return {title:'Connect Alchemy to update this portfolio',message:'Your saved holdings are available. Alchemy is required for new token and price lookups.',action:'settings',settingsLabel:'Connect Alchemy'};
+    if(!gaps.length)return null;
+    if(wallet.lookup_mode!=='all_networks'&&chains.some(c=>c.rpc_pending||c.registry_phase==='deferred'))return {title:'Update to all-network holdings',message:'This earlier scan checked a limited selection. Refresh holdings to check every configured network and all token candidates.',action:'refresh',refreshLabel:'Refresh holdings',settings:false};
+    const names=gaps.slice(0,3).map(c=>c.name).join(', ')+(gaps.length>3?' and '+(gaps.length-3)+' more':'');
+    return {title:'Some networks need attention',message:names+'. Available holdings are saved. Unavailable networks and unfinished token checks remain unknown. Open network coverage for details.',action:'refresh',refreshLabel:'Retry holdings',settings:false,rpcIssues:chains.some(rpcGap)};
   }
   function jobPresentation(job, now = Date.now(), connected = true) {
     const labels = { queued: 'Queued', running: 'Running', succeeded: 'Completed', partial: 'Saved with gaps', interrupted: 'Interrupted', failed: 'Failed', cancelled: 'Stopped' };
@@ -73,7 +53,7 @@
     const last = job.events?.at(-1)?.observed_at || job.updated_at;
     const quiet = job.state === 'running' && now - Date.parse(last) > 60000;
     return {
-      label: job.cancel_requested && active(job) ? (job.scan_policy?'Pausing':'Stopping') : job.scan_policy&&job.state==='cancelled'?'Paused':job.scan_policy&&job.analysis_phase==='baseline'&&['partial','succeeded'].includes(job.state)?'Basic scan ready':job.scan_policy&&job.analysis_phase==='enrichment'&&['partial','succeeded'].includes(job.state)?'Deep scan saved':labels[job.state] || 'Unknown',
+      label: job.cancel_requested && active(job) ? (job.scan_policy?'Pausing':'Stopping') : job.scan_policy&&job.state==='cancelled'?'Paused':job.scan_policy&&job.analysis_phase==='baseline'&&['partial','succeeded'].includes(job.state)?'Holdings saved':job.scan_policy&&job.analysis_phase==='enrichment'&&['partial','succeeded'].includes(job.state)?'Sell analysis saved':labels[job.state] || 'Unknown',
       active: active(job), spinner: connected && job.state === 'running', quiet,
       elapsed: Number.isFinite(elapsed) ? elapsed : null,
       timerLabel: job.state === 'queued' ? 'Waiting' : job.started_at ? job.attempt>1?(job.scan_policy?'Current pass':'Attempt elapsed'):'Elapsed' : 'Since request',
@@ -94,7 +74,7 @@
     const currentScope=!active(job)||job.state==='running'&&(context.attempt==null||context.attempt===job.attempt);
     const count=currentScope&&unit&&checked!=null?(known?checked+' / '+counts.total+' '+unit:checked+' '+unit+' checked')+(context.operation==='history'?' including saved work':''):'';
     const waiting=job.state==='queued'&&job.continuation?.not_before*1000>now;
-    let eta=waiting?'Next check in '+duration(Math.ceil(job.continuation.not_before-now/1000)):'Overall remaining time is unknown.';
+    let eta=waiting?'Next check in '+duration(Math.ceil(job.continuation.not_before-now/1000)):'';
     if(job.state==='running'&&connected&&!job.cancel_requested&&context.operation!=='asset_review'&&known&&checked<counts.total&&context.attempt===job.attempt&&now-Date.parse(last.observed_at)<=20000){
       const samples=[];
       for(const event of job.events||[]){
@@ -131,22 +111,24 @@
     const job=deep||basic||latest,isDeep=job.analysis_phase==='enrichment';
     const basicReady=!!basic?.result&&['succeeded','partial'].includes(basic.state)||isDeep;
     let mode,title,description,action=null,actionLabel=null;
+    const legacy=basic?.scan_policy!=='alchemy_inventory_v1';
     if(active(job)){
       mode=job.cancel_requested?'pausing':job.state==='queued'?'waiting':'running';
-      const waiting=job.continuation?.not_before*1000>now;
-      title=job.cancel_requested?'Saving your stopping point':isDeep?(waiting?'Deep scan is waiting to continue':job.state==='queued'?'Deep scan is queued':'Looking deeper into your wallet'):'Building your basic results';
-      description=job.cancel_requested?'Your saved results stay available. Resume here when you are ready.':job.state==='queued'?'The next checks are queued. Your saved results stay available, and you can pause before the scan continues.':isDeep?'Additional tokens and market routes are being checked. New results appear as they are saved.':'Checking initial balances on Base, Ethereum and Blast. Other networks and harder-to-price tokens are part of the optional deep scan.';
-      action='cancel';actionLabel='Pause scan';
+      title=job.cancel_requested?'Saving your progress':isDeep?'Analyzing sell routes':'Looking up your holdings';
+      description=job.cancel_requested?'Your saved results stay available.':job.state==='queued'?'Queued. Your saved portfolio stays available.':isDeep?'Checking sale and redemption estimates for your saved holdings. Balances are unchanged.':'Checking every configured network, token balances, prices and artwork.';
+      action='cancel';actionLabel='Pause';
+    }else if(legacy){
+      mode='ready';title='Update your holdings';description='Refresh to check every configured network and all token candidates with Alchemy.';action='refresh';actionLabel='Refresh holdings';
     }else if(['cancelled','interrupted','failed'].includes(job.state)){
-      mode='paused';title=isDeep?'Deep scan paused':'Basic scan paused';
-      description=job.errors?.some(e=>e.code==='no_progress')?'Recent attempts made no new progress. Your evidence is saved. Check the data connection, then retry when ready.':job.state==='failed'?'The data source could not finish this scan. Saved results are safe. You can retry from the saved work.':'Your stopping point is saved. Resume to continue this scan without starting over.';
-      if(job.errors?.some(e=>e.code==='superseded'))description='A newer basic scan replaced this work. Open the latest wallet results to continue.';
-      else {action='resume';actionLabel=job.state==='failed'||job.errors?.some(e=>e.code==='no_progress')?'Retry saved scan':'Resume '+(isDeep?'deep':'basic')+' scan';}
+      mode='paused';title=isDeep?'Sell analysis paused':'Holdings lookup paused';
+      description=job.errors?.some(e=>e.code==='no_progress')?'No new evidence was available. Check your connection, then retry.':'Your progress is saved. Resume when ready.';
+      if(job.errors?.some(e=>e.code==='superseded')){description='A newer holdings lookup replaced this work.';}
+      else{action='resume';actionLabel='Resume';}
     }else if(isDeep){
-      mode='saved';title='Deep scan results saved';description='The asset checks have finished. Available balances, prices and representative sell estimates are saved below. Unresolved assets stay unknown and visible. Other routes and undiscovered tokens may still exist.';
+      mode='saved';title='Sell analysis saved';description='Available estimates are saved. Unavailable routes remain unknown; estimates exclude gas and do not guarantee execution.';
     }else{
-      mode='ready';title='Your basic results are ready';description='You can use these results now. A deep scan looks for more tokens across the remaining networks and investigates unpriced holdings. It is optional and may take a while.';
-      if(basic?.analysis_phase==='baseline'&&basic.result){action='deepen';actionLabel='Start deep scan';}
+      mode='ready';title='Your holdings are ready';description='Balances, prices and artwork are available. Analyze sell routes only if you need sale or redemption estimates.';
+      if(basic?.result){action='deepen';actionLabel='Analyze sell routes';}
     }
     return {basic,deep,job,isDeep,basicReady,mode,title,description,action,actionLabel};
   }

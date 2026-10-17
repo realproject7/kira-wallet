@@ -147,7 +147,7 @@ class JobStore:
         if job['operation']=='settings.rpc' and 'priority' in job['input']:names=names+['priority']
         fields(job['input'],names)
         if 'analysis_phase' in job and job['analysis_phase'] not in ('baseline','enrichment'):raise JobError('invalid_envelope','Invalid analysis phase.')
-        if 'scan_policy' in job and job['scan_policy']!='optional_depth_v1':raise JobError('invalid_envelope','Invalid scan policy.')
+        if 'scan_policy' in job and job['scan_policy'] not in ('optional_depth_v1','alchemy_inventory_v1'):raise JobError('invalid_envelope','Invalid scan policy.')
         if 'asset_progress' in job:
             progress=job['asset_progress']
             if not isinstance(progress,dict) or any(not isinstance(k,str) or not re.fullmatch(r'[1-9][0-9]*',k) or not isinstance(v,dict) or set(v)!={'total','checked','quoted','unknown'} or any(type(x) is not int or x<0 for x in v.values()) or v['checked']>v['total'] or v['quoted']+v['unknown']!=v['checked'] for k,v in progress.items()):
@@ -188,6 +188,8 @@ class JobStore:
         return matches[0]
 
     def normalize(self, operation, value):
+        if operation in {'wallet.add','wallet.refresh','prices.refresh','job.deepen'}:
+            self.require_connection()
         if operation == 'settings.importEnv':
             fields(value,['import_id','key_env'])
             identifier(value['import_id'])
@@ -197,7 +199,7 @@ class JobStore:
             return value.copy()
         if operation == 'settings.provider':
             fields(value,['provider','key_env'])
-            if value['provider'] not in ('public','alchemy') or not isinstance(value['key_env'],str) or not re.fullmatch(r'[A-Z_][A-Z0-9_]{0,99}',value['key_env']):
+            if value['provider']!='alchemy' or not isinstance(value['key_env'],str) or not re.fullmatch(r'[A-Z_][A-Z0-9_]{0,99}',value['key_env']):
                 raise JobError('invalid_settings','Choose a data provider and a local credential reference.')
             return value.copy()
         if operation == 'settings.rpc':
@@ -245,6 +247,11 @@ class JobStore:
             fields(value, ['job_id']); identifier(value['job_id'])
             return value.copy()
         raise JobError('unsupported_operation', 'Unsupported job operation.')
+
+    def require_connection(self):
+        from kira_config import require_alchemy
+        try:require_alchemy(self.root)
+        except ValueError as error:raise JobError('alchemy_required',str(error)) from None
 
     def import_reference(self, value):
         file=self.root/'.config-imports'/(identifier(value['import_id'])+'.json')
@@ -325,6 +332,8 @@ class JobStore:
                 parent_job=self.get(value['job_id'])
                 if parent_job.get('analysis_phase')!='baseline' or parent_job['state'] not in {'succeeded','partial'} or not parent_job.get('result'):
                     raise JobError('basic_scan_required','Finish or resume the basic scan before starting a deep scan.')
+                if parent_job.get('scan_policy')!='alchemy_inventory_v1':
+                    raise JobError('holdings_refresh_required','Refresh holdings across all networks before analyzing sell routes. Your earlier results are preserved.')
                 wallet=self.wallet(parent_job['input'].get('wallet') or parent_job['input'].get('address'))
                 if wallet.get('research_generation') not in (None,parent_job['job_id']):
                     raise JobError('superseded','A newer basic scan is available. Start deep scanning from its saved result.')
@@ -339,6 +348,8 @@ class JobStore:
             elif operation in {'job.resume', 'job.cancel'}:
                 job = self.get(value['job_id'])
                 if operation == 'job.resume':
+                    if job['operation'] in ('wallet.add','wallet.refresh') and (job.get('scan_policy')!='alchemy_inventory_v1' or 'analysis_phase' not in job):
+                        raise JobError('holdings_refresh_required','Refresh holdings to use all-network Alchemy research. Earlier scan evidence and wallet names are preserved.')
                     if job['state'] not in {'interrupted', 'failed', 'cancelled'}:
                         raise JobError('not_resumable', 'Only interrupted, failed or cancelled jobs can resume.')
                     if job.get('parent_job_id') and self.wallet(job['input']['wallet']).get('research_generation') not in (None,job['parent_job_id']):
@@ -372,7 +383,7 @@ class JobStore:
             'result': None, 'previous_result': previous, 'errors': [],'chains':{}}
         if operation in ('wallet.add','wallet.refresh'):
             job['analysis_phase']=phase
-            job['scan_policy']='optional_depth_v1'
+            job['scan_policy']='alchemy_inventory_v1'
         if parent:job['parent_job_id']=parent
         self.save(job)
         return job
@@ -493,7 +504,7 @@ class JobStore:
             with self.locked():
                 for path in self.jobs.glob('*.json'):
                     job=self.get(path.stem)
-                    if job['state']=='queued' and job.get('scan_policy')=='optional_depth_v1':
+                    if job['state']=='queued' and job.get('scan_policy') in ('optional_depth_v1','alchemy_inventory_v1'):
                         job.update(state='interrupted',stage='interrupted',errors=[{'code':'interrupted',
                             'message':'Kira restarted before this scan continued. Resume here when ready. Saved results are safe.'}]);self.save(job)
             return True
@@ -538,7 +549,7 @@ class JobStore:
                 prior=[e for e in job['events'][:-1] if e.get('context')==context and type(e.get('counts',{}).get('checked')) is int]
                 if type(counts.get('checked')) is int and counts['checked']>max((e['counts']['checked'] for e in prior),default=0):
                     job['progress_observed_at']=job['events'][-1]['observed_at']
-            if event['stage']=='first_evidence' and isinstance(event.get('snapshot'),str) and (event['snapshot']==job['checkpoint']+'/initial' or re.fullmatch(re.escape(job['checkpoint'])+r'/market-initial-[0-9]{4}',event['snapshot'])):
+            if event['stage']=='first_evidence' and isinstance(event.get('snapshot'),str) and (event['snapshot']==job['checkpoint']+'/initial' or re.fullmatch(re.escape(job['checkpoint'])+r'/(?:market|holdings)-initial-[0-9]{4}',event['snapshot'])):
                 saved=self.snapshot(event['snapshot'])
                 wallet=job['input'].get('wallet') or job['input'].get('address')
                 if saved.get('wallet_address','').lower()==wallet.lower():job['result']={'snapshot_id':event['snapshot'],'status':saved['status'],'phase':'initial'}
@@ -574,7 +585,13 @@ class JobStore:
             add = job['operation'] == 'wallet.add'
             command = [sys.executable, str(ASSETS / 'wallet.py'), 'add' if add else 'refresh', job['input']['address'] if add else job['input']['wallet']]
             if add: command += ['--tag', job['input']['tag']]
-            command += ['--phase',job.get('analysis_phase','enrichment')]
+            phase=job.get('analysis_phase','enrichment')
+            if job.get('scan_policy')=='alchemy_inventory_v1':
+                phase='sell' if phase=='enrichment' else 'holdings'
+                if phase=='sell':
+                    parent=self.get(job['parent_job_id'])
+                    command+=['--holdings-snapshot',parent['result']['snapshot_id']]
+            command += ['--phase',phase]
             if (self.root / job['checkpoint'] / 'run.json').exists(): command += ['--resume', job['checkpoint']]
         return command
 
@@ -607,6 +624,7 @@ class JobStore:
                     raise JobError('connection_key_missing','Kira cannot find the local Alchemy key. Follow the connection guide, then retry. Existing settings are unchanged.')
             atomic(config_path(),config)
             result={'status':'completed','setting':job['operation']};atomic(self.jobs/'results'/(job['job_id']+'.json'),result);return result
+        self.require_connection()
         env = {**os.environ, 'KIRA_DATA_DIR': str(self.root), 'KIRA_JOB_ID': job['job_id'], 'KIRA_JOB_SNAPSHOT': job['checkpoint'], 'KIRA_ANALYSIS_FD': str(writer.fileno()), 'PYTHONUNBUFFERED': '1', 'KIRA_RESEARCH_GENERATION':job.get('parent_job_id',job['job_id'])}
         command=self.engine_command(job)
         child = subprocess.Popen(command, env=env, cwd=ASSETS, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
