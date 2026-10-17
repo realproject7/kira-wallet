@@ -46,6 +46,11 @@ candidates. Reachable Mint Club registries are enumerated too. There is no
 128-candidate cutoff. Unsupported indexes, failed balances and missing prices
 or artwork remain unknown.
 
+Price responses also supply artwork by network and contract. Kira reuses that
+metadata instead of requiring another successful lookup for the same logo.
+Completed reserve-price paths remain usable when a bounded pass pauses;
+unfinished paths keep their original unknown state.
+
 **Analyze sell routes** is optional. It uses the saved balances and their
 original blocks to estimate a representative sale or redemption. It is not
 required for tokens, prices or logos and does not expand the holdings inventory.

@@ -112,7 +112,7 @@ def checksum_addresses(addresses):
     except (OSError,ValueError,subprocess.SubprocessError):return {}
 
 
-def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, native_images=None):
+def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, native_images=None, market_metadata=()):
     """Share images by chain/address. Reuse successful metadata for 24 hours."""
     catalog = read_catalog(root)
     now = datetime.now(timezone.utc)
@@ -121,20 +121,46 @@ def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, 
         try: return 0 <= (now - datetime.fromisoformat(raw)).total_seconds() < 86400
         except (ValueError, TypeError): return False
     records = catalog.setdefault('tokens', {})
+    wanted = {identity(t.get('chain_id'),t.get('token_address')):t
+              for snapshot in snapshots for t in snapshot.get('tokens',[])
+              if not t.get('mintclub') and identity(t.get('chain_id'),t.get('token_address'))}
+    # Price discovery already carries contract-scoped artwork. Keep that evidence
+    # before a second provider pass can exhaust the remaining metadata budget.
+    chains={slug:cid for cid,slug in DEX_CHAINS.items()}
+    for record in market_metadata:
+        if not isinstance(record,dict):continue
+        source=record.get('source')
+        try:
+            parsed=urlparse(source) if isinstance(source,str) else None
+            if not parsed or parsed.scheme!='https' or parsed.hostname!='api.dexscreener.com' or parsed.port not in (None,443) or parsed.username or parsed.password:continue
+        except ValueError:continue
+        response=record.get('response')
+        pairs=response if isinstance(response,list) else response.get('pairs',[]) if isinstance(response,dict) else []
+        for pair in pairs if isinstance(pairs,list) else []:
+            if not isinstance(pair,dict):continue
+            token=pair.get('baseToken') or {};info=pair.get('info') or {}
+            if not isinstance(token,dict) or not isinstance(info,dict):continue
+            slug=pair.get('chainId')
+            key=identity(chains.get(slug) if isinstance(slug,str) else None,token.get('address'))
+            image=safe_image(info.get('imageUrl'))
+            if key in wanted and image:
+                records[key]={'image_url':image,'source':source,'observed_at':record.get('observed_at') or observed}
     for snapshot in snapshots:
         for token in snapshot.get('tokens',[]):
             key=identity(token.get('chain_id'),token.get('token_address'))
             image=safe_image(token.get('indexer_image_url'))
             if key and image:records[key]={'image_url':image,'source':'Alchemy token metadata','observed_at':observed}
     artwork_checked=catalog.setdefault('artwork_checked',{})
-    wanted = {identity(t.get('chain_id'),t.get('token_address')):t
-              for snapshot in snapshots for t in snapshot.get('tokens',[])
-              if not t.get('mintclub') and identity(t.get('chain_id'),t.get('token_address'))}
     for asset,row in (native_images or {}).items():
         image = safe_image(row.get('image_url'))
         if image and asset in {value[1] for value in NATIVE_ASSETS.values()}:
             catalog.setdefault('native', {})[asset] = {**row, 'image_url': image}
     errors = 0
+    provider_fetch=fetch
+    def fetch(source):
+        # A failed optional source must not discard successful metadata above.
+        try:return provider_fetch(source)
+        except (OSError,ValueError):return None
     # lpTOKEN uses chain-specific imageUrl metadata, often from DEX Screener.
     # Read public catalog metadata without sending a wallet address.
     missing = {key:t for key,t in wanted.items()
