@@ -341,6 +341,18 @@ class ViewerTests(unittest.TestCase):
         self.assertIsNone(next(c for c in summary['networks'] if c['id']==1)['value_usd'])
         self.assertIsNone(model.dashboard([])['known_value_usd'])
 
+    def test_canonical_artwork_precedes_a_synthetic_reserve_fallback(self):
+        address='0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+        key=token_images.identity(8453,address)
+        catalog={'tokens':{key:{'image_url':token_images.reserve_logo(8453,address)}}}
+        expected='https://static.alchemyapi.io/images/assets/3408.png'
+        self.assertEqual(token_images.image_for({},8453,address),expected)
+        self.assertEqual(token_images.image_for(catalog,8453,address),expected)
+        self.assertIsNone(token_images.image_for(catalog,1,address))
+        direct='https://coin-images.coingecko.com/updated-usdc.png'
+        catalog['tokens'][key]['image_url']=direct
+        self.assertEqual(token_images.image_for(catalog,8453,address),direct)
+
     def test_images_use_api_and_reserve_contract_identity(self):
         address='0x0000000000000000000000000000000000000001'
         url='https://coin-images.coingecko.com/fixture.png'
@@ -467,6 +479,32 @@ class ViewerTests(unittest.TestCase):
         catalog=token_images.read_catalog(self.root)
         self.assertEqual(token_images.image_for(catalog,8453,address),url)
         self.assertNotIn(f'8453:{address}',catalog['mint_details'])
+
+    def test_recorded_market_artwork_survives_provider_failure_without_duplicate_lookup(self):
+        address='0x'+'1'*40;other='0x'+'2'*40
+        image='https://cdn.dexscreener.com/cms/images/recorded'
+        observed='2026-10-17T01:00:00+00:00'
+        snapshot={'tokens':[{'chain_id':56,'token_address':address,'mintclub':None}]}
+        pairs=[{'chainId':'bsc','baseToken':{'address':address},'info':{'imageUrl':image}},
+               {'chainId':'ethereum','baseToken':{'address':address},'info':{'imageUrl':image}},
+               {'chainId':'bsc','baseToken':{'address':other},'info':{'imageUrl':image}}]
+        calls=[]
+        def failed(source):
+            calls.append(source)
+            raise OSError('Optional metadata provider unavailable.')
+        from datetime import datetime,timezone
+        with patch('token_images.datetime') as clock:
+            clock.now.return_value=datetime(2026,10,17,1,1,tzinfo=timezone.utc)
+            clock.fromisoformat.side_effect=datetime.fromisoformat
+            result=token_images.refresh_catalog([snapshot],self.root,fetch=failed,market_metadata=[
+                {'source':'https://api.dexscreener.com/tokens/v1/bsc/'+address,'observed_at':observed,'response':pairs}])
+        catalog=token_images.read_catalog(self.root)
+        self.assertEqual(token_images.image_for(catalog,56,address),image)
+        self.assertEqual(catalog['tokens']['56:'+address]['observed_at'],observed)
+        self.assertIsNone(token_images.image_for(catalog,1,address))
+        self.assertIsNone(token_images.image_for(catalog,56,other))
+        self.assertFalse(any('/tokens/v1/' in source for source in calls))
+        self.assertGreater(result['provider_errors'],0)
 
     def test_image_metadata_updates_etag_without_changing_balances_or_values(self):
         before,_,etag_before=model.load_state(self.root)

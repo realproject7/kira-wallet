@@ -188,6 +188,7 @@ class WalletPipelineTests(unittest.TestCase):
         self.assertNotIn((84532,reserve),rows)
         self.assertEqual(json.dumps(snapshot,sort_keys=True),before)
         enrich.assert_not_called();images.assert_called_once()
+        self.assertEqual(images.call_args.kwargs['market_metadata'],wallet.read(self.folder/'token-market-metadata.json'))
 
     def test_metadata_provider_gap_keeps_saved_price_and_still_refreshes_artwork(self):
         address='0x'+'2'*40
@@ -198,6 +199,37 @@ class WalletPipelineTests(unittest.TestCase):
              patch('token_images.refresh_catalog',return_value={}) as images,patch.object(wallet,'event'):
             market=wallet.refresh_metadata(snapshot,{'tokens':[old]},self.folder,discover_prices=True)
         self.assertEqual(market['tokens'],[old]);images.assert_called_once()
+
+    def test_basic_metadata_keeps_completed_reserve_paths_when_the_slice_pauses(self):
+        child='0x'+'2'*40;parent='0x'+'3'*40;reserve='0x'+'4'*40;priced='0x'+'5'*40
+        observed='2026-10-16T12:00:00Z'
+        mint={'reserve_token':parent,'reserve_symbol':'PARENT','price_for_next_mint_in_reserve_token':'0.5',
+              'funded':True,'reserve_balance':'20','source_url':'https://mint.club/token/base/'+child,
+              'observed_at':observed,'block_number':'123'}
+        snapshot={'wallet_address':self.address,'coverage':[self.network],
+                  'tokens':[{'chain_id':8453,'token_address':child,'token_type':'ERC20','mintclub':mint},
+                            {'chain_id':8453,'token_address':priced,'token_type':'ERC20','mintclub':mint}]}
+        original=json.dumps(snapshot,sort_keys=True)
+        graph=[{'chain_id':8453,'address':address,'is_curve':True,'reserve_token':backing,
+                'reserve_symbol':'RESERVE','price_in_reserve':'0.5','funded':True,'curve_reserve':'20',
+                'source':'https://mint.club/token/base/'+address,'observed_at':observed,'block_number':'123'}
+               for address,backing in [(child,parent),(parent,reserve)]]
+        def paused(*args,**kwargs):
+            wallet.atomic(self.folder/'reserve-graph.json',{'tokens':graph,'market_pending':True})
+            raise wallet.MarketPause('Saved partial reserve work.')
+        for quality,expected in [('estimated',1),('unreliable',None)]:
+            with self.subTest(quality=quality),patch('curve_pricing.enrich',side_effect=paused) as enrich,\
+                 patch('token_images.refresh_catalog',return_value={}),patch.object(wallet,'event'):
+                price={'chain_id':8453,'address':reserve,'usd':4 if quality=='estimated' else None,
+                       'basis':'DEX market','quality':quality,'liquidity_usd':10000,'observed_at':observed}
+                market=wallet.refresh_metadata(snapshot,{'tokens':[price,{'chain_id':8453,'address':priced,
+                    'usd':3,'quality':'estimated','basis':'Market index'}]},self.folder)
+            rows={p['address']:p for p in market['tokens']}
+            self.assertEqual(rows[child]['usd'],expected)
+            self.assertEqual(rows[child]['observed_at'],observed)
+            self.assertEqual(market['reserve_price_status'],'partial')
+            self.assertEqual([t['token_address'] for t in enrich.call_args.args[0]['tokens']],[child])
+        self.assertEqual(json.dumps(snapshot,sort_keys=True),original)
 
     def test_partial_200_preserves_candidates_without_claiming_complete(self):
         data={'data':{'tokens':[self.token()]},'error':{'partialErrors':[{'network':'base-mainnet','message':'timeout'}]}}

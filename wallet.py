@@ -431,6 +431,7 @@ def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_p
         if mint and t['chain_id'] in mainnets:
             key=(t['chain_id'],mint['reserve_token'].lower())
             wanted.setdefault(key,{'chain_id':key[0],'token_address':key[1]})
+    metadata=read(folder/'token-market-metadata.json') if (folder/'token-market-metadata.json').exists() else []
     if discover_prices and wanted:
         event('dex_discovery',tokens=len(wanted))
         requests=[]
@@ -456,6 +457,7 @@ def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_p
                     p=dex_price({'token_address':address,'dex_pools':group},record['observed_at'])
                     if p:rows[(cid,address)]={'chain_id':cid,'address':address,**p}
         atomic(folder/'token-market-metadata.json',evidence)
+        metadata=evidence
         for key,t in wanted.items():
             if key not in rows:
                 p=dex_price(t,None)
@@ -472,14 +474,24 @@ def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_p
     for p in resolve(graph,list(rows.values())):rows[(p['chain_id'],p['address'].lower())]=p
     market={**market,'tokens':list(rows.values()),'markets':list(markets.values())}
     pricing_tokens=[t for t in tokens if t['chain_id'] in mainnets]
-    missing=any(t['mintclub'].get('funded') and rows.get((t['chain_id'],t['token_address'].lower()),{}).get('usd') is None for t in pricing_tokens if t.get('mintclub'))
+    missing=[t for t in pricing_tokens if t.get('mintclub') and t['mintclub'].get('funded')
+             and rows.get((t['chain_id'],t['token_address'].lower()),{}).get('usd') is None
+             and rows.get((t['chain_id'],t['token_address'].lower()),{}).get('quality') not in ('unfunded','unreliable')]
     if missing and time.monotonic()<price_deadline:
-        try:market=enrich({**snapshot,'tokens':pricing_tokens},market,folder,deadline=price_deadline)
-        except (MarketPause,OSError,ValueError):market['reserve_price_status']='partial'
+        try:market=enrich({**snapshot,'tokens':missing},market,folder,deadline=price_deadline)
+        except (MarketPause,OSError,ValueError):
+            market['reserve_price_status']='partial'
+            partial=folder/'reserve-graph.json'
+            if partial.exists():
+                try:
+                    for p in resolve(read(partial).get('tokens',[]),market['tokens']):
+                        rows[(p['chain_id'],p['address'].lower())]=p
+                    market['tokens']=list(rows.values())
+                except (OSError,ValueError):pass
     if tokens or native_images:
         try:
             event('token_images',tokens=len(tokens))
-            event('token_images',**refresh_catalog([snapshot],ROOT,native_images=native_images or {},fetch=lambda url:fetch(url,deadline=deadline)))
+            event('token_images',**refresh_catalog([snapshot],ROOT,native_images=native_images or {},market_metadata=metadata,fetch=lambda url:fetch(url,deadline=deadline)))
         except (OSError,ValueError):market['image_refresh_status']='unavailable'
     return market
 

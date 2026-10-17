@@ -139,7 +139,7 @@ for w in selected:
   published[key]={**p,'retained_from_previous':True};retained+=1
  output['tokens']=list(published.values());output['retained_price_records']=retained
  if retained:output['note']+=f' {retained} token price references retain their earlier observation times because fresh USD was unavailable.'
- try:refresh_catalog([snapshot],h.ROOT,native_images=native_market['images'])
+ try:refresh_catalog([snapshot],h.ROOT,native_images=native_market['images'],market_metadata=fetched)
  except (OSError,ValueError):output['image_refresh_status']='unavailable'
  if os.environ.get('KIRA_JOB_SNAPSHOT'):
   from kira_jobs import atomic

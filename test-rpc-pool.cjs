@@ -6,6 +6,48 @@ const HASH='0x'+'a'.repeat(64),OTHER='0x'+'b'.repeat(64),A='0x'+'1'.repeat(40),B
 const transport=fn=>url=>()=>({request:(request,options)=>fn(url,request,options)});
 const client=(pool,urls,fn,chain=1)=>viem.createPublicClient({transport:pool.transport(chain,urls,transport(fn))});
 const fresh=options=>new RpcPool({interval:0,deadline:1000,attemptTimeout:200,...options});
+test('Alchemy reads share a paced lane across hosts when the engine opts in',async()=>{
+ const urls=['https://eth-mainnet.g.alchemy.com/v2/test-key','https://base-mainnet.g.alchemy.com/v2/test-key'];
+ const pool=fresh({interval:80,alchemyInterval:10}),seen=[];
+ const fn=async(url,r)=>{
+  const state=pool.states.get((url===urls[0]?1:8453)+':'+url),lane=pool.families.get(state.family);
+  seen.push({at:Date.now(),next:lane.next,method:r.method});
+  return r.method==='eth_chainId'?(url===urls[0]?'0x1':'0x2105'):'0x7';
+ };
+ assert.deepEqual(await Promise.all([client(pool,[urls[0]],fn,1),client(pool,[urls[1]],fn,8453)].map(c=>c.getBlockNumber({cacheTime:0}))),[7n,7n]);
+ assert.equal(pool.states.get('1:'+urls[0]).family,pool.states.get('8453:'+urls[1]).family);
+ assert.equal(seen.length,4);
+ assert(seen.every(row=>row.next-row.at<=10),'The send deadline uses the Alchemy interval.');
+ for(let i=1;i<seen.length;i++)assert(seen[i].at-seen[i-1].at>=8,'Cross-chain reads retain shared pacing.');
+});
+test('an Alchemy account throttle stops queued reads on other hosts before fallback',async()=>{
+ const eth='https://eth-mainnet.g.alchemy.com/v2/test-key',base='https://base-mainnet.g.alchemy.com/v2/test-key';
+ const pool=fresh({alchemyInterval:10,publicUrls:['eth-public','base-public']}),seen=[];
+ let entered,throttle;const started=new Promise(resolve=>{entered=resolve;});
+ const fn=async(url,r)=>{
+  seen.push([url,r.method]);
+  if(url===eth&&r.method==='eth_blockNumber'){entered();return new Promise((_,reject)=>{throttle=()=>reject(Object.assign(new Error('Your app has exceeded its compute units per second capacity.'),{code:429}));});}
+  if(r.method==='eth_chainId')return url.includes('base')?'0x2105':'0x1';return '0x9';
+ };
+ pool.state(1,eth,transport(fn),{}).verified=true;
+ pool.state(8453,base,transport(fn),{}).verified=true;
+ const first=client(pool,[eth,'eth-public'],fn,1).getBlockNumber({cacheTime:0});await started;
+ const second=client(pool,[base,'base-public'],fn,8453).getBlockNumber({cacheTime:0});throttle();
+ assert.deepEqual(await Promise.all([first,second]),[9n,9n]);
+ assert(!seen.some(([url])=>url===base),'The queued Alchemy host never sends after the account throttle.');
+ assert.equal(pool.states.get('8453:'+base).strikes,0);
+ const lane=pool.families.get(pool.states.get('1:'+eth).family);
+ assert.equal(lane.gate.busy,false);assert.equal(lane.gate.queue.length,0);
+});
+test('public, demo, spoofed and unrecognized custom endpoints retain the original pace',()=>{
+ const real='https://eth-mainnet.g.alchemy.com/v2/test-key',fn=transport(async()=> '0x1');
+ const opted=fresh({interval:2000,alchemyInterval:250,publicUrls:[real]});
+ for(const url of [real,'https://eth-mainnet.g.alchemy.com/v2/docs-demo','https://eth-mainnet.g.alchemy.com.evil.example/v2/test-key','https://rpc.example/v2/test-key','http://eth-mainnet.g.alchemy.com/v2/test-key']){
+  const state=opted.state(1,url,fn,{});assert.equal(opted.families.get(state.family).interval,2000);assert.equal(state.alchemy,false);
+ }
+ const unchanged=new RpcPool(),state=unchanged.state(1,real,fn,{});
+ assert.equal(unchanged.families.get(state.family).interval,2000,'Unmodified pool callers retain their contract.');
+});
 test('chain identity is shared across clients and repeated reads',async()=>{
   const seen=[];const pool=fresh(),fn=async(url,r)=>{seen.push(r.method);return r.method==='eth_chainId'?'0x1':'0x7';};
   const a=client(pool,['a'],fn),b=client(pool,['a'],fn);

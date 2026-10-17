@@ -10,7 +10,7 @@ const root=runtime.data_root;
 const networks=JSON.parse(fs.readFileSync(path.join(assets,'sources/rpc-candidates.json')));
 const bondAbi=JSON.parse(fs.readFileSync(path.join(assets,'sources/mintclub-bond-abi.json')));
 const {RpcPool,RouteRecorder}=require('./rpc-pool.cjs');
-const pool=new RpcPool({publicUrls:networks.flatMap(n=>n.public_rpc||[]),healthFile:runtime.health_file});
+const pool=new RpcPool({publicUrls:networks.flatMap(n=>n.public_rpc||[]),healthFile:runtime.health_file,alchemyInterval:250});
 function endpoints(chainId){return runtime.endpoints[String(chainId)] || [];}
 const endpointReads=new WeakMap();
 const endpointOutcomes=new WeakMap();

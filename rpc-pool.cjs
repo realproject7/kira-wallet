@@ -7,7 +7,7 @@ function classify(error) {
   let quotaCode=false;
   for (let e = error, depth = 0; e && depth < 10; e = e.cause, depth++) {
     const text = e.shortMessage || e.message || '';
-    if (e.status === 429 || /rate.?limit|too many requests|quota|backpressure|capacity exceeded/i.test(text)) return 'throttle';
+    if (e.status === 429 || e.code === 429 || /rate.?limit|too many requests|quota|backpressure|capacity exceeded/i.test(text)) return 'throttle';
     if (e.status === 413 || /(?:payload|batch|response|request body).*(?:large|size|exceed)|gas.*(?:cap|limit).*exceed/i.test(text)) return 'size';
     // viem wraps both quota and payload failures in generic -32005 errors.
     // Inspect the underlying cause before using that ambiguous code.
@@ -85,9 +85,10 @@ class RouteRecorder {
   snapshot(){return [...this.rows.values(),...this.overflow.values()].map(row=>({...row}));}
 }
 class RpcPool {
-  constructor({publicUrls = [], healthFile = null, interval = 2000, deadline = 12000, attemptTimeout = 4000, cooldown = 60000} = {}) {
+  constructor({publicUrls = [], healthFile = null, interval = 2000, alchemyInterval = null, deadline = 12000, attemptTimeout = 4000, cooldown = 60000} = {}) {
     this.publicUrls = new Set(publicUrls); this.healthFile = healthFile;
     this.interval = interval; this.deadline = deadline; this.attemptTimeout = attemptTimeout; this.cooldown = cooldown;
+    this.alchemyInterval = Number.isFinite(alchemyInterval) && alchemyInterval >= 0 ? alchemyInterval : null;
     this.states = new Map(); this.families = new Map(); this.pins = new Map(); this.pending = new Map(); this.cache = new Map();
     this.saved = {};
     try { if (healthFile && fs.statSync(healthFile).size <= 65536) {
@@ -104,11 +105,23 @@ class RpcPool {
       const id = crypto.createHash('sha256').update(key).digest('hex');
       const saved = this.saved[id] || {}, now = Date.now();
       const until = Number.isFinite(saved.until) && saved.until > now && saved.until <= now + 1800000 ? saved.until : 0;
-      let host; try { host = new URL(url).hostname; } catch { host = url; }
+      let host,alchemy=false;
+      try {
+        const parsed=new URL(url);host=parsed.hostname;
+        alchemy=this.alchemyInterval!==null && parsed.protocol==='https:' && !parsed.username && !parsed.password
+          && (!parsed.port||parsed.port==='443') && !parsed.search && !parsed.hash
+          && /^[a-z0-9-]+\.g\.alchemy\.com$/.test(host)
+          && /^\/v2\/[A-Za-z0-9_-]+\/?$/.test(parsed.pathname)
+          && !['demo','docs-demo'].includes(parsed.pathname.split('/')[2].toLowerCase());
+      } catch { host = url; }
       const publicEndpoint = this.publicUrls.has(url);
-      const family = publicEndpoint ? host.endsWith('publicnode.com') ? 'publicnode' : host.endsWith('drpc.org') ? 'drpc' : host.endsWith('1rpc.io') ? '1rpc' : host : host;
-      if (!this.families.has(family)) this.families.set(family, {gate:new Gate(), next:0});
-      this.states.set(key, {id, publicEndpoint, family, gate:new Gate(), until, strikes:until ? Math.min(Number(saved.strikes) || 1, 5) : 0,
+      alchemy=alchemy&&!publicEndpoint;
+      // Alchemy throughput is shared across chains and apps. One engine uses
+      // a shared paced lane; an account throttle cools that whole lane.
+      const family = alchemy ? 'provider:alchemy' : publicEndpoint ? host.endsWith('publicnode.com') ? 'publicnode' : host.endsWith('drpc.org') ? 'drpc' : host.endsWith('1rpc.io') ? '1rpc' : host : host;
+      const pacingInterval=alchemy?this.alchemyInterval:this.interval;
+      if (!this.families.has(family)) this.families.set(family, {gate:new Gate(), next:0, interval:pacingInterval, until:0});
+      this.states.set(key, {id, publicEndpoint, family, alchemy, interval:pacingInterval, gate:new Gate(), until, strikes:until ? Math.min(Number(saved.strikes) || 1, 5) : 0,
         methods:new Map(), verified:false, blocks:new Set(), inner:transport(url,{timeout:this.attemptTimeout,retryCount:0})(options)});
     }
     return this.states.get(key);
@@ -134,8 +147,10 @@ class RpcPool {
   async send(state, request, signal, timeout = this.attemptTimeout) {
     const family = this.families.get(state.family), release = await family.gate.acquire(signal);
     try {
+      if(family.until>Date.now())throw failure('Provider is cooling down.','RpcFamilyCooldown');
       await wait(family.next - Date.now(), signal);
-      family.next = Date.now() + this.interval;
+      if(family.until>Date.now())throw failure('Provider is cooling down.','RpcFamilyCooldown');
+      family.next = Date.now() + family.interval;
       const controller = new AbortController(), abort = () => controller.abort(signal.reason);
       signal.addEventListener('abort', abort, {once:true});
       const timer = setTimeout(() => controller.abort(failure('RPC read timed out.', 'TimeoutError')), timeout);
@@ -149,7 +164,7 @@ class RpcPool {
     for (const [index, url] of choices.entries()) {
       if (signal.aborted) throw signal.reason;
       const state = this.state(chain, url, transport, options);
-      if (state.until > Date.now() || (state.methods.get(request.method) || 0) > Date.now()) {onOutcome(index,{method:request.method,outcome:'skipped',reason:'cooldown'});last=state.error||last;continue;}
+      if (state.until > Date.now() || this.families.get(state.family).until > Date.now() || (state.methods.get(request.method) || 0) > Date.now()) {onOutcome(index,{method:request.method,outcome:'skipped',reason:'cooldown'});last=state.error||last;continue;}
       // An endpoint attempt includes its queue, cold verification and family pacing.
       // Public outages must leave time for the personal backup's actual read.
       const remaining=deadlineAt-Date.now();
@@ -158,8 +173,8 @@ class RpcPool {
       const qualification=Number(!state.verified)+Number(!!hash&&!state.blocks.has(tag));
       const timeout=attempts===0?this.attemptTimeout:Math.min(this.attemptTimeout,2000);
       const reserve=backupAhead?Math.min(this.deadline/2,2*this.interval+Math.min(this.attemptTimeout,2000)):0;
-      const budget=backupAhead?Math.max(1,Math.min(qualification*this.interval+timeout,remaining-reserve)):remaining;
-      if(backupAhead&&budget<=qualification*this.interval){onOutcome(index,{method:request.method,outcome:'skipped',reason:'qualification'});continue;}
+      const budget=backupAhead?Math.max(1,Math.min(qualification*state.interval+timeout,remaining-reserve)):remaining;
+      if(backupAhead&&budget<=qualification*state.interval){onOutcome(index,{method:request.method,outcome:'skipped',reason:'qualification'});continue;}
       const controller=new AbortController(), abort=()=>controller.abort(signal.reason);
       signal.addEventListener('abort',abort,{once:true});
       const timer=budget<remaining?setTimeout(()=>controller.abort(failure('Local RPC scheduling deadline reached.', 'RpcSchedulingTimeout')),budget):null;
@@ -168,7 +183,7 @@ class RpcPool {
       try {
         release=await state.gate.acquire(controller.signal);
         // A request ahead of us may have cooled this endpoint while we waited.
-        if (state.until > Date.now() || (state.methods.get(request.method) || 0) > Date.now()) {onOutcome(index,{method:request.method,outcome:'skipped',reason:'cooldown'});last=state.error||last;continue;}
+        if (state.until > Date.now() || this.families.get(state.family).until > Date.now() || (state.methods.get(request.method) || 0) > Date.now()) {onOutcome(index,{method:request.method,outcome:'skipped',reason:'cooldown'});last=state.error||last;continue;}
         if (++attempts > 4) break;
         attempted=true;
         phase='qualification';
@@ -199,6 +214,9 @@ class RpcPool {
         return result;
       } catch (error) {
         last = error;
+        if(error.name==='RpcFamilyCooldown'){
+          onOutcome(index,{method:request.method,outcome:'skipped',reason:'cooldown'});continue;
+        }
         if(signal.aborted||error.name==='RpcSchedulingTimeout'){
           onOutcome(index,{method:request.method,outcome:attempted?'local_timeout':'queue_timeout',reason:phase==='queue'?'queue':phase==='qualification'?'qualification':'local_deadline'});
           if(signal.aborted)throw signal.reason;
@@ -217,6 +235,7 @@ class RpcPool {
         else {
           state.strikes = Math.min(state.strikes + 1, 5);
           state.until = Date.now() + (kind === 'throttle' ? Math.max(retryAfter(error), Math.min(this.cooldown * 2 ** (state.strikes - 1), 1800000)) : 5000);
+          if(state.alchemy&&kind==='throttle')this.families.get(state.family).until=Math.max(this.families.get(state.family).until,state.until);
           state.verified = false; state.blocks.clear(); this.persist();
         }
       } finally { clearTimeout(timer);signal.removeEventListener('abort',abort);release?.(); }
