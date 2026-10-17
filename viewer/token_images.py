@@ -21,8 +21,15 @@ DEX_CHAINS = {1:'ethereum', 8453:'base', 81457:'blast', 4663:'robinhood',
               10:'optimism', 42161:'arbitrum', 56:'bsc', 137:'polygon',
               43114:'avalanche', 130:'unichain', 33139:'apechain'}
 LP_CATALOG = 'https://lptoken.fun/api/markets?sort=volume&limit=100'
-# Contract-verified CoinGecko artwork fallback, checked 2026-10-05.
+# Contract-verified artwork fallback. Successful catalog metadata takes priority.
 KNOWN_TOKEN_ARTWORK = {
+    # Circle mainnet identities, checked 2026-10-17:
+    # https://developers.circle.com/stablecoins/usdc-contract-addresses
+    '8453:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913':
+        'https://static.alchemyapi.io/images/assets/3408.png',
+    '130:0x078d782b760474a361dda0af3839290b0ef57ad6':
+        'https://static.alchemyapi.io/images/assets/3408.png',
+    # CoinGecko Blast artwork, checked 2026-10-05.
     '81457:0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad':
         'https://coin-images.coingecko.com/coins/images/35494/small/Blast.jpg?1719385662',
     '81457:0x4300000000000000000000000000000000000003':
@@ -74,7 +81,12 @@ def image_for(catalog, chain_id, address=None, *, mint=False, native_symbol=None
         return chain_image(1 if native_symbol == 'ETH' else chain_id)
     row = catalog.get('tokens', {}).get(identity(chain_id, address)) or {}
     if mint:return safe_image(row.get('image_url')) or mint_logo(chain_id,address)
-    image = safe_image(row.get('image_url')) or KNOWN_TOKEN_ARTWORK.get(identity(chain_id,address))
+    image = safe_image(row.get('image_url'))
+    known = KNOWN_TOKEN_ARTWORK.get(identity(chain_id,address))
+    # Reserve catalogs can synthesize Hunt URLs even when no logo was supplied.
+    # A verified identity has a canonical fallback before that unverified URL.
+    if known and (not image or urlparse(image).hostname in ('fc.hunt.town','tokens.1inch.io')):
+        return known
     # Mint Club still returns legacy 1inch URLs that reject requests with HTTP 403.
     # Its Hunt token-image endpoint serves the same reserve contract's logo.
     if image and urlparse(image).hostname == 'tokens.1inch.io':
@@ -100,7 +112,7 @@ def checksum_addresses(addresses):
     except (OSError,ValueError,subprocess.SubprocessError):return {}
 
 
-def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, native_images=None):
+def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, native_images=None, market_metadata=()):
     """Share images by chain/address. Reuse successful metadata for 24 hours."""
     catalog = read_catalog(root)
     now = datetime.now(timezone.utc)
@@ -109,20 +121,46 @@ def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, 
         try: return 0 <= (now - datetime.fromisoformat(raw)).total_seconds() < 86400
         except (ValueError, TypeError): return False
     records = catalog.setdefault('tokens', {})
+    wanted = {identity(t.get('chain_id'),t.get('token_address')):t
+              for snapshot in snapshots for t in snapshot.get('tokens',[])
+              if not t.get('mintclub') and identity(t.get('chain_id'),t.get('token_address'))}
+    # Price discovery already carries contract-scoped artwork. Keep that evidence
+    # before a second provider pass can exhaust the remaining metadata budget.
+    chains={slug:cid for cid,slug in DEX_CHAINS.items()}
+    for record in market_metadata:
+        if not isinstance(record,dict):continue
+        source=record.get('source')
+        try:
+            parsed=urlparse(source) if isinstance(source,str) else None
+            if not parsed or parsed.scheme!='https' or parsed.hostname!='api.dexscreener.com' or parsed.port not in (None,443) or parsed.username or parsed.password:continue
+        except ValueError:continue
+        response=record.get('response')
+        pairs=response if isinstance(response,list) else response.get('pairs',[]) if isinstance(response,dict) else []
+        for pair in pairs if isinstance(pairs,list) else []:
+            if not isinstance(pair,dict):continue
+            token=pair.get('baseToken') or {};info=pair.get('info') or {}
+            if not isinstance(token,dict) or not isinstance(info,dict):continue
+            slug=pair.get('chainId')
+            key=identity(chains.get(slug) if isinstance(slug,str) else None,token.get('address'))
+            image=safe_image(info.get('imageUrl'))
+            if key in wanted and image:
+                records[key]={'image_url':image,'source':source,'observed_at':record.get('observed_at') or observed}
     for snapshot in snapshots:
         for token in snapshot.get('tokens',[]):
             key=identity(token.get('chain_id'),token.get('token_address'))
             image=safe_image(token.get('indexer_image_url'))
             if key and image:records[key]={'image_url':image,'source':'Alchemy token metadata','observed_at':observed}
     artwork_checked=catalog.setdefault('artwork_checked',{})
-    wanted = {identity(t.get('chain_id'),t.get('token_address')):t
-              for snapshot in snapshots for t in snapshot.get('tokens',[])
-              if not t.get('mintclub') and identity(t.get('chain_id'),t.get('token_address'))}
     for asset,row in (native_images or {}).items():
         image = safe_image(row.get('image_url'))
         if image and asset in {value[1] for value in NATIVE_ASSETS.values()}:
             catalog.setdefault('native', {})[asset] = {**row, 'image_url': image}
     errors = 0
+    provider_fetch=fetch
+    def fetch(source):
+        # A failed optional source must not discard successful metadata above.
+        try:return provider_fetch(source)
+        except (OSError,ValueError):return None
     # lpTOKEN uses chain-specific imageUrl metadata, often from DEX Screener.
     # Read public catalog metadata without sending a wallet address.
     missing = {key:t for key,t in wanted.items()

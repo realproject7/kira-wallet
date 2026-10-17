@@ -60,7 +60,9 @@ def enrich(snapshot,market,folder,deadline=None):
     networks=json.loads((h.ASSETS/'sources/rpc-candidates.json').read_text())
     input_path=folder/'reserve-graph-input.json'
     atomic(input_path,{'wallet':snapshot['wallet_address'],'tokens':snapshot['tokens'],'networks':networks,
-        'market_budget_ms':max(0,int((deadline-time.monotonic())*1000)) if deadline is not None else 180_000})
+        # Leave time for Node startup and the final atomic graph publication
+        # before the parent's hard stop. Completed checkpoints remain useful.
+        'market_budget_ms':max(0,int((deadline-time.monotonic()-1)*1000)) if deadline is not None else 180_000})
     run_node('reserves',input_path,folder/'reserve-graph.json',deadline=deadline)
     recorded=json.loads((folder/'reserve-graph.json').read_text());graph=recorded['tokens']
     if recorded.get('market_pending'):raise MarketPause('Reserve checks reached the market time budget. Resume saved checks in Activity.')

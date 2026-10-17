@@ -46,6 +46,13 @@ candidates. Reachable Mint Club registries are enumerated too. There is no
 128-candidate cutoff. Unsupported indexes, failed balances and missing prices
 or artwork remain unknown.
 
+Price responses also supply artwork by network and contract. Kira reuses that
+metadata instead of requiring another successful lookup for the same logo.
+Completed reserve-price paths remain usable when a bounded pass pauses;
+unfinished paths keep their original unknown state.
+Further reserve traversal focuses on funded curves whose USD price is still
+unknown. Bounded checks leave time to save their completed results.
+
 **Analyze sell routes** is optional. It uses the saved balances and their
 original blocks to estimate a representative sale or redemption. It is not
 required for tokens, prices or logos and does not expand the holdings inventory.
@@ -61,3 +68,11 @@ required for tokens, prices or logos and does not expand the holdings inventory.
 
 Kira makes requests locally through your account. Review Alchemy’s current
 [plans and limits](https://www.alchemy.com/docs/reference/pricing-plans).
+
+The research engine spaces its private Alchemy node reads at least 250 ms apart
+in one shared lane across Alchemy networks. An Alchemy throughput response cools
+that lane before queued reads can use another Alchemy host. Public and other
+custom RPC endpoints keep their existing pacing and fallback behavior. Canonical
+block checks and provider backoff still apply. This is a local scheduling policy,
+not a guarantee about an account's available capacity. Alchemy's
+[throughput allowance is shared across apps and chains](https://support.alchemy.com/articles/3788245542-is-alchemy-s-throughput-cu-s-limit-shared-across-all-apps-or-set-per-chain).
