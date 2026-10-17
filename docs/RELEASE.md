@@ -79,7 +79,7 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep published GitHub tags, release assets and npm versions through 0.1.11
+Keep published GitHub tags, release assets and npm versions through 0.1.12
 immutable. Do not rebuild them from later documentation commits. Future package
 changes need a new version. Release preparation does not publish a GitHub
 release, promote the website or publish to npm.
@@ -95,12 +95,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.12.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.13.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.12.tgz --access public
+npm publish ./dist/kira-wallet-0.1.13.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
@@ -269,7 +269,7 @@ Use only the archive matching the final `dist/release.json` source commit,
 SHA-256 and installed member hashes. A registry dry run does not publish or
 establish registry credentials. Registry publication remains operator-only.
 
-## Release candidate: 0.1.12
+## Published 0.1.12
 
 This release consolidates the completed PR20 through PR29 stack into the default
 release branch. It includes the native HTML showcase, simpler local startup and
@@ -298,3 +298,53 @@ Prepare the final archive only after the release source has landed. Its exact
 commit and hashes belong in `dist/release.json`. Actual npm publication remains
 operator-only. Personal installations and paused automation are separate from
 release preparation.
+
+## Release candidate: 0.1.13
+
+Version 0.1.13 requires a locally available Alchemy key reference before wallet
+research. `kira connect alchemy` accepts the key privately in an interactive
+terminal. Onboarding has two steps, connecting Alchemy and adding a wallet,
+with an included guide using a public blank Alchemy example. AI connection is
+optional and its dialog opens only after an explicit connection action. Chat
+research status is a collapsible single line.
+
+Default holdings research attempts all 18 configured mainnets and six testnets.
+It checks every discovered, prior or known candidate and the available Mint Club
+registry. There is no 128-token candidate limit; 128 remains an RPC payload batch
+size. Failed network access and unavailable indexers remain explicit unknowns.
+This is not a guarantee of complete discovery on arbitrary EVM networks. Testnet
+values never enter portfolio USD totals. Existing limited snapshots need a new
+holdings refresh to gain the restored inventory coverage.
+
+Default holdings, prices and artwork do not require a deep scan. Optional
+`Analyze sell routes` reuses the same wallet's immutable saved balances, blocks
+and observation times. It researches liquidation paths without rediscovering
+tokens or refreshing balances. Bounded engine slices, provider pacing, pause,
+resume and no-progress protection remain. It has no overall time limit.
+
+Prices from DEX pools below USD 1,000 liquidity, or explicitly one-sided pools,
+cannot contribute to portfolio totals. Rejected reserve prices cannot reappear
+through cached indexer or dependent curve estimates. Balances remain visible
+with unknown USD values. Valid spot estimates still do not establish executable
+sale proceeds. Price-only updates preserve immutable holdings and prior market
+records, reuse fresh batched curve facts and publish explicit partial results
+when a bounded lookup cannot finish.
+
+Artwork uses chain and contract identity with Mint Club and Alchemy sources,
+including allowed Alchemy and CoinMarketCap hosts. The Mint Club image fallback
+retries once before initials. No original image is promised for an unknown token.
+Failed Mint Club detail batches receive one smaller retry, and remaining errors
+keep coverage partial rather than silently becoming completed records.
+
+The source in PR31 passed the full suite, clean installation and actual-wallet
+holdings, price, artwork and sell-only pause/resume checks. Release preparation
+reruns the required suite and clean installation, scans tracked source and
+history, and compares every final archive member with the landed source and
+its isolated installation. Product acceptance may be reused only for identical
+product bytes. Preserve raw history findings and apply only the exact normal
+CLI merge-metadata acceptance described above. Review not selected.
+
+Prepare the final archive from the landed version PR. Freeze its source commit,
+SHA-256 and member hashes, then dry-run that exact archive. npm publication is
+operator-only. Do not upgrade the personal app, resume paused automation,
+publish a GitHub release or deploy the website during preparation.
