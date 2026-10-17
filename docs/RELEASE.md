@@ -79,7 +79,7 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep published GitHub tags, release assets and npm versions through 0.1.12
+Keep published GitHub tags, release assets and npm versions through 0.1.13
 immutable. Do not rebuild them from later documentation commits. Future package
 changes need a new version. Release preparation does not publish a GitHub
 release, promote the website or publish to npm.
@@ -95,12 +95,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.13.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.14.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.13.tgz --access public
+npm publish ./dist/kira-wallet-0.1.14.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
@@ -299,7 +299,7 @@ commit and hashes belong in `dist/release.json`. Actual npm publication remains
 operator-only. Personal installations and paused automation are separate from
 release preparation.
 
-## Release candidate: 0.1.13
+## Published 0.1.13
 
 Version 0.1.13 requires a locally available Alchemy key reference before wallet
 research. `kira connect alchemy` accepts the key privately in an interactive
@@ -348,3 +348,47 @@ Prepare the final archive from the landed version PR. Freeze its source commit,
 SHA-256 and member hashes, then dry-run that exact archive. npm publication is
 operator-only. Do not upgrade the personal app, resume paused automation,
 publish a GitHub release or deploy the website during preparation.
+
+The operator published 0.1.13 on October 17, 2026. Its registry archive matched
+the frozen manifest and all 90 installed package members. The published archive
+remains immutable.
+
+## Release candidate: 0.1.14
+
+Version 0.1.14 includes merged PR33. Private Alchemy RPC requests use a shared
+250 ms lane across hosts, with cooldown after HTTP or JSON-RPC rate limits.
+Public RPC pacing, canonical-block checks, retries and fallback order remain.
+This removes the inherited two-second public-provider delay from private
+Alchemy reads without promising a fixed completion time.
+
+Artwork refreshes reuse safe chain-and-contract metadata already returned by
+DEX discovery. A separate provider failure preserves successful artwork, and
+canonical Base and Unichain USDC receive verified fallback images. Unknown
+tokens can still display initials when no supported image is available.
+
+Reserve pricing focuses on funded curves with missing USD quotes. Bounded
+lookups retain completed price paths and leave time to publish their partial
+graph before the parent deadline. Unfinished paths remain unknown. Existing
+thin-pool exclusions and portfolio total rules remain. Metadata passes preserve
+saved token quantities, blocks and observation times.
+
+PR33 acceptance compared 47 important token balances and eight native balances
+with explorer pages, including direct token-holder pages. A cold holdings run
+with the revised RPC pacing saved first evidence in 19.9 seconds and completed
+in 475.7 seconds. A separate live pass using the final metadata changes completed
+in 45.6 seconds over that wallet's own captured holdings, saved a partial reserve
+graph and preserved every quantity. These are individual observations under
+differing provider conditions. Exhaustive spam-token pricing or artwork coverage
+is outside this acceptance scope.
+
+Release preparation requires the full suite, a clean installation, tracked and
+history privacy scans, and comparison of every archive member with the landed
+source and isolated installation. Preserve strict history findings and assess
+only the exact authorized normal CLI merge metadata under the ruling above.
+Review not selected. The version PR changes only package metadata and release
+documentation; existing product acceptance applies to identical product bytes.
+
+Prepare and freeze the final archive from the landed version PR, then dry-run
+that exact archive. npm publication remains operator-only. Keep the personal
+0.1.13 installation, published archives and paused automation unchanged. This
+preparation does not publish a GitHub release or deploy the website.
