@@ -474,9 +474,11 @@ def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_p
     for p in resolve(graph,list(rows.values())):rows[(p['chain_id'],p['address'].lower())]=p
     market={**market,'tokens':list(rows.values()),'markets':list(markets.values())}
     pricing_tokens=[t for t in tokens if t['chain_id'] in mainnets]
-    missing=any(t['mintclub'].get('funded') and rows.get((t['chain_id'],t['token_address'].lower()),{}).get('usd') is None for t in pricing_tokens if t.get('mintclub'))
+    missing=[t for t in pricing_tokens if t.get('mintclub') and t['mintclub'].get('funded')
+             and rows.get((t['chain_id'],t['token_address'].lower()),{}).get('usd') is None
+             and rows.get((t['chain_id'],t['token_address'].lower()),{}).get('quality') not in ('unfunded','unreliable')]
     if missing and time.monotonic()<price_deadline:
-        try:market=enrich({**snapshot,'tokens':pricing_tokens},market,folder,deadline=price_deadline)
+        try:market=enrich({**snapshot,'tokens':missing},market,folder,deadline=price_deadline)
         except (MarketPause,OSError,ValueError):
             market['reserve_price_status']='partial'
             partial=folder/'reserve-graph.json'

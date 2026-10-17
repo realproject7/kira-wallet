@@ -50,6 +50,8 @@ Price responses also supply artwork by network and contract. Kira reuses that
 metadata instead of requiring another successful lookup for the same logo.
 Completed reserve-price paths remain usable when a bounded pass pauses;
 unfinished paths keep their original unknown state.
+Further reserve traversal focuses on funded curves whose USD price is still
+unknown. Bounded checks leave time to save their completed results.
 
 **Analyze sell routes** is optional. It uses the saved balances and their
 original blocks to estimate a representative sale or redemption. It is not
