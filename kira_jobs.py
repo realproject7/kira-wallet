@@ -2,6 +2,7 @@
 from __future__ import annotations
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from functools import lru_cache
 import fcntl
 import hashlib
 import json
@@ -107,6 +108,23 @@ def atomic(path, value):
 def read(path):
     return json.loads(Path(path).read_text())
 
+@lru_cache(maxsize=64)
+def published_asset_progress(path, version):
+    """Project final classifications without rewriting historical progress events."""
+    result=read(path)
+    if not isinstance(result.get('cashout_counts'),dict) or not isinstance(result.get('tokens'),list):return None
+    counts={name:0 for name in ('quoted_at_least_1_usd','recorded_quotes_below_1_usd','unknown','outside_usd_scope')}
+    rows={}
+    for token in result['tokens']:
+        status=(token.get('cashout_eligibility') or {}).get('status');chain=token.get('chain_id')
+        if status not in counts or type(chain) is not int or chain<=0:return None
+        counts[status]+=1
+        if status=='outside_usd_scope':continue
+        row=rows.setdefault(str(chain),{'total':0,'checked':0,'quoted':0,'unknown':0})
+        row['total']+=1;row['checked']+=1;row['unknown' if status=='unknown' else 'quoted']+=1
+    if counts!=result['cashout_counts']:return None
+    return result.get('wallet_address','').lower(),tuple((chain,tuple(row.items())) for chain,row in rows.items())
+
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
@@ -165,6 +183,14 @@ class JobStore:
             if field in job:identifier(job[field])
         wallet=job['input'].get('wallet') or job['input'].get('address')
         if wallet is not None and (not isinstance(wallet,str) or not ADDRESS.fullmatch(wallet)):raise JobError('invalid_envelope','Persisted wallet identity is invalid.')
+        if (job.get('analysis_phase')=='enrichment' and job['state'] in ('partial','succeeded')
+                and isinstance(job['result'],dict) and job['result'].get('snapshot_id')==job['checkpoint']):
+            path=self.root/job['checkpoint']/'results.json'
+            try:
+                stat=path.stat()
+                final=published_asset_progress(path,(stat.st_mtime_ns,stat.st_size,stat.st_ino))
+                if final and final[0]==wallet.lower():job['asset_progress']={chain:dict(row) for chain,row in final[1]}
+            except (OSError,ValueError,TypeError,AttributeError):pass
         return job
 
     def list(self):

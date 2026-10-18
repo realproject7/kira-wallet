@@ -5,10 +5,10 @@ from pathlib import Path
 from kira_jobs import JobStore, JobError, fields
 
 CATALOG = [
-    {'name':'records_read','arguments':{'reads':'List of 1 to 8 declared read tools, each with name and arguments.'},'description':'Execute an explicit bounded read plan. Includes one receipt per requested read. Read tools only; never queues research.'},
+    {'name':'records_read','arguments':{'reads':'List of 0 to 32 declared read tools, each with name and arguments.'},'description':'Declare and execute the complete requested read plan, including every requested source. Includes one receipt per read. An empty plan is for greetings or action-only requests. Read tools only; never queues research.'},
     {'name':'portfolio_read','arguments':{},'description':'Read approved wallet summaries and coverage. Includes a bounded first holdings page; use wallet_read for more.'},
     {'name':'wallet_read','arguments':{'wallet':'registered address or exact name'},'optional_arguments':{'offset':'nonnegative integer, default 0','limit':'integer 1 to 100, default 100'},'description':'Read a compact holdings page of one approved wallet. Follow next_offset until null for the complete recorded inventory. Use token_read for curve, market and exit details.'},
-    {'name':'token_read','arguments':{'chain_id':'positive integer','address':'contract address or native'},'description':'Read a chain-specific token in the approved wallets.'},
+    {'name':'token_read','arguments':{'chain_id':'positive integer','address':'contract address or native'},'description':'Read this asset across ALL approved wallets in one request, including saved native observations. Use this for token-specific questions; no wallet inventory pagination is needed.'},
     {'name':'snapshots_list','arguments':{'wallet':'registered address or exact name'},'description':'List past saved analyses for an approved wallet.'},
     {'name':'snapshot_read','arguments':{'snapshot_id':'saved snapshot ID'},'optional_arguments':{'offset':'nonnegative integer, default 0','limit':'integer 1 to 100, default 20'},'description':'Read a compact page of historical evidence for an approved wallet.'},
     {'name':'snapshots_compare','arguments':{'before':'saved snapshot ID','after':'saved snapshot ID'},'optional_arguments':{'offset':'nonnegative integer, default 0','limit':'integer 1 to 100, default 20'},'description':'Compare a page of recorded positions of the same approved wallet.'},
@@ -84,7 +84,7 @@ class ResearchTools:
         if name=='records_read':
             if not isinstance(arguments,dict):raise JobError('invalid_tool','Expected a read plan.')
             fields(arguments,['reads']);reads=arguments['reads']
-            if not isinstance(reads,list) or not 1<=len(reads)<=8:raise JobError('invalid_tool','Use 1 to 8 read requests.')
+            if not isinstance(reads,list) or not 0<=len(reads)<=32:raise JobError('invalid_tool','Use at most 32 read requests.')
             allowed={'portfolio_read','wallet_read','token_read','snapshots_list','snapshot_read','snapshots_compare','job_list','job_read'}
             for read in reads:
                 if not isinstance(read,dict):raise JobError('invalid_tool','Expected read requests.')

@@ -82,9 +82,13 @@ on-chain checkpoint status. Deferred candidates and pending networks are not
 failed reads or zero holdings. Historical observations cannot establish current
 execution, transfers or realized profit.
 
-`records_read` executes one bounded plan of up to eight declared read tools.
-Each child has its own host receipt. Literal JSON read requests are matched
-against their actual arguments, including chain and contract. Full inventory
+Before answering, scoped research chat must declare a `records_read` plan
+containing every requested source, up to 32 declared read tools. An empty plan
+is for greetings or action-only requests. Planning cannot start a refresh.
+Each child has its own host receipt. The declared plan and literal JSON read
+requests are matched against actual arguments, including chain and contract.
+An incomplete delivered plan receives one bounded continuation attempt before
+the turn is marked partial. Full inventory
 requests require contiguous delivered pages through `next_offset: null`.
 Failed or undelivered pages remain unread, with retry arguments in the turn's
 `read_completion`. Automatic context is not a requested tool receipt. This

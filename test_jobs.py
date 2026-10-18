@@ -40,6 +40,30 @@ class JobFixtures:
         atomic(self.root/job['checkpoint']/'run.json',{'wallet_address':ADDRESS,**({'completed_at':'now'} if completed_manifest else {'status':'running'})})
         registry=json.loads((self.root/'wallets.json').read_text());registry['wallets'][0]['latest_snapshot']={'directory':job['checkpoint']};atomic(self.root/'wallets.json',registry)
 class JobsTest(JobFixtures, unittest.TestCase):
+    def test_completed_sell_counts_follow_final_classification_without_rewriting_events(self):
+        job=self.running();self.publish(job)
+        job.update(analysis_phase='enrichment',state='partial',stage='published',result={'snapshot_id':job['checkpoint'],'status':'completed_with_coverage_gaps'},
+                   asset_progress={'1':{'total':4,'checked':4,'quoted':0,'unknown':4}})
+        self.store.save(job)
+        path=self.root/job['checkpoint']/'results.json';result=json.loads(path.read_text())
+        statuses=[(1,'quoted_at_least_1_usd'),(1,'unknown'),(8453,'recorded_quotes_below_1_usd'),(84532,'outside_usd_scope')]
+        result['tokens']=[{'chain_id':chain,'cashout_eligibility':{'status':status}} for chain,status in statuses]
+        result['cashout_counts']={status:1 for _,status in statuses};atomic(path,result)
+        original=(self.store.jobs/(job['job_id']+'.json')).read_bytes()
+        expected={'1':{'total':2,'checked':2,'quoted':1,'unknown':1},'8453':{'total':1,'checked':1,'quoted':1,'unknown':0}}
+        self.assertEqual(self.store.get(job['job_id'])['asset_progress'],expected)
+        self.assertEqual((self.store.jobs/(job['job_id']+'.json')).read_bytes(),original)
+        changed=self.store.get(job['job_id']);changed['asset_progress']['1']['quoted']=100
+        self.assertEqual(self.store.get(job['job_id'])['asset_progress'],expected)
+        result['tokens'][1]['cashout_eligibility']['status']='quoted_at_least_1_usd'
+        result['cashout_counts'].update(quoted_at_least_1_usd=2,unknown=0);atomic(path,result)
+        self.assertEqual(self.store.get(job['job_id'])['asset_progress']['1']['quoted'],2)
+        for state in ('running','cancelled','interrupted'):
+            self.store.save({**job,'state':state})
+            self.assertEqual(self.store.get(job['job_id'])['asset_progress'],job['asset_progress'])
+        self.store.save(job);result['wallet_address']=OTHER;atomic(path,result)
+        self.assertEqual(self.store.get(job['job_id'])['asset_progress'],job['asset_progress'])
+
     def test_cumulative_asset_checks_survive_pause_resume_and_step_resets(self):
         job=self.running();counts={'total':10,'checked':7,'quoted':2,'unknown':5}
         self.store.event(job['job_id'],{'stage':'onchain_progress','operation':'asset_inventory','chain_id':1,'total':20})
