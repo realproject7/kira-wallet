@@ -1,5 +1,6 @@
 """Scoped wallet research for in-app agents. No shell, secrets or signing tools."""
 from contextlib import nullcontext
+from decimal import Decimal, InvalidOperation
 import json
 from pathlib import Path
 from kira_jobs import JobStore, JobError, fields
@@ -8,7 +9,7 @@ CATALOG = [
     {'name':'records_read','arguments':{'reads':'List of 0 to 32 declared read tools, each with name and arguments.'},'description':'Declare and execute the complete requested read plan, including every requested source. Includes one receipt per read. An empty plan is for greetings or action-only requests. Read tools only; never queues research.'},
     {'name':'portfolio_read','arguments':{},'description':'Read approved wallet summaries and coverage. Includes a bounded first holdings page; use wallet_read for more.'},
     {'name':'wallet_read','arguments':{'wallet':'registered address or exact name'},'optional_arguments':{'offset':'nonnegative integer, default 0','limit':'integer 1 to 100, default 100'},'description':'Read a compact holdings page of one approved wallet. Follow next_offset until null for the complete recorded inventory. Use token_read for curve, market and exit details.'},
-    {'name':'token_read','arguments':{'chain_id':'positive integer','address':'contract address or native'},'description':'Read this asset across ALL approved wallets in one request, including saved native observations. Use this for token-specific questions; no wallet inventory pagination is needed.'},
+    {'name':'token_read','arguments':{'chain_id':'positive integer','address':'contract address or native'},'optional_arguments':{'minimum_value_usd':'Nonnegative USD number or decimal string. Filter by recorded mainnet value; unknowns stay separate.'},'description':'Read this asset across ALL approved wallets in one request, including saved native observations. Use the optional minimum for value-threshold questions and the exact returned position_count. No wallet inventory pagination is needed.'},
     {'name':'snapshots_list','arguments':{'wallet':'registered address or exact name'},'description':'List past saved analyses for an approved wallet.'},
     {'name':'snapshot_read','arguments':{'snapshot_id':'saved snapshot ID'},'optional_arguments':{'offset':'nonnegative integer, default 0','limit':'integer 1 to 100, default 20'},'description':'Read a compact page of historical evidence for an approved wallet.'},
     {'name':'snapshots_compare','arguments':{'before':'saved snapshot ID','after':'saved snapshot ID'},'optional_arguments':{'offset':'nonnegative integer, default 0','limit':'integer 1 to 100, default 20'},'description':'Compare a page of recorded positions of the same approved wallet.'},
@@ -97,14 +98,25 @@ class ResearchTools:
                     if error.code=='cancelled':raise
                     result={'error':{'code':error.code,'message':str(error)}}
                 results.append({**read,'status':'failed' if isinstance(result,dict) and result.get('error') else 'completed','result':result})
-            return {'requested_reads':len(reads),'completed_reads':sum(read['status']=='completed' for read in results),
-                    'completion':'complete' if all(read['status']=='completed' for read in results) else 'partial','reads':results}
+            response={'requested_reads':len(reads),'completed_reads':sum(read['status']=='completed' for read in results),
+                      'completion':'complete' if all(read['status']=='completed' for read in results) else 'partial','reads':results}
+            token_reads=[r for r in results if r['name']=='token_read' and r['status']=='completed']
+            if token_reads:
+                response['position_count']=len({(p['wallet'],r['result']['identity']) for r in token_reads for p in r['result']['positions']})
+                response['position_count_scope']='Exact distinct wallet/chain/asset matches returned by completed token reads, after their filters. Use this count verbatim; failed reads remain unresolved.'
+            return response
         tool=next((row for row in CATALOG if row['name']==name),None)
         if tool is None:raise JobError('unsupported_tool','Choose a declared wallet research tool.')
         if not isinstance(arguments,dict):raise JobError('invalid_tool','Expected declared tool arguments.')
         fields({k:v for k,v in arguments.items() if k not in tool.get('optional_arguments',{})},list(tool['arguments']))
         for field,value in arguments.items():
-            if field in ('offset','limit'):
+            if field=='minimum_value_usd':
+                try:
+                    if type(value) not in (str,int,float) or len(str(value))>80:raise ValueError()
+                    minimum=Decimal(str(value))
+                    if not minimum.is_finite() or minimum<0:raise ValueError()
+                except (InvalidOperation,ValueError):raise JobError('invalid_tool','Use a finite nonnegative USD minimum.') from None
+            elif field in ('offset','limit'):
                 if type(value) is not int or value<0 or field=='limit' and not 1<=value<=100:
                     raise JobError('invalid_tool','Use a nonnegative offset and a limit from 1 to 100.')
             elif field=='chain_id':
@@ -126,7 +138,14 @@ class ResearchTools:
             from kira_agent import projection
             specific=projection(self.root,self.config,token_id=identity)
             positions=[{'wallet':row['address'],'snapshot_id':row.get('snapshot_id'),'asset':asset} for row in specific['wallets'] for asset in row['assets']]
-            return {'identity':identity,'positions':positions,'curve_comparison':compare_curve_states(positions),
+            total=len(positions)
+            outside=sum(p['asset'].get('environment')!='mainnet' or p['asset'].get('archived') for p in positions)
+            unpriced=sum(p['asset'].get('environment')=='mainnet' and not p['asset'].get('archived') and p['asset'].get('value_usd') is None for p in positions)
+            if 'minimum_value_usd' in arguments:
+                positions=[p for p in positions if p['asset'].get('environment')=='mainnet' and not p['asset'].get('archived')
+                           and p['asset'].get('value_usd') is not None and Decimal(str(p['asset']['value_usd']))>=minimum]
+            return {'identity':identity,'positions':positions,'position_count':len(positions),'unfiltered_position_count':total,
+                    'unpriced_position_count':unpriced,'outside_usd_scope_count':outside,'curve_comparison':compare_curve_states(positions),
                     'note':'An absent record is unknown, not a verified zero holding.'}
         if name=='snapshots_list':return self.store.snapshots(self.wallet(arguments['wallet'],approved))
         if name=='snapshot_read':return self.snapshot(arguments['snapshot_id'],approved,arguments.get('offset',0),arguments.get('limit',20))

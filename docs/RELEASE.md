@@ -409,6 +409,9 @@ in natural-language conversations as well as literal tool requests. Missing
 reads receive one bounded continuation attempt and unresolved requests stay
 partial. An empty plan supports greetings and action-only requests. Planning
 cannot enqueue research; scope, cancellation, context and time limits remain.
+Token-specific reads cover all approved wallets without unrelated inventory
+pagination. Optional USD thresholds and distinct matched-position counts are
+computed from saved values by the host; unknown and testnet values stay separate.
 This checks the declared plan, not every possible semantic interpretation of
 a question. Unknown values and recorded valuation timestamps remain explicit.
 

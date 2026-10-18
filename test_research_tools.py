@@ -14,6 +14,35 @@ from kira_agent import AgentStore
 from test_kira_agent import settings, ready
 
 class ResearchToolsTest(unittest.TestCase):
+    def test_value_filter_counts_saved_matches_without_turning_unknowns_into_zero(self):
+        from copy import deepcopy
+        import model
+        state,stamp,stale=model.load_state(self.root)
+        template=deepcopy(state['wallets'][0]['assets'][0])
+        for wallet,value in zip(state['wallets'],(10,9.999)):
+            wallet['assets']=[{**deepcopy(template),'id':'1:native','chain_id':1,'address':None,'is_native':True,
+                               'environment':'mainnet','balance':'1','value_usd':value}]
+        tools=ResearchTools(self.root,{**self.config,'scope':'portfolio','wallet':None})
+        args={'chain_id':1,'address':'native','minimum_value_usd':10}
+        with patch('model.load_state',return_value=(state,stamp,stale)):
+            result=tools.call('token_read',args,str(uuid.uuid4()))
+            self.assertEqual(result['position_count'],1);self.assertEqual(result['unfiltered_position_count'],2)
+            self.assertEqual(result['positions'][0]['asset']['value_usd'],10)
+            state['wallets'][1]['assets'][0]['value_usd']=None
+            result=tools.call('token_read',{**args,'minimum_value_usd':'0'},str(uuid.uuid4()))
+            self.assertEqual(result['position_count'],1);self.assertEqual(result['unpriced_position_count'],1)
+            state['wallets'][1]['assets'][0].update(environment='testnet',value_usd=100)
+            result=tools.call('token_read',args,str(uuid.uuid4()))
+            self.assertEqual(result['position_count'],1);self.assertEqual(result['outside_usd_scope_count'],1)
+            batch=tools.call('records_read',{'reads':[{'name':'token_read','arguments':args}]*2},str(uuid.uuid4()))
+            self.assertEqual(batch['position_count'],1);self.assertEqual(batch['completed_reads'],2)
+            from kira_agent import read_completion,read_receipt
+            failed=read_receipt('token_read',{**args,'minimum_value_usd':'10.0'},{'error':'Temporary read failure'})
+            recovered=read_receipt('token_read',args,result)
+            self.assertEqual(read_completion('Read '+json.dumps({'name':'token_read','arguments':failed['arguments']}),[failed,recovered],tools)['status'],'complete')
+        for invalid in (True,-1,'NaN','Infinity',{},'1'*81):
+            with self.assertRaises(JobError):tools.call('token_read',{**args,'minimum_value_usd':invalid},str(uuid.uuid4()))
+
     def test_read_plan_covers_more_than_eight_sources_and_rejects_actions_before_reading(self):
         reads=[{'name':'token_read','arguments':{'chain_id':chain,'address':'native'}} for chain in range(1,10)]
         result=self.call('records_read',{'reads':reads})

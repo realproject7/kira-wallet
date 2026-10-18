@@ -94,6 +94,12 @@ Failed or undelivered pages remain unread, with retry arguments in the turn's
 `read_completion`. Automatic context is not a requested tool receipt. This
 bounded check does not verify every semantic requirement in natural prose.
 
+Token-specific queries read all approved wallets with `token_read`, without
+enumerating unrelated inventory pages. Its optional `minimum_value_usd` filters
+recorded mainnet values. Unknown and outside-USD positions have separate counts.
+`position_count` is computed by the host; a read-plan count deduplicates returned
+wallet/chain/asset identities rather than asking the model to tally its table.
+
 rpc_status pending means a network has not yet been researched. It does not
 prove an RPC outage. For a curve comparison, match chain and contract and
 compare reserve, supply, next-mint price and royalty observations. A newer

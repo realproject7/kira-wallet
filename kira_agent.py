@@ -34,6 +34,7 @@ SYSTEM = ('You are Kira, a careful wallet research partner. Answer in the langua
     'Compact pages defer exit_quote and curve details. exit_quote_recorded true means a validated historical quote exists in the record even if its output is omitted here. Use token_read before judging execution evidence or claiming that a quote is absent. False means no validated quote in this snapshot, not that no exit route exists. '
     'Only an unfiltered complete inventory needs every holdings page. For that request, follow next_offset for each approved wallet using limit 100 and state which pages remain unread if the budget prevents completion. '
     'A question about a specific token or native asset across all wallets or networks is a filtered query. token_read already returns that asset across every approved wallet, including saved native observations. Do not enumerate unrelated wallet inventory pages for a token-specific question. Inventory pages defer curve and exit details to token_read. '
+    'For USD-threshold questions, pass minimum_value_usd to token_read. Use the exact returned position_count, including the combined records_read count, rather than counting rows yourself. Unpriced and outside-USD positions are reported separately, not valued at zero. '
     'Use coverage_counts exact counts and chain_ids separately for mainnet and testnet. Use display_identity verbatim for abbreviated contracts or copy the full address. Never invent a suffix. '
     'research_connection describes current settings; rpc_routes describe saved attempts. Failed public attempts followed by custom success are recovered reads, not chain outages or public successes. queue_timeout/local_timeout are scheduling outcomes, not proof of provider failure. Never ask for keys or endpoint URLs in chat or browser; follow the environment-reference guide. '
     'history_window is bounded transfer candidate history, not a complete inventory or receipt proof. history_pending means unfinished history; candidates can have zero current balances. Lifecycle retirement is separate from connectivity, discovery and provider support. Failed RPC or stale heads cannot establish retirement. Alchemy cannot restart a retired network. '
@@ -141,6 +142,13 @@ def read_completion(message, receipts, tools):
         if set(wanted)!=set(actual):return False
         for key,value in wanted.items():
             other=actual.get(key)
+            if key=='minimum_value_usd':
+                from decimal import Decimal, InvalidOperation
+                try:
+                    left,right=Decimal(str(value)),Decimal(str(other))
+                    if not left.is_finite() or not right.is_finite() or left!=right:return False
+                except InvalidOperation:return False
+                continue
             if key=='wallet' and tools:
                 try:
                     _,approved=tools.allowed();value=tools.wallet(value,approved);other=tools.wallet(other,approved)
