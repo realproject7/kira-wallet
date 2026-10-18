@@ -16,6 +16,8 @@ from test_kira_agent import settings, ready
 class ResearchToolsTest(unittest.TestCase):
     def test_value_filter_counts_saved_matches_without_turning_unknowns_into_zero(self):
         from copy import deepcopy
+        import sys
+        sys.path.insert(0,str(Path(__file__).resolve().parent/'viewer'))
         import model
         state,stamp,stale=model.load_state(self.root)
         template=deepcopy(state['wallets'][0]['assets'][0])
