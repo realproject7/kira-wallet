@@ -79,7 +79,7 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep published GitHub tags, release assets and npm versions through 0.1.13
+Keep published GitHub tags, release assets and npm versions through 0.1.14
 immutable. Do not rebuild them from later documentation commits. Future package
 changes need a new version. Release preparation does not publish a GitHub
 release, promote the website or publish to npm.
@@ -95,12 +95,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.14.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.15.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.14.tgz --access public
+npm publish ./dist/kira-wallet-0.1.15.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
@@ -353,7 +353,7 @@ The operator published 0.1.13 on October 17, 2026. Its registry archive matched
 the frozen manifest and all 90 installed package members. The published archive
 remains immutable.
 
-## Release candidate: 0.1.14
+## Published 0.1.14
 
 Version 0.1.14 includes merged PR33. Private Alchemy RPC requests use a shared
 250 ms lane across hosts, with cooldown after HTTP or JSON-RPC rate limits.
@@ -392,3 +392,43 @@ Prepare and freeze the final archive from the landed version PR, then dry-run
 that exact archive. npm publication remains operator-only. Keep the personal
 0.1.13 installation, published archives and paused automation unchanged. This
 preparation does not publish a GitHub release or deploy the website.
+
+The operator published 0.1.14 on October 18, 2026. Its registry archive matched
+the frozen manifest, including SHA-256
+`c9802e76f05ae7e560fd29051beea3855e7006e99670f131de2a6322f4b1e8b8`
+and all 90 installed members. Actual acceptance checked important explorer
+balances, prices, artwork and sell-only pause/resume. A subsequent pass completed
+the sell analysis naturally and exposed the two issues addressed below.
+
+## Release candidate: 0.1.15
+
+Scoped AI research declares its complete read plan before answering. A plan
+can contain up to 32 read-only requests, so a nine-chain question is not cut
+off by the former eight-read batch bound. Host receipts cover declared plans
+in natural-language conversations as well as literal tool requests. Missing
+reads receive one bounded continuation attempt and unresolved requests stay
+partial. An empty plan supports greetings and action-only requests. Planning
+cannot enqueue research; scope, cancellation, context and time limits remain.
+Token-specific reads cover all approved wallets without unrelated inventory
+pagination. Optional USD thresholds and distinct matched-position counts are
+computed from saved values by the host; unknown and testnet values stay separate.
+This checks the declared plan, not every possible semantic interpretation of
+a question. Unknown values and recorded valuation timestamps remain explicit.
+
+Completed sell summaries use final saved per-token classifications rather than
+intermediate progress counters. Older completed jobs also show corrected totals
+without rewriting snapshots or original events. Paused/running progress remains
+resumable, and testnet values stay outside USD classifications. This changes
+neither balances nor quote execution, gas or best-route guarantees.
+
+Required gates are the full repository suite, clean installation, actual native
+AI nine-source and research-action checks, completed-summary browser checks,
+tracked/history privacy scans and an exact final archive installation. Preserve
+raw strict history findings and assess only the authorized normal CLI merge
+metadata under the ruling above. Review not selected.
+
+Prepare and freeze the final archive only from the landed release source, then
+dry-run that exact archive. npm publication remains operator-only. Preserve the
+personal 0.1.14 installation, credentials, paused history and published archives.
+Use a separate private workspace for candidate acceptance. No GitHub release,
+website deployment or personal app upgrade is part of this preparation.

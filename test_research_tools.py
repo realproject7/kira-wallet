@@ -14,6 +14,83 @@ from kira_agent import AgentStore
 from test_kira_agent import settings, ready
 
 class ResearchToolsTest(unittest.TestCase):
+    def test_value_filter_counts_saved_matches_without_turning_unknowns_into_zero(self):
+        from copy import deepcopy
+        import sys
+        sys.path.insert(0,str(Path(__file__).resolve().parent/'viewer'))
+        import model
+        state,stamp,stale=model.load_state(self.root)
+        template=deepcopy(state['wallets'][0]['assets'][0])
+        for wallet,value in zip(state['wallets'],(10,9.999)):
+            wallet['assets']=[{**deepcopy(template),'id':'1:native','chain_id':1,'address':None,'is_native':True,
+                               'environment':'mainnet','balance':'1','value_usd':value}]
+        tools=ResearchTools(self.root,{**self.config,'scope':'portfolio','wallet':None})
+        args={'chain_id':1,'address':'native','minimum_value_usd':10}
+        with patch('model.load_state',return_value=(state,stamp,stale)):
+            result=tools.call('token_read',args,str(uuid.uuid4()))
+            self.assertEqual(result['position_count'],1);self.assertEqual(result['unfiltered_position_count'],2)
+            self.assertEqual(result['positions'][0]['asset']['value_usd'],10)
+            state['wallets'][1]['assets'][0]['value_usd']=None
+            result=tools.call('token_read',{**args,'minimum_value_usd':'0'},str(uuid.uuid4()))
+            self.assertEqual(result['position_count'],1);self.assertEqual(result['unpriced_position_count'],1)
+            state['wallets'][1]['assets'][0].update(environment='testnet',value_usd=100)
+            result=tools.call('token_read',args,str(uuid.uuid4()))
+            self.assertEqual(result['position_count'],1);self.assertEqual(result['outside_usd_scope_count'],1)
+            batch=tools.call('records_read',{'reads':[{'name':'token_read','arguments':args}]*2},str(uuid.uuid4()))
+            self.assertEqual(batch['position_count'],1);self.assertEqual(batch['completed_reads'],2)
+            from kira_agent import read_completion,read_receipt
+            failed=read_receipt('token_read',{**args,'minimum_value_usd':'10.0'},{'error':'Temporary read failure'})
+            recovered=read_receipt('token_read',args,result)
+            self.assertEqual(read_completion('Read '+json.dumps({'name':'token_read','arguments':failed['arguments']}),[failed,recovered],tools)['status'],'complete')
+        for invalid in (True,-1,'NaN','Infinity',{},'1'*81):
+            with self.assertRaises(JobError):tools.call('token_read',{**args,'minimum_value_usd':invalid},str(uuid.uuid4()))
+
+    def test_read_plan_covers_more_than_eight_sources_and_rejects_actions_before_reading(self):
+        reads=[{'name':'token_read','arguments':{'chain_id':chain,'address':'native'}} for chain in range(1,10)]
+        result=self.call('records_read',{'reads':reads})
+        self.assertEqual(result['completed_reads'],9);self.assertEqual(result['completion'],'complete')
+        self.assertEqual(self.call('records_read',{'reads':[]})['reads'],[])
+        for invalid in (reads*4,reads+[{'name':'holdings_refresh','arguments':{'wallet':self.first['address_key']}}]):
+            with patch.object(self.tools,'allowed',side_effect=AssertionError('Invalid plans must not read data')):
+                with self.assertRaises(JobError):self.call('records_read',{'reads':invalid})
+        self.assertEqual(JobStore(self.root).list(),[])
+
+    def test_natural_question_requires_a_complete_plan_before_answering(self):
+        reads=[{'name':'token_read','arguments':{'chain_id':chain,'address':'native'}} for chain in range(1,10)]
+        outputs=['Tools are unavailable.',json.dumps({'kira_tool':'records_read','arguments':{'reads':reads}}),'Nine sources were read.']
+        store=AgentStore(self.root,runner=lambda *args:outputs.pop(0),detector=ready);store.config=self.config
+        key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
+        store._run(key,self.config,'Read nine requested chains.','아홉 체인의 저장된 ETH 기록을 각각 읽어줘.',store.epoch)
+        turn=store.turns[key]
+        self.assertEqual(turn['state'],'succeeded');self.assertEqual(turn['answer'],'Nine sources were read.')
+        self.assertEqual(len(turn['tool_calls'][0]['reads']),9)
+        self.assertEqual(turn['read_completion']['status'],'complete')
+        self.assertEqual(turn['read_completion']['completed_reads'],9)
+
+    def test_natural_plan_failure_cannot_become_successful_prose(self):
+        reads=[{'name':'token_read','arguments':{'chain_id':chain,'address':'native'}} for chain in (8453,0)]
+        prompts=[]
+        def runner(config,prompt,cancel):
+            prompts.append(prompt)
+            return json.dumps({'kira_tool':'records_read','arguments':{'reads':reads}}) if len(prompts)==1 else 'Everything is complete.'
+        store=AgentStore(self.root,runner=runner,detector=ready);store.config=self.config
+        key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
+        store._run(key,self.config,'Read the requested sources.','요청한 두 체인의 저장 기록을 읽어줘.',store.epoch)
+        turn=store.turns[key]
+        self.assertEqual(turn['state'],'partial');self.assertEqual(len(prompts),3)
+        self.assertIn('unfinished requested reads',prompts[-1]);self.assertIn('token_read',turn['answer'])
+        self.assertTrue(turn['read_completion']['failed'])
+
+    def test_planning_cannot_enqueue_and_action_runs_once_after_empty_plan(self):
+        refresh={'kira_tool':'prices_refresh','arguments':{'wallet':self.first['address_key']}}
+        outputs=[json.dumps(refresh),json.dumps({'kira_tool':'records_read','arguments':{'reads':[]}}),json.dumps(refresh),'Price update queued.']
+        store=AgentStore(self.root,runner=lambda *args:outputs.pop(0),detector=ready);store.config=self.config
+        key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
+        with patch.object(JobStore,'launch') as launch:
+            store._run(key,self.config,'Refresh this wallet once.','가격만 한 번 새로고침해줘.',store.epoch)
+        self.assertEqual(store.turns[key]['state'],'succeeded');self.assertEqual(len(JobStore(self.root).list()),1)
+        self.assertEqual(launch.call_count,1)
+
     def test_read_plan_returns_precise_receipts_and_cannot_enqueue(self):
         reads=[{'name':'portfolio_read','arguments':{}},{'name':'wallet_read','arguments':{'wallet':self.first['address_key']}},{'name':'wallet_read','arguments':{'wallet':self.other}}]
         result=self.call('records_read',{'reads':reads})
@@ -215,7 +292,7 @@ class ResearchToolsTest(unittest.TestCase):
         calls=[]
         def runner(config,prompt,cancel):
             calls.append(prompt)
-            return json.dumps({'kira_tool':'snapshots_list','arguments':{'wallet':self.first['address_key']}}) if len(calls)==1 else 'I found the saved analysis.'
+            return json.dumps({'kira_tool':'records_read','arguments':{'reads':[{'name':'snapshots_list','arguments':{'wallet':self.first['address_key']}}]}}) if len(calls)==1 else 'I found the saved analysis.'
         store=AgentStore(self.root,runner=runner,detector=ready);store.config=self.config
         key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
         store._run(key,self.config,'Inspect the saved wallet analysis.','Inspect the saved wallet analysis.',store.epoch)
@@ -223,7 +300,7 @@ class ResearchToolsTest(unittest.TestCase):
 
     def test_mixed_tool_protocol_is_repaired_before_any_tool_executes(self):
         outputs=['I will check. {"kira_tool":"portfolio_read","arguments":{}}',
-                 '{"kira_tool":"portfolio_read","arguments":{}}','Recorded evidence only.']
+                 '{"kira_tool":"records_read","arguments":{"reads":[]}}','Recorded evidence only.']
         calls=[]
         def runner(config,prompt,cancel):calls.append(prompt);return outputs.pop(0)
         store=AgentStore(self.root,runner=runner,detector=ready);store.config=self.config
@@ -242,7 +319,7 @@ class ResearchToolsTest(unittest.TestCase):
         self.assertNotIn('answer',store.turns[key]);self.assertEqual(store.messages,[])
 
     def test_malformed_protocol_after_eight_tools_cannot_fall_through_as_answer(self):
-        outputs=['{"kira_tool":"portfolio_read","arguments":{}}']*8+['Prose {"kira_tool":"portfolio_read","arguments":{}}']
+        outputs=['{"kira_tool":"records_read","arguments":{"reads":[]}}']+['{"kira_tool":"portfolio_read","arguments":{}}']*7+['Prose {"kira_tool":"portfolio_read","arguments":{}}']
         store=AgentStore(self.root,runner=lambda *args:outputs.pop(0),detector=ready);store.config=self.config
         key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
         with patch.object(ResearchTools,'call',return_value={}):
@@ -263,10 +340,10 @@ class ResearchToolsTest(unittest.TestCase):
         prompts=[]
         def runner(config,prompt,cancel):
             prompts.append(prompt)
-            return json.dumps({'kira_tool':'portfolio_read','arguments':{}})
+            return json.dumps({'kira_tool':'records_read','arguments':{'reads':[]}}) if len(prompts)==1 else json.dumps({'kira_tool':'portfolio_read','arguments':{}})
         store=AgentStore(self.root,runner=runner,detector=ready);store.config=self.config
         key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
-        with patch.object(ResearchTools,'call',return_value={'data':'界'*80000}):
+        with patch.object(ResearchTools,'call',return_value={'data':'界'*100000}):
             store._run(key,self.config,'Inspect records.','Inspect records.',store.epoch)
         self.assertEqual(store.turns[key]['error']['code'],'tool_limit');self.assertEqual(len(prompts),9)
         self.assertTrue(all(len(p.encode())<=400000 for p in prompts));self.assertIn('context limit',prompts[1])

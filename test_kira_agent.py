@@ -48,7 +48,11 @@ class AgentTest(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
         atomic(self.root/'wallets.json',{'schema_version':1,'wallets':[],'research_runs':[]});sample(self.root)
         self.prompts=[]
-        def run(config,prompt,cancel):self.prompts.append(prompt);return 'Kira connection ready.' if 'Generic connection test' in prompt else 'Recorded facts only.'
+        def run(config,prompt,cancel):
+            self.prompts.append(prompt)
+            if 'Generic connection test' in prompt:return 'Kira connection ready.'
+            if 'Required first response:' in prompt:return '{"kira_tool":"records_read","arguments":{"reads":[]}}'
+            return 'Recorded facts only.'
         self.store=AgentStore(self.root,runner=run,detector=ready)
 
     def test_retired_records_keep_history_but_leave_current_valuation(self):

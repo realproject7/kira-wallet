@@ -246,6 +246,10 @@ The optional asset_progress map persists total, checked, quoted and unknown
 counts per mainnet chain. checked equals quoted plus unknown, not successful
 valuation. It survives process restarts, pause and resume and current-step count
 resets. The total can grow with discovered holdings.
+For a published sell analysis, job reads project these counters from the final
+per-token cash-out classifications. Testnet/outside-USD records are excluded.
+This also corrects older completed summaries without rewriting their original
+progress events or snapshots. Running and paused jobs retain checkpoint counts.
 Each slice registers the known inventory for all mainnet chains before market
 checks, so the first completed chain does not imply all discovered work is done.
 The viewer separately shows saved asset checks, available prices and unresolved checks. It does not derive
