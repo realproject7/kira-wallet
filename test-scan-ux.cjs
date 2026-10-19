@@ -105,7 +105,7 @@ test('visible analysis card stays separate from lookup status and guards writes'
 test('cumulative reviews remain visible through step resets, pause and resume',()=>{
  const h=harness(),asset_progress={'8453':{total:100,checked:72,quoted:12,unknown:60},'1':{total:20,checked:9,quoted:2,unknown:7}};
  assert.deepEqual(KiraView.assetProgress({...deep,asset_progress:{...asset_progress,'137':{total:50,checked:0,quoted:0,unknown:0}}}),{total:170,checked:81,quoted:14,unknown:67});
- for(const state of ['running','cancelled','queued','partial']){
+ for(const state of ['running','cancelled','queued']){
   const job={...deep,state,asset_progress,events:[{stage:'onchain_progress',counts:{checked:0,total:10},context:{operation:'pool_checks',attempt:2}}]};
   assert.deepEqual(KiraView.jobProgress(job).assets,{total:120,checked:81,quoted:14,unknown:67});
   h.setJobs([job,basic]);h.run('renderWalletScan()');const html=h.el('wallet-analysis').innerHTML;
@@ -113,6 +113,48 @@ test('cumulative reviews remain visible through step resets, pause and resume',(
   assert.match(h.el('wallet-scan').innerHTML,/Completed with gaps/);assert.equal(h.el('wallet-analysis').hidden,false);
  }
  assert.equal(KiraView.assetProgress({...deep,asset_progress:{'1':{total:2,checked:2,quoted:2,unknown:1}}}),null);
+});
+test('completed sell analysis leaves the wallet while its recorded results stay available',()=>{
+ const h=harness();
+ for(const state of ['partial','succeeded']){
+  const job={...deep,state,asset_progress:{'8453':{total:170,checked:170,quoted:22,unknown:148}}};
+  h.setJobs([job,basic]);h.run('renderWalletScan()');
+  assert.equal(h.el('wallet-analysis').hidden,true);assert.equal(h.el('wallet-analysis').innerHTML,'');
+  assert.match(h.el('wallet-scan').innerHTML,/Completed with gaps/);
+  assert.deepEqual(KiraView.jobProgress(job).assets,{total:170,checked:170,quoted:22,unknown:148});
+  assert.equal(h.run('jobList.length'),2);assert.equal(h.run('jobList[0].state'),state);
+ }
+ for(const state of ['failed','cancelled','interrupted']){
+  h.setJobs([{...deep,state},basic]);h.run('renderWalletScan()');
+  assert.equal(h.el('wallet-analysis').hidden,false);
+  assert.match(h.el('wallet-analysis').innerHTML,/data-job-action="resume"/);
+ }
+});
+test('completion notification appears once for an observed finish, never for loaded history or errors',()=>{
+ const h=harness(),notifications=[];
+ h.context.toast=(...args)=>notifications.push(args);
+ const source=fs.readFileSync('viewer/static/jobs.js','utf8');
+ h.run(source.slice(source.indexOf('function notifyResearchCompletions('),source.indexOf('function renderJobs(')));
+ const poll=jobs=>{h.setJobs(jobs);h.run('notifyResearchCompletions()');};
+ poll([{...deep,state:'partial'},basic]);assert.equal(notifications.length,0);
+ poll([deep,basic]);poll([{...deep,state:'partial'},basic]);poll([{...deep,state:'partial'},basic]);
+ assert.equal(notifications.length,1);assert.match(notifications[0][0],/saved.*Activity/);assert.equal(notifications[0][1],6000);
+ for(const state of ['failed','cancelled','interrupted']){poll([deep,basic]);poll([{...deep,state},basic]);}
+ assert.equal(notifications.length,1);
+ poll([{...deep,state:'queued'},basic]);poll([{...deep,state:'succeeded'},basic]);assert.equal(notifications.length,2);
+ const newerBasic={...basic,job_id:'new-basic',state:'running'};
+ poll([newerBasic]);poll([{...newerBasic,state:'succeeded'}]);assert.equal(notifications.length,2);
+});
+test('a newer notification keeps its full display time when replacing an earlier toast',()=>{
+ const callbacks=new Map(),classes=new Set(),node={textContent:'',classList:{add:c=>classes.add(c),remove:c=>classes.delete(c)}};
+ let id=0;
+ const context=vm.createContext({$:()=>node,setTimeout:(fn,ms)=>{callbacks.set(++id,{fn,ms});return id;},clearTimeout:key=>callbacks.delete(key)});
+ const source=fs.readFileSync('viewer/static/app.js','utf8');
+ vm.runInContext(source.slice(source.indexOf('let toastTimeout;'),source.indexOf('function currentWallet(')),context);
+ vm.runInContext('toast("Earlier notification");toast("Sell analysis saved",6000)',context);
+ assert.equal(callbacks.size,1);const timer=[...callbacks.values()][0];assert.equal(timer.ms,6000);
+ assert.equal(node.textContent,'Sell analysis saved');assert.equal(classes.has('show'),true);
+ timer.fn();assert.equal(classes.has('show'),false);
 });
 test('one click stays in flight through double clicks, preserves job identity and allows retry after failure',async()=>{
  const h=harness(),calls=[];let release;

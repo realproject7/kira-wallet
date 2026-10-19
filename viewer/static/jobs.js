@@ -4,6 +4,7 @@ let discoverySettingsRevision='';
 const pendingActions=new Set();
 const scanBusyJobs=new Set();
 let scanAnnouncement='';
+let observedResearchStates=new Map();
 const jobLabels={'wallet.add':'Wallet research','wallet.refresh':'Holdings refresh','prices.refresh':'Price refresh','wallet.setTags':'Wallet names','settings.rpc':'RPC settings','settings.discovery':'Token discovery','settings.provider':'Data provider connection','settings.importEnv':'Local connection setup'};
 const stageLabels={queued:'Waiting to start',starting:'Opening saved evidence',registered:'Wallet registered',discovery:'Token discovery',chain:'Checking on-chain holdings',onchain_progress:'Reading on-chain records',first_evidence:'First results available',dex_discovery:'Checking markets',token_images:'Preparing token artwork',published:'Evidence saved',failed:'Research stopped',stopped:'Research stopped',interrupted:'Ready for recovery'};
 function researchStage(event) {
@@ -50,8 +51,8 @@ function renderWalletScan() {
   const lookupAction=canWrite&&lookup?.action&&lookup.action!=='deepen'?scanButton(lookup.action,lookup.job.job_id,lookup.actionLabel,false,pending&&lookup.job.cancel_requested):'';
   const progressHTML=job=>{
     if(!job)return '';
-    const working=KiraView.active(job),p=KiraView.jobPresentation(job,Date.now(),jobsConnected),progress=KiraView.jobProgress(job,Date.now(),jobsConnected);
-    return `${working?`<p><strong>${escapeHTML(jobStage(job))}</strong> · <span data-job-timer="${escapeHTML(job.job_id)}">${p.timerLabel} ${KiraView.duration(p.elapsed)}</span></p>${progress.count?`<p>${escapeHTML(progress.count)}</p>`:''}${progress.total&&!progress.cumulative?`<progress value="${progress.checked}" max="${progress.total}" aria-label="${escapeHTML(progress.count)}"></progress>`:''}${progress.eta?`<p data-job-estimate="${escapeHTML(job.job_id)}">${escapeHTML(progress.eta)}</p>`:''}`:''}${progress.assets?`<p>${escapeHTML(assetProgressText(progress))}</p>`:''}`;
+    const working=KiraView.active(job),progress=KiraView.jobProgress(job,Date.now(),jobsConnected);
+    return `${working?`<p><strong>${escapeHTML(jobStage(job))}</strong> · <span data-job-timer="${escapeHTML(job.job_id)}">${KiraView.jobTimeText(job,Date.now(),jobsConnected)}</span></p>${progress.count?`<p>${escapeHTML(progress.count)}</p>`:''}${progress.total&&!progress.cumulative?`<progress value="${progress.checked}" max="${progress.total}" aria-label="${escapeHTML(progress.count)}"></progress>`:''}${progress.eta?`<p data-job-estimate="${escapeHTML(job.job_id)}">${escapeHTML(progress.eta)}</p>`:''}`:''}${progress.assets?`<p>${escapeHTML(assetProgressText(progress))}</p>`:''}`;
   };
   const secondary=disconnected?'Connection lost':pending?jobStage(lookup.job):wallet.analysed_at?'Saved '+stamp(wallet.analysed_at):'';
   card.innerHTML=`<div class="wallet-status-row"><details class="wallet-status-details" ${detailsOpen?'open':''}><summary id="wallet-scan-title"><span class="wallet-status-label"><span class="wallet-status-dot ${pending&&jobsConnected?'is-working':''}" data-mode="${status.mode}" aria-hidden="true"></span><span class="status-prefix">Holdings</span>${escapeHTML(status.label)}</span><span class="status-chevron" aria-hidden="true">⌄</span></summary><div class="wallet-status-body">
@@ -61,11 +62,11 @@ function renderWalletScan() {
     <a class="text-link" href="#/activity">View activity ↗</a></div></details>
     ${secondary?`<span class="wallet-status-note">${escapeHTML(secondary)}</span>`:''}${lookupAction}</div>
     ${lookup?.failure?`<p class="status-failure">${escapeHTML(lookup.failure)}</p>`:''}`;
-  const optional=canWrite&&session?.action==='deepen';analysis.hidden=!(optional||deep);
+  const optional=canWrite&&session?.action==='deepen',showDeep=deep&&session.mode!=='saved';analysis.hidden=!(optional||showDeep);
   analysis.dataset.mode=deep?session.mode:'ready';
   const job=session?.job,working=!!job&&KiraView.active(job);
   const action=canWrite&&session?.action?scanButton(session.action,job.job_id,session.actionLabel,optional,working&&job.cancel_requested):'';
-  analysis.innerHTML=optional||deep?`<div class="analysis-card-heading"><div class="analysis-copy"><div class="analysis-title-row"><h2 id="wallet-analysis-title" tabindex="-1">${escapeHTML(deep?session.title:'Your holdings are ready')}</h2>${optional?'<span class="analysis-optional">Optional analysis</span>':''}</div><p>${escapeHTML(deep?session.description:'Balances and available prices are saved. Explore additional sale and redemption estimates when you need them.')}</p></div>${action?`<div class="analysis-card-action">${action}</div>`:''}</div>
+  analysis.innerHTML=optional||showDeep?`<div class="analysis-card-heading"><div class="analysis-copy"><div class="analysis-title-row"><h2 id="wallet-analysis-title" tabindex="-1">${escapeHTML(deep?session.title:'Your holdings are ready')}</h2>${optional?'<span class="analysis-optional">Optional analysis</span>':''}</div><p>${escapeHTML(deep?session.description:'Balances and available prices are saved. Explore additional sale and redemption estimates when you need them.')}</p></div>${action?`<div class="analysis-card-action">${action}</div>`:''}</div>
     ${deep?`<div class="analysis-progress">${session.failure?`<p class="status-failure">${escapeHTML(session.failure)}</p>`:''}${progressHTML(job)}</div>`:''}
     ${disconnected?'<p class="analysis-connection">Connection lost. Actions are available after reconnecting.</p>':''}
     <div class="analysis-card-footer"><details class="analysis-explainer" ${aboutOpen?'open':''}><summary id="analysis-explainer-toggle">About sell-route analysis</summary><p>Checks additional sale and redemption routes for your full balances. This is optional and can take time. It does not look for more tokens or execute trades. Estimates exclude gas and do not guarantee execution or the best price. You can pause and resume.</p></details><a class="text-link" href="#/activity">Activity ↗</a></div>`:'';
@@ -110,7 +111,13 @@ function refreshControlState(){
   if(typeof renderWatching==='function')renderWatching();
 }
 let jobsPage=1, jobsConnected=true, lastJobsPoll=null;
+function notifyResearchCompletions(){
+  const completed=KiraView.completedSellAnalyses(observedResearchStates,jobList);
+  observedResearchStates=new Map(jobList.map(job=>[job.job_id,job.state]));
+  if(completed.length)toast(completed.length===1?'Sell analysis saved. Results and remaining unknowns are in Activity.':completed.length+' sell analyses saved. Details are in Activity.',6000);
+}
 function renderJobs(){
+  notifyResearchCompletions();
   const active=jobList.filter(KiraView.active).sort((a,b)=>(a.state!=='running')-(b.state!=='running'));
   $('activity-count').textContent=active.length||'';
   $('jobs-summary').textContent=active.length?active.length+' in progress':jobList.length+(jobList.length===1?' saved job':' saved jobs');
@@ -129,7 +136,7 @@ function renderJobs(){
     const name=state?.wallets.find(w=>w.key===link?.toLowerCase())?.name||(j.operation==='wallet.add'?j.input.tag:null);
     const recorded=(j.events||[]).map(event=>{const context=event.context;const detail=Object.entries(event.counts||{}).filter(([name])=>name!=='block_number').map(([name,value])=>name.replaceAll('_',' ')+': '+value).join(' · ');return `<li><strong>${escapeHTML(researchStage(event))}</strong><span>${stamp(event.observed_at)} · ${escapeHTML(detail)}${context?.block_number?' · block '+escapeHTML(context.block_number):''}</span></li>`;}).join('');
     const stages=recorded?`<details class="job-stages"><summary>Recorded stages · ${j.events.length}</summary><ol>${recorded}</ol></details>`:'';
-    return `<article class="job-row"><div class="job-identity"><span class="job-state ${escapeHTML(j.state)}">${presentation.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(presentation.label)}</span><strong>${escapeHTML(jobLabels[j.operation]||j.operation)}</strong>${link?`<a href="#/wallet/${escapeHTML(link.toLowerCase())}">${escapeHTML(name||shortAddress(link))}</a>`:''}<p>${escapeHTML(jobStage(j))}${j.state==='partial'?' · coverage gaps remain':''}</p><p class="job-timer" data-job-timer="${escapeHTML(j.job_id)}">${presentation.timerLabel} ${KiraView.duration(presentation.elapsed)}${j.attempt>1?' · since request '+KiraView.duration(progress.totalElapsed):''}</p>${progress.assets?`<p class="job-progress">${escapeHTML(assetProgressText(progress))}</p>`:''}${progress.count&&!progress.cumulative?`<p class="job-progress">${escapeHTML(progress.count)}</p>`:''}<p class="job-estimate" data-job-estimate="${escapeHTML(j.job_id)}">${escapeHTML(progress.eta)}</p>${progress.saved?`<p class="job-saved">${escapeHTML(progress.saved)}</p>`:''}${evidence?`<p class="job-evidence">${escapeHTML(evidence)}</p>`:''}${presentation.freshness?`<p class="job-freshness">${escapeHTML(presentation.freshness)}</p>`:''}${j.errors?.length?`<p class="job-error">${escapeHTML(KiraView.jobErrorMessage(j))}</p>`:''}${stages}<small>Last update ${stamp(j.updated_at)} · attempt ${j.attempt} · ${escapeHTML(j.job_id.slice(0,8))}</small></div><div class="job-actions">${controls}</div></article>`;
+    return `<article class="job-row"><div class="job-identity"><span class="job-state ${escapeHTML(j.state)}">${presentation.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(presentation.label)}</span><strong>${escapeHTML(jobLabels[j.operation]||j.operation)}</strong>${link?`<a href="#/wallet/${escapeHTML(link.toLowerCase())}">${escapeHTML(name||shortAddress(link))}</a>`:''}<p>${escapeHTML(jobStage(j))}${j.state==='partial'?' · coverage gaps remain':''}</p><p class="job-timer" data-job-timer="${escapeHTML(j.job_id)}">${KiraView.jobTimeText(j,Date.now(),jobsConnected)}</p>${progress.assets?`<p class="job-progress">${escapeHTML(assetProgressText(progress))}</p>`:''}${progress.count&&!progress.cumulative?`<p class="job-progress">${escapeHTML(progress.count)}</p>`:''}<p class="job-estimate" data-job-estimate="${escapeHTML(j.job_id)}">${escapeHTML(progress.eta)}</p>${progress.saved?`<p class="job-saved">${escapeHTML(progress.saved)}</p>`:''}${evidence?`<p class="job-evidence">${escapeHTML(evidence)}</p>`:''}${presentation.freshness?`<p class="job-freshness">${escapeHTML(presentation.freshness)}</p>`:''}${j.errors?.length?`<p class="job-error">${escapeHTML(KiraView.jobErrorMessage(j))}</p>`:''}${stages}<small>Last update ${stamp(j.updated_at)} · attempt ${j.attempt} · ${escapeHTML(j.job_id.slice(0,8))}</small></div><div class="job-actions">${controls}</div></article>`;
   }).join('')||'<div class="empty"><h3>'+(!localSession?.controls?'Activity is not available in this session':'No jobs in this view')+'</h3><p>Research jobs appear here when a local action starts.</p></div>';
   $('active-work').hidden=true;$('active-work').innerHTML='';
   if(typeof renderBriefing==='function')renderBriefing();
@@ -138,7 +145,7 @@ function renderJobs(){
 }
 function tickJobTimers(){
   if(document.hidden)return;
-  document.querySelectorAll('[data-job-timer]').forEach(node=>{const job=jobList.find(j=>j.job_id===node.dataset.jobTimer);if(!job)return;const p=KiraView.jobPresentation(job,Date.now(),jobsConnected);node.textContent=p.timerLabel+' '+KiraView.duration(p.elapsed)+(job.attempt>1?' · since request '+KiraView.duration(KiraView.jobProgress(job).totalElapsed):'');});
+  document.querySelectorAll('[data-job-timer]').forEach(node=>{const job=jobList.find(j=>j.job_id===node.dataset.jobTimer);if(!job)return;node.textContent=KiraView.jobTimeText(job,Date.now(),jobsConnected);});
   document.querySelectorAll('[data-job-estimate]').forEach(node=>{const job=jobList.find(j=>j.job_id===node.dataset.jobEstimate);if(job)node.textContent=KiraView.jobProgress(job,Date.now(),jobsConnected).eta;});
 }
 $('job-filter').addEventListener('change',()=>{jobsPage=1;renderJobs();});

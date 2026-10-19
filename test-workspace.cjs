@@ -42,7 +42,23 @@ assert.equal(jobPresentation({ ...job, state: 'queued', started_at: '2026-10-03T
 assert.equal(jobPresentation({ ...job, cancel_requested: true }, time).label, 'Stopping');
 assert.equal(jobPresentation({ ...job, created_at: 'invalid' }, time).elapsed, null);
 assert.equal(duration(3661), '1h 1m 1s');
-const {jobProgress}=require('./viewer/static/workspace-model.js');
+const {jobProgress,jobTimeText}=require('./viewer/static/workspace-model.js');
+const ended={...job,attempt:3,scan_policy:'alchemy_inventory_v1',started_at:'2026-10-04T00:02:00Z',
+ updated_at:'2026-10-04T00:03:30Z',events:[{stage:'published',observed_at:'2026-10-04T00:03:00Z'}]};
+for(const state of ['succeeded','partial','failed','cancelled','interrupted']){
+ const terminal={...ended,state};
+ assert.equal(jobProgress(terminal,time).totalElapsed,180);
+ assert.equal(jobProgress(terminal,time+3600000).totalElapsed,180,'Completed work must not accrue time after its terminal event.');
+ assert.equal(jobTimeText(terminal,time),'Last pass 1m 0s · Total duration 3m 0s');
+ assert.equal(jobTimeText(terminal,time+3600000),jobTimeText(terminal,time));
+ assert.equal(jobProgress({...terminal,events:[]},time).totalElapsed,210,'Legacy jobs use their saved update time.');
+}
+assert.equal(jobProgress(ended,time).totalElapsed,300);
+assert.equal(jobProgress(ended,time+60000).totalElapsed,360);
+assert.equal(jobTimeText(ended,time),'Current pass 3m 0s · Total elapsed 5m 0s');
+assert.equal(jobTimeText({...ended,state:'queued'},time),'Waiting 1m 30s · Total elapsed 5m 0s');
+assert.equal(jobPresentation({...ended,state:'failed',started_at:null},time).timerLabel,'Request duration');
+assert.equal(jobProgress({...ended,state:'failed',events:[],updated_at:'invalid'},time).totalElapsed,null);
 const progressEvent=(checked,second,extra={})=>({stage:'onchain_progress',observed_at:new Date(time-30000+second*1000).toISOString(),
  counts:{checked,total:100},context:{operation:'balances',chain_id:8453,attempt:2},...extra});
 const measured={...job,attempt:2,result:{status:'completed_with_coverage_gaps'},events:[progressEvent(10,0),progressEvent(20,10),progressEvent(30,20)]};

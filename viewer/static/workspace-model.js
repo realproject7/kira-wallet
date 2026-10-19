@@ -42,10 +42,11 @@
         'Refresh all holdings checks every configured active network, balances and markets for this wallet. Saved observations stay available while it runs.',
       action:'refresh',refreshLabel:'Refresh all holdings',settings:false,rpcIssues:unavailable.length>0,gapCount:gaps.length};
   }
+  const jobEndTime=(job,now)=>active(job)?now:Date.parse(job.events?.at(-1)?.observed_at||job.updated_at);
   function jobPresentation(job, now = Date.now(), connected = true) {
     const labels = { queued: 'Queued', running: 'Running', succeeded: 'Completed', partial: 'Saved with gaps', interrupted: 'Interrupted', failed: 'Failed', cancelled: 'Stopped' };
     const start = job.state === 'queued' ? job.updated_at || job.created_at : job.started_at || job.created_at;
-    const end = active(job) ? now : Date.parse(job.events?.at(-1)?.observed_at || job.updated_at);
+    const end = jobEndTime(job,now);
     const elapsed = Math.max(0, Math.floor((end - Date.parse(start)) / 1000));
     const last = job.events?.at(-1)?.observed_at || job.updated_at;
     const quiet = job.state === 'running' && now - Date.parse(last) > 60000;
@@ -53,7 +54,7 @@
       label: job.cancel_requested && active(job) ? (job.scan_policy?'Pausing':'Stopping') : job.scan_policy&&job.state==='cancelled'?'Paused':job.scan_policy&&job.analysis_phase==='baseline'&&['partial','succeeded'].includes(job.state)?'Holdings saved':job.scan_policy&&job.analysis_phase==='enrichment'&&['partial','succeeded'].includes(job.state)?'Sell analysis saved':labels[job.state] || 'Unknown',
       active: active(job), spinner: connected && job.state === 'running', quiet,
       elapsed: Number.isFinite(elapsed) ? elapsed : null,
-      timerLabel: job.state === 'queued' ? 'Waiting' : job.started_at ? job.attempt>1?(job.scan_policy?'Current pass':'Attempt elapsed'):'Elapsed' : 'Since request',
+      timerLabel: job.state === 'queued' ? 'Waiting' : job.started_at ? job.attempt>1?(job.scan_policy?(active(job)?'Current pass':'Last pass'):'Attempt elapsed'):'Elapsed' : active(job)?'Since request':'Request duration',
       freshness: !connected ? 'Connection lost. Last recorded state shown.' : quiet ? 'Awaiting a new stage update. Still marked running.' : '',
     };
   }
@@ -93,11 +94,21 @@
       }
     }
     if(!active(job))eta='';
-    const age=Math.max(0,Math.floor((now-Date.parse(job.created_at))/1000));
+    const age=Math.max(0,Math.floor((jobEndTime(job,now)-Date.parse(job.created_at))/1000));
     const saved=active(job)&&(job.result||job.previous_result)?'Saved results remain available while research continues. Missing holdings and prices are still unknown.':'';
     return {count,eta,saved,cumulative:context.operation==='asset_review',assets:assetProgress(job),totalElapsed:Number.isFinite(age)?age:null,
       checked:known&&currentScope?checked:null,total:known&&currentScope?counts.total:null,
       lastProgress:job.progress_observed_at||null};
+  }
+  function jobTimeText(job,now=Date.now(),connected=true) {
+    const p=jobPresentation(job,now,connected);
+    const total=Math.max(0,Math.floor((jobEndTime(job,now)-Date.parse(job.created_at))/1000));
+    return p.timerLabel+' '+duration(p.elapsed)+(job.attempt>1&&(active(job)||job.started_at)?
+      ' · '+(active(job)?'Total elapsed':'Total duration')+' '+duration(Number.isFinite(total)?total:null):'');
+  }
+  function completedSellAnalyses(previous,jobs) {
+    return jobs.filter(job=>job.analysis_phase==='enrichment'&&['wallet.add','wallet.refresh'].includes(job.operation)&&
+      ['partial','succeeded'].includes(job.state)&&['running','queued'].includes(previous.get(job.job_id)));
   }
   function researchSession(jobs,wallet,now=Date.now()) {
     const rows=jobs.filter(j=>['wallet.add','wallet.refresh'].includes(j.operation)&&String(j.input?.wallet||j.input?.address||'').toLowerCase()===wallet?.key).sort((a,b)=>b.created_at.localeCompare(a.created_at));
@@ -153,7 +164,7 @@
     const h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = seconds % 60;
     return (h ? h + 'h ' : '') + m + 'm ' + s + 's';
   }
-  const api = { catalog, pageSize, active, jobPresentation, jobProgress, assetProgress, researchSession, walletStatus, jobErrorMessage, duration, discoveryNotice, coverageGap, networkEmpty };
+  const api = { catalog, pageSize, active, jobPresentation, jobProgress, jobTimeText, completedSellAnalyses, assetProgress, researchSession, walletStatus, jobErrorMessage, duration, discoveryNotice, coverageGap, networkEmpty };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KiraView = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

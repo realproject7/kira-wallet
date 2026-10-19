@@ -16,7 +16,8 @@ const safeImage = raw => {try{const url=new URL(raw);return url.protocol==='http
 const walletGlyph = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6.5h13a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 1.4-1.9L15 1.8v4.7"/><path d="M19 10h-4a2 2 0 0 0 0 4h4"/><path d="M15.5 12h.01"/></svg>';
 
 const arrowGlyph = '<svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M7 17 17 7M7 7h10v10"/></svg>';
-function toast(message){$('toast').textContent=message;$('toast').classList.add('show');setTimeout(()=>$('toast').classList.remove('show'),2200);}
+let toastTimeout;
+function toast(message,duration=2200){clearTimeout(toastTimeout);$('toast').textContent=message;$('toast').classList.add('show');toastTimeout=setTimeout(()=>$('toast').classList.remove('show'),duration);}
 function currentWallet(){return state?.wallets.find(w=>w.key===selectedWallet);}
 const tokenHref = id => '#/token/'+id.split(':').map(encodeURIComponent).join('/');
 const networkHref = id => '#/network/'+id;
