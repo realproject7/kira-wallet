@@ -279,6 +279,70 @@ class ViewerTests(unittest.TestCase):
         self.assertNotEqual(before['value_usd'],after['value_usd'])
         self.assertEqual(before['exit_quote'],after['exit_quote'])
 
+    def test_sell_out_values_received_reserve_and_keeps_independent_clocks(self):
+        token=self.quoted_token()
+        price={'chain_id':8453,'address':token['mintclub']['reserve_token'],'usd':1000,
+               'quality':'estimated','basis':'Market index','source':'https://example.org/price',
+               'observed_at':'2026-10-04T06:00:00Z'}
+        market=self.directory/'market-prices.json'
+        market.write_text(json.dumps({'tokens':[price]}))
+        before=deepcopy(self.snapshot); saved=market.read_bytes()
+        asset=next(t for t in model.project_wallet(self.entry,self.snapshot,self.root)['assets'] if t['symbol']=='CHICKEN')
+        quote=asset['sell_out']
+        self.assertEqual(quote['value_usd'],20)
+        self.assertEqual(quote['valuation'],'reserve_reference')
+        self.assertEqual(quote['observed_at'],token['mintclub']['observed_at'])
+        self.assertEqual(quote['output_price']['observed_at'],price['observed_at'])
+        self.assertNotEqual(quote['value_usd'],asset['value_usd'])
+        self.assertFalse(quote['gas_included']);self.assertFalse(quote['execution_verified'])
+        self.assertEqual(self.snapshot,before);self.assertEqual(market.read_bytes(),saved)
+        price.update(usd=2000,observed_at='2026-10-05T06:00:00Z')
+        market.write_text(json.dumps({'tokens':[price]}))
+        refreshed=next(t for t in model.project_wallet(self.entry,self.snapshot,self.root)['assets'] if t['symbol']=='CHICKEN')
+        self.assertEqual(refreshed['sell_out']['value_usd'],40)
+        self.assertEqual(refreshed['sell_out']['observed_at'],quote['observed_at'])
+        self.assertEqual(refreshed['exit_quote'],asset['exit_quote'])
+
+    def test_sell_out_reserve_prices_require_identity_quality_and_time(self):
+        token=self.quoted_token()
+        price={'chain_id':8453,'address':token['mintclub']['reserve_token'],'usd':1000,
+               'quality':'estimated','basis':'Market index','source':'https://example.org/price',
+               'observed_at':'2026-10-04T06:00:00Z'}
+        for change in ({'chain_id':1},{'address':'0x'+'9'*40},{'quality':'unfunded'},
+                       {'retained_from_previous':True},{'observed_at':None},{'basis':'Curve spot'},
+                       {'basis':'DEX market','liquidity_usd':0.02}):
+            with self.subTest(change=change):
+                (self.directory/'market-prices.json').write_text(json.dumps({'tokens':[{**price,**change}]}))
+                asset=next(t for t in model.project_wallet(self.entry,self.snapshot,self.root)['assets'] if t['symbol']=='CHICKEN')
+                self.assertIsNone(asset['sell_out']['value_usd'])
+                self.assertEqual(asset['sell_out']['output_amount'],'0.02')
+
+    def test_sell_out_uses_full_routes_only_and_preserves_zero(self):
+        quote=model.exit_quote(self.quoted_token())
+        partial={'partial_input':True,'quoted_output_usd':'999'}
+        self.assertIsNone(model.sell_out_estimate(None,{'quotes':[partial]},None))
+        full={'partial_input':False,'quoted_output_usd':'10','output_address':quote['output_address'],
+              'output_price':{'usd':10,'basis':'Market index'}}
+        estimate=model.sell_out_estimate(quote,{'quotes':[partial,full]},None)
+        self.assertEqual(estimate['value_usd'],10)
+        self.assertEqual(estimate['valuation'],'terminal_reference')
+        self.assertEqual(estimate['output_symbol'],quote['output_symbol'])
+        full['quoted_output_usd']='0'
+        self.assertEqual(model.sell_out_estimate(None,{'quotes':[full]},None)['value_usd'],0)
+        full['output_price'].update(basis='DEX market',liquidity_usd=0.02)
+        self.assertIsNone(model.sell_out_estimate(None,{'quotes':[full]},None))
+
+    def test_sell_out_excludes_testnets_retired_networks_and_retained_quantities(self):
+        token=self.quoted_token()
+        for chain,environment,retained in ((8453,'testnet',False),(5112,'mainnet',False),(8453,'mainnet',True)):
+            with self.subTest(chain=chain,environment=environment,retained=retained):
+                token['chain_id']=chain;token['balance_evidence_retained']=retained
+                self.snapshot['tokens']=[token]
+                coverage=deepcopy(self.snapshot['coverage'][0]);coverage.update(chain_id=chain,environment=environment)
+                self.snapshot['coverage']=[coverage]
+                asset=model.project_wallet(self.entry,self.snapshot,self.root)['assets'][0]
+                self.assertIsNone(asset['sell_out'])
+
     def test_testnet_balances_do_not_inflate_the_total(self):
         before=model.project_wallet(self.entry,self.snapshot,self.root)['known_value_usd']
         self.snapshot['coverage'].append({'chain_id':999,'name':'Fixture testnet','environment':'testnet','native_symbol':'ETH','native_balance':'1000','general_erc20_discovery':'indexer_checked','rpc_status':'available'})

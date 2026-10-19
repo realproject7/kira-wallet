@@ -75,10 +75,10 @@ console.log('Unknown wallet value and explicit filter recovery preserve all reco
 context.unitPrice=n=>'$'+n;context.quantity=String;context.tokenHref=String;context.coinIcon=()=>'';
 context.shortAddress=s=>s.slice(0,6)+'…'+s.slice(-4);
 vm.runInContext(source.slice(source.indexOf('function venueMark('),source.indexOf('function accountCard(')),context);
-vm.runInContext(source.slice(source.indexOf('function assetRow(a){'),source.indexOf('function renderHoldings(){')),context);
+vm.runInContext(source.slice(source.indexOf('function sellOutNote(a){'),source.indexOf('function renderHoldings(){')),context);
 const historic=context.assetRow({id:'fixture',symbol:'Fixture',name:'Fixture',balance:'1',value_usd:100,links:[],
   price:{usd:100,basis:'Curve spot',retained_from_previous:true,observed_at:'2026-10-01T00:00:00Z'}});
-assert.match(historic,/holding-markets/);assert.match(historic,/colspan="4"/);assert.match(historic,/Previous Curve spot/);assert.match(historic,/title="2026-10-01T00:00:00Z"/);
+assert.match(historic,/holding-markets/);assert.doesNotMatch(historic,/markets-label/);assert.match(historic,/colspan="5"/);assert.match(historic,/Previous Curve spot/);assert.match(historic,/title="2026-10-01T00:00:00Z"/);
 console.log('Retained price labels preserve the original observation time.');
 const pools=Array.from({length:4},(_,i)=>({url:'https://example.com/pool/'+i,pool:'0x'+'1'.repeat(40),
   venue:'Uniswap V3',pair:[{symbol:'USDC'},{symbol:'WETH'}],liquidity_usd:i===0?null:100,
@@ -108,12 +108,18 @@ const absent=context.accountCard(account,{symbol:'SAMPLE',value_usd:100,environm
 assert.match(absent,/account-position/);assert.match(absent,/No holding recorded/);assert.match(absent,/>—</);
 assert.doesNotMatch(absent,/account-facts|account-quote/);
 const recorded=context.accountCard({...account,asset:{balance:'1',value_usd:100,price:{usd:100,basis:'Curve spot',observed_at:'2026-10-01T00:00:00Z'},
-  exit_quote:{output_amount:'0.123',output_symbol:'ETH',observed_at:'2026-10-02T00:00:00Z',block_number:123}}},{symbol:'SAMPLE',value_usd:100,environment:'mainnet'});
-assert.match(recorded,/100.0%/);assert.match(recorded,/Curve spot/);assert.match(recorded,/0.123 ETH/);
-assert.match(recorded,/block 123 · net of royalty · excludes gas/);assert.match(recorded,/Price 2026-10-01/);
+  sell_out:{valuation:'reserve_reference',value_usd:75,output_amount:'0.123',output_symbol:'ETH',observed_at:'2026-10-02T00:00:00Z',block_number:123,royalty_included:true}}},{symbol:'SAMPLE',value_usd:100,environment:'mainnet'});
+assert.doesNotMatch(recorded,/100.0%|Share of priced holdings|Recorded full-balance/);assert.match(recorded,/Curve spot/);assert.match(recorded,/Receive 0.123 ETH/);assert.match(recorded,/<details class="position-details">/);assert.match(recorded,/≈ \$75/);
+assert.match(recorded,/123 · After royalty/);assert.match(recorded,/Gas excluded/);assert.match(recorded,/Price checked<\/dt><dd>2026-10-01/);assert.match(recorded,/Selling that token to USD is not quoted/);
 const testnet=context.accountCard({...account,asset:{balance:'1',value_usd:null,price:{usd:999}}},{symbol:'SAMPLE',value_usd:null,environment:'testnet'});
 assert.match(testnet,/Testnet/);assert.doesNotMatch(testnet,/999/);
-console.log('Compact wallet rows retain unknown holdings, dated burn outputs and testnet price exclusion.');
+assert.match(context.sellOutValue({id:'fixture',sell_out:{value_usd:0,output_amount:'0',output_symbol:'WETH'}}),/≈ \$0/);
+assert.doesNotMatch(context.sellOutValue({id:'fixture'}),/\$0/);
+assert.match(context.sellOutValue({id:'fixture',wallet_count:2}),/By wallet/);
+assert.match(context.sellOutValue({id:'fixture',environment:'testnet',sell_out:{value_usd:999,output_amount:'1',output_symbol:'TEST'}}),/>—</);
+assert.match(context.explorerLink({symbol:'Example',chain_id:8453,links:[{label:'Explorer',url:'https://basescan.org/token/fixture'}]}),/explorers\/etherscan.png/);
+assert.match(context.explorerLink({symbol:'Example',chain_id:8453,links:[{label:'Explorer',url:'https://basescan.org/token/fixture'}]}),/>BaseScan/);
+console.log('Compact wallet rows distinguish saved reserve value, missing quotes, zero and testnets.');
 
 const workspaceSource=fs.readFileSync('viewer/static/workspace.js','utf8');
 for(const id of ['all-token-network','all-token-pricing','all-token-sort','all-token-search','job-filter'])node(id).value='previous';
