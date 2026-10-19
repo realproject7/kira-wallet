@@ -32,7 +32,7 @@ wallet scope and research permission. It sends no wallet facts. Authentication
 stays with the installed CLI. No desktop tokens or authentication files are copied.
 
 With research enabled, a bounded host-mediated loop provides portfolio_read,
-wallet_read, token_read, snapshots_list, snapshot_read, snapshots_compare,
+wallet_read, token_read, holdings_query, snapshots_list, snapshot_read, snapshots_compare,
 job_list, job_read, holdings_refresh and prices_refresh. Every operation is
 scoped to registered wallets allowed by the conversation. Historical reads use
 normalized financial projections. Unknown values and historical quote times
@@ -104,3 +104,24 @@ rpc_status pending means a network has not yet been researched. It does not
 prove an RPC outage. For a curve comparison, match chain and contract and
 compare reserve, supply, next-mint price and royalty observations. A newer
 block or a different wallet-sized burn quote alone cannot prove curve movement.
+
+## Bounded full-inventory queries
+
+Connected chat uses `holdings_query` for names, rankings and aggregates. Its
+`mode` is `search`, `rank` or `aggregate`. It scans every approved saved position
+on the host and returns at most 25 results per page. This response bound never
+limits holdings discovery. Optional filters include wallet, chain, environment
+and minimum recorded USD value. Exact symbols, names and contracts take
+precedence over substring matches; multiple chain/contract identities remain
+explicitly ambiguous. `group_by: asset` combines the priced subset by identity,
+while `position` keeps each wallet position separate. Unknown and excluded
+positions have independent counts. Ranking cannot create a price for them.
+
+Top-N completion requires a delivered full-inventory ranking receipt, including
+natural requests such as “top five.” Search pages must be delivered through the
+last match before claiming that all matches were read. A host count or sum does
+not require sending every position to the model. These reads never queue jobs.
+The existing 32-read plan, eight-round, prompt/context and time limits remain.
+Detailed internal receipts are kept locally; partial-result messages use plain
+language. Safe absolute HTTP(S) Markdown links are clickable; raw HTML remains
+escaped and images, credential URLs and active URL schemes stay disabled.

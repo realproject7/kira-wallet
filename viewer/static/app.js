@@ -175,7 +175,7 @@ function renderDiscoveryCoverage(w) {
   $('discovery-notice').querySelector('details').open=notice.rpcIssues===true;
   $('discovery-network-details').textContent=w.chains.filter(c=>c.environment==='mainnet'&&KiraView.coverageGap(c)).map(c=>{
     const reasons=[];
-    if(c.lifecycle?.status==='retired')reasons.push('verified retired network; historical records excluded from current value');
+    if(c.lifecycle?.status==='retired')return c.name+': '+(c.lifecycle.confirmation==='operator'?'retired by operator confirmation; historical records excluded from current value':'verified retired network; historical records excluded from current value');
     else if(c.lifecycle?.status==='retirement_reported')reasons.push('retirement reported; no verified official closure notice. RPC failure is not proof of closure');
     else if(c.rpc_pending)reasons.push('not yet checked; follow or resume detailed research in Activity');
     else if(!c.rpc_available)reasons.push('balance reads failed; retry holdings, then review RPC settings if this continues');
@@ -258,17 +258,29 @@ function renderHoldings(){
   bindImages();
 }
 function timeRange(range){return range?.from?stamp(range.from)+(range.to!==range.from?' – '+stamp(range.to):''):'Not recorded';}
+function venueMark(venue){
+  const file=({'Mint Club':'mintclub.png',Uniswap:'uniswap.svg',Aerodrome:'aerodrome.svg'})[venue];
+  return file?`<img class="venue-logo" src="/venues/${file}" width="18" height="18" alt="${escapeHTML(venue)}">`:'<span class="venue-mark" aria-hidden="true">↗</span>';
+}
 function marketLinks(links,asset={},detailed=false){
   const pools=asset.market_pools||[];
   const row=pool=>{
     const pair=pool.pair||[],label=pair.length?pair.map(c=>c.symbol).join(' / '):'Recorded pool';
     const artwork=pair.length?pair.map(c=>coinIcon({...c,chain_id:asset.chain_id})).join(''):coinIcon(asset);
-    return `<a class="pool-link" href="${escapeHTML(safeURL(pool.url))}" target="_blank" rel="noreferrer" title="${escapeHTML(pool.pool||pool.url)}"><span class="pool-art" aria-hidden="true">${artwork}</span><span class="pool-description"><strong>${escapeHTML(label)}</strong><small>${escapeHTML(pool.venue)}${detailed?' · '+escapeHTML(pool.pool?shortAddress(pool.pool):'Address unavailable'):''}</small>${detailed?`<small>Observed ${escapeHTML(pool.observed_at?stamp(pool.observed_at):'time unknown')}</small>`:''}</span>${detailed?`<span class="pool-metrics"><strong>${money(pool.liquidity_usd)}</strong><small>Pool liquidity</small></span>`:''}<span class="pool-arrow" aria-hidden="true">↗</span></a>`;
+    const versions=(pool.version_labels||[]).filter(v=>/^v[234]$/i.test(v)).join(', ');
+    const fee=Number.isFinite(pool.fee_bps)?' · '+Number((pool.fee_bps/100).toFixed(4))+'%':'';
+    return `<a class="pool-link" href="${escapeHTML(safeURL(pool.url))}" target="_blank" rel="noopener noreferrer" title="${escapeHTML(pool.pool||pool.url)}"><span class="pool-art" aria-hidden="true">${artwork}</span><span class="pool-description"><strong>${escapeHTML(label)}</strong><small>${venueMark(pool.venue)}${escapeHTML(pool.venue)}${versions?' '+escapeHTML(versions):''}${fee}${detailed?' · '+escapeHTML(pool.pool?shortAddress(pool.pool):'Address unavailable'):''}</small>${detailed?`<small>Observed ${escapeHTML(pool.observed_at?stamp(pool.observed_at):'time unknown')}</small>`:''}</span>${detailed?`<span class="pool-metrics"><strong>${money(pool.liquidity_usd)}</strong><small>Pool liquidity</small></span>`:''}<span class="pool-arrow" aria-hidden="true">↗</span></a>`;
   };
   const poolURLs=new Set(pools.map(p=>p.url));
-  const other=links.filter(l=>!poolURLs.has(l.url)).map(l=>`<a class="market-link ${l.label==='Mint Club'?'mint':''}" href="${escapeHTML(safeURL(l.url))}" target="_blank" rel="noreferrer"><span class="venue-mark" aria-hidden="true">${l.label==='Mint Club'?'M':l.label==='Explorer'?'↗':escapeHTML(l.label.slice(0,1))}</span>${escapeHTML(l.label)} <span aria-hidden="true">↗</span></a>`).join('');
+  const other=links.filter(l=>!poolURLs.has(l.url)).map(l=>{
+    if(l.label==='Mint Club'&&asset.curve_reserve){
+      const reserve=asset.curve_reserve;
+      return `<a class="pool-link mint" href="${escapeHTML(safeURL(l.url))}" target="_blank" rel="noopener noreferrer"><span class="pool-art" aria-hidden="true">${coinIcon(asset)}${coinIcon({...reserve,chain_id:asset.chain_id})}</span><span class="pool-description"><strong>${escapeHTML(asset.symbol)} / ${escapeHTML(reserve.symbol)}</strong><small>${venueMark('Mint Club')}Mint Club · Bonding curve</small></span>${detailed?`<span class="pool-metrics"><strong>${quantity(reserve.amount)} ${escapeHTML(reserve.symbol)}</strong><small>Curve reserve</small></span>`:''}<span class="pool-arrow" aria-hidden="true">↗</span></a>`;
+    }
+    return `<a class="market-link ${l.label==='Mint Club'?'mint':''}" href="${escapeHTML(safeURL(l.url))}" target="_blank" rel="noopener noreferrer">${venueMark(l.label)}${escapeHTML(l.label)} <span aria-hidden="true">↗</span></a>`;
+  }).join('');
   const limit=2;
-  return pools.slice(0,limit).map(row).join('')+(pools.length>limit?`<details class="more-pools"><summary>Show ${pools.length-limit} more pools</summary><div>${pools.slice(limit).map(row).join('')}</div></details>`:'')+other||'<span class="native-label">No market recorded</span>';
+  return other+pools.slice(0,limit).map(row).join('')+(pools.length>limit?`<details class="more-pools"><summary>Show ${pools.length-limit} more pools</summary><div>${pools.slice(limit).map(row).join('')}</div></details>`:'')||'<span class="native-label">No market recorded</span>';
 }
 function accountCard(row,token){
   const a=row.asset,value=token?a?.value_usd:row.value_usd;

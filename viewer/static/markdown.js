@@ -1,5 +1,5 @@
 'use strict';
-// Deliberately small Markdown subset. Raw HTML and links remain escaped text.
+// Deliberately small Markdown subset. Raw HTML remains escaped; links allow only absolute HTTP(S) URLs.
 (function(root) {
   const escape = text => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function closing(text, start, marker) {
@@ -18,6 +18,17 @@
       if(text[i]==='`') {
         const end=text.indexOf('`',i+1);
         if(end>i+1&&!/[\r\n]/.test(text.slice(i,end))){output+='<code>'+escape(text.slice(i+1,end))+'</code>';i=end+1;continue;}
+      }
+      if(text[i]==='['&&text[i-1]!=='!') {
+        const match=text.slice(i).match(/^\[([^\]\r\n]+)\]\((https?:\/\/[^\s<>]+?)\)/i);
+        if(match) {
+          try {
+            const url=new URL(match[2]);
+            if(['http:','https:'].includes(url.protocol)&&!url.username&&!url.password&&!/[\x00-\x20\x7f\\]/.test(match[2])) {
+              output+='<a href="'+escape(url.href)+'" target="_blank" rel="noopener noreferrer">'+escape(match[1])+'</a>';i+=match[0].length;continue;
+            }
+          }catch(_error){}
+        }
       }
       if(text[i]==='*') {
         const marker=text.startsWith('**',i)?'**':'*',end=closing(text,i+marker.length,marker);

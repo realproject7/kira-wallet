@@ -16,3 +16,7 @@ assert.match(render('*Check `status` first*'),/<em>Check <code>status<\/code> fi
 assert.match(render('`**literal** <img>`'),/<code>\*\*literal\*\* &lt;img&gt;<\/code>/);
 assert.doesNotMatch(render('**`<script>` <img onerror=x>**'),/<(?:script|img)\b/i);
 console.log('Safe Markdown, table, code and raw HTML/link boundaries passed.');
+
+assert.match(render('[PLOT](https://mint.club/token/base/PLOT)'),/<a href="https:\/\/mint.club\/token\/base\/PLOT" target="_blank" rel="noopener noreferrer">PLOT<\/a>/);
+for(const input of ['[bad](data:text/html,x)','[bad](//example.com)','[bad](https://user:password@example.com)','[bad](https://example.com\\evil)','[bad](java&#115;cript:alert(1))'])assert.doesNotMatch(render(input),/<a\b/);
+assert.match(render('[<script>](https://example.com/?q="x")'),/&lt;script&gt;/);

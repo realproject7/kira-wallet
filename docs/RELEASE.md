@@ -79,7 +79,7 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep published GitHub tags, release assets and npm versions through 0.1.14
+Keep published GitHub tags, release assets and npm versions through 0.1.15
 immutable. Do not rebuild them from later documentation commits. Future package
 changes need a new version. Release preparation does not publish a GitHub
 release, promote the website or publish to npm.
@@ -95,12 +95,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.15.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.16.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.15.tgz --access public
+npm publish ./dist/kira-wallet-0.1.16.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
@@ -432,3 +432,32 @@ dry-run that exact archive. npm publication remains operator-only. Preserve the
 personal 0.1.14 installation, credentials, paused history and published archives.
 Use a separate private workspace for candidate acceptance. No GitHub release,
 website deployment or personal app upgrade is part of this preparation.
+
+## Proposed 0.1.16
+
+This version repairs Mint Club symbol routes, including ERC1155 NFT routes and
+encoded symbols, without rewriting historical snapshots. Market lookup attaches
+both pair members and price updates persist new pools. Pool identity preserves
+Uniswap v4 IDs, versions and fee tiers. Visible market records are independent
+from price eligibility and executable proceeds. Existing thin-market, testnet
+and unknown-value protections remain.
+
+The basic market pass supplements Mint Club ERC20 holdings with official
+Uniswap v2/v3/v4 index records and bounded Base common-quote factory reads.
+Provider errors and incomplete pages remain partial. This is not proof of an
+exhaustive blockchain-wide pool inventory. It does not require sell analysis.
+Prior successful market observations survive missing sources; metadata-only
+factory reads cannot refresh the date of an old price or liquidity observation.
+
+Connected AI can search symbols and names, rank the full saved inventory, and
+compute exact filtered aggregates without reading every inventory page into its
+context. Official market marks and token/reserve artwork identify pool cards.
+Ham and OverProtocol are excluded by operator confirmation, distinguished from
+independently verified notices. Historical evidence is preserved. Successful
+price metadata batches are reused for artwork to avoid redundant source reads.
+
+Release acceptance covers the repository suite, clean installation, source and
+history privacy checks, exact archive membership, real unchanged natural-language
+questions and responsive market interactions. Review not selected. Publication
+remains operator-only. A feature-branch candidate is not a merged release or a
+published package; the final manifest must identify the accepted source commit.

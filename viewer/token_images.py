@@ -127,6 +127,7 @@ def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, 
     # Price discovery already carries contract-scoped artwork. Keep that evidence
     # before a second provider pass can exhaust the remaining metadata budget.
     chains={slug:cid for cid,slug in DEX_CHAINS.items()}
+    supplied=set()
     for record in market_metadata:
         if not isinstance(record,dict):continue
         source=record.get('source')
@@ -135,6 +136,9 @@ def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, 
             if not parsed or parsed.scheme!='https' or parsed.hostname!='api.dexscreener.com' or parsed.port not in (None,443) or parsed.username or parsed.password:continue
         except ValueError:continue
         response=record.get('response')
+        parts=parsed.path.split('/')
+        if isinstance(response,list) and len(parts)==5 and parts[1:3]==['tokens','v1'] and parts[3] in chains:
+            supplied.update(identity(chains[parts[3]],address) for address in parts[4].split(','))
         pairs=response if isinstance(response,list) else response.get('pairs',[]) if isinstance(response,dict) else []
         for pair in pairs if isinstance(pairs,list) else []:
             if not isinstance(pair,dict):continue
@@ -164,7 +168,7 @@ def refresh_catalog(snapshots, root=ROOT, *, force=False, fetch=fetch_metadata, 
     # lpTOKEN uses chain-specific imageUrl metadata, often from DEX Screener.
     # Read public catalog metadata without sending a wallet address.
     missing = {key:t for key,t in wanted.items()
-               if force or not fresh(artwork_checked.get(key) or records.get(key,{}).get('observed_at'))}
+               if key not in supplied and (force or not fresh(artwork_checked.get(key) or records.get(key,{}).get('observed_at')))}
     if any(t['chain_id'] in (4663,8453,1) for t in missing.values()):
         response = fetch(LP_CATALOG)
         if isinstance(response,dict) and isinstance(response.get('items'),list):

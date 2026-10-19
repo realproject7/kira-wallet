@@ -30,6 +30,7 @@ SYSTEM = ('You are Kira, a careful wallet research partner. Answer in the langua
     'The current recorded context supersedes older facts in the conversation. '
     'A bounded summary is not contradictory new evidence. pools_omitted means recorded pool details were left out of this response, not absent from the record. '
     'Use token_read before judging or retracting market details when pools are omitted. Testnet assets are excluded from portfolio valuation; do not infer a zero market price. '
+    'Use holdings_query search for token names or symbols, rank for top-N, and aggregate for counts and sums. These scan every approved saved holding on the host and return bounded results. Never page through inventories for ranking, counting or named-token questions. Use one search per named token, optionally chain-filtered. Report same-symbol ambiguity with chain and contract. Rank group_by asset combines the priced subset by identity; group_by position ranks wallet positions. Unknown prices are excluded from ranks and counted separately. '
     'assets_omitted and next_offset describe a page, not missing holdings. Use wallet_read with offset and limit for more holdings, and token_read for detailed evidence. '
     'Compact pages defer exit_quote and curve details. exit_quote_recorded true means a validated historical quote exists in the record even if its output is omitted here. Use token_read before judging execution evidence or claiming that a quote is absent. False means no validated quote in this snapshot, not that no exit route exists. '
     'Only an unfiltered complete inventory needs every holdings page. For that request, follow next_offset for each approved wallet using limit 100 and state which pages remain unread if the budget prevents completion. '
@@ -81,7 +82,7 @@ def read_receipt(name, arguments, result, delivered=True):
         receipt['snapshot_id']=result.get('snapshot_id')
         result=result['wallets'][0]
     if isinstance(result,dict):
-        for key in ('offset','next_offset','asset_count','position_count','snapshot_id'):
+        for key in ('offset','next_offset','asset_count','position_count','snapshot_id','query_scope'):
             if key in result:receipt[key]=result[key]
         for key in ('assets','positions'):
             if isinstance(result.get(key),list):receipt['page_end']=result.get('offset',0)+len(result[key])
@@ -89,7 +90,12 @@ def read_receipt(name, arguments, result, delivered=True):
 
 def read_completion(message, receipts, tools):
     """Validate declared plans and literal requests against delivered receipts."""
-    names=set(re.findall(r'\b(?:portfolio_read|wallet_read|snapshot_read|snapshots_compare|token_read|job_read|job_list|snapshots_list)\b',message))
+    ranking=re.search(r'\btop[- ]*(\d+|one|two|three|four|five|ten)\b|상위\s*(\d+|다섯|열)',message,re.I)
+    requested_rank=None
+    if ranking:
+        raw=next(v for v in ranking.groups() if v).lower()
+        requested_rank=int(raw) if raw.isdigit() else {'one':1,'two':2,'three':3,'four':4,'five':5,'ten':10,'다섯':5,'열':10}[raw]
+    names=set(re.findall(r'\b(?:holdings_query|portfolio_read|wallet_read|snapshot_read|snapshots_compare|token_read|job_read|job_list|snapshots_list)\b',message))
     literal_names=names.copy()
     decoder=json.JSONDecoder();requested=[]
     for match in re.finditer(r'\{',message):
@@ -103,7 +109,7 @@ def read_completion(message, receipts, tools):
             for read in plan['reads']:
                 if isinstance(read,dict) and isinstance(read.get('name'),str) and isinstance(read.get('arguments'),dict):
                     names.add(read['name']);requested.append((read['name'],read['arguments']))
-    if not names or not requested and not re.search(r'\b(?:read|call|run|use|execute)\b|읽|호출|실행|수행|\+',message,re.I):return None
+    if not requested_rank and (not names or not requested and not re.search(r'\b(?:read|call|run|use|execute)\b|읽|호출|실행|수행|\+',message,re.I)):return None
     expanded=[]
     for receipt in receipts:
         expanded.extend(receipt.get('reads',[]) if receipt['name']=='records_read' else [receipt])
@@ -174,7 +180,8 @@ def read_completion(message, receipts, tools):
     exhaustive=bool(re.search(r'\b(?:complete|full)\s+inventory\b|\ball\s+(?:holdings|assets|positions)\b|전체\s*(?:보유|자산|목록)',message,re.I))
     groups={}
     for r in expanded:
-        if r['name'] not in ('wallet_read','snapshot_read','snapshots_compare','inventory_page'):continue
+        if r['name'] not in ('wallet_read','snapshot_read','snapshots_compare','inventory_page','holdings_query'):continue
+        if r['name']=='holdings_query' and (r.get('query_scope') or {}).get('mode')!='search':continue
         if not isinstance(r.get('arguments'),dict):continue
         if r['status']=='failed' and any(matches(r['name'],r.get('arguments',{}),ok) for ok in completed):continue
         if r['name']=='inventory_page' and not exhaustive:continue
@@ -194,6 +201,15 @@ def read_completion(message, receipts, tools):
             offset=page['next_offset']
         if not finished and (exhaustive or any(r.get('next_offset') is not None for r in pages)):
             unread.append({'name':name,'arguments':{**json.loads(identity),'offset':offset},'snapshot_id':snapshot})
+    if requested_rank:
+        count=requested_rank
+        ranked=[r for r in completed if r['name']=='holdings_query' and (r.get('query_scope') or {}).get('mode')=='rank']
+        if not any(q.get('full_inventory_scanned') and q.get('complete') and q.get('offset')==0 and q.get('requested_limit',0)>=count for r in ranked for q in [r['query_scope']]):
+            missing.append('holdings_query rank for the requested top '+str(count))
+    for r in completed:
+        q=r.get('query_scope')
+        if q and not q.get('complete'):missing.append('holdings_query result detail was truncated')
+    missing.extend('holdings_query has unread matching records' for r in unread if r['name']=='holdings_query')
     if exhaustive:missing.extend(r['name']+' unread offset '+str(r['arguments']['offset']) for r in unread)
     return {'status':'partial' if missing or failed else 'complete','missing':list(dict.fromkeys(missing)),'failed':failed,'unread_pages':unread,'completed_reads':sum(r['name']!='inventory_page' for r in completed)}
 
@@ -251,8 +267,7 @@ def config_input(value, root):
     else: result['wallet'] = None
     return result
 
-def projection(root, config, *, token_id=None, limit=12, offset=0, wallet_key=None, inventory=False):
-    if config['scope'] == 'none': return {'scope':'none','note':'No automatic wallet context supplied.'}
+def scoped_wallets(root,config):
     import sys
     sys.path.insert(0,str(Path(__file__).resolve().parent/'viewer'))
     from model import load_state
@@ -261,6 +276,11 @@ def projection(root, config, *, token_id=None, limit=12, offset=0, wallet_key=No
     if config['scope'] == 'wallet':
         wallets = [w for w in wallets if w['key'] == config['wallet']]
         if len(wallets) != 1: raise JobError('wallet_missing','The approved wallet is no longer registered. Review your context settings.')
+    return wallets
+
+def projection(root, config, *, token_id=None, limit=12, offset=0, wallet_key=None, inventory=False):
+    if config['scope'] == 'none': return {'scope':'none','note':'No automatic wallet context supplied.'}
+    wallets=scoped_wallets(root,config)
     wallets=[{**w,'recorded_valuation':recorded_valuation(w['assets'])} for w in wallets]
     if token_id is not None:
         wallets=[{**wallet,'assets':[a for a in wallet['assets'] if a['id']==token_id]} for wallet in wallets]
@@ -349,7 +369,7 @@ def wallet_facts(wallets, *, pool_budget=40_000):
             item['markets'] = asset.get('links',[])
             pools=asset.get('market_pools',[]);item['pools']=[];item['pools_recorded']=len(pools)
             for pool in pools[:12]:
-                fact={**pick(pool,('venue','pool','url','liquidity_usd','price_usd','observed_at')),
+                fact={**pick(pool,('venue','pool','url','liquidity_usd','price_usd','observed_at','version_labels','fee_bps','pool_kind')),
                       'pair':[pick(coin,('address','symbol')) for coin in pool.get('pair',[])]}
                 cost=len(json.dumps(fact,ensure_ascii=False).encode())+2
                 if cost>pool_budget:break
@@ -615,7 +635,7 @@ class AgentStore:
     def _run(self,key,config,prompt,message,epoch):
         try:
             turn=self.turns[key];cancel=turn['cancel']
-            tools=None;transcript=[];repair=None;repaired=False;completion_retried=False;planning=False;deadline=time.monotonic()+420
+            tools=None;transcript=[];blocked_context=set();repair=None;repaired=False;completion_retried=False;planning=False;deadline=time.monotonic()+420
             if not turn['test'] and config.get('wallet_tools') and config['scope']!='none':
                 from kira_research_tools import ResearchTools,CATALOG
                 @contextmanager
@@ -658,6 +678,8 @@ class AgentStore:
                     repair='No tool was executed. First return only a records_read plan with every requested source, or an empty reads list for an action-only request.';repaired=True;continue
                 repair=None
                 if step==8:raise JobError('tool_limit','The research step limit was reached. Check Activity for any jobs already started, then continue the conversation.')
+                signature=json.dumps(request,sort_keys=True,ensure_ascii=False)
+                if signature in blocked_context:raise JobError('context_limit','This request keeps returning too much detail. Ask for a token search, a ranking or an aggregate summary. Earlier completed reads are retained.')
                 try:
                     fields(request,['kira_tool','arguments'])
                     with self.lock:
@@ -666,7 +688,7 @@ class AgentStore:
                     result=tools.call(request['kira_tool'],request['arguments'],str(uuid.uuid5(uuid.UUID(key),str(step))))
                     if request['kira_tool']=='records_read':planning=False
                     executed_result=result
-                    if len(json.dumps(result,ensure_ascii=False).encode())>(280000 if request['kira_tool']=='records_read' else 160000):result={'error':'This result exceeds the context limit. Choose smaller wallet pages or a token-specific read.'}
+                    if len(json.dumps(result,ensure_ascii=False).encode())>(280000 if request['kira_tool']=='records_read' else 160000):result={'error':{'code':'context_limit','message':'This result exceeds the context limit. Use holdings_query for names, rankings or aggregates, or request a smaller page.'}}
                 except JobError as error:
                     if error.code=='cancelled':raise
                     result={'error':{'code':error.code,'message':str(error)}}
@@ -674,6 +696,7 @@ class AgentStore:
                 item={'tool':request['kira_tool'],'arguments':request['arguments'],'result':result}
                 if len(json.dumps(transcript+[item],ensure_ascii=False).encode())>280000:
                     item['result']={'error':{'code':'context_limit','message':'The accumulated research context limit was reached. Use a smaller wallet_read page or a specific token, or finish with the evidence already received.'}}
+                if isinstance(item['result'],dict) and isinstance(item['result'].get('error'),dict) and item['result']['error'].get('code') in ('context_limit','context_too_large'):blocked_context.add(signature)
                 transcript.append(item)
                 with self.lock:
                     delivered=item['result']
@@ -693,8 +716,7 @@ class AgentStore:
                     completion=read_completion(message,turn.get('tool_calls',[]),tools)
                     turn['read_completion']=completion
                     if completion and completion['status']=='partial':
-                        missing=', '.join(completion['missing']) or 'failed read requests'
-                        answer=('요청한 자료 읽기를 모두 완료하지 못했습니다: ' if re.search(r'[가-힣]',message) else 'Requested reads are incomplete: ')+missing+'.\n\n'+answer
+                        answer=('저장된 자료 중 요청에 필요한 일부 기록을 확인하지 못했습니다. 아래 답변은 확인된 범위만 포함합니다.' if re.search(r'[가-힣]',message) else 'Some requested records could not be checked. This answer covers only the available evidence.')+'\n\n'+answer
                     self.messages.extend([{'role':'user','text':message},{'role':'assistant','text':answer}]);self.messages=self.messages[-24:]
                     self.updated_at=datetime.now(timezone.utc).isoformat();self._remember()
                 turn.update(state='partial' if (turn.get('read_completion') or {}).get('status')=='partial' else 'succeeded',answer=answer)

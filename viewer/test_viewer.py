@@ -546,6 +546,9 @@ class ViewerTests(unittest.TestCase):
                 with self.assertRaises(urllib.error.HTTPError) as e:urllib.request.urlopen(urllib.request.Request(base+'/api/state',data=b'{}'))
                 self.assertEqual(e.exception.code,501)
                 e.exception.close()
+                for name in ('mintclub.png','uniswap.svg','aerodrome.svg'):
+                    with urllib.request.urlopen(base+'/venues/'+name) as r:
+                        self.assertEqual(r.status,200);self.assertGreater(len(r.read()),100)
                 with urllib.request.urlopen(base+'/ows-logo.svg') as r:
                     self.assertEqual(r.headers['Content-Type'],'image/svg+xml')
                     self.assertIn(b'<svg',r.read())

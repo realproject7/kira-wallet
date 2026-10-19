@@ -22,6 +22,7 @@
   function networkEmpty(network, recordedCount) {
     if(recordedCount)return {title:'No tokens match these filters',message:'Lower the minimum value or clear your search to see recorded holdings.',activity:false};
     const rows=network.wallets||[];
+    if(network.lifecycle?.status==='retired'||(rows.length&&rows.every(r=>r.coverage==='Archived network')))return {title:'Archived network',message:'This network is excluded from new research. Any saved observations remain historical.',activity:false};
     if(!rows.length||rows.some(r=>['Research pending','Awaiting analysis','Not researched'].includes(r.coverage)))return {title:'Research is pending on this network',message:'No holdings have been recorded here yet. Check Activity for progress or resume saved work. Missing records do not mean zero holdings.',activity:true};
     if(rows.some(r=>r.coverage!=='Researched'))return {title:'No holdings recorded; coverage is incomplete',message:'Some checks could not establish holdings on this network. Review Activity and retry holdings when ready. Missing records remain unknown.',activity:true};
     return {title:'No positive holdings recorded',message:'The completed checks found no positive holdings. Coverage can still omit tokens. Refresh holdings to check again.',activity:false};
@@ -34,6 +35,7 @@
       if(notice)notice.message+=' '+lifecycle.map(c=>c.name+': '+(c.lifecycle.status==='retired'?'retired records are historical and excluded from current value; another provider cannot restart the network.':'retirement is reported without a verified official closure notice; changing provider is not a verified remedy.')).join(' ');
       return notice;
     }
+    if(lifecycle.length&&!other.some(coverageGap))return {title:'Archived networks',message:lifecycle.map(c=>c.name).join(', ')+'. Excluded from new research. Saved observations remain historical.',action:'none',rpcIssues:false};
     return coverageNotice(wallet,readiness);
   }
   function coverageNotice(wallet, readiness = null) {

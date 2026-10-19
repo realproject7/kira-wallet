@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const h = require('./onchain.cjs');
+const {mintclubUrl}=require('./market-links.cjs');
 const v = h.viem;
 const {quotePool}=require('./cashout-quotes.cjs');
 const {expandRoutes,terminal,validLeg,seedQuotes,representativeQuote}=require('./cashout-routes.cjs');
@@ -392,7 +393,7 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
             price_for_next_mint_in_reserve_token:v.formatUnits(info.priceForNextMint,info.reserveDecimals),current_supply:v.formatUnits(info.currentSupply,item.decimals),
             burn_royalty_bps:detail.burnRoyalty,wallet_full_burn:refund?{net_refund_raw:refund[0],net_refund:v.formatUnits(refund[0],info.reserveDecimals),
               royalty_raw:refund[1],royalty:v.formatUnits(refund[1],info.reserveDecimals),asset:info.reserveSymbol,gas_included:false}:null,
-            wallet_full_burn_error:quoteError,block_number:block,block_hash:snapshot.hash,observed_at:captured.refund.observed_at||captured.detail.observed_at||stamp(),source_url:`https://mint.club/token/${n.network}/${t.address}`};
+            wallet_full_burn_error:quoteError,block_number:block,block_hash:snapshot.hash,observed_at:captured.refund.observed_at||captured.detail.observed_at||stamp(),source_url:mintclubUrl(n.chain_id,item.symbol,item.token_type)};
         } catch(e) {item.mintclub_error=h.safeError(e);}
       }
       row.tokens.push(item);
@@ -693,7 +694,7 @@ async function reserveChain(n,input,outputPath,deadline=Date.now()+180_000) {
         const info=d.info;
         rows.push({chain_id:n.chain_id,address,is_curve:true,symbol:info.symbol,price_in_reserve:v.formatUnits(info.priceForNextMint,info.reserveDecimals),
           reserve_token:info.reserveToken,reserve_symbol:info.reserveSymbol,curve_reserve:v.formatUnits(info.reserveBalance,info.reserveDecimals),
-          funded:info.reserveBalance>0n,block_number:block,observed_at:stamp(),source:`https://mint.club/token/${n.network}/${address}`});
+          funded:info.reserveBalance>0n,block_number:block,observed_at:stamp(),source:mintclubUrl(n.chain_id,info.symbol,input.tokens.find(t=>t.token_address.toLowerCase()===key)?.token_type||'ERC20')});
         queue.push(info.reserveToken);
         cache.nodes[key]=cacheEncode(rows.at(-1));save();emitProgress(n,'reserves',rows.length,queue.length);
       }catch(e){if(e.code==='market_budget')throw e;rows.push({chain_id:n.chain_id,address,error:h.safeError(e),block_number:block,observed_at:stamp()});emitProgress(n,'reserves',rows.length,queue.length);}
@@ -793,7 +794,7 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
           quotes.push({status:'quoted',kind:'mintclub_burn',input_address:address,input_amount_raw:amount.toString(),holding_amount_raw:amount.toString(),
             output_address:reserveToken,output_amount_raw:refund[0].toString(),output_amount:v.formatUnits(refund[0],reserveDecimals),output_decimals:reserveDecimals,
             block_number:block.toString(),block_hash:snapshot.hash,observed_at:stamp(),funded:reserveBalance>0n,reserve_balance_raw:reserveBalance.toString(),royalty_raw:refund[1].toString(),
-            route_fees_included:true,price_impact_included:true,gas_included:false,execution_verified:false,transfer_tax_included:false,source_url:`https://mint.club/token/${n.network}/${address}`});
+            route_fees_included:true,price_impact_included:true,gas_included:false,execution_verified:false,transfer_tax_included:false,source_url:mintclubUrl(n.chain_id,input.tokens.find(t=>t.token_address.toLowerCase()===address.toLowerCase())?.symbol,input.tokens.find(t=>t.token_address.toLowerCase()===address.toLowerCase())?.token_type||'ERC20')});
         }else if(exists!==false)quotes.push({status:'unknown',reason:'Mint Club membership unavailable.'});
       }catch(error){if(error.code==='market_budget')throw error;const failure=rpcFailure(error);
         quotes.push({status:'unknown',reason:'Amount-specific Mint Club redemption unavailable.',retryable:true,

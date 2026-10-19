@@ -14,7 +14,7 @@ const file=process.argv[2];
   const batch=rows.slice(i,i+8);
   const res=await calls(c,batch.map(t=>({address:t.mintclub.bond_address,abi:h.bondAbi,functionName:'getDetail',args:[t.token_address]})),block);
   res.forEach((r,j)=>{
-   if(r.status==='success'){const v=r.result.info;output.push({chain_id:chainId,address:batch[j].token_address,basis:'Curve spot',curve_price_in_reserve:h.viem.formatUnits(v.priceForNextMint,v.reserveDecimals),curve_reserve:h.viem.formatUnits(v.reserveBalance,v.reserveDecimals),reserve_token:v.reserveToken,reserve_symbol:v.reserveSymbol,funded:v.reserveBalance>0n,source:batch[j].mintclub.source_url,observed_at:new Date().toISOString(),block_number:block.toString()});}
+   if(r.status==='success'){const v=r.result.info;output.push({chain_id:chainId,address:batch[j].token_address,basis:'Curve spot',curve_price_in_reserve:h.viem.formatUnits(v.priceForNextMint,v.reserveDecimals),curve_reserve:h.viem.formatUnits(v.reserveBalance,v.reserveDecimals),reserve_token:v.reserveToken,reserve_symbol:v.reserveSymbol,funded:v.reserveBalance>0n,source:require('../market-links.cjs').mintclubUrl(chainId,batch[j].symbol,batch[j].token_type||'ERC20'),observed_at:new Date().toISOString(),block_number:block.toString()});}
    else output.push({chain_id:chainId,address:batch[j].token_address,error:h.safeError(r.error)});
   });
  }

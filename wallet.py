@@ -1,5 +1,6 @@
 """Register, analyse and publish supplied wallets to the local read-only viewer."""
 from __future__ import annotations
+from market_records import pool_row, collected_markets, merge_pools, canonical_token
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -413,7 +414,7 @@ def publish_snapshot(wallet, folder, result):
         atomic(ROOT/'wallets.json',registry)
 
 
-def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_prices=False):
+def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_prices=False, supplemental=False):
     """Price and illustrate saved holdings independently of deep market review."""
     from curve_pricing import enrich, resolve
     sys.path.insert(0,str(ASSETS/'viewer'))
@@ -421,7 +422,7 @@ def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_p
     from token_images import refresh_catalog
     deadline=time.monotonic()+45
     price_deadline=deadline-10
-    tokens=snapshot['tokens'];rows={(p['chain_id'],p['address'].lower()):checked_price(p) for p in market.get('tokens',[])}
+    tokens=[canonical_token(t) for t in snapshot['tokens']];rows={(p['chain_id'],p['address'].lower()):checked_price(p) for p in market.get('tokens',[])}
     markets={p['id']:p for p in market.get('markets',[])}
     mainnets={c['chain_id'] for c in snapshot.get('coverage',[]) if c.get('environment')=='mainnet'}
     wanted={(t['chain_id'],t['token_address'].lower()):t for t in tokens
@@ -445,15 +446,9 @@ def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_p
         with ThreadPoolExecutor(max_workers=4) as executor:
             for (cid,slug,addresses,source),record in executor.map(get,requests):
                 evidence.append(record)
-                pools={}
-                for pair in record['response'] if isinstance(record['response'],list) else []:
-                    try:
-                        address=pair['baseToken']['address'].lower()
-                        if pair['chainId']==slug and address in addresses:pools.setdefault(address,[]).append(pool_row(pair,record['observed_at']))
-                    except (KeyError,TypeError,AttributeError):continue
-                for address,group in pools.items():
-                    identity=f'{cid}:{address}'
-                    markets[identity]={'id':identity,'pools':group}
+                markets={row['id']:row for row in collected_markets([record],DEX,wanted,markets.values())}
+                for address in addresses:
+                    group=markets.get(f'{cid}:{address}',{}).get('pools',[])
                     p=dex_price({'token_address':address,'dex_pools':group},record['observed_at'])
                     if p:rows[(cid,address)]={'chain_id':cid,'address':address,**p}
         atomic(folder/'token-market-metadata.json',evidence)
@@ -493,6 +488,13 @@ def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_p
             event('token_images',tokens=len(tokens))
             event('token_images',**refresh_catalog([snapshot],ROOT,native_images=native_images or {},market_metadata=metadata,fetch=lambda url:fetch(url,deadline=deadline)))
         except (OSError,ValueError):market['image_refresh_status']='unavailable'
+    if supplemental:
+        from market_discovery import discover
+        observed=discover(snapshot,folder,deadline=time.monotonic()+60)
+        for row in observed['markets']:
+            identity=row['id'];markets[identity]={'id':identity,'pools':merge_pools(markets.get(identity,{}).get('pools',[]),row['pools'])}
+        market['market_discovery_status']=observed['status']
+        market['markets']=list(markets.values())
     return market
 
 
@@ -540,7 +542,7 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
         if native_market.get('evidence'):atomic(folder/'native-market.json',native_market['evidence'])
     market={'observed_at':result['compiled_at'],'wallet_address':wallet['address'],
         'native_usd':{k.removesuffix('_USD'):{'usd':float(v['value']),'observed_at':v.get('observed_at'),'basis':v.get('basis'),'source':v.get('source')} for k,v in refs.items()},'tokens':[]}
-    if prices:market=refresh_metadata(result,market,folder,native_images=native_market.get('images'),discover_prices=True)
+    if prices:market=refresh_metadata(result,market,folder,native_images=native_market.get('images'),discover_prices=True,supplemental=True)
     if phase=='holdings':
         result['scope']='Direct holdings across every configured network. Alchemy and available explorer indexes are independently verified by on-chain balance reads.'
         result['pipeline'].update(phase='holdings',enrichment_pending=False,sell_analysis_optional=True)
@@ -645,13 +647,6 @@ def dex_fetch(t, folder, deadline=None, attempt_limit=None):
         if isinstance(response,dict) and response.get('research_pending'):row['status']='pending' if row['attempts']<attempt_limit else 'unavailable'
     atomic(folder/name,row)
     return row
-
-
-def pool_row(p, observed):
-    return {'pool':p['pairAddress'],'venue':p['dexId'],'version_labels':p.get('labels') or [],
-            'paired_tokens':[p['baseToken'],p['quoteToken']],'reported_liquidity':p.get('liquidity'),
-            'reported_volume_24h_usd':(p.get('volume') or {}).get('h24'),'reported_price_usd':p.get('priceUsd'),
-            'observed_at':observed,'source_url':p['url'],'rpc_verification':None,'factory_measurement':None}
 
 
 def continuation_checkpoint(folder, discovered, market_pending):
