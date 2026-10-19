@@ -3,15 +3,19 @@
 const KiraSelect=(()=>{
   const entries=new Map();let opened=null,search='',searchTimer;
   function close(focus=false){if(!opened)return;opened.popup.hidden=true;opened.button.setAttribute('aria-expanded','false');opened.button.removeAttribute('aria-activedescendant');if(focus)opened.button.focus();opened=null;}
-  function refresh(){for(const entry of entries.values()){const option=entry.select.selectedOptions[0];entry.label.textContent=option?.textContent||'Choose';entry.button.disabled=entry.select.disabled;}}
+  function optionLabel(option){
+    const chain=option?.dataset.chainId&&typeof state!=='undefined'?state?.details?.networks.find(c=>String(c.id)===option.dataset.chainId):null;
+    return `<span class="select-option-label">${chain?chainIcon(chain):''}<span>${escapeHTML(option?.textContent||'Choose')}</span></span>`;
+  }
+  function refresh(){for(const entry of entries.values()){const option=entry.select.selectedOptions[0];entry.label.innerHTML=optionLabel(option);entry.button.disabled=entry.select.disabled;}bindImages();}
   function focusOption(index){if(!opened)return;const options=[...opened.popup.querySelectorAll('[role="option"]')];if(!options.length)return;opened.index=(index+options.length)%options.length;for(const [i,node] of options.entries())node.classList.toggle('highlighted',i===opened.index);const node=options[opened.index];opened.button.setAttribute('aria-activedescendant',node.id);node.scrollIntoView({block:'nearest'});}
   function open(entry){close();refresh();opened=entry;const options=[...entry.select.options].filter(o=>!o.disabled);
-    entry.popup.innerHTML=options.map((o,i)=>`<div role="option" id="${entry.select.id}-option-${i}" aria-selected="${String(o.selected)}" data-value="${escapeHTML(o.value)}">${escapeHTML(o.textContent)}<span aria-hidden="true">${o.selected?'✓':''}</span></div>`).join('');
+    entry.popup.innerHTML=options.map((o,i)=>`<div role="option" id="${entry.select.id}-option-${i}" aria-selected="${String(o.selected)}" data-value="${escapeHTML(o.value)}">${optionLabel(o)}<span aria-hidden="true">${o.selected?'✓':''}</span></div>`).join('');
     (entry.select.closest('dialog')||document.body).append(entry.popup);entry.popup.hidden=false;entry.button.setAttribute('aria-expanded','true');
     const rect=entry.button.getBoundingClientRect(),height=Math.min(280,entry.popup.scrollHeight),below=innerHeight-rect.bottom-10;
-    entry.popup.style.width=Math.min(Math.max(rect.width,180),innerWidth-20)+'px';entry.popup.style.left=Math.max(10,Math.min(rect.left,innerWidth-entry.popup.offsetWidth-10))+'px';
+    entry.popup.style.width=Math.min(Math.max(rect.width,240),innerWidth-20)+'px';entry.popup.style.left=Math.max(10,Math.min(rect.left,innerWidth-entry.popup.offsetWidth-10))+'px';
     entry.popup.style.top=(below<height&&rect.top>height?rect.top-height-6:Math.min(rect.bottom+6,innerHeight-height-10))+'px';
-    focusOption(Math.max(0,options.findIndex(o=>o.selected)));
+    bindImages();focusOption(Math.max(0,options.findIndex(o=>o.selected)));
   }
   function choose(value){if(!opened)return;const select=opened.select;select.value=value;select.dispatchEvent(new Event('change',{bubbles:true}));close(true);refresh();}
   function enhance(){for(const select of document.querySelectorAll('select')){
@@ -32,7 +36,7 @@ const KiraSelect=(()=>{
         const count=entry.popup.children.length;
         if(event.key==='ArrowDown')focusOption(entry.index+1);else if(event.key==='ArrowUp')focusOption(entry.index-1);else if(event.key==='Home')focusOption(0);else if(event.key==='End')focusOption(count-1);else choose(entry.popup.children[entry.index]?.dataset.value);
       }else if(event.key.length===1&&!event.ctrlKey&&!event.metaKey&&!event.altKey){
-        if(opened!==entry)open(entry);clearTimeout(searchTimer);search+=event.key.toLowerCase();const index=[...entry.popup.children].findIndex(n=>n.textContent.toLowerCase().startsWith(search));if(index>=0)focusOption(index);searchTimer=setTimeout(()=>search='',500);
+        if(opened!==entry)open(entry);clearTimeout(searchTimer);search+=event.key.toLowerCase();const index=[...entry.select.options].filter(o=>!o.disabled).findIndex(o=>o.textContent.toLowerCase().startsWith(search));if(index>=0)focusOption(index);searchTimer=setTimeout(()=>search='',500);
       }
     });
   }refresh();}

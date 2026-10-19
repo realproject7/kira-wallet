@@ -75,4 +75,24 @@ class MarketRecordsTests(unittest.TestCase):
         self.assertEqual({tuple(p['version_labels']) for p in asset['market_pools']},{('v3',),('v4',)})
         self.assertIsNone(asset['value_usd'])
 
+    def test_venue_destinations_preserve_source_evidence_and_full_v4_id(self):
+        from market_records import market_url
+        for identity,venue,expected in [
+            (V3,'uniswap','https://app.uniswap.org/explore/pools/base/'+V3),
+            (V4,'uniswap','https://app.uniswap.org/explore/pools/base/'+V4),
+            (V3,'aerodrome','https://aerodrome.finance/pools?token0=0x'+'2'*40+'&token1='+self.token['token_address']+'&chain=8453&chain0=8453&chain1=8453')]:
+            pool=wallet.pool_row(self.pairs()[0],'2026-10-19T00:00:00Z')
+            pool.update(pool=identity,venue=venue,source_url='https://dexscreener.com/base/'+identity)
+            before=copy.deepcopy(pool)
+            self.assertEqual(market_url(8453,pool),expected)
+            self.assertEqual(market_url(999999,pool),pool['source_url'])
+            self.assertEqual(market_url(8453,{**pool,'pool':'bad/route'}),pool['source_url'])
+            self.token['dex_pools']=[pool]
+            asset=self.project();projected=asset['market_pools'][0]
+            self.assertEqual(projected['url'],expected)
+            self.assertEqual(projected['source_url'],pool['source_url'])
+            self.assertEqual(pool,before)
+        self.assertEqual(market_url(8453,{**pool,'venue':'unknown'}),pool['source_url'])
+        self.assertEqual(market_url(8453,{**pool,'paired_tokens':[]}),pool['source_url'])
+
 if __name__=='__main__':unittest.main()

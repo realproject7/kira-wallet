@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync('viewer/static/app.js','utf8');
 const nodes=new Map(),buttons=[0,5,10].map(min=>({dataset:{min:String(min)},setAttribute(){}}));
-const node=id=>{if(!nodes.has(id))nodes.set(id,{textContent:'',innerHTML:'',hidden:false,querySelector:kind=>node(id+'-'+kind)});return nodes.get(id);};
+const node=id=>{if(!nodes.has(id))nodes.set(id,{dataset:{},textContent:'',innerHTML:'',hidden:false,querySelector:kind=>node(id+'-'+kind)});return nodes.get(id);};
 let click;const saved=new Map();
 const wallet={name:'Fixture',address:'0x'+'1'.repeat(40),tags:['Fixture'],analysed_at:'2026-10-04',known_value_usd:null,unpriced_count:3,
   assets:[1,33139,56].map((chain_id,i)=>({chain_id,environment:'mainnet',value_usd:null,symbol:['ETH','APE','BNB'][i]})),
@@ -23,14 +23,14 @@ assert.match(node('holdings-filter-note').innerHTML,/3 unpriced holdings are hid
 assert.match(node('empty-h3').textContent,/hidden by the value filter/);
 assert.match(node('coverage-note').textContent,/Token discovery: 0 of 3 mainnets checked/);
 assert.equal(node('discovery-notice').hidden,false);
-assert.match(node('discovery-notice-title').textContent,/attention/);
+assert.match(node('discovery-notice-title').textContent,/Network coverage/);
 context.setupReadiness={discovery_provider:'none',discovery_configured:false,discovery_key_available:false};
 context.renderWallet();assert.match(node('discovery-notice-title').textContent,/Connect Alchemy/);
 assert.doesNotMatch(node('discovery-notice-text').textContent,/Free research|optional deep/);
 assert.equal(node('discovery-settings').hidden,true,'Read-only views cannot change connection settings.');
 context.setupReadiness={discovery_provider:'alchemy',discovery_configured:true,discovery_key_available:true};
 context.localSession={controls:true};context.state={demo:false};context.renderWallet();
-assert.match(node('discovery-notice-title').textContent,/attention/);
+assert.match(node('discovery-notice-title').textContent,/Network coverage/);
 assert.equal(node('discovery-refresh').hidden,false);
 context.setupReadiness.discovery_key_available=false;context.renderWallet();
 assert.match(node('discovery-notice-title').textContent,/Connect Alchemy/);
@@ -39,21 +39,24 @@ context.setupReadiness.discovery_key_available=true;
 wallet.chains.forEach(c=>{c.complete=true;c.registry_complete=true;});
 wallet.chains[0].rpc_available=false;wallet.chains[1].candidate_balance_errors=2;
 context.renderWallet();
-assert.equal(node('discovery-notice-title').textContent,'Some networks need attention');
+assert.equal(node('discovery-notice-title').textContent,'Network coverage · 1 of 3 active networks checked · 2 unavailable');
 assert.match(node('discovery-notice-text').textContent,/Chain 1, Chain 33139/);
 assert.match(node('valuation-note').textContent,/Partial portfolio/);
 assert.match(node('discovery-network-details').textContent,/Chain 1: balance reads failed/);
 assert.match(node('discovery-network-details').textContent,/Chain 33139: 2 token balance reads failed/);
-assert.equal(node('discovery-notice-details').open,true);
-assert.equal(node('discovery-refresh').textContent,'Retry holdings');
+assert.notEqual(node('discovery-notice-details').open,true,'Coverage does not force itself open.');
+node('discovery-notice-details').open=true;context.renderWallet();
+assert.equal(node('discovery-notice-details').open,true,'Data rendering preserves user expansion.');
+assert.equal(node('discovery-refresh').textContent,'Refresh all holdings');
 assert.equal(node('discovery-settings').hidden,true);assert.equal(node('discovery-refresh').hidden,false);
 context.localSession.controls=false;context.renderWallet();
 assert.equal(node('discovery-settings').hidden,true);assert.equal(node('discovery-refresh').hidden,true);
 context.localSession.controls=true;wallet.chains[0].rpc_available=true;wallet.chains[1].candidate_balance_errors=0;
-context.renderWallet();assert.equal(node('discovery-notice').hidden,true,'A new successful analysis removes the failure notice.');
+context.renderWallet();assert.equal(node('discovery-notice').hidden,false);assert.match(node('discovery-notice-title').textContent,/3 of 3 active networks checked$/);
+assert.doesNotMatch(node('discovery-notice-title').textContent,/unavailable|incomplete/);
 wallet.chains.forEach(c=>c.complete=false);
 wallet.chains[0].registry_complete=false;context.renderWallet();
-assert.match(node('discovery-notice-title').textContent,/attention/);
+assert.match(node('discovery-notice-title').textContent,/Network coverage/);
 assert.equal(node('discovery-refresh').hidden,false);
 wallet.chains[0].registry_complete=true;
 wallet.chains[0].discovery_status='source_limited';
@@ -72,10 +75,10 @@ console.log('Unknown wallet value and explicit filter recovery preserve all reco
 context.unitPrice=n=>'$'+n;context.quantity=String;context.tokenHref=String;context.coinIcon=()=>'';
 context.shortAddress=s=>s.slice(0,6)+'…'+s.slice(-4);
 vm.runInContext(source.slice(source.indexOf('function venueMark('),source.indexOf('function accountCard(')),context);
-vm.runInContext(source.slice(source.indexOf('function assetRow(a){'),source.indexOf('function renderHoldings(){')),context);
+vm.runInContext(source.slice(source.indexOf('function sellOutNote(a){'),source.indexOf('function renderHoldings(){')),context);
 const historic=context.assetRow({id:'fixture',symbol:'Fixture',name:'Fixture',balance:'1',value_usd:100,links:[],
   price:{usd:100,basis:'Curve spot',retained_from_previous:true,observed_at:'2026-10-01T00:00:00Z'}});
-assert.match(historic,/Previous Curve spot/);assert.match(historic,/title="2026-10-01T00:00:00Z"/);
+assert.match(historic,/holding-markets/);assert.doesNotMatch(historic,/markets-label/);assert.match(historic,/colspan="5"/);assert.match(historic,/Previous Curve spot/);assert.match(historic,/title="2026-10-01T00:00:00Z"/);
 console.log('Retained price labels preserve the original observation time.');
 const pools=Array.from({length:4},(_,i)=>({url:'https://example.com/pool/'+i,pool:'0x'+'1'.repeat(40),
   venue:'Uniswap V3',pair:[{symbol:'USDC'},{symbol:'WETH'}],liquidity_usd:i===0?null:100,
@@ -86,6 +89,11 @@ assert.match(markets,/<summary>Show 2 more pools<\/summary>/);
 assert.equal(markets.match(/class="pool-link"/g).length,4);
 assert.match(markets,/<strong>—<\/strong><small>Pool liquidity/);
 assert.match(markets,/Observed 2026-10-05T00:00:00Z/);
+assert.doesNotMatch(context.marketLinks([{label:'Explorer',url:'https://etherscan.io/token/fixture'}]),/etherscan/);
+assert.match(context.marketLinks([],{market_pools:[{...pools[0],url:'https://dexscreener.com/base/fixture'}]}),/via DexScreener/);
+vm.runInContext(source.slice(source.indexOf('function explorerLink('),source.indexOf('function renderDetail(')),context);
+assert.match(context.explorerLink({symbol:'Example',chain_id:1,links:[{label:'Explorer',url:'https://etherscan.io/token/fixture'}]}),/explorers\/etherscan.png/);
+assert.equal(context.explorerLink({is_native:true,links:[{label:'Explorer',url:'https://etherscan.io/address/wallet'}]}),'','A wallet address explorer is not a native token explorer.');
 console.log('Markets show two pools initially, retain every route and preserve unknown liquidity.');
 context.safeImage=()=>null;
 vm.runInContext(source.slice(source.indexOf('function icon(asset){'),source.indexOf('function bindImages(){')),context);
@@ -100,12 +108,18 @@ const absent=context.accountCard(account,{symbol:'SAMPLE',value_usd:100,environm
 assert.match(absent,/account-position/);assert.match(absent,/No holding recorded/);assert.match(absent,/>—</);
 assert.doesNotMatch(absent,/account-facts|account-quote/);
 const recorded=context.accountCard({...account,asset:{balance:'1',value_usd:100,price:{usd:100,basis:'Curve spot',observed_at:'2026-10-01T00:00:00Z'},
-  exit_quote:{output_amount:'0.123',output_symbol:'ETH',observed_at:'2026-10-02T00:00:00Z',block_number:123}}},{symbol:'SAMPLE',value_usd:100,environment:'mainnet'});
-assert.match(recorded,/100.0%/);assert.match(recorded,/Curve spot/);assert.match(recorded,/0.123 ETH/);
-assert.match(recorded,/block 123 · net of royalty · excludes gas/);assert.match(recorded,/Price 2026-10-01/);
+  sell_out:{valuation:'reserve_reference',value_usd:75,output_amount:'0.123',output_symbol:'ETH',observed_at:'2026-10-02T00:00:00Z',block_number:123,royalty_included:true}}},{symbol:'SAMPLE',value_usd:100,environment:'mainnet'});
+assert.doesNotMatch(recorded,/100.0%|Share of priced holdings|Recorded full-balance/);assert.match(recorded,/Curve spot/);assert.match(recorded,/Receive 0.123 ETH/);assert.match(recorded,/<details class="position-details">/);assert.match(recorded,/≈ \$75/);
+assert.match(recorded,/123 · After royalty/);assert.match(recorded,/Gas excluded/);assert.match(recorded,/Price checked<\/dt><dd>2026-10-01/);assert.match(recorded,/Selling that token to USD is not quoted/);
 const testnet=context.accountCard({...account,asset:{balance:'1',value_usd:null,price:{usd:999}}},{symbol:'SAMPLE',value_usd:null,environment:'testnet'});
 assert.match(testnet,/Testnet/);assert.doesNotMatch(testnet,/999/);
-console.log('Compact wallet rows retain unknown holdings, dated burn outputs and testnet price exclusion.');
+assert.match(context.sellOutValue({id:'fixture',sell_out:{value_usd:0,output_amount:'0',output_symbol:'WETH'}}),/≈ \$0/);
+assert.doesNotMatch(context.sellOutValue({id:'fixture'}),/\$0/);
+assert.match(context.sellOutValue({id:'fixture',wallet_count:2}),/By wallet/);
+assert.match(context.sellOutValue({id:'fixture',environment:'testnet',sell_out:{value_usd:999,output_amount:'1',output_symbol:'TEST'}}),/>—</);
+assert.match(context.explorerLink({symbol:'Example',chain_id:8453,links:[{label:'Explorer',url:'https://basescan.org/token/fixture'}]}),/explorers\/etherscan.png/);
+assert.match(context.explorerLink({symbol:'Example',chain_id:8453,links:[{label:'Explorer',url:'https://basescan.org/token/fixture'}]}),/>BaseScan/);
+console.log('Compact wallet rows distinguish saved reserve value, missing quotes, zero and testnets.');
 
 const workspaceSource=fs.readFileSync('viewer/static/workspace.js','utf8');
 for(const id of ['all-token-network','all-token-pricing','all-token-sort','all-token-search','job-filter'])node(id).value='previous';
@@ -115,7 +129,7 @@ context.resetRouteFilters();
 assert.equal(node('all-token-network').value,'all');assert.equal(node('all-token-pricing').value,'all');
 assert.equal(node('all-token-sort').value,'value');assert.equal(node('all-token-search').value,'');
 assert.equal(node('all-token-testnets').checked,false);assert.equal(node('job-filter').value,'all');
-assert.equal(context.catalogPage,1);assert.equal(context.jobsPage,1);
+assert.equal(context.catalogMinimum,0);assert.equal(context.catalogPage,1);assert.equal(context.jobsPage,1);
 console.log('Returning to a route starts with default view filters.');
 const paneWorkspace={dataset:{pane:'portfolio'}},paneScroll={scrollTop:0,scrollHeight:3000,clientHeight:600};
 const paneHarness={chatPanePosition:null,$:()=>paneScroll,matchMedia:()=>({matches:true}),
@@ -146,6 +160,17 @@ vm.createContext(routeHarness);
 vm.runInContext(source.slice(source.indexOf('function renderView(){'),source.indexOf('function renderKiraNote(){')),routeHarness);
 routeHarness.renderView();assert.equal(routeHarness.route,'#/activity');assert.match(routeHarness.note,/waiting for registration/);
 routeHarness.pendingWalletJob=()=>null;routeHarness.renderView();assert.equal(routeHarness.route,'#/activity');assert.match(routeHarness.note,/not registered/);
+// Once registered, a new wallet can show its own compact progress without
+// redirecting to Activity or borrowing the previous wallet's saved balances.
+const registered={key:'0x'+'3'.repeat(40),name:'New wallet',analysed_at:null};
+const registeredRoute={selectedView:'wallet',selectedWallet:registered.key,state:{wallets:[registered]},currentWallet:()=>registered,
+ pendingWalletJob:()=>({state:'running'}),navigate:hash=>{registeredRoute.route=hash;},toast(){},renderWallets(){},
+ renderWallet:()=>{registeredRoute.rendered=true;},renderKiraNote(){},document:{title:''},$:()=>({})};
+vm.createContext(registeredRoute);
+vm.runInContext(source.slice(source.indexOf('function selectWallet('),source.indexOf('function goHome(')),registeredRoute);
+vm.runInContext(source.slice(source.indexOf('function renderView(){'),source.indexOf('function renderKiraNote(){')),registeredRoute);
+registeredRoute.selectWallet(registered.key);assert.equal(registeredRoute.route,'#/wallet/'+registered.key);
+registeredRoute.route=null;registeredRoute.renderView();assert.equal(registeredRoute.rendered,true);assert.equal(registeredRoute.route,null);
 Object.assign(routeHarness,{busy:false,state:null,etag:null,currentSignature:null,$:node,AbortSignal,
   fetch:async()=>({status:200,ok:true,headers:{get:()=> 'fresh-state'},json:async()=>({wallets:[],demo:false})})});
 vm.runInContext(source.slice(source.indexOf('async function poll(){'),source.indexOf("document.querySelector('.skip-link')")),routeHarness);
@@ -170,14 +195,21 @@ wallet.analysed_at='2026-10-04';
 controls.jobList=[{operation:'wallet.add',state:'running',analysis_phase:'enrichment',input:{address:controls.selectedWallet}}];
 controls.refreshControlState();
 assert.equal(node('refresh-prices').disabled,false);
+Object.defineProperty(node('open-wallet'),'textContent',{get:()=> 'Add watching wallet',set:()=>{throw Error('Polling must preserve button icons and labels.');},configurable:true});
+controls.refreshControlState();
 assert.equal(node('refresh-wallet').disabled,true);
 assert.match(node('refresh-prices').title,/resumes automatically/);
 controls.jobList.push({operation:'prices.refresh',state:'queued',input:{wallet:controls.selectedWallet}});
-controls.refreshControlState();assert.equal(node('refresh-prices').disabled,true);assert.equal(node('refresh-prices').textContent,'Prices queued…');
-controls.jobList[1].state='running';controls.refreshControlState();assert.equal(node('refresh-prices').textContent,'Refreshing prices…');
+controls.refreshControlState();assert.equal(node('refresh-prices').disabled,true);assert.equal(node('refresh-prices-label').textContent,'Prices queued…');
+controls.jobList[1].state='running';controls.refreshControlState();assert.equal(node('refresh-prices-label').textContent,'Refreshing prices…');
 controls.jobList[1].state='succeeded';controls.refreshControlState();assert.equal(node('refresh-prices').disabled,false);
 wallet.analysed_at=null;controls.refreshControlState();assert.equal(node('refresh-prices').disabled,true);assert.match(node('refresh-prices').title,/first saved report/);
 wallet.analysed_at='2026-10-04';controls.state.demo=true;controls.refreshControlState();assert.equal(node('refresh-prices').disabled,true);
+// Secondary actions keep the same control-session boundary as the main action.
+controls.localSession.controls=false;controls.refreshControlState();
+assert.equal(node('wallet-actions').hidden,true);assert.equal(node('wallet-secondary-actions').hidden,true);assert.equal(node('wallet-tools').hidden,true);
+wallet.report_url='/saved-report';controls.refreshControlState();assert.equal(node('wallet-tools').hidden,false);assert.equal(node('wallet-secondary-actions').hidden,true);
+delete wallet.report_url;controls.localSession.controls=true;controls.state.demo=false;controls.refreshControlState();assert.equal(node('wallet-secondary-actions').hidden,false);
 // Render empty network copy from actual recorded counts rather than inactive filters.
 const networkContext={...context,state:{details:{tokens:[]}},tokenSearch:'',minimum:0,aggregateRow:a=>a.symbol};
 vm.createContext(networkContext);vm.runInContext(source.slice(source.indexOf('function renderNetworkTokens('),source.indexOf('function renderDetail(')),networkContext);

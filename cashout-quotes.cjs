@@ -25,7 +25,7 @@ function contractRevert(error) {
   }
   return reverted;
 }
-async function quotePool(client,network,token,pool,block,blockHash,deployments,{batchRead}={}) {
+async function quotePool(client,network,token,pool,block,blockHash,deployments,{batchRead,fullOnly=false}={}) {
   const state=pool.factory_measurement?.state||{},balance=integer(token.wallet_balance_raw);
   const unknown=reason=>({status:'unknown',reason,gas_included:false,execution_verified:false});
   if(!balance||!address(token.token_address)||!address(state.token0)||!address(state.token1)||state.token0.toLowerCase()===state.token1.toLowerCase()
@@ -43,7 +43,16 @@ async function quotePool(client,network,token,pool,block,blockHash,deployments,{
   if(canonical('v3')&&quoter&&Number.isInteger(state.fee)&&state.fee>=0&&state.fee<1_000_000) {
     kind='uniswap_v3_quoter';
     request=amount=>({address:quoter.address,abi:v3Abi,functionName:'quoteExactInputSingle',args:[{tokenIn:token.token_address,tokenOut:output,amountIn:amount,fee:state.fee,sqrtPriceLimitX96:0n}]});
-    decode=result=>result[0];
+    decode=result=>{
+      // QuoterV2's default limit is MIN_SQRT_RATIO+1 / MAX_SQRT_RATIO-1
+      // (Uniswap v3-core TickMath). At that boundary input can be unspent.
+      if(fullOnly){
+        const after=integer(result[1]);
+        if(after===null||after<=4295128740n||after>=1461446703485210103287273052203988822378723970341n)
+          throw Error('Full input consumption is not established at the pool price limit');
+      }
+      return result[0];
+    };
   }else if(network.chain_id===8453&&state.factory?.toLowerCase()==='0x420dd381b31aef6683db6b902084cb0ffece40da'&&pool.venue==='aerodrome') {
     kind='aerodrome_pool';
     request=amount=>({address:pool.pool,abi:aeroAbi,functionName:'getAmountOut',args:[amount,token.token_address]});
@@ -54,7 +63,7 @@ async function quotePool(client,network,token,pool,block,blockHash,deployments,{
     kind='uniswap_v2_reserves';quote=async amount=>v2AmountOut(amount,reserveIn,reserveOut);
   }else return unknown('Quote adapter unavailable for this verified pool');
   if(request)quote=async amount=>decode(await client.readContract({...request(amount),blockNumber:block}));
-  const amounts=inputAmounts(balance);let failures=0,buffer=[];
+  const amounts=fullOnly?[balance]:inputAmounts(balance);let failures=0,buffer=[];
   for(let index=0;index<amounts.length;index++) {
     const amount=amounts[index];
     let result;

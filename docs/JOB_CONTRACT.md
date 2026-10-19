@@ -44,10 +44,18 @@ no absolute paths or arbitrary file reads are supported.
 
 The optional `started_at` timestamp records when the current attempt was
 claimed by the worker. Resuming replaces it on the next claim. Older envelopes
-remain valid without it. The viewer then labels its timer "Since request"
-instead of claiming an exact execution time. Terminal timers stop at the last
-recorded update. A queued job uses its latest queue transition, not a previous
-attempt's start.
+remain valid without it. The viewer then labels its active timer "Since request"
+and its terminal timer "Request duration" instead of claiming an exact execution
+time. Terminal attempt and total timers stop at the last recorded event, falling
+back to the saved update time. Total duration includes waiting and pauses across
+attempts. A queued job uses its latest queue transition, not a previous attempt's
+start.
+
+Completed sell analysis leaves the wallet's progress card. An observed transition
+from queued or running to succeeded or partial shows a brief completion notice.
+Loading saved history does not repeat that notice. Activity retains the result,
+unknown checks, stages and stopped timers. Failed, paused and interrupted work
+keeps its recovery controls.
 
 States: queued -> running -> succeeded | partial | failed | cancelled.
 Recovery converts unfinished running jobs to interrupted. Explicit resume may

@@ -6,6 +6,23 @@ from urllib.parse import quote, urlsplit
 
 NETWORKS={n['chain_id']:n['network'] for n in json.loads((Path(__file__).parent/'networks.json').read_text())['networks']}
 
+UNISWAP_CHAINS={1:'ethereum',10:'optimism',56:'bnb',137:'polygon',8453:'base',42161:'arbitrum',43114:'avalanche',81457:'blast',130:'unichain',7777777:'zora',4663:'robinhood'}
+
+
+def market_url(chain_id, pool):
+    """Choose a known venue route without changing the recorded data source."""
+    venue=str(pool.get('venue','')).lower()
+    identity=str(pool.get('pool',''))
+    if venue in ('uniswap','uniswap-v2','uniswap-v3','uniswap-v4') and chain_id in UNISWAP_CHAINS and re.fullmatch(r'0x(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})',identity):
+        return f'https://app.uniswap.org/explore/pools/{UNISWAP_CHAINS[chain_id]}/{identity}'
+    if venue in ('aerodrome','aerodrome-slipstream') and chain_id==8453 and re.fullmatch(r'0x[0-9a-fA-F]{40}',identity):
+        pair=pool.get('paired_tokens') or []
+        if len(pair)==2 and all(isinstance(t,dict) and re.fullmatch(r'0x[0-9a-fA-F]{40}',str(t.get('address',''))) for t in pair):
+            # The ordinary liquidity search excludes unlisted pairs by default.
+            # This official pair selector includes them without connecting a wallet.
+            return f"https://aerodrome.finance/pools?token0={pair[0]['address']}&token1={pair[1]['address']}&chain=8453&chain0=8453&chain1=8453"
+    return pool.get('source_url')
+
 
 def mintclub_url(chain_id, symbol, token_type='ERC20'):
     slug=NETWORKS.get(chain_id)

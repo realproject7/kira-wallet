@@ -50,6 +50,16 @@ class DetailTests(unittest.TestCase):
                 'analysed_at':'2026-10-03T01:00:00Z','prices_at':'2026-10-03T01:00:00Z',
                 'chains':deepcopy(self.chains),'assets':assets}
 
+    def test_sell_out_does_not_sum_independent_wallet_quotes(self):
+        asset=self.asset();asset['sell_out']={'value_usd':4,'valuation':'reserve_reference'}
+        first=self.wallet('first',[asset]);second=self.wallet('second',[deepcopy(asset)])
+        self.assertEqual(project_details([first],self.root)['tokens'][0]['sell_out']['value_usd'],4)
+        both=project_details([first,second],self.root)['tokens'][0]
+        self.assertIsNone(both['sell_out'])
+        self.assertEqual([r['asset']['sell_out']['value_usd'] for r in both['wallets']],[4,4])
+        second['assets'][0]['sell_out']=None
+        self.assertIsNone(project_details([first,second],self.root)['tokens'][0]['sell_out'])
+
     def test_shared_token_sums_balances_and_values_without_shared_backing(self):
         first=self.wallet('first',[self.asset(balance='1.000000000000000001')])
         second=self.wallet('second',[self.asset(balance='2.000000000000000002',value=7)])

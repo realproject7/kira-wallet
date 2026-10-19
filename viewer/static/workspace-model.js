@@ -5,6 +5,7 @@
     const search = (filters.search || '').trim().toLowerCase();
     const rows = tokens.filter(t => (filters.testnets || t.environment !== 'testnet')
       && (!filters.network || filters.network === 'all' || String(t.chain_id) === String(filters.network))
+      && (!(filters.minimum > 0) || (t.environment !== 'testnet' && t.value_usd != null && t.value_usd >= filters.minimum))
       && (filters.pricing !== 'priced' || (t.value_usd != null && !t.unpriced_count))
       && (filters.pricing !== 'unpriced' || t.value_usd == null || t.unpriced_count > 0)
       && (!search || [t.symbol, t.name, t.address || 'native'].some(v => String(v || '').toLowerCase().includes(search))));
@@ -18,7 +19,7 @@
   }
   const active = job => ['queued', 'running'].includes(job.state);
   const rpcGap = chain => chain.lifecycle?.status!=='retired'&&chain.lifecycle?.status!=='retirement_reported'&&((chain.rpc_available===false&&!chain.rpc_pending)||(chain.registry_complete===false&&!chain.rpc_pending&&chain.registry_phase!=='deferred')||chain.candidate_balance_errors>0);
-  const coverageGap = chain => chain.head_status==='stale'||['retired','retirement_reported'].includes(chain.lifecycle?.status)||!chain.complete||rpcGap(chain)||chain.candidate_deferred>0||chain.market_pending||chain.market_errors>0||chain.token_detail_errors>0;
+  const coverageGap = chain => chain.lifecycle?.status!=='retired'&&(chain.head_status==='stale'||chain.lifecycle?.status==='retirement_reported'||!chain.complete||rpcGap(chain)||chain.candidate_deferred>0||chain.market_pending||chain.market_errors>0||chain.token_detail_errors>0);
   function networkEmpty(network, recordedCount) {
     if(recordedCount)return {title:'No tokens match these filters',message:'Lower the minimum value or clear your search to see recorded holdings.',activity:false};
     const rows=network.wallets||[];
@@ -28,29 +29,24 @@
     return {title:'No positive holdings recorded',message:'The completed checks found no positive holdings. Coverage can still omit tokens. Refresh holdings to check again.',activity:false};
   }
   function discoveryNotice(wallet, readiness = null) {
-    const lifecycle=(wallet?.chains||[]).filter(c=>c.environment==='mainnet'&&['retired','retirement_reported'].includes(c.lifecycle?.status));
-    const other=(wallet?.chains||[]).filter(c=>c.environment==='mainnet'&&!lifecycle.includes(c));
-    if(lifecycle.length&&other.some(coverageGap)){
-      const notice=coverageNotice({...wallet,chains:other},readiness);
-      if(notice)notice.message+=' '+lifecycle.map(c=>c.name+': '+(c.lifecycle.status==='retired'?'retired records are historical and excluded from current value; another provider cannot restart the network.':'retirement is reported without a verified official closure notice; changing provider is not a verified remedy.')).join(' ');
-      return notice;
-    }
-    if(lifecycle.length&&!other.some(coverageGap))return {title:'Archived networks',message:lifecycle.map(c=>c.name).join(', ')+'. Excluded from new research. Saved observations remain historical.',action:'none',rpcIssues:false};
-    return coverageNotice(wallet,readiness);
-  }
-  function coverageNotice(wallet, readiness = null) {
     if(!wallet?.analysed_at)return null;
-    const chains=(wallet.chains||[]).filter(c=>c.environment==='mainnet'),gaps=chains.filter(coverageGap);
+    const chains=(wallet.chains||[]).filter(c=>c.environment==='mainnet'&&c.lifecycle?.status!=='retired');
+    const gaps=chains.filter(coverageGap),unavailable=gaps.filter(rpcGap);
     if(readiness&&readiness.discovery_key_available!==true)return {title:'Connect Alchemy to update this portfolio',message:'Your saved holdings are available. Alchemy is required for new token and price lookups.',action:'settings',settingsLabel:'Connect Alchemy'};
-    if(!gaps.length)return null;
-    if(wallet.lookup_mode!=='all_networks'&&chains.some(c=>c.rpc_pending||c.registry_phase==='deferred'))return {title:'Update to all-network holdings',message:'This earlier scan checked a limited selection. Refresh holdings to check every configured network and all token candidates.',action:'refresh',refreshLabel:'Refresh holdings',settings:false};
-    const names=gaps.slice(0,3).map(c=>c.name).join(', ')+(gaps.length>3?' and '+(gaps.length-3)+' more':'');
-    return {title:'Some networks need attention',message:names+'. Available holdings are saved. Unavailable networks and unfinished token checks remain unknown. Open network coverage for details.',action:'refresh',refreshLabel:'Retry holdings',settings:false,rpcIssues:chains.some(rpcGap)};
+    const pending=gaps.length-unavailable.length;
+    const summary=(chains.length-gaps.length)+' of '+chains.length+' active networks checked'+(unavailable.length?' · '+unavailable.length+' unavailable':'')+(pending?' · '+pending+' incomplete':'');
+    const names=gaps.map(c=>c.name).join(', ');
+    const earlier=wallet.lookup_mode!=='all_networks'&&chains.some(c=>c.rpc_pending||c.registry_phase==='deferred');
+    return {title:'Network coverage · '+summary,
+      message:(earlier?'This earlier scan checked a limited selection. ':names?names+': missing balances and prices remain unknown. ':'Available checks are complete. Coverage can still omit tokens. ')+
+        'Refresh all holdings checks every configured active network, balances and markets for this wallet. Saved observations stay available while it runs.',
+      action:'refresh',refreshLabel:'Refresh all holdings',settings:false,rpcIssues:unavailable.length>0,gapCount:gaps.length};
   }
+  const jobEndTime=(job,now)=>active(job)?now:Date.parse(job.events?.at(-1)?.observed_at||job.updated_at);
   function jobPresentation(job, now = Date.now(), connected = true) {
     const labels = { queued: 'Queued', running: 'Running', succeeded: 'Completed', partial: 'Saved with gaps', interrupted: 'Interrupted', failed: 'Failed', cancelled: 'Stopped' };
     const start = job.state === 'queued' ? job.updated_at || job.created_at : job.started_at || job.created_at;
-    const end = active(job) ? now : Date.parse(job.events?.at(-1)?.observed_at || job.updated_at);
+    const end = jobEndTime(job,now);
     const elapsed = Math.max(0, Math.floor((end - Date.parse(start)) / 1000));
     const last = job.events?.at(-1)?.observed_at || job.updated_at;
     const quiet = job.state === 'running' && now - Date.parse(last) > 60000;
@@ -58,7 +54,7 @@
       label: job.cancel_requested && active(job) ? (job.scan_policy?'Pausing':'Stopping') : job.scan_policy&&job.state==='cancelled'?'Paused':job.scan_policy&&job.analysis_phase==='baseline'&&['partial','succeeded'].includes(job.state)?'Holdings saved':job.scan_policy&&job.analysis_phase==='enrichment'&&['partial','succeeded'].includes(job.state)?'Sell analysis saved':labels[job.state] || 'Unknown',
       active: active(job), spinner: connected && job.state === 'running', quiet,
       elapsed: Number.isFinite(elapsed) ? elapsed : null,
-      timerLabel: job.state === 'queued' ? 'Waiting' : job.started_at ? job.attempt>1?(job.scan_policy?'Current pass':'Attempt elapsed'):'Elapsed' : 'Since request',
+      timerLabel: job.state === 'queued' ? 'Waiting' : job.started_at ? job.attempt>1?(job.scan_policy?(active(job)?'Current pass':'Last pass'):'Attempt elapsed'):'Elapsed' : active(job)?'Since request':'Request duration',
       freshness: !connected ? 'Connection lost. Last recorded state shown.' : quiet ? 'Awaiting a new stage update. Still marked running.' : '',
     };
   }
@@ -98,11 +94,21 @@
       }
     }
     if(!active(job))eta='';
-    const age=Math.max(0,Math.floor((now-Date.parse(job.created_at))/1000));
+    const age=Math.max(0,Math.floor((jobEndTime(job,now)-Date.parse(job.created_at))/1000));
     const saved=active(job)&&(job.result||job.previous_result)?'Saved results remain available while research continues. Missing holdings and prices are still unknown.':'';
     return {count,eta,saved,cumulative:context.operation==='asset_review',assets:assetProgress(job),totalElapsed:Number.isFinite(age)?age:null,
       checked:known&&currentScope?checked:null,total:known&&currentScope?counts.total:null,
       lastProgress:job.progress_observed_at||null};
+  }
+  function jobTimeText(job,now=Date.now(),connected=true) {
+    const p=jobPresentation(job,now,connected);
+    const total=Math.max(0,Math.floor((jobEndTime(job,now)-Date.parse(job.created_at))/1000));
+    return p.timerLabel+' '+duration(p.elapsed)+(job.attempt>1&&(active(job)||job.started_at)?
+      ' · '+(active(job)?'Total elapsed':'Total duration')+' '+duration(Number.isFinite(total)?total:null):'');
+  }
+  function completedSellAnalyses(previous,jobs) {
+    return jobs.filter(job=>job.analysis_phase==='enrichment'&&['wallet.add','wallet.refresh'].includes(job.operation)&&
+      ['partial','succeeded'].includes(job.state)&&['running','queued'].includes(previous.get(job.job_id)));
   }
   function researchSession(jobs,wallet,now=Date.now()) {
     const rows=jobs.filter(j=>['wallet.add','wallet.refresh'].includes(j.operation)&&String(j.input?.wallet||j.input?.address||'').toLowerCase()===wallet?.key).sort((a,b)=>b.created_at.localeCompare(a.created_at));
@@ -112,34 +118,53 @@
     const basic=base?.analysis_phase!=='enrichment'?base:null;
     const job=deep||basic||latest,isDeep=job.analysis_phase==='enrichment';
     const basicReady=!!basic?.result&&['succeeded','partial'].includes(basic.state)||isDeep;
-    let mode,title,description,action=null,actionLabel=null;
+    let mode,title,description,failure=null,action=null,actionLabel=null;
     const legacy=basic?.scan_policy!=='alchemy_inventory_v1';
     if(active(job)){
       mode=job.cancel_requested?'pausing':job.state==='queued'?'waiting':'running';
-      title=job.cancel_requested?'Saving your progress':isDeep?'Analyzing sell routes':'Looking up your holdings';
+      title=job.cancel_requested?(isDeep?'Pausing sell analysis':'Pausing lookup'):isDeep?'Analyzing sell routes':job.state==='queued'?'Lookup queued':'Looking up tokens';
       description=job.cancel_requested?'Your saved results stay available.':job.state==='queued'?'Queued. Your saved portfolio stays available.':isDeep?'Checking sale and redemption estimates for your saved holdings. Balances are unchanged.':'Checking every configured network, token balances, prices and artwork.';
       action='cancel';actionLabel='Pause';
+    }else if(job.state==='failed'){
+      mode='failed';title=isDeep?'Sell analysis failed':'Lookup failed';
+      description=job.result||job.previous_result||wallet.analysed_at?'Your saved holdings are still available. Retry to continue from saved checks.':'Your wallet is saved. Holdings are not available yet.';
+      failure=jobErrorMessage(job);action=legacy?'refresh':'resume';actionLabel=legacy?'Refresh holdings':isDeep?'Retry sell analysis':'Retry holdings';
     }else if(legacy){
       mode='ready';title='Update your holdings';description='Refresh to check every configured network and all token candidates with Alchemy.';action='refresh';actionLabel='Refresh holdings';
-    }else if(['cancelled','interrupted','failed'].includes(job.state)){
-      mode='paused';title=isDeep?'Sell analysis paused':'Holdings lookup paused';
+    }else if(['cancelled','interrupted'].includes(job.state)){
+      mode=job.state==='interrupted'?'interrupted':'paused';title=isDeep?(mode==='interrupted'?'Sell analysis interrupted':'Sell analysis paused'):(mode==='interrupted'?'Lookup interrupted':'Lookup paused');
       description=job.errors?.some(e=>e.code==='no_progress')?'No new evidence was available. Check your connection, then retry.':'Your progress is saved. Resume when ready.';
       if(job.errors?.some(e=>e.code==='superseded')){description='A newer holdings lookup replaced this work.';}
       else{action='resume';actionLabel='Resume';}
     }else if(isDeep){
       mode='saved';title='Sell analysis saved';description='Available estimates are saved. Unavailable routes remain unknown; estimates exclude gas and do not guarantee execution.';
     }else{
-      mode='ready';title='Your holdings are ready';description='Balances, prices and artwork are available. Analyze sell routes only if you need sale or redemption estimates.';
+      mode=job.state==='partial'?'partial':'complete';title=mode==='partial'?'Completed with gaps':'Lookup complete';description=mode==='partial'?'The lookup finished with gaps. Available holdings are saved; some networks or token checks remain incomplete.':'The configured holdings checks finished. These are saved observations, not live balances.';
       if(basic?.result){action='deepen';actionLabel='Analyze sell routes';}
     }
-    return {basic,deep,job,isDeep,basicReady,mode,title,description,action,actionLabel};
+    return {basic,deep,job,isDeep,basicReady,mode,title,description,failure,action,actionLabel};
+  }
+  function walletStatus(jobs,wallet) {
+    // Optional sale analysis must not replace the holdings lookup status.
+    const lookup=researchSession(jobs.filter(j=>j.analysis_phase!=='enrichment'),wallet);
+    if(lookup)return {mode:lookup.mode,label:lookup.title,description:lookup.description,lookup};
+    if(!wallet?.analysed_at)return {mode:'pending',label:'Not checked',description:'Your wallet is saved. Start a holdings lookup to check its tokens.',lookup:null};
+    const chains=(wallet.chains||[]).filter(c=>c.lifecycle?.status!=='retired');
+    const partial=!chains.length||chains.some(coverageGap);
+    return {mode:partial?'partial':'saved',label:partial?'Saved with gaps':'Saved holdings',
+      description:partial?'Saved holdings are available. Some networks or token checks remain incomplete.':'Saved holdings are available. No lookup activity is recorded in this workspace.',lookup:null};
+  }
+  function jobErrorMessage(job) {
+    const error=job.errors?.[0];
+    if(error?.code==='engine_failed')return 'The lookup stopped unexpectedly. Retry to continue from any saved checks.';
+    return error?.message||'The lookup could not finish. Retry to continue from any saved checks.';
   }
   function duration(seconds) {
     if (seconds == null) return 'Unknown';
     const h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = seconds % 60;
     return (h ? h + 'h ' : '') + m + 'm ' + s + 's';
   }
-  const api = { catalog, pageSize, active, jobPresentation, jobProgress, assetProgress, researchSession, duration, discoveryNotice, coverageGap, networkEmpty };
+  const api = { catalog, pageSize, active, jobPresentation, jobProgress, jobTimeText, completedSellAnalyses, assetProgress, researchSession, walletStatus, jobErrorMessage, duration, discoveryNotice, coverageGap, networkEmpty };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KiraView = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

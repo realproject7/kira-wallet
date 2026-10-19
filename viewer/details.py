@@ -77,6 +77,9 @@ def project_details(wallets, root):
         token.update({'network': network, 'environment': network['environment'],
                       'balance': total_balance(assets), 'value_usd': total_value(assets),
                       'wallet_count': len(holdings), 'unpriced_count': sum(a.get('value_usd') is None for a in assets)})
+        # Separate wallet quotes may consume the same pool or curve backing.
+        # Never sum them into a purported combined full-position sale.
+        token['sell_out'] = assets[0].get('sell_out') if len(assets) == 1 else None
         links = {(link['label'], link['url']): link for a in assets for link in a['links']}
         token['links'] = list(links.values())
         pools={}

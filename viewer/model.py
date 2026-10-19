@@ -1,7 +1,7 @@
 """Read-only projection of wallet research snapshots into viewer data."""
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, localcontext
 from pathlib import Path
 import hashlib
 import json
@@ -12,8 +12,8 @@ from token_images import image_for, read_catalog, safe_image
 from chain_images import chain_image
 from native_assets import native_identity
 from details import project_details
-from cashout import classify as cashout_classification
-from market_records import canonical_token, canonical_source, merge_pools
+from sell_quotes import classify_with_cache as cashout_classification
+from market_records import canonical_token, canonical_source, merge_pools, market_url
 
 ROOT = Path(os.environ.get('KIRA_DATA_DIR',Path(__file__).resolve().parents[1])).expanduser().resolve()
 EXPLORERS = {1:'https://etherscan.io',8453:'https://basescan.org',81457:'https://blastscan.io',
@@ -82,6 +82,37 @@ def exit_quote(token):
             'chain_id': token['chain_id'], 'block_number': block,
             'observed_at': mint['observed_at'], 'royalty_included': True,
             'gas_included': False}
+
+def sell_out_estimate(quote, eligibility, reserve_price):
+    """Value saved full-position outputs without treating reserve spot as cash.
+
+    Amount-specific terminal routes take priority. A burn-only estimate values
+    the received reserve token, not a subsequent sale of that reserve. The quote
+    and the USD reference keep their independent clocks.
+    """
+    routes = [q for q in eligibility.get('quotes', [])
+              if q.get('partial_input') is False and number(q.get('quoted_output_usd')) is not None
+              and number((checked_price(q.get('output_price')) or {}).get('usd')) is not None]
+    if routes:
+        best = max(routes, key=lambda q: Decimal(q['quoted_output_usd']))
+        symbol = best.get('output_symbol') or (best.get('output_price') or {}).get('symbol')
+        if quote and best.get('output_address') == quote['output_address']:
+            symbol = quote['output_symbol']
+        return {**best, 'value_usd': number(best['quoted_output_usd']),
+                'valuation': 'terminal_reference', 'output_symbol': symbol}
+    if not quote:
+        return None
+    price = reserve_price or {}
+    usd = number(price.get('usd'))
+    usable = (usd is not None and usd > 0 and price.get('quality') == 'estimated'
+              and price.get('basis') in ('DEX market', 'Market index')
+              and price.get('observed_at') and price.get('source')
+              and not price.get('retained_from_previous'))
+    with localcontext() as context:
+        context.prec = 800
+        value = number(Decimal(quote['output_amount']) * Decimal(str(usd))) if usable else None
+    return {**quote, 'value_usd': value, 'valuation': 'reserve_reference',
+            'output_price': price if usable else None, 'execution_verified': False}
 
 MIN_PRICE_LIQUIDITY_USD=1000
 
@@ -212,14 +243,15 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             measured=pool.get('factory_measurement') or {}
             if not weight and measured.get('quote_balance'):
                 weight=(number(measured['quote_balance']) or 0)*(eth or 0) if measured.get('quote_symbol')=='WETH' else number(measured['quote_balance']) or 0
-            if label_venue not in found or weight>found[label_venue][0]:found[label_venue]=(weight,pool['source_url'])
+            destination=market_url(t['chain_id'],pool)
+            if label_venue not in found or weight>found[label_venue][0]:found[label_venue]=(weight,destination)
             pair=[]
             for coin in pool.get('paired_tokens',[])[:2]:
                 if not isinstance(coin,dict):continue
                 symbol=coin.get('symbol')
                 pair.append({'address':coin.get('address'),'symbol':symbol if isinstance(symbol,str) and symbol else '?',
                              'image_url':image_for(images,t['chain_id'],coin.get('address'),native_symbol=symbol if coin.get('address')=='0x'+'0'*40 else None)})
-            market_pools.append({'venue':label_venue,'pool':pool.get('pool'),'url':pool['source_url'],
+            market_pools.append({'venue':label_venue,'pool':pool.get('pool'),'url':destination,'source_url':pool['source_url'],
                 'pair':pair,'version_labels':pool.get('version_labels',[]),'fee_bps':pool.get('fee_bps'),'pool_kind':pool.get('pool_kind'),'liquidity_usd':number((pool.get('reported_liquidity') or {}).get('usd')),
                 'price_usd':number(pool.get('reported_price_usd')),'observed_at':pool.get('observed_at')})
         market_pools.sort(key=lambda row:-(row['liquidity_usd'] or 0))
@@ -233,7 +265,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             'quantity_retained':bool(t.get('metadata_evidence_retained') or t.get('balance_evidence_retained')),
             'burn_quote':(t.get('mintclub') or {}).get('wallet_full_burn'),
             'exit_quote':exit_quote(t),
-            'cashout_eligibility':cashout_classification(t,market,environment=next((c.get('environment') for c in snapshot.get('coverage',[]) if c.get('chain_id')==t['chain_id']),'unknown')),
+            'cashout_eligibility':cashout_classification(t,market,wallet_address=entry['address'],environment=next((c.get('environment') for c in snapshot.get('coverage',[]) if c.get('chain_id')==t['chain_id']),'unknown')),
             'exit_route': 'mintclub_burn' if t.get('mintclub') else 'dex_unquoted' if t.get('dex_liquidity_found') or any(pool_has_liquidity(pool) for pool in t.get('dex_pools',[])) else 'unverified',
             'image_url':safe_image(t.get('indexer_image_url')) or image_for(images,t['chain_id'],t['token_address'],mint=bool(t.get('mintclub'))),
             'curve_reserve': {'amount':market_token.get('curve_reserve',t['mintclub']['reserve_balance']),'symbol':t['mintclub']['reserve_symbol'],'address':t['mintclub']['reserve_token'],
@@ -241,6 +273,19 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         if t.get('mintclub'):
             mint=t['mintclub']
             assets[-1]['curve_state']={k:mint.get(k) for k in ('reserve_token','reserve_symbol','reserve_balance','current_supply','price_for_next_mint_in_reserve_token','burn_royalty_bps','block_number','observed_at')}
+    # Reuse prices already on disk. No RPC, route simulation or quote refresh.
+    for asset, token in zip(assets, tokens):
+        quote = asset['exit_quote']
+        reserve_price = None
+        if quote:
+            key = (token['chain_id'], quote['output_address'])
+            parent = by_address.get(key)
+            reserve_price = price_for(parent) if parent else checked_price(prices.get(key), legacy_pools.get(key, []))
+        asset['sell_out'] = sell_out_estimate(quote, asset['cashout_eligibility'], reserve_price)
+        estimate = asset['sell_out']
+        if estimate and not estimate.get('output_symbol'):
+            output_token = by_address.get((token['chain_id'], estimate['output_address']))
+            if output_token: estimate['output_symbol'] = output_token['symbol']
     coverage=[dict(c) for c in snapshot.get('coverage',[])]
     market_pending=(snapshot.get('pipeline') or {}).get('market_pending') is True
     for c in coverage:
@@ -275,6 +320,8 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             if c['environment']=='testnet':a['value_usd']=None
             a['archived']=retired(c['chain_id'])
             if a['archived']:a['historical_value_usd']=a['value_usd'];a['value_usd']=None
+            if a['environment'] != 'mainnet' or a['archived'] or a.get('quantity_retained'):
+                a['sell_out'] = None
         chains.append({'id':c['chain_id'],'name':c['name'],'environment':c['environment'],
             'image_url':chain_image(c['chain_id']),
             'assets':len(rows),'value_usd':sum(a['value_usd'] for a in rows if a['value_usd'] is not None) if c['environment']=='mainnet' and any(a['value_usd'] is not None for a in rows) else None,

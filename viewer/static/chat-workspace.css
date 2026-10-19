@@ -76,11 +76,6 @@ body.page-hidden .composer::before,body.page-hidden .thinking-dots i { animation
 
 /* Clear actions and bounded market groups share the existing component palette. */
 @media (min-width:981px) { .topbar,.workspace-tabs { width:calc(100% - var(--chat-width)); } .topbar .sync-status { display:none; } }
-.wallet-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:0; background:transparent; border:0; border-radius:0; }
-.wallet-actions button { display:inline-flex; align-items:center; justify-content:center; gap:7px; width:auto; min-height:40px; padding:9px 12px; border:1px solid #d8cde1; background:#fff; border-radius:9px; font-size:12px; box-shadow:0 1px 2px #36264408; cursor:pointer; }
-.wallet-actions button:first-child { background:#76558d; border-color:#76558d; color:#fff; }
-.wallet-actions button:hover { background:#f0e9f6; border-color:#a78db8; }.wallet-actions button:first-child:hover { background:#65457c; }.wallet-actions button:active { transform:translateY(1px); }
-.wallet-actions .ui-icon { width:16px; height:16px; }
 .market-links { display:flex; flex-direction:column; align-items:stretch; gap:6px; }
 .pool-link { display:flex; align-items:center; gap:8px; padding:9px 10px; border:1px solid #e5ddeb; border-radius:9px; background:#fff; min-width:0; color:#4d385e; }
 .pool-link:hover { background:#f4eef8; border-color:#c4aed2; }
@@ -91,7 +86,75 @@ body.page-hidden .composer::before,body.page-hidden .thinking-dots i { animation
 .venue-mark { display:inline-grid; place-items:center; width:19px; height:19px; background:#ece4f3; color:#715285; border-radius:5px; font-size:10px; flex:none; }
 .market-links .market-link { gap:6px; width:fit-content; }.detail-markets { margin-top:16px; }.detail-markets .pool-link { padding:12px; }.detail-markets .pool-description strong { font-size:13px; }
 .chat-icon-button:focus-visible,.pool-link:focus-visible,.more-pools summary:focus-visible { outline:3px solid #a58abd; outline-offset:3px; }
-@media(max-width:600px) { .wallet-actions button { flex:1 1 auto; }.pool-metrics { max-width:90px; }.detail-facts .fact-panel { min-width:0; } }
+@media(max-width:600px) { .pool-metrics { max-width:90px; }.detail-facts .fact-panel { min-width:0; } }
+
+/* Holdings keep identity and amounts together, with markets on a second row. */
+.holdings-table col:first-child { width:34%; }
+.holdings-table col:nth-child(2),.holdings-table col:nth-child(3),.holdings-table col:nth-child(4) { width:22%; }
+.holdings-table th:last-child,.holdings-table .holding-summary td:last-child { text-align:right; }
+.holdings-table .holding-summary td { border-bottom:0; padding-bottom:10px; }
+.holdings-table .holding-markets td { padding:0 12px 16px; text-align:left; }
+.holding-markets-content { display:flex; padding-left:43px; align-items:flex-start; }
+.holding-summary .token-name { gap:11px; }
+.holding-summary .token-name .coin-icon { width:32px; height:32px; }
+.holding-markets .market-links { flex:1; flex-direction:row; flex-wrap:wrap; align-items:flex-start; gap:8px; }
+.holding-markets .pool-link { flex:0 1 250px; min-width:190px; }
+.holding-markets .native-label { padding:10px 0; }
+.holding-markets .more-pools { flex-basis:100%; }
+.holding-markets .more-pools>div { display:flex; flex-wrap:wrap; gap:8px; padding-top:8px; }
+.token-title-line { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:8px; }
+.token-title-line h1 { margin:0; }
+.explorer-link { display:inline-flex; align-items:center; gap:7px; min-height:36px; padding:6px 10px; font-size:12px; border:1px solid #ded4e7; border-radius:8px; color:#675174; background:#fff; }
+.explorer-link img { object-fit:contain; }
+.explorer-link:hover { background:#f3eef7; }
+.select-option-label { display:flex; align-items:center; gap:9px; min-width:0; }
+.select-option-label .chain-icon { flex:none; width:19px; height:19px; }
+.select-option-label>span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.user-controls>button { justify-content:flex-start; gap:10px; padding:11px 12px; text-align:left; }
+.user-controls>button>.ui-icon { display:block; width:18px; height:18px; position:static; flex:0 0 18px; }
+.coverage-summary { margin:18px 0 0; border-bottom:1px solid #e5deea; color:#71617b; font-size:12px; }
+.coverage-summary summary { display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; list-style:none; min-height:44px; }
+.coverage-summary summary::-webkit-details-marker { display:none; }
+.coverage-summary summary strong { font-weight:500; }
+.coverage-toggle { display:flex; align-items:center; gap:8px; flex:none; }
+.coverage-toggle::after { content:'⌄'; }
+.coverage-summary details[open] .coverage-toggle::after { content:'⌃'; }
+.coverage-content { padding:2px 0 18px; line-height:1.7; max-width:920px; }
+.coverage-content p { margin:10px 0; }
+#discovery-network-details { white-space:pre-line; }
+.home-coverage-summary { margin:20px 0; border-left:2px solid #c7b5d8; padding:0 16px; font-size:12px; color:#71617b; }
+.home-coverage-summary strong { font-weight:500; }
+.home-coverage-summary p { margin:6px 0; line-height:1.6; }
+.home-coverage-summary .discovery-actions { margin-top:8px; }
+.catalog-value-filter { display:flex; align-items:center; gap:12px; margin-top:16px; font-size:12px; color:#71617b; }
+.explorer-link:focus-visible,.coverage-summary summary:focus-visible { outline:3px solid #a58abd; outline-offset:3px; }
+@media(max-width:1400px) {
+  .evidence-pane .holdings-table .holding-summary { border-bottom:0; padding-bottom:10px; }
+  .evidence-pane .holdings-table .holding-summary td { padding:0; }
+  .evidence-pane .holdings-table .holding-markets { display:block; padding:0 16px 16px; }
+  .evidence-pane .holdings-table .holding-markets td { padding:0; margin:0; }
+  .holding-markets-content { gap:10px; }
+  .holding-markets .pool-link { flex:1 1 190px; }
+}
+@media(max-width:600px) {
+  .holding-markets-content { display:block; }
+  .holding-markets .pool-link { flex-basis:100%; min-width:0; }
+  .token-title-line { gap:8px; }
+  .coverage-summary summary { align-items:flex-start; padding:12px 0; line-height:1.6; }
+}
+@media(min-width:1280px) and (max-width:1400px) {
+  .evidence-pane .holdings-table { display:table; }
+  .evidence-pane .holdings-table tbody { display:table-row-group; }
+  .evidence-pane .holdings-table thead { display:table-header-group; }
+  .evidence-pane .holdings-table thead tr { display:table-row; }
+  .evidence-pane .holdings-table th { display:table-cell; }
+  .evidence-pane .holdings-table colgroup { display:table-column-group; }
+  .evidence-pane .holdings-table .holding-summary,.evidence-pane .holdings-table .holding-markets { display:table-row; padding:0; }
+  .evidence-pane .holdings-table .holding-summary td { display:table-cell; margin:0; padding:16px 12px 10px; }
+  .evidence-pane .holdings-table .holding-summary td:nth-child(2) { text-align:right; }
+  .evidence-pane .holdings-table .holding-markets td { display:table-cell; padding:0 12px 16px; border-bottom:1px solid var(--line); }
+  .evidence-pane .holdings-table .mobile-label { display:none; }
+}
 
 /* Wallet identity and position share one row; evidence stays close to its value. */
 .detail-accounts .account-grid { grid-template-columns:1fr; gap:10px; }
@@ -106,16 +169,6 @@ body.page-hidden .composer::before,body.page-hidden .thinking-dots i { animation
 .account-position .account-meta { margin:0; font-size:11px; overflow-wrap:anywhere; }
 .account-card-heading .card-arrow { position:static; width:14px; flex:none; color:#8f789f; }
 .account-card-heading:focus-visible { outline:3px solid #a58abd; outline-offset:5px; }
-.account-card .account-facts { display:grid; grid-template-columns:1fr 1fr; gap:8px 20px; margin:14px 0 0; padding-top:12px; border-top:1px solid #eee8f2; }
-.account-card .account-facts > div { display:grid; gap:2px; }
-.account-card .account-facts dt { font-size:11px; }
-.account-card .account-facts dd { margin:0; font-size:12px; text-align:left; font-variant-numeric:tabular-nums; }
-.account-card .account-facts dd > span { display:inline; margin-left:5px; font-size:10px; }
-.account-card .account-quote { display:grid; gap:5px; margin-top:12px; padding:10px 12px; border-radius:8px; background:#f5f0f9; }
-.account-quote > div { display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:5px 12px; }
-.account-card .account-quote span { font-size:10px; color:#796587; }
-.account-card .account-quote strong { font-size:12px; font-weight:600; color:#5e486e; overflow-wrap:anywhere; }
-.account-card .account-quote small { font-size:10px; line-height:1.5; color:#796587; }
 .account-card .account-footnote { display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 14px; margin:12px 0 0; padding:0; border:0; font-size:10px; }
 .account-card .account-footnote > span:first-child { color:#6c547c; }
 @media(max-width:600px) {
@@ -125,5 +178,56 @@ body.page-hidden .composer::before,body.page-hidden .thinking-dots i { animation
   .account-position { order:2; flex:1 0 100%; max-width:100%; display:flex; align-items:baseline; justify-content:space-between; text-align:left; gap:8px; }
   .account-position .account-value { font-size:22px; }
   .account-position .account-meta { text-align:right; }
-  .account-card .account-facts { gap:8px 12px; }
+}
+
+/* Quote values sit beside spot values; market cards align with token titles. */
+.holdings-table.sale-table col:first-child { width:26%; }
+.holdings-table.sale-table col:nth-child(2) { width:22%; }
+.holdings-table.sale-table col:nth-child(3) { width:16%; }
+.holdings-table.sale-table col:nth-child(4),.holdings-table.sale-table col:nth-child(5) { width:18%; }
+.sale-table th,.sale-table .holding-summary td { padding-left:12px; padding-right:12px; }
+.sell-out-value { color:#715483; font-size:13px; font-weight:500; font-variant-numeric:tabular-nums; white-space:nowrap; }
+a.sell-out-value:hover { text-decoration:underline; text-underline-offset:3px; }
+.sell-out-value.unpriced { color:#8e8495; }
+.catalog-table th:first-child { width:24%; }
+.catalog-table th:nth-child(2) { width:14%; }
+.catalog-table th:nth-child(3) { width:22%; }
+.catalog-table th:nth-child(4) { width:8%; }
+.catalog-table th:nth-child(5),.catalog-table th:nth-child(6) { width:16%; text-align:right; }
+.catalog-table td,.catalog-table th { padding-left:12px; padding-right:12px; }
+.position-overview { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.position-overview .account-card-heading { flex:1; }
+.position-overview .wallet-card-identity strong { display:flex; gap:5px; align-items:center; }
+.position-values { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin:0; text-align:right; flex:none; }
+.position-values dt { font-size:11px; color:#82758a; margin-bottom:4px; }
+.position-values dd { margin:0; font-size:19px; font-weight:500; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.position-values .sell-out-value { font-size:19px; }
+.position-details { margin-top:10px; font-size:11px; color:#796587; }
+.position-details summary { cursor:pointer; width:fit-content; padding:5px 0; min-height:28px; }
+.position-details[open] summary { margin-bottom:6px; }
+.position-details p { font-size:12px; line-height:1.6; margin:10px 0; max-width:70ch; }
+.position-output { display:flex; flex-wrap:wrap; gap:6px 16px; align-items:baseline; justify-content:space-between; padding:10px 12px; background:#f5f0f9; border-radius:8px; }
+.position-output strong { font-size:13px; font-weight:500; }
+.position-evidence { display:grid; grid-template-columns:1fr 1fr; gap:10px 20px; margin:12px 0 2px; }
+.position-evidence dt { font-size:10px; color:#82758a; }
+.position-evidence dd { margin:2px 0 0; overflow-wrap:anywhere; }
+.position-details summary:focus-visible,.sell-out-value:focus-visible { outline:3px solid #a58abd; outline-offset:3px; }
+@media(max-width:1400px) {
+  .evidence-pane .catalog-table td:first-child { grid-column:1; grid-row:1; }
+  .evidence-pane .catalog-table td:nth-child(2) { grid-column:1; grid-row:2; margin-left:0; text-align:left; }
+  .evidence-pane .catalog-table td:nth-child(3) { grid-column:2; grid-row:2; margin-left:0; text-align:right; }
+  .evidence-pane .catalog-table td:nth-child(4) { grid-column:2; grid-row:1; }
+  .evidence-pane .catalog-table td:nth-child(5) { grid-column:1; grid-row:3; margin-left:0; text-align:left; }
+  .evidence-pane .catalog-table td:nth-child(6) { grid-column:2; grid-row:3; text-align:right; }
+  .evidence-pane .catalog-table td:nth-child(3)::before,.evidence-pane .catalog-table td:nth-child(4)::after { content:none; }
+  .catalog-chain .chain-link { min-height:0; }
+}
+@media(max-width:1279px) {
+  .evidence-pane .sale-table .holding-summary td:first-child { grid-column:1 / -1; grid-row:1; }
+  .evidence-pane .sale-table .holding-summary td:nth-child(2) { grid-column:1; grid-row:3; margin-left:0; text-align:left; }
+  .evidence-pane .sale-table .holding-summary td:nth-child(3) { grid-column:2; grid-row:3; }
+  .evidence-pane .sale-table .holding-summary td:nth-child(4) { grid-column:1; grid-row:2; text-align:left; }
+  .evidence-pane .sale-table .holding-summary td:nth-child(5) { grid-column:2; grid-row:2; margin-left:0; text-align:right; }
+  .position-overview { flex-wrap:wrap; }
+  .position-values { width:100%; gap:16px; text-align:left; }
 }

@@ -15,6 +15,12 @@ assert.equal(catalog(tokens, { pricing: 'unpriced' }).count, 1000);
 assert.equal(catalog(tokens, { network: '1', pricing: 'priced' }).rows[0].value_usd, 0);
 assert.equal(catalog(tokens, { search: 'contract-1234' }).rows[0].id, '8453:1234');
 assert.equal(catalog(tokens, { testnets: true }).count, 5002);
+assert.equal(catalog(tokens, {minimum:10,testnets:true}).count,3992);
+assert.equal(catalog(tokens, {minimum:5,network:'1'}).count,0);
+assert.equal(catalog(tokens, {minimum:10,pricing:'unpriced'}).count,0);
+assert.equal(catalog(tokens, {minimum:1234,search:'contract-1234'}).rows[0].value_usd,1234);
+assert.equal(catalog(tokens, {minimum:1235,search:'contract-1234',page:90}).page,1);
+assert.equal(catalog(tokens, {minimum:5000,testnets:true}).count,0,'Testnet USD fields never satisfy value filters.');
 const partial = { ...tokens[1], id: '1:partial', value_usd: 20, unpriced_count: 1 };
 assert.equal(catalog([partial], { pricing: 'unpriced' }).count, 1);
 assert.equal(catalog([partial], { pricing: 'priced' }).count, 0);
@@ -36,7 +42,23 @@ assert.equal(jobPresentation({ ...job, state: 'queued', started_at: '2026-10-03T
 assert.equal(jobPresentation({ ...job, cancel_requested: true }, time).label, 'Stopping');
 assert.equal(jobPresentation({ ...job, created_at: 'invalid' }, time).elapsed, null);
 assert.equal(duration(3661), '1h 1m 1s');
-const {jobProgress}=require('./viewer/static/workspace-model.js');
+const {jobProgress,jobTimeText}=require('./viewer/static/workspace-model.js');
+const ended={...job,attempt:3,scan_policy:'alchemy_inventory_v1',started_at:'2026-10-04T00:02:00Z',
+ updated_at:'2026-10-04T00:03:30Z',events:[{stage:'published',observed_at:'2026-10-04T00:03:00Z'}]};
+for(const state of ['succeeded','partial','failed','cancelled','interrupted']){
+ const terminal={...ended,state};
+ assert.equal(jobProgress(terminal,time).totalElapsed,180);
+ assert.equal(jobProgress(terminal,time+3600000).totalElapsed,180,'Completed work must not accrue time after its terminal event.');
+ assert.equal(jobTimeText(terminal,time),'Last pass 1m 0s · Total duration 3m 0s');
+ assert.equal(jobTimeText(terminal,time+3600000),jobTimeText(terminal,time));
+ assert.equal(jobProgress({...terminal,events:[]},time).totalElapsed,210,'Legacy jobs use their saved update time.');
+}
+assert.equal(jobProgress(ended,time).totalElapsed,300);
+assert.equal(jobProgress(ended,time+60000).totalElapsed,360);
+assert.equal(jobTimeText(ended,time),'Current pass 3m 0s · Total elapsed 5m 0s');
+assert.equal(jobTimeText({...ended,state:'queued'},time),'Waiting 1m 30s · Total elapsed 5m 0s');
+assert.equal(jobPresentation({...ended,state:'failed',started_at:null},time).timerLabel,'Request duration');
+assert.equal(jobProgress({...ended,state:'failed',events:[],updated_at:'invalid'},time).totalElapsed,null);
 const progressEvent=(checked,second,extra={})=>({stage:'onchain_progress',observed_at:new Date(time-30000+second*1000).toISOString(),
  counts:{checked,total:100},context:{operation:'balances',chain_id:8453,attempt:2},...extra});
 const measured={...job,attempt:2,result:{status:'completed_with_coverage_gaps'},events:[progressEvent(10,0),progressEvent(20,10),progressEvent(30,20)]};
@@ -69,3 +91,6 @@ const mixedNotice=require('./viewer/static/workspace-model.js').discoveryNotice(
 assert.equal(mixedNotice.action,'refresh');assert(mixedNotice.message.includes('Ham'));assert.doesNotMatch(mixedNotice.message,/deep scan|Free research/);
 const retiredAndTestnet={analysed_at:'2026-10-11T00:00:00Z',chains:[{name:'Degen L3',environment:'mainnet',complete:true,rpc_available:true,lifecycle:{status:'retired'}},{name:'Sepolia',environment:'testnet',complete:false,rpc_pending:true}]};
 assert(require('./viewer/static/workspace-model.js').discoveryNotice(retiredAndTestnet),'Testnet gaps cannot hide a mainnet retirement notice.');
+assert.equal(require('./viewer/static/workspace-model.js').coverageGap(retiredAndTestnet.chains[0]),false);
+assert.equal(require('./viewer/static/workspace-model.js').discoveryNotice(retiredAndTestnet).gapCount,0);
+assert.match(require('./viewer/static/workspace-model.js').discoveryNotice(completeStale).title,/1 incomplete/);

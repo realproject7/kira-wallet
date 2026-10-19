@@ -42,6 +42,21 @@ test('Aerodrome delegates stable or volatile curve and fee math to the verified 
  }},{chain_id:8453},token,pool,7n,HASH,[]);
  assert.equal(quote.kind,'aerodrome_pool');assert.equal(quote.output_amount,'20');
 });
+test('quick estimates never search partial balances after a full-input revert',async()=>{
+ const {token,pool,deployments}=fixture('v3');let calls=0;
+ const result=await quotePool({readContract:async()=>{calls++;throw Object.assign(Error('Synthetic revert'),{name:'ExecutionRevertedError'});}},
+  {chain_id:1},token,pool,7n,HASH,deployments,{fullOnly:true});
+ assert.equal(calls,1);assert.equal(result.status,'unknown');
+});
+test('quick V3 estimates reject a price boundary that can leave input unspent',async()=>{
+ const {token,pool,deployments}=fixture('v3');
+ for(const after of [4295128740n,1461446703485210103287273052203988822378723970341n]){
+  const result=await quotePool({readContract:async()=>[10n,after,0,0n]},{chain_id:1},token,pool,7n,HASH,deployments,{fullOnly:true});
+  assert.equal(result.status,'unknown');
+ }
+ const full=await quotePool({readContract:async()=>[10n,2n**96n,0,0n]},{chain_id:1},token,pool,7n,HASH,deployments,{fullOnly:true});
+ assert.equal(full.status,'quoted');assert.equal(full.partial_input,false);
+});
 test('failed and zero quotes stay unknown; deadline cancellation is not consumed by fallback',async()=>{
  const {token,pool,deployments}=fixture('v3');let calls=0;
  const failed=await quotePool({readContract:async()=>{calls++;throw new Error('RPC failed');}},{chain_id:1},token,pool,7n,HASH,deployments);

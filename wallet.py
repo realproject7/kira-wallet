@@ -543,6 +543,9 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
     market={'observed_at':result['compiled_at'],'wallet_address':wallet['address'],
         'native_usd':{k.removesuffix('_USD'):{'usd':float(v['value']),'observed_at':v.get('observed_at'),'basis':v.get('basis'),'source':v.get('source')} for k,v in refs.items()},'tokens':[]}
     if prices:market=refresh_metadata(result,market,folder,native_images=native_market.get('images'),discover_prices=True,supplemental=True)
+    if prices and phase=='holdings':
+        from sell_quotes import enrich as enrich_sell_quotes
+        market=enrich_sell_quotes(result,market,folder/'sell-quotes')
     if phase=='holdings':
         result['scope']='Direct holdings across every configured network. Alchemy and available explorer indexes are independently verified by on-chain balance reads.'
         result['pipeline'].update(phase='holdings',enrichment_pending=False,sell_analysis_optional=True)
@@ -613,6 +616,10 @@ def saved_holdings(wallet, snapshot_id, folder):
     return discovered
 
 
+class NetworkScopeError(ValueError):
+    code='network_scope_changed'
+
+
 def source_check(networks, folder):
     import urllib.request
     with urllib.request.urlopen(CONTRACT_SOURCE,timeout=20) as response:
@@ -621,7 +628,7 @@ def source_check(networks, folder):
     configured={name:address.lower() for name,address in re.findall(r"\[(\w+)\.id\]:\s*'([^']+)'",bond)}
     expected={SOURCE_NAMES[n['chain_id']]:n['mintclub_bond_address'].lower() for n in networks}
     if configured!=expected:
-        raise ValueError('Mint Club SDK network/deployment scope changed. Reconcile networks.json before analysis.')
+        raise NetworkScopeError('Mint Club SDK network/deployment scope changed. Reconcile networks.json before analysis.')
     atomic(folder/'mintclub-support.json',{'observed_at':h.now(),'source':CONTRACT_SOURCE,'networks_verified':len(networks),'bond_deployments':configured})
 
 
@@ -968,7 +975,9 @@ def main():
         event('registered',wallet=wallet['address'],tags=wallet['tags'],snapshot=str(folder.relative_to(ROOT)))
         try:
             if args.phase in ('holdings','baseline'):
-                source_check(networks,folder)
+                # Validate the full deployment catalog. Retirement only changes
+                # the research scope, not the SDK's historical deployments.
+                source_check(registered,folder)
                 result=research_holdings(wallet,folder,networks)
             elif args.phase=='sell':
                 source=args.holdings_snapshot or (manifest or {}).get('holdings_snapshot')
@@ -976,7 +985,7 @@ def main():
                 discovered=saved_holdings(wallet,source,folder)
                 result=finish(wallet,folder,networks,discovered,holdings_source=source)
             else:
-                source_check(networks,folder)
+                source_check(registered,folder)
                 phase_networks=networks
                 known=read(ASSETS/'sources/known-tokens.json')['tokens']
                 # Earlier positive identities are candidates, never reused balances.
@@ -998,7 +1007,7 @@ def main():
             atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,'completed_at':h.now(),'status':result['status']})
             event('published',snapshot=relative,counts=result['counts'],status=result['status'],viewer='http://127.0.0.1:8765')
         except Exception as error:
-            atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,**({'holdings_snapshot':args.holdings_snapshot or (manifest or {}).get('holdings_snapshot')} if args.phase=='sell' else {}),'failed_at':h.now(),'status':'failed','error':h.redact(str(error))})
+            atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,**({'holdings_snapshot':args.holdings_snapshot or (manifest or {}).get('holdings_snapshot')} if args.phase=='sell' else {}),'failed_at':h.now(),'status':'failed','error_code':getattr(error,'code','engine_failed'),'error':h.redact(str(error))})
             event('market_paused' if isinstance(error,MarketPause) else 'research_paused' if isinstance(error,ResearchPause) else 'failed',error=h.redact(str(error)),resume=str(folder.relative_to(ROOT)))
             raise SystemExit(1)
 
