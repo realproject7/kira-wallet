@@ -83,7 +83,7 @@ function refreshControlState(){
       (j.input.wallet||j.input.address)?.toLowerCase()===selectedWallet&&(!prices||j.operation==='prices.refresh'));
     const missing=prices&&!currentWallet()?.analysed_at;
     $(id).disabled=(sample&&id.startsWith('refresh'))||!!active||missing;
-    $(id).textContent=prices?(active?.state==='queued'?'Prices queued…':active?'Refreshing prices…':'Refresh prices'):$(id).textContent;
+    if(prices)$(id).textContent=active?.state==='queued'?'Prices queued…':active?'Refreshing prices…':'Refresh prices';
     $(id).title=sample?'Sample research cannot contact providers.':active?(prices?'A price refresh is already '+active.state+' for this wallet.':'A research job is already active for this wallet.'):missing?'Wait for the first saved report before refreshing prices.':prices?'Update prices for the saved report. Detailed research pauses briefly and resumes automatically.':'';
   }
   $('discovery-refresh').disabled=$('refresh-wallet').disabled;

@@ -93,6 +93,74 @@ body.page-hidden .composer::before,body.page-hidden .thinking-dots i { animation
 .chat-icon-button:focus-visible,.pool-link:focus-visible,.more-pools summary:focus-visible { outline:3px solid #a58abd; outline-offset:3px; }
 @media(max-width:600px) { .wallet-actions button { flex:1 1 auto; }.pool-metrics { max-width:90px; }.detail-facts .fact-panel { min-width:0; } }
 
+/* Holdings keep identity and amounts together, with markets on a second row. */
+.holdings-table col:first-child { width:34%; }
+.holdings-table col:nth-child(2),.holdings-table col:nth-child(3),.holdings-table col:nth-child(4) { width:22%; }
+.holdings-table th:last-child,.holdings-table .holding-summary td:last-child { text-align:right; }
+.holdings-table .holding-summary td { border-bottom:0; padding-bottom:10px; }
+.holdings-table .holding-markets td { padding:0 12px 16px; text-align:left; }
+.holding-markets-content { display:flex; gap:14px; align-items:flex-start; }
+.markets-label { flex:none; padding-top:12px; font-size:10px; color:#817687; }
+.holding-markets .market-links { flex:1; flex-direction:row; flex-wrap:wrap; align-items:flex-start; gap:8px; }
+.holding-markets .pool-link { flex:0 1 250px; min-width:190px; }
+.holding-markets .native-label { padding:10px 0; }
+.holding-markets .more-pools { flex-basis:100%; }
+.holding-markets .more-pools>div { display:flex; flex-wrap:wrap; gap:8px; padding-top:8px; }
+.token-title-line { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:8px; }
+.token-title-line h1 { margin:0; }
+.explorer-link { display:inline-flex; align-items:center; gap:7px; min-height:36px; padding:6px 10px; font-size:12px; border:1px solid #ded4e7; border-radius:8px; color:#675174; background:#fff; }
+.explorer-link img { object-fit:contain; }
+.explorer-link:hover { background:#f3eef7; }
+.select-option-label { display:flex; align-items:center; gap:9px; min-width:0; }
+.select-option-label .chain-icon { flex:none; width:19px; height:19px; }
+.select-option-label>span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.user-controls>button { justify-content:flex-start; gap:10px; padding:11px 12px; text-align:left; }
+.user-controls>button>.ui-icon { display:block; width:18px; height:18px; position:static; flex:0 0 18px; }
+.coverage-summary { margin:18px 0 0; border-bottom:1px solid #e5deea; color:#71617b; font-size:12px; }
+.coverage-summary summary { display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; list-style:none; min-height:44px; }
+.coverage-summary summary::-webkit-details-marker { display:none; }
+.coverage-summary summary strong { font-weight:500; }
+.coverage-toggle { display:flex; align-items:center; gap:8px; flex:none; }
+.coverage-toggle::after { content:'⌄'; }
+.coverage-summary details[open] .coverage-toggle::after { content:'⌃'; }
+.coverage-content { padding:2px 0 18px; line-height:1.7; max-width:920px; }
+.coverage-content p { margin:10px 0; }
+#discovery-network-details { white-space:pre-line; }
+.home-coverage-summary { margin:20px 0; border-left:2px solid #c7b5d8; padding:0 16px; font-size:12px; color:#71617b; }
+.home-coverage-summary strong { font-weight:500; }
+.home-coverage-summary p { margin:6px 0; line-height:1.6; }
+.home-coverage-summary .discovery-actions { margin-top:8px; }
+.catalog-value-filter { display:flex; align-items:center; gap:12px; margin-top:16px; font-size:12px; color:#71617b; }
+.explorer-link:focus-visible,.coverage-summary summary:focus-visible { outline:3px solid #a58abd; outline-offset:3px; }
+@media(max-width:1400px) {
+  .evidence-pane .holdings-table .holding-summary { border-bottom:0; padding-bottom:10px; }
+  .evidence-pane .holdings-table .holding-summary td { padding:0; }
+  .evidence-pane .holdings-table .holding-markets { display:block; padding:0 16px 16px; }
+  .evidence-pane .holdings-table .holding-markets td { padding:0; margin:0; }
+  .holding-markets-content { gap:10px; }
+  .holding-markets .pool-link { flex:1 1 190px; }
+}
+@media(max-width:600px) {
+  .holding-markets-content { display:block; }
+  .markets-label { display:block; padding:0 0 7px; }
+  .holding-markets .pool-link { flex-basis:100%; min-width:0; }
+  .token-title-line { gap:8px; }
+  .coverage-summary summary { align-items:flex-start; padding:12px 0; line-height:1.6; }
+}
+@media(min-width:1280px) and (max-width:1400px) {
+  .evidence-pane .holdings-table { display:table; }
+  .evidence-pane .holdings-table tbody { display:table-row-group; }
+  .evidence-pane .holdings-table thead { display:table-header-group; }
+  .evidence-pane .holdings-table thead tr { display:table-row; }
+  .evidence-pane .holdings-table th { display:table-cell; }
+  .evidence-pane .holdings-table colgroup { display:table-column-group; }
+  .evidence-pane .holdings-table .holding-summary,.evidence-pane .holdings-table .holding-markets { display:table-row; padding:0; }
+  .evidence-pane .holdings-table .holding-summary td { display:table-cell; margin:0; padding:16px 12px 10px; }
+  .evidence-pane .holdings-table .holding-summary td:nth-child(2) { text-align:right; }
+  .evidence-pane .holdings-table .holding-markets td { display:table-cell; padding:0 12px 16px; border-bottom:1px solid var(--line); }
+  .evidence-pane .holdings-table .mobile-label { display:none; }
+}
+
 /* Wallet identity and position share one row; evidence stays close to its value. */
 .detail-accounts .account-grid { grid-template-columns:1fr; gap:10px; }
 .detail-accounts .account-card { min-width:0; padding:16px 18px; border-radius:12px; }

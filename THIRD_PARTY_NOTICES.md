@@ -57,3 +57,10 @@ and [Aerodrome favicon](https://aerodrome.finance/svg/AERO/favicon.svg).
 These marks identify external services and remain their respective owners' marks.
 Kira does not claim affiliation or endorsement. The original files are served
 locally from `viewer/static/venues/`.
+
+## Explorer mark
+
+The Etherscan icon in `viewer/static/explorers/` identifies links to Etherscan.
+It was retrieved unchanged on October 19, 2026 from
+[Etherscan documentation](https://docs.etherscan.io/mintlify-assets/_mintlify/favicons/etherscan/PMbbZQeU1A_1WqNP/_generated/favicon/android-chrome-192x192.png).
+The mark belongs to its owner and does not imply affiliation or endorsement.

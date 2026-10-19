@@ -5,6 +5,7 @@
     const search = (filters.search || '').trim().toLowerCase();
     const rows = tokens.filter(t => (filters.testnets || t.environment !== 'testnet')
       && (!filters.network || filters.network === 'all' || String(t.chain_id) === String(filters.network))
+      && (!(filters.minimum > 0) || (t.environment !== 'testnet' && t.value_usd != null && t.value_usd >= filters.minimum))
       && (filters.pricing !== 'priced' || (t.value_usd != null && !t.unpriced_count))
       && (filters.pricing !== 'unpriced' || t.value_usd == null || t.unpriced_count > 0)
       && (!search || [t.symbol, t.name, t.address || 'native'].some(v => String(v || '').toLowerCase().includes(search))));
@@ -18,7 +19,7 @@
   }
   const active = job => ['queued', 'running'].includes(job.state);
   const rpcGap = chain => chain.lifecycle?.status!=='retired'&&chain.lifecycle?.status!=='retirement_reported'&&((chain.rpc_available===false&&!chain.rpc_pending)||(chain.registry_complete===false&&!chain.rpc_pending&&chain.registry_phase!=='deferred')||chain.candidate_balance_errors>0);
-  const coverageGap = chain => chain.head_status==='stale'||['retired','retirement_reported'].includes(chain.lifecycle?.status)||!chain.complete||rpcGap(chain)||chain.candidate_deferred>0||chain.market_pending||chain.market_errors>0||chain.token_detail_errors>0;
+  const coverageGap = chain => chain.lifecycle?.status!=='retired'&&(chain.head_status==='stale'||chain.lifecycle?.status==='retirement_reported'||!chain.complete||rpcGap(chain)||chain.candidate_deferred>0||chain.market_pending||chain.market_errors>0||chain.token_detail_errors>0);
   function networkEmpty(network, recordedCount) {
     if(recordedCount)return {title:'No tokens match these filters',message:'Lower the minimum value or clear your search to see recorded holdings.',activity:false};
     const rows=network.wallets||[];
@@ -28,24 +29,18 @@
     return {title:'No positive holdings recorded',message:'The completed checks found no positive holdings. Coverage can still omit tokens. Refresh holdings to check again.',activity:false};
   }
   function discoveryNotice(wallet, readiness = null) {
-    const lifecycle=(wallet?.chains||[]).filter(c=>c.environment==='mainnet'&&['retired','retirement_reported'].includes(c.lifecycle?.status));
-    const other=(wallet?.chains||[]).filter(c=>c.environment==='mainnet'&&!lifecycle.includes(c));
-    if(lifecycle.length&&other.some(coverageGap)){
-      const notice=coverageNotice({...wallet,chains:other},readiness);
-      if(notice)notice.message+=' '+lifecycle.map(c=>c.name+': '+(c.lifecycle.status==='retired'?'retired records are historical and excluded from current value; another provider cannot restart the network.':'retirement is reported without a verified official closure notice; changing provider is not a verified remedy.')).join(' ');
-      return notice;
-    }
-    if(lifecycle.length&&!other.some(coverageGap))return {title:'Archived networks',message:lifecycle.map(c=>c.name).join(', ')+'. Excluded from new research. Saved observations remain historical.',action:'none',rpcIssues:false};
-    return coverageNotice(wallet,readiness);
-  }
-  function coverageNotice(wallet, readiness = null) {
     if(!wallet?.analysed_at)return null;
-    const chains=(wallet.chains||[]).filter(c=>c.environment==='mainnet'),gaps=chains.filter(coverageGap);
+    const chains=(wallet.chains||[]).filter(c=>c.environment==='mainnet'&&c.lifecycle?.status!=='retired');
+    const gaps=chains.filter(coverageGap),unavailable=gaps.filter(rpcGap);
     if(readiness&&readiness.discovery_key_available!==true)return {title:'Connect Alchemy to update this portfolio',message:'Your saved holdings are available. Alchemy is required for new token and price lookups.',action:'settings',settingsLabel:'Connect Alchemy'};
-    if(!gaps.length)return null;
-    if(wallet.lookup_mode!=='all_networks'&&chains.some(c=>c.rpc_pending||c.registry_phase==='deferred'))return {title:'Update to all-network holdings',message:'This earlier scan checked a limited selection. Refresh holdings to check every configured network and all token candidates.',action:'refresh',refreshLabel:'Refresh holdings',settings:false};
-    const names=gaps.slice(0,3).map(c=>c.name).join(', ')+(gaps.length>3?' and '+(gaps.length-3)+' more':'');
-    return {title:'Some networks need attention',message:names+'. Available holdings are saved. Unavailable networks and unfinished token checks remain unknown. Open network coverage for details.',action:'refresh',refreshLabel:'Retry holdings',settings:false,rpcIssues:chains.some(rpcGap)};
+    const pending=gaps.length-unavailable.length;
+    const summary=(chains.length-gaps.length)+' of '+chains.length+' active networks checked'+(unavailable.length?' · '+unavailable.length+' unavailable':'')+(pending?' · '+pending+' incomplete':'');
+    const names=gaps.map(c=>c.name).join(', ');
+    const earlier=wallet.lookup_mode!=='all_networks'&&chains.some(c=>c.rpc_pending||c.registry_phase==='deferred');
+    return {title:'Network coverage · '+summary,
+      message:(earlier?'This earlier scan checked a limited selection. ':names?names+': missing balances and prices remain unknown. ':'Available checks are complete. Coverage can still omit tokens. ')+
+        'Refresh all holdings checks every configured active network, balances and markets for this wallet. Saved observations stay available while it runs.',
+      action:'refresh',refreshLabel:'Refresh all holdings',settings:false,rpcIssues:unavailable.length>0,gapCount:gaps.length};
   }
   function jobPresentation(job, now = Date.now(), connected = true) {
     const labels = { queued: 'Queued', running: 'Running', succeeded: 'Completed', partial: 'Saved with gaps', interrupted: 'Interrupted', failed: 'Failed', cancelled: 'Stopped' };

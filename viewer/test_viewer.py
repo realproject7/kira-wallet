@@ -549,6 +549,10 @@ class ViewerTests(unittest.TestCase):
                 for name in ('mintclub.png','uniswap.svg','aerodrome.svg'):
                     with urllib.request.urlopen(base+'/venues/'+name) as r:
                         self.assertEqual(r.status,200);self.assertGreater(len(r.read()),100)
+                for name in ('etherscan.png',):
+                    with urllib.request.urlopen(base+'/explorers/'+name) as r:
+                        self.assertEqual(r.headers['Content-Type'],'image/png')
+                        self.assertTrue(r.read().startswith(b'\x89PNG'))
                 with urllib.request.urlopen(base+'/ows-logo.svg') as r:
                     self.assertEqual(r.headers['Content-Type'],'image/svg+xml')
                     self.assertIn(b'<svg',r.read())

@@ -13,7 +13,7 @@ from chain_images import chain_image
 from native_assets import native_identity
 from details import project_details
 from cashout import classify as cashout_classification
-from market_records import canonical_token, canonical_source, merge_pools
+from market_records import canonical_token, canonical_source, merge_pools, market_url
 
 ROOT = Path(os.environ.get('KIRA_DATA_DIR',Path(__file__).resolve().parents[1])).expanduser().resolve()
 EXPLORERS = {1:'https://etherscan.io',8453:'https://basescan.org',81457:'https://blastscan.io',
@@ -212,14 +212,15 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             measured=pool.get('factory_measurement') or {}
             if not weight and measured.get('quote_balance'):
                 weight=(number(measured['quote_balance']) or 0)*(eth or 0) if measured.get('quote_symbol')=='WETH' else number(measured['quote_balance']) or 0
-            if label_venue not in found or weight>found[label_venue][0]:found[label_venue]=(weight,pool['source_url'])
+            destination=market_url(t['chain_id'],pool)
+            if label_venue not in found or weight>found[label_venue][0]:found[label_venue]=(weight,destination)
             pair=[]
             for coin in pool.get('paired_tokens',[])[:2]:
                 if not isinstance(coin,dict):continue
                 symbol=coin.get('symbol')
                 pair.append({'address':coin.get('address'),'symbol':symbol if isinstance(symbol,str) and symbol else '?',
                              'image_url':image_for(images,t['chain_id'],coin.get('address'),native_symbol=symbol if coin.get('address')=='0x'+'0'*40 else None)})
-            market_pools.append({'venue':label_venue,'pool':pool.get('pool'),'url':pool['source_url'],
+            market_pools.append({'venue':label_venue,'pool':pool.get('pool'),'url':destination,'source_url':pool['source_url'],
                 'pair':pair,'version_labels':pool.get('version_labels',[]),'fee_bps':pool.get('fee_bps'),'pool_kind':pool.get('pool_kind'),'liquidity_usd':number((pool.get('reported_liquidity') or {}).get('usd')),
                 'price_usd':number(pool.get('reported_price_usd')),'observed_at':pool.get('observed_at')})
         market_pools.sort(key=lambda row:-(row['liquidity_usd'] or 0))
