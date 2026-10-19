@@ -2,6 +2,7 @@
 from decimal import Decimal, InvalidOperation
 import json
 from chain_images import chain_image
+from market_records import pool_identity
 
 
 def total_value(assets):
@@ -58,7 +59,10 @@ def project_details(wallets, root):
     for wallet in wallets:
         for c in wallet['chains']:
             catalog.setdefault(c['id'], {k: c[k] for k in ('id', 'name', 'environment') if k in c})
-    for c in catalog.values(): c['image_url'] = chain_image(c['id'])
+    from chain_lifecycle import lifecycle
+    for c in catalog.values():
+        c['image_url'] = chain_image(c['id'])
+        c['lifecycle'] = lifecycle(c['id'])
 
     groups = {}
     for wallet in wallets:
@@ -69,7 +73,7 @@ def project_details(wallets, root):
         first = holdings[0][1]
         network = catalog.get(first['chain_id'], {'id': first['chain_id'], 'name': str(first['chain_id']), 'environment': 'unknown'})
         assets = [a for _, a in holdings]
-        token = {k: first.get(k) for k in ('id', 'chain_id', 'symbol', 'name', 'address', 'is_native', 'image_url')}
+        token = {k: first.get(k) for k in ('id', 'chain_id', 'symbol', 'name', 'address', 'is_native', 'image_url', 'curve_reserve')}
         token.update({'network': network, 'environment': network['environment'],
                       'balance': total_balance(assets), 'value_usd': total_value(assets),
                       'wallet_count': len(holdings), 'unpriced_count': sum(a.get('value_usd') is None for a in assets)})
@@ -78,10 +82,10 @@ def project_details(wallets, root):
         pools={}
         for asset in assets:
             for pool in asset.get('market_pools',[]):
-                previous=pools.get(pool['url'])
+                identity=pool_identity(pool);previous=pools.get(identity)
                 # Market evidence has its own clock, independent of wallet reads.
                 if previous is None or (pool.get('observed_at') or '') > (previous.get('observed_at') or ''):
-                    pools[pool['url']]=pool
+                    pools[identity]=pool
         token['market_pools']=sorted(pools.values(),key=lambda p:-(p.get('liquidity_usd') or 0))
         rows = []
         by_wallet = {w['key']: a for w, a in holdings}
@@ -115,7 +119,7 @@ def project_details(wallets, root):
             if not held and coverage_status(wallet,coverage)=='Researched' and network['environment'] == 'mainnet': value = 0
             account.update({'position_count': len(held), 'value_usd': value,
                             'unpriced_count': sum(a.get('value_usd') is None for a in held),
-                            'coverage': coverage_status(wallet, coverage), 'has_holdings': bool(held)})
+                            'coverage': 'Archived network' if network['lifecycle'].get('status') == 'retired' else coverage_status(wallet, coverage), 'has_holdings': bool(held)})
             rows.append(account)
         value = total_value(assets)
         if not assets and rows and all(r['coverage'] == 'Researched' for r in rows) and network['environment'] == 'mainnet': value = 0

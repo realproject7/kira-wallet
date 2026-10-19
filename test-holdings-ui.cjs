@@ -71,7 +71,7 @@ assert.match(node('asset-groups').innerHTML,/ETH/);assert.match(node('asset-grou
 console.log('Unknown wallet value and explicit filter recovery preserve all recorded holdings.');
 context.unitPrice=n=>'$'+n;context.quantity=String;context.tokenHref=String;context.coinIcon=()=>'';
 context.shortAddress=s=>s.slice(0,6)+'…'+s.slice(-4);
-vm.runInContext(source.slice(source.indexOf('function marketLinks('),source.indexOf('function accountCard(')),context);
+vm.runInContext(source.slice(source.indexOf('function venueMark('),source.indexOf('function accountCard(')),context);
 vm.runInContext(source.slice(source.indexOf('function assetRow(a){'),source.indexOf('function renderHoldings(){')),context);
 const historic=context.assetRow({id:'fixture',symbol:'Fixture',name:'Fixture',balance:'1',value_usd:100,links:[],
   price:{usd:100,basis:'Curve spot',retained_from_previous:true,observed_at:'2026-10-01T00:00:00Z'}});
@@ -183,5 +183,11 @@ const networkContext={...context,state:{details:{tokens:[]}},tokenSearch:'',mini
 vm.createContext(networkContext);vm.runInContext(source.slice(source.indexOf('function renderNetworkTokens('),source.indexOf('function renderDetail(')),networkContext);
 const network={id:42161,wallets:[{coverage:'Research pending'}]};
 networkContext.renderNetworkTokens(network);assert.match(node('network-token-empty').innerHTML,/Research is pending/);assert.match(node('network-token-empty').innerHTML,/#\/activity/);
+network.lifecycle={status:'retired'};
+networkContext.renderNetworkTokens(network);assert.match(node('network-token-empty').innerHTML,/Archived network/);assert(!node('network-token-empty').innerHTML.includes('#/activity'));
+delete network.lifecycle;
 networkContext.state.details.tokens=[{chain_id:42161,symbol:'SAMPLE',name:'Sample',value_usd:null}];networkContext.minimum=10;
 networkContext.renderNetworkTokens(network);assert.match(node('network-token-empty').innerHTML,/filters/);assert(!node('network-token-empty').innerHTML.includes('#/activity'));
+
+const paired=context.marketLinks([{label:'Mint Club',url:'https://mint.club/token/base/PLOT'}],{symbol:'PLOT',chain_id:8453,curve_reserve:{symbol:'HUNT',address:'0x'+'2'.repeat(40),amount:'9'}},false);
+assert.match(paired,/PLOT \/ HUNT/);assert.match(paired,/venues\/mintclub.png/);

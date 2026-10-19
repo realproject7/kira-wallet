@@ -14,6 +14,47 @@ from kira_agent import AgentStore
 from test_kira_agent import settings, ready
 
 class ResearchToolsTest(unittest.TestCase):
+    def test_large_inventory_queries_search_rank_aggregate_without_dumping_pages(self):
+        from copy import deepcopy
+        from kira_agent import read_completion, read_receipt
+        import model
+        state,stamp,stale=model.load_state(self.root)
+        wallet=state['wallets'][0];base=deepcopy(wallet['assets'][0])
+        wallet['assets']=[{**deepcopy(base),'id':f'8453:0x{i:040x}','address':f'0x{i:040x}',
+            'symbol':'PLOT' if i in (1500,1600) else 'FIX','name':'Fixture '+str(i),'chain_id':8453,
+            'value_usd':i,'environment':'mainnet','archived':False} for i in range(1722)]
+        wallet['assets'][-1]['value_usd']=None
+        wallet['assets'][-2].update(environment='testnet',value_usd=999999)
+        wallet['assets'][-3].update(archived=True,value_usd=999999)
+        with patch('model.load_state',return_value=(state,stamp,stale)):
+            result=self.call('holdings_query',{'mode':'rank','limit':5})
+            self.assertEqual([r['value_usd'] for r in result['results']],['1718','1717','1716','1715','1714'])
+            self.assertEqual(result['scanned_position_count'],1722)
+            self.assertEqual(result['unpriced_position_count'],1);self.assertEqual(result['outside_scope_count'],2)
+            self.assertLess(len(json.dumps(result)),30000)
+            search=self.call('holdings_query',{'mode':'search','query':'PLOT','chain_id':8453})
+            self.assertTrue(search['ambiguous']);self.assertEqual(search['matched_asset_count'],2)
+            self.assertEqual(search['match_type'],'exact')
+            wallet['assets'][10]['name']='PLOT fan token'
+            self.assertEqual(self.call('holdings_query',{'mode':'search','query':'PLOT'})['matched_asset_count'],2)
+            receipts=[]
+            for offset in (0,1):
+                args={'mode':'search','query':'PLOT','limit':1,'offset':offset}
+                page=self.call('holdings_query',args);receipts.append(read_receipt('holdings_query',args,page))
+            self.assertEqual(read_completion('Use holdings_query for PLOT',receipts,self.tools)['status'],'complete')
+            aggregate=self.call('holdings_query',{'mode':'aggregate','minimum_value_usd':1700})
+            self.assertEqual(aggregate['matched_position_count'],19)
+            self.assertEqual(aggregate['valuation']['all_priced_positions']['estimated_value_usd'],str(sum(range(1700,1719))))
+            page=self.call('wallet_read',{'wallet':self.first['address_key'],'limit':100})
+            receipts=[{'name':'records_read','arguments':{'reads':[{'name':'wallet_read','arguments':{'wallet':self.first['address_key'],'limit':100}}]},'reads':[read_receipt('wallet_read',{'wallet':self.first['address_key'],'limit':100},page)]}]
+            self.assertEqual(read_completion('상위 5개를 알려줘',receipts,self.tools)['status'],'partial')
+            receipts.append(read_receipt('holdings_query',{'mode':'rank','limit':5},result))
+            self.assertEqual(read_completion('top 5 positions',receipts,self.tools)['status'],'complete')
+            with self.assertRaises(JobError):self.call('holdings_query',{'mode':'rank','wallet':self.other})
+        for args in ({'mode':'search'},{'mode':'rank','limit':100},{'mode':'rank','environment':'other'},{'mode':'rank','group_by':'symbol'}):
+            with self.assertRaises(JobError):self.call('holdings_query',args)
+        self.assertEqual(JobStore(self.root).list(),[])
+
     def test_value_filter_counts_saved_matches_without_turning_unknowns_into_zero(self):
         from copy import deepcopy
         import sys
@@ -78,7 +119,7 @@ class ResearchToolsTest(unittest.TestCase):
         store._run(key,self.config,'Read the requested sources.','요청한 두 체인의 저장 기록을 읽어줘.',store.epoch)
         turn=store.turns[key]
         self.assertEqual(turn['state'],'partial');self.assertEqual(len(prompts),3)
-        self.assertIn('unfinished requested reads',prompts[-1]);self.assertIn('token_read',turn['answer'])
+        self.assertIn('unfinished requested reads',prompts[-1]);self.assertIn('일부 기록',turn['answer']);self.assertNotIn('token_read',turn['answer'])
         self.assertTrue(turn['read_completion']['failed'])
 
     def test_planning_cannot_enqueue_and_action_runs_once_after_empty_plan(self):
@@ -345,6 +386,6 @@ class ResearchToolsTest(unittest.TestCase):
         key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
         with patch.object(ResearchTools,'call',return_value={'data':'界'*100000}):
             store._run(key,self.config,'Inspect records.','Inspect records.',store.epoch)
-        self.assertEqual(store.turns[key]['error']['code'],'tool_limit');self.assertEqual(len(prompts),9)
+        self.assertEqual(store.turns[key]['error']['code'],'context_limit');self.assertEqual(len(prompts),3)
         self.assertTrue(all(len(p.encode())<=400000 for p in prompts));self.assertIn('context limit',prompts[1])
         self.assertTrue(all(row['status']=='failed' for row in store.turns[key]['tool_calls']))

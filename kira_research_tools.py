@@ -9,6 +9,7 @@ CATALOG = [
     {'name':'records_read','arguments':{'reads':'List of 0 to 32 declared read tools, each with name and arguments.'},'description':'Declare and execute the complete requested read plan, including every requested source. Includes one receipt per read. An empty plan is for greetings or action-only requests. Read tools only; never queues research.'},
     {'name':'portfolio_read','arguments':{},'description':'Read approved wallet summaries and coverage. Includes a bounded first holdings page; use wallet_read for more.'},
     {'name':'wallet_read','arguments':{'wallet':'registered address or exact name'},'optional_arguments':{'offset':'nonnegative integer, default 0','limit':'integer 1 to 100, default 100'},'description':'Read a compact holdings page of one approved wallet. Follow next_offset until null for the complete recorded inventory. Use token_read for curve, market and exit details.'},
+    {'name':'holdings_query','arguments':{'mode':'search, rank or aggregate'},'optional_arguments':{'query':'Token symbol, name, exact contract or native. Required for search. Use one query per token.','wallet':'Optional registered wallet name or address; omit for every approved wallet.','chain_id':'Optional positive chain ID','environment':'mainnet (default), testnet or all','group_by':'asset (default: sum priced positions by chain and contract) or position','minimum_value_usd':'Optional nonnegative USD minimum per position; unknowns excluded and counted.','offset':'nonnegative integer, default 0','limit':'integer 1 to 25, default 10'},'description':'Search names, rank top N or aggregate the ENTIRE approved saved inventory on the host. No inventory pagination or jobs needed. Returns exact counts, values, ambiguity and bounded detailed matches. Use search for symbol-only questions, rank for top-N questions and aggregate for counts or sums.'},
     {'name':'token_read','arguments':{'chain_id':'positive integer','address':'contract address or native'},'optional_arguments':{'minimum_value_usd':'Nonnegative USD number or decimal string. Filter by recorded mainnet value; unknowns stay separate.'},'description':'Read this asset across ALL approved wallets in one request, including saved native observations. Use the optional minimum for value-threshold questions and the exact returned position_count. No wallet inventory pagination is needed.'},
     {'name':'snapshots_list','arguments':{'wallet':'registered address or exact name'},'description':'List past saved analyses for an approved wallet.'},
     {'name':'snapshot_read','arguments':{'snapshot_id':'saved snapshot ID'},'optional_arguments':{'offset':'nonnegative integer, default 0','limit':'integer 1 to 100, default 20'},'description':'Read a compact page of historical evidence for an approved wallet.'},
@@ -86,7 +87,7 @@ class ResearchTools:
             if not isinstance(arguments,dict):raise JobError('invalid_tool','Expected a read plan.')
             fields(arguments,['reads']);reads=arguments['reads']
             if not isinstance(reads,list) or not 0<=len(reads)<=32:raise JobError('invalid_tool','Use at most 32 read requests.')
-            allowed={'portfolio_read','wallet_read','token_read','snapshots_list','snapshot_read','snapshots_compare','job_list','job_read'}
+            allowed={'holdings_query','portfolio_read','wallet_read','token_read','snapshots_list','snapshot_read','snapshots_compare','job_list','job_read'}
             for read in reads:
                 if not isinstance(read,dict):raise JobError('invalid_tool','Expected read requests.')
                 fields(read,['name','arguments'])
@@ -124,6 +125,14 @@ class ResearchTools:
             elif not isinstance(value,str) or not value or len(value)>500:
                 raise JobError('invalid_tool','Expected a bounded recorded identifier.')
         context,approved=self.allowed()
+        if name=='holdings_query':
+            from kira_agent import scoped_wallets
+            from holdings_query import query_holdings
+            wallets=scoped_wallets(self.root,self.config)
+            if 'wallet' in arguments:
+                selected=self.wallet(arguments['wallet'],approved)
+                wallets=[w for w in wallets if w['key']==selected]
+            return query_holdings(wallets,arguments)
         if name=='portfolio_read':return context
         if name=='wallet_read':
             wallet=self.wallet(arguments['wallet'],approved)

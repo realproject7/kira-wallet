@@ -64,8 +64,8 @@ class AgentTest(unittest.TestCase):
         wallet=context['wallets'][0];asset=wallet['assets'][0]
         self.assertTrue(asset['archived']);self.assertIsNone(asset['value_usd']);self.assertIsNotNone(asset['historical_value_usd'])
         self.assertEqual(wallet['chains'][0]['rpc_status'],'retired')
-        self.assertTrue(retired(666666666));self.assertFalse(retired(8453));self.assertFalse(retired(8217));self.assertFalse(retired(5112))
-        self.assertEqual(lifecycle(5112)['status'],'retirement_reported')
+        self.assertTrue(retired(666666666));self.assertFalse(retired(8453));self.assertFalse(retired(8217));self.assertTrue(retired(5112));self.assertTrue(retired(54176))
+        self.assertEqual(lifecycle(5112)['confirmation'],'operator');self.assertFalse(lifecycle(5112)['verified'])
         self.assertEqual(lifecycle(8217)['provider_notice']['provider'],'The Graph')
         self.assertEqual(lifecycle(999999)['audit_result'],'not_reviewed')
     def tearDown(self):self.temp.cleanup()

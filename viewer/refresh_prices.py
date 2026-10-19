@@ -13,6 +13,8 @@ import research as h
 from model import dex_price, within, number
 from curve_pricing import enrich, resolve
 from native_assets import market_metadata
+from market_records import collected_markets, canonical_token
+from chain_lifecycle import retired
 from token_images import refresh_catalog
 DEX_CHAINS={1:'ethereum',8453:'base',10:'optimism',42161:'arbitrum',137:'polygon',56:'bsc',43114:'avalanche',81457:'blast',130:'unichain',7777777:'zora',33139:'apechain',177:'hashkey',8217:'kaia',7560:'cyber',109:'shibarium',4663:'robinhood'}
 
@@ -29,6 +31,8 @@ if not selected:raise SystemExit('No analysed registered wallet matches this sel
 
 for w in selected:
  folder=within(h.ROOT,w['latest_snapshot']['directory']);path=within(h.ROOT,w['latest_snapshot']['result']);snapshot=json.loads(path.read_text())
+ snapshot={**snapshot,'tokens':[canonical_token(t) for t in snapshot['tokens'] if not retired(t['chain_id'])],
+           'coverage':[c for c in snapshot.get('coverage',[]) if not retired(c['chain_id'])]}
  native_market=market_metadata(snapshot.get('coverage',[]))
  import uuid
  evidence_folder=folder/'price-evidence'/uuid.uuid4().hex
@@ -72,7 +76,8 @@ for w in selected:
    shadow={'token_address':address,'dex_pools':[{'reported_price_usd':p.get('priceUsd'),'paired_tokens':[p['baseToken'],p['quoteToken']],'reported_liquidity':p.get('liquidity'),'source_url':p['url']} for p in options]}
    p=dex_price(shadow,h.now())
    if p:prices.append({'chain_id':chain_id,'address':address,**p,'reserve_symbol':symbol})
- try:node=subprocess.run(['node',str(Path(__file__).with_name('refresh-curve-prices.cjs')),str(path)],capture_output=True,text=True,timeout=180)
+ curve_input=evidence_folder/'curve-refresh-input.json';h.save(curve_input,snapshot)
+ try:node=subprocess.run(['node',str(Path(__file__).with_name('refresh-curve-prices.cjs')),str(curve_input)],capture_output=True,text=True,timeout=180)
  except subprocess.TimeoutExpired:rpc={'tokens':[],'errors':[{'code':'curve_budget','message':'Fresh curve checks reached their bound. Previous usable quotes are retained.'}]}
  else:
   rpc=json.loads(node.stdout)
@@ -102,9 +107,16 @@ for w in selected:
  for key,row in fresh_native.items():
   native_prices[key.removesuffix('_USD')]={**row,'usd':row['value']};native_prices[key.removesuffix('_USD')].pop('value')
  output={'observed_at':h.now(),'wallet_address':w['address'],'balance_refresh':False,
-         'native_usd':native_prices,'tokens':list(by_address.values()),'markets':previous_market.get('markets',[]),
+         'native_usd':native_prices,'tokens':list(by_address.values()),'markets':collected_markets(fetched,DEX_CHAINS,previous=previous_market.get('markets',[])),
          'source_requests':fetched,'rpc_price_state':rpc,
          'note':'Prices only. Balances and research coverage remain at their recorded analysis time.'}
+ from market_discovery import discover
+ from market_records import merge_pools
+ supplemental=discover(snapshot,evidence_folder)
+ merged={row['id']:row for row in output['markets']}
+ for row in supplemental['markets']:
+  merged[row['id']]={'id':row['id'],'pools':merge_pools(merged.get(row['id'],{}).get('pools',[]),row['pools'])}
+ output['markets']=list(merged.values());output['market_discovery_status']=supplemental['status']
  destination=folder/'market-prices.json';temporary=destination.with_suffix('.json.tmp')
  # Reuse the fresh batched curve observations before traversing missing reserves.
  # These are price facts, never fresh wallet balances.
@@ -148,7 +160,7 @@ for w in selected:
   overlay=job_folder/'prices.json'
   output['snapshot_id']=w['latest_snapshot']['directory']
   missing_native=any(c.get('environment')=='mainnet' and float(c.get('native_balance') or 0)>0 and c.get('native_symbol')+'_USD' not in fresh_native for c in snapshot.get('coverage',[]))
-  output['job_result_status']='completed_with_coverage_gaps' if missing_native or retained or output.get('reserve_price_status')=='partial' or (output.get('reserve_price_graph') or {}).get('errors') or rpc.get('errors') or any('error' in p for p in rpc['tokens']) or any(isinstance(r['response'],dict) and 'transport_error' in r['response'] for r in fetched) else 'completed'
+  output['job_result_status']='completed_with_coverage_gaps' if output.get('market_discovery_status')=='partial' or missing_native or retained or output.get('reserve_price_status')=='partial' or (output.get('reserve_price_graph') or {}).get('errors') or rpc.get('errors') or any('error' in p for p in rpc['tokens']) or any(isinstance(r['response'],dict) and 'transport_error' in r['response'] for r in fetched) else 'completed'
   atomic(overlay,output)
   atomic(job_folder/'price-publication.json',{'schema_version':1,'snapshot_id':w['latest_snapshot']['directory'],
       'overlay':str(overlay.relative_to(h.ROOT)),'projection':str(destination.relative_to(h.ROOT)),

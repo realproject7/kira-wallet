@@ -22,9 +22,9 @@ NOTICES={
         'notice_url':'https://www.alchemy.com/docs/reference/degen-deprecation-notice',
         'network_shutdown_date':None,'provider_support_ended_on':'2026-08-31',
         'note':'Alchemy describes Degen L3 as shut down. Its provider support ended August 31. The exact network shutdown date is not independently established. Base DEGEN is a separate token.'},
-    5112:{'status':'retirement_reported','verified':False,'reviewed_on':REVIEWED_ON,
-        'notice_url':None,'reference_url':'https://docs.ham.fun/',
-        'note':'The operator reports Ham has stopped. A primary closure notice has not been located. Failed reads do not establish closure.'},
+    **{cid:{'status':'retired','verified':False,'confirmation':'operator','reviewed_on':'2026-10-19',
+        'notice_url':None,'note':'Excluded from new research by operator confirmation. Historical observations are preserved; no independent closure notice is claimed.'}
+        for cid in (5112,54176)},
 }
 
 
@@ -32,7 +32,7 @@ def lifecycle(chain_id):
     state=dict(NOTICES.get(chain_id,{'status':'unconfirmed','verified':False,
         'notice_url':None,'note':'No verified retirement notice is recorded. Connectivity and discovery are separate observations.'}))
     state.update(reference_url=REFERENCES.get(chain_id,state.get('reference_url')),
-        reviewed_on=REVIEWED_ON if chain_id in REFERENCES or chain_id in NOTICES else None,
+        reviewed_on=state.get('reviewed_on') or REVIEWED_ON if chain_id in REFERENCES or chain_id in NOTICES else None,
         audit_result='reference_unavailable' if chain_id in UNAVAILABLE_REFERENCES else 'reference_retrieved' if chain_id in REFERENCES else 'notice_reviewed' if chain_id in NOTICES else 'not_reviewed')
     if chain_id==8217:
         state['provider_notice']={'provider':'The Graph','support_ended_on':'2026-08-31','url':'https://docs.kaia.io/build/tools/indexers/','note':'Indexer support ended. This does not establish network retirement.'}
@@ -41,4 +41,4 @@ def lifecycle(chain_id):
 
 def retired(chain_id):
     state=lifecycle(chain_id)
-    return state['status']=='retired' and state['verified'] is True
+    return state['status']=='retired' and (state['verified'] is True or state.get('confirmation')=='operator')

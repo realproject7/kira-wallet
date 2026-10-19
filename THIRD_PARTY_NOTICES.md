@@ -47,3 +47,13 @@ per-contract provenance is in the catalog.
 ## Alchemy setup illustration
 
 `viewer/static/alchemy-create-app.png` is an unmodified example screenshot from Alchemy’s public API key walkthrough, used to explain app setup. Source: https://www.alchemy.com/docs/create-an-api-key . The image contains no Kira operator account or credential. Alchemy retains rights to its interface and illustration.
+
+## Market platform marks
+
+The local market cards identify their sources using the official marks retrieved
+on October 19, 2026: [Mint Club app icon](https://mint.club/apple-touch-icon.png),
+[Uniswap logo](https://github.com/Uniswap/interface/blob/main/packages/ui/src/assets/icons/uniswap-logo.svg),
+and [Aerodrome favicon](https://aerodrome.finance/svg/AERO/favicon.svg).
+These marks identify external services and remain their respective owners' marks.
+Kira does not claim affiliation or endorsement. The original files are served
+locally from `viewer/static/venues/`.

@@ -13,6 +13,7 @@ from chain_images import chain_image
 from native_assets import native_identity
 from details import project_details
 from cashout import classify as cashout_classification
+from market_records import canonical_token, canonical_source, merge_pools
 
 ROOT = Path(os.environ.get('KIRA_DATA_DIR',Path(__file__).resolve().parents[1])).expanduser().resolve()
 EXPLORERS = {1:'https://etherscan.io',8453:'https://basescan.org',81457:'https://blastscan.io',
@@ -152,7 +153,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
     refs=snapshot.get('price_references',{})
     eth=number(market.get('native_usd',{}).get('ETH',{}).get('usd')) or number(refs.get('ETH_USD',{}).get('value'))
     price_time=market.get('observed_at') or refs.get('ETH_USD',{}).get('observed_at') or snapshot.get('compiled_at')
-    tokens=snapshot.get('tokens',[])
+    tokens=[canonical_token(t) for t in snapshot.get('tokens',[])]
     by_address={(t['chain_id'],t['token_address'].lower()):t for t in tokens}
     cache={}
     def price_for(t,seen=None):
@@ -163,6 +164,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         if k in seen:return None
         seen.add(k)
         override=checked_price(prices.get(k),t.get('dex_pools',[])+legacy_pools.get(k,[]))
+        if override and 'source' in override:override={**override,'source':canonical_source(override['source'],t)}
         mint=t.get('mintclub')
         if override and override.get('quality') in ('unfunded','unreliable'):
             cache[k]={**override,'usd':None};return cache[k]
@@ -195,8 +197,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
 
     assets=[]
     for t in tokens:
-        saved=t.get('dex_pools',[]);known_pools={p.get('pool') for p in saved}
-        t={**t,'dex_pools':saved+[p for p in recorded_markets.get(f"{t['chain_id']}:{t['token_address'].lower()}",[]) if p.get('pool') not in known_pools]}
+        t={**t,'dex_pools':merge_pools(t.get('dex_pools',[]),recorded_markets.get(f"{t['chain_id']}:{t['token_address'].lower()}",[]))}
         p=price_for(t);quantity=number(t['wallet_balance'])
         value=quantity*p['usd'] if p and p.get('usd') is not None and quantity is not None else None
         label=t['symbol'];name=t.get('name') or label
@@ -206,7 +207,6 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
         if t.get('mintclub'):links.append({'label':'Mint Club','url':t['mintclub']['source_url']})
         found={}; market_pools=[]
         for pool in t.get('dex_pools',[]):
-            if not pool_has_liquidity(pool):continue
             venue=pool['venue'].lower(); label_venue='Uniswap' if 'uniswap' in venue else 'Aerodrome' if 'aerodrome' in venue else venue.replace('-',' ').title()
             weight=(pool.get('reported_liquidity') or {}).get('usd',0)
             measured=pool.get('factory_measurement') or {}
@@ -218,9 +218,9 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
                 if not isinstance(coin,dict):continue
                 symbol=coin.get('symbol')
                 pair.append({'address':coin.get('address'),'symbol':symbol if isinstance(symbol,str) and symbol else '?',
-                             'image_url':image_for(images,t['chain_id'],coin.get('address'))})
+                             'image_url':image_for(images,t['chain_id'],coin.get('address'),native_symbol=symbol if coin.get('address')=='0x'+'0'*40 else None)})
             market_pools.append({'venue':label_venue,'pool':pool.get('pool'),'url':pool['source_url'],
-                'pair':pair,'liquidity_usd':number((pool.get('reported_liquidity') or {}).get('usd')),
+                'pair':pair,'version_labels':pool.get('version_labels',[]),'fee_bps':pool.get('fee_bps'),'pool_kind':pool.get('pool_kind'),'liquidity_usd':number((pool.get('reported_liquidity') or {}).get('usd')),
                 'price_usd':number(pool.get('reported_price_usd')),'observed_at':pool.get('observed_at')})
         market_pools.sort(key=lambda row:-(row['liquidity_usd'] or 0))
         links += [{'label':k,'url':v[1]} for k,v in found.items()]
@@ -236,7 +236,8 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             'cashout_eligibility':cashout_classification(t,market,environment=next((c.get('environment') for c in snapshot.get('coverage',[]) if c.get('chain_id')==t['chain_id']),'unknown')),
             'exit_route': 'mintclub_burn' if t.get('mintclub') else 'dex_unquoted' if t.get('dex_liquidity_found') or any(pool_has_liquidity(pool) for pool in t.get('dex_pools',[])) else 'unverified',
             'image_url':safe_image(t.get('indexer_image_url')) or image_for(images,t['chain_id'],t['token_address'],mint=bool(t.get('mintclub'))),
-            'curve_reserve': {'amount':market_token.get('curve_reserve',t['mintclub']['reserve_balance']),'symbol':t['mintclub']['reserve_symbol']} if t.get('mintclub') else None})
+            'curve_reserve': {'amount':market_token.get('curve_reserve',t['mintclub']['reserve_balance']),'symbol':t['mintclub']['reserve_symbol'],'address':t['mintclub']['reserve_token'],
+                'image_url':image_for(images,t['chain_id'],t['mintclub']['reserve_token'])} if t.get('mintclub') else None})
         if t.get('mintclub'):
             mint=t['mintclub']
             assets[-1]['curve_state']={k:mint.get(k) for k in ('reserve_token','reserve_symbol','reserve_balance','current_supply','price_for_next_mint_in_reserve_token','burn_royalty_bps','block_number','observed_at')}
