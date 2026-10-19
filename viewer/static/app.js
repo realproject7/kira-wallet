@@ -36,8 +36,7 @@ function readRoute(){
 }
 function selectWallet(key){
   if(!state?.wallets.some(w=>w.key===key))return;
-  const wallet=state.wallets.find(w=>w.key===key);
-  navigate(!wallet.analysed_at&&typeof pendingWalletJob==='function'&&pendingWalletJob(wallet)?'#/activity':'#/wallet/'+key);
+  navigate('#/wallet/'+key);
 }
 function goHome(){
   navigate('#/home');
@@ -49,14 +48,15 @@ function renderWallets(){
   $('wallet-count').textContent=state.wallets.length;
   $('wallet-list').innerHTML=state.wallets.map(w=>{
     const active=selectedView==='wallet'&&w.key===selectedWallet;
-    const pending=typeof pendingWalletJob==='function'&&pendingWalletJob(w);
-    return `<button class="wallet-button ${active?'active':''}" data-wallet="${escapeHTML(w.key)}" aria-label="Select ${escapeHTML(w.name)}" ${active?'aria-current="page"':''}><span class="wallet-glyph">${walletGlyph}</span><span class="wallet-nav-name">${escapeHTML(w.name)}<span class="wallet-nav-address">${pending?'<span class="spinner" aria-hidden="true"></span> Analysing…':escapeHTML(shortAddress(w.address))}</span></span><span class="wallet-arrow" aria-hidden="true">›</span></button>`;
+    const status=KiraView.walletStatus(typeof jobList==='undefined'?[]:jobList,w);
+    const label={partial:'Saved · gaps',complete:'Complete',interrupted:'Interrupted',paused:'Paused',failed:'Lookup failed',waiting:'Queued',pausing:'Pausing',running:'Looking up tokens'}[status.mode]||status.label;
+    return `<button class="wallet-button ${active?'active':''}" data-wallet="${escapeHTML(w.key)}" aria-label="Select ${escapeHTML(w.name)}" title="${escapeHTML(w.address)} · ${escapeHTML(status.label)}" ${active?'aria-current="page"':''}><span class="wallet-glyph">${walletGlyph}</span><span class="wallet-nav-name">${escapeHTML(w.name)}<span class="wallet-nav-address"><span class="wallet-status-dot" data-mode="${status.mode}" aria-hidden="true"></span>${escapeHTML(label)}</span></span><span class="wallet-arrow" aria-hidden="true">›</span></button>`;
   }).join('');
 }
 function renderView(){
   if(selectedView==='wallet'){
     const w=currentWallet(),pending=typeof pendingWalletJob==='function'&&pendingWalletJob(w||{key:selectedWallet});
-    if(!w||(!w.analysed_at&&pending)){
+    if(!w){
       if(!w)toast(pending?'This wallet is waiting for registration. Follow its progress in Activity.':'This wallet is not registered in this workspace.');
       navigate('#/activity');return;
     }

@@ -111,27 +111,37 @@
     const legacy=basic?.scan_policy!=='alchemy_inventory_v1';
     if(active(job)){
       mode=job.cancel_requested?'pausing':job.state==='queued'?'waiting':'running';
-      title=job.cancel_requested?'Saving your progress':isDeep?'Analyzing sell routes':'Looking up your holdings';
+      title=job.cancel_requested?(isDeep?'Pausing sell analysis':'Pausing lookup'):isDeep?'Analyzing sell routes':job.state==='queued'?'Lookup queued':'Looking up tokens';
       description=job.cancel_requested?'Your saved results stay available.':job.state==='queued'?'Queued. Your saved portfolio stays available.':isDeep?'Checking sale and redemption estimates for your saved holdings. Balances are unchanged.':'Checking every configured network, token balances, prices and artwork.';
       action='cancel';actionLabel='Pause';
     }else if(job.state==='failed'){
-      mode='failed';title=isDeep?'Sell analysis failed':'Holdings lookup failed';
+      mode='failed';title=isDeep?'Sell analysis failed':'Lookup failed';
       description=job.result||job.previous_result||wallet.analysed_at?'Your saved holdings are still available. Retry to continue from saved checks.':'Your wallet is saved. Holdings are not available yet.';
       failure=jobErrorMessage(job);action=legacy?'refresh':'resume';actionLabel=legacy?'Refresh holdings':isDeep?'Retry sell analysis':'Retry holdings';
     }else if(legacy){
       mode='ready';title='Update your holdings';description='Refresh to check every configured network and all token candidates with Alchemy.';action='refresh';actionLabel='Refresh holdings';
     }else if(['cancelled','interrupted'].includes(job.state)){
-      mode='paused';title=isDeep?'Sell analysis paused':'Holdings lookup paused';
+      mode=job.state==='interrupted'?'interrupted':'paused';title=isDeep?(mode==='interrupted'?'Sell analysis interrupted':'Sell analysis paused'):(mode==='interrupted'?'Lookup interrupted':'Lookup paused');
       description=job.errors?.some(e=>e.code==='no_progress')?'No new evidence was available. Check your connection, then retry.':'Your progress is saved. Resume when ready.';
       if(job.errors?.some(e=>e.code==='superseded')){description='A newer holdings lookup replaced this work.';}
       else{action='resume';actionLabel='Resume';}
     }else if(isDeep){
       mode='saved';title='Sell analysis saved';description='Available estimates are saved. Unavailable routes remain unknown; estimates exclude gas and do not guarantee execution.';
     }else{
-      mode='ready';title='Your holdings are ready';description='Balances, prices and artwork are available. Analyze sell routes only if you need sale or redemption estimates.';
+      mode=job.state==='partial'?'partial':'complete';title=mode==='partial'?'Completed with gaps':'Lookup complete';description=mode==='partial'?'The lookup finished with gaps. Available holdings are saved; some networks or token checks remain incomplete.':'The configured holdings checks finished. These are saved observations, not live balances.';
       if(basic?.result){action='deepen';actionLabel='Analyze sell routes';}
     }
     return {basic,deep,job,isDeep,basicReady,mode,title,description,failure,action,actionLabel};
+  }
+  function walletStatus(jobs,wallet) {
+    // Optional sale analysis must not replace the holdings lookup status.
+    const lookup=researchSession(jobs.filter(j=>j.analysis_phase!=='enrichment'),wallet);
+    if(lookup)return {mode:lookup.mode,label:lookup.title,description:lookup.description,lookup};
+    if(!wallet?.analysed_at)return {mode:'pending',label:'Not checked',description:'Your wallet is saved. Start a holdings lookup to check its tokens.',lookup:null};
+    const chains=(wallet.chains||[]).filter(c=>c.lifecycle?.status!=='retired');
+    const partial=!chains.length||chains.some(coverageGap);
+    return {mode:partial?'partial':'saved',label:partial?'Saved with gaps':'Saved holdings',
+      description:partial?'Saved holdings are available. Some networks or token checks remain incomplete.':'Saved holdings are available. No lookup activity is recorded in this workspace.',lookup:null};
   }
   function jobErrorMessage(job) {
     const error=job.errors?.[0];
@@ -143,7 +153,7 @@
     const h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = seconds % 60;
     return (h ? h + 'h ' : '') + m + 'm ' + s + 's';
   }
-  const api = { catalog, pageSize, active, jobPresentation, jobProgress, assetProgress, researchSession, jobErrorMessage, duration, discoveryNotice, coverageGap, networkEmpty };
+  const api = { catalog, pageSize, active, jobPresentation, jobProgress, assetProgress, researchSession, walletStatus, jobErrorMessage, duration, discoveryNotice, coverageGap, networkEmpty };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KiraView = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

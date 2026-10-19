@@ -6,9 +6,21 @@ const KiraView=require('./viewer/static/workspace-model.js');
 const A='0x'+'1'.repeat(40),wallet={key:A,analysed_at:'2026-10-15T00:00:00Z',assets:[{}],unpriced_count:1};
 const basic={job_id:'basic',operation:'wallet.refresh',input:{wallet:A},analysis_phase:'baseline',scan_policy:'alchemy_inventory_v1',state:'partial',created_at:'2026-10-15T00:00:00Z',result:{snapshot_id:'saved'},events:[],attempt:1};
 const deep={...basic,job_id:'deep',analysis_phase:'enrichment',parent_job_id:'basic',state:'running',created_at:'2026-10-15T00:01:00Z',result:null};
+test('wallet status distinguishes completion, gaps, pending work and interruption without mixing in sell analysis',()=>{
+ const empty={key:A},recorded={...wallet,chains:[{id:1,complete:true,environment:'mainnet'}]};
+ assert.equal(KiraView.walletStatus([],empty).mode,'pending');
+ assert.equal(KiraView.walletStatus([],recorded).label,'Saved holdings');
+ assert.equal(KiraView.walletStatus([],{...recorded,chains:[...recorded.chains,{complete:false,lifecycle:{status:'retired'}}]}).mode,'saved');
+ assert.equal(KiraView.walletStatus([],{...recorded,chains:[{complete:false}]}).mode,'partial');
+ for(const [state,mode] of [['queued','waiting'],['running','running'],['cancelled','paused'],['interrupted','interrupted'],['failed','failed'],['succeeded','complete'],['partial','partial']]){
+  const status=KiraView.walletStatus([{...basic,state}],recorded);assert.equal(status.mode,mode);
+ }
+ assert.equal(KiraView.walletStatus([deep,basic],recorded).label,'Completed with gaps');
+ assert.equal(KiraView.walletStatus([{...deep,state:'failed'},{...basic,state:'succeeded'}],recorded).label,'Lookup complete');
+});
 test('basic saved results offer optional depth without implying complete coverage',()=>{
  const p=KiraView.researchSession([basic],wallet);
- assert.equal(p.mode,'ready');assert.equal(p.action,'deepen');assert.match(p.description,/only if/);assert.equal(p.basicReady,true);
+ assert.equal(p.mode,'partial');assert.equal(p.action,'deepen');assert.match(p.description,/gaps/);assert.equal(p.basicReady,true);
  assert.equal(KiraView.researchSession([basic],{key:'other'}),null);
  const interrupted=KiraView.researchSession([{...basic,state:'interrupted'}],wallet);
  assert.equal(interrupted.action,'resume');assert.equal(interrupted.basicReady,false);
@@ -29,7 +41,7 @@ test('deep waits, pause, disconnect recovery and new basic generations stay dist
 test('failed new lookups identify the error without claiming balances or a voluntary pause',()=>{
  const failed={...basic,state:'failed',result:null,errors:[{code:'network_scope_changed',message:'Update Kira, then retry.'}]};
  const p=KiraView.researchSession([failed],{key:A});
- assert.equal(p.mode,'failed');assert.equal(p.title,'Holdings lookup failed');
+ assert.equal(p.mode,'failed');assert.equal(p.title,'Lookup failed');
  assert.match(p.description,/wallet is saved/);assert.match(p.description,/Holdings are not available yet/);
  assert.equal(p.failure,'Update Kira, then retry.');assert.equal(p.action,'resume');assert.equal(p.actionLabel,'Retry holdings');
  const old=KiraView.researchSession([{...failed,scan_policy:undefined,errors:[{code:'engine_failed',message:'Check connection settings'}]}],wallet);
@@ -50,25 +62,35 @@ function harness(){
  context.setJobs=jobs=>{context.testJobs=jobs;vm.runInContext('jobList=testJobs',context);};context.setJobs([basic]);
  return {context,el,setJobs:context.setJobs,run:s=>vm.runInContext(s,context),renders:()=>rendered};
 }
-test('failed wallet card shows escaped cause and one retry action with an accessible announcement',async()=>{
+test('failed status shows escaped cause and one retry action with an accessible announcement',async()=>{
  const h=harness();h.context.currentWallet=()=>({key:A});
  h.setJobs([{...basic,state:'failed',result:null,errors:[{code:'network_scope_changed',message:'Compatibility check failed <details>'}]}]);
  h.run('renderWalletScan()');const html=h.el('wallet-scan').innerHTML;
  assert.equal(h.el('wallet-scan').dataset.mode,'failed');
- assert.match(html,/Holdings lookup failed/);assert.match(html,/Retry holdings/);assert.match(html,/&lt;details>/);
+ assert.match(html,/Lookup failed/);assert.match(html,/Retry holdings/);assert.match(html,/&lt;details>/);
  assert.doesNotMatch(html,/paused|progress is saved|About sell-route analysis/);
  assert.match(h.el('scan-announcement').textContent,/Compatibility check failed/);
  const calls=[];h.context.submitOperation=async(operation,input)=>{calls.push({operation,input});};
  h.context.event={target:{closest:()=>({disabled:false,dataset:{jobAction:'resume',jobId:'basic'}})}};
  await h.run('handleScanAction(event)');assert.equal(calls.length,1);assert.equal(calls[0].operation,'job.resume');assert.equal(calls[0].input.job_id,'basic');
 });
-test('wallet card keeps unknowns visible and disables writes while disconnected or read-only',()=>{
- const h=harness();h.run('renderWalletScan()');assert.match(h.el('wallet-scan').innerHTML,/Analyze sell routes/);
- assert.match(h.el('wallet-scan').innerHTML,/does not look for more tokens/);
- assert.match(h.el('wallet-scan').innerHTML,/Pause and resume/);
- h.context.jobsConnected=false;h.run('renderWalletScan()');assert.match(h.el('wallet-scan').innerHTML,/Connection lost/);assert.match(h.el('wallet-scan').innerHTML,/disabled/);
- h.run('localSession={controls:false};renderWalletScan()');assert.doesNotMatch(h.el('wallet-scan').innerHTML,/data-job-action/);
- h.run('localSession={controls:true};state.demo=true;renderWalletScan()');assert.doesNotMatch(h.el('wallet-scan').innerHTML,/data-job-action/);
+test('status details stay collapsed until requested and remain open across progress updates only for the same wallet',()=>{
+ const h=harness();h.setJobs([deep,basic]);h.run('renderWalletScan()');
+ assert.doesNotMatch(h.el('wallet-scan').innerHTML,/<details[^>]* open/);
+ h.el('wallet-scan').querySelector=()=>({open:true});h.run('renderWalletScan()');
+ assert.match(h.el('wallet-scan').innerHTML,/<details[^>]* open/);
+ h.context.currentWallet=()=>({key:'another'});h.run('renderWalletScan()');
+ assert.doesNotMatch(h.el('wallet-scan').innerHTML,/<details[^>]* open/);
+ assert.match(h.el('wallet-scan').innerHTML,/Not checked/);
+});
+test('compact status keeps unknowns visible and disables writes while disconnected or read-only',()=>{
+ const h=harness();h.run('renderWalletScan()');assert.doesNotMatch(h.el('wallet-scan').innerHTML,/Analyze sell routes|<h2|Your holdings are ready/);
+ assert.match(h.el('wallet-analysis').innerHTML,/More analysis/);assert.match(h.el('wallet-analysis').innerHTML,/Analyze sell routes/);
+ assert.match(h.el('wallet-analysis').innerHTML,/does not look for more tokens or execute trades/);
+ assert.doesNotMatch(h.el('wallet-analysis').innerHTML,/<details[^>]* open/);
+ h.context.jobsConnected=false;h.run('renderWalletScan()');assert.match(h.el('wallet-scan').innerHTML,/Connection lost/);assert.match(h.el('wallet-analysis').innerHTML,/disabled/);
+ h.run('localSession={controls:false};renderWalletScan()');assert.doesNotMatch(h.el('wallet-scan').innerHTML,/data-job-action/);assert.equal(h.el('wallet-analysis').hidden,true);
+ h.run('localSession={controls:true};state.demo=true;renderWalletScan()');assert.doesNotMatch(h.el('wallet-scan').innerHTML,/data-job-action/);assert.equal(h.el('wallet-analysis').hidden,true);
  h.context.jobsConnected=true;h.run('state.demo=false');h.context.testJobs=[deep,basic];h.setJobs?.(h.context.testJobs);
  h.run('jobList=testJobs;renderWalletScan()');assert.doesNotMatch(h.el('wallet-scan').innerHTML,/Overall remaining time is unknown/);assert.doesNotMatch(h.el('wallet-scan').innerHTML,/<progress/);
  h.setJobs([{...deep,state:'cancelled',cancel_requested:true},basic]);h.run('renderWalletScan()');
@@ -84,7 +106,7 @@ test('cumulative reviews remain visible through step resets, pause and resume',(
   assert.deepEqual(KiraView.jobProgress(job).assets,{total:120,checked:81,quoted:14,unknown:67});
   h.setJobs([job,basic]);h.run('renderWalletScan()');const html=h.el('wallet-scan').innerHTML;
   assert.match(html,/81 \/ 120 assets reviewed/);assert.match(html,/14 sell estimates/);assert.match(html,/67 unresolved checks/);
-  assert.match(html,/does not look for more tokens/);
+  assert.match(html,/Completed with gaps/);assert.equal(h.el('wallet-analysis').hidden,true);
  }
  assert.equal(KiraView.assetProgress({...deep,asset_progress:{'1':{total:2,checked:2,quoted:2,unknown:1}}}),null);
 });

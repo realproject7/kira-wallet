@@ -38,23 +38,33 @@ function jobControls(job) {
   return '';
 }
 function renderWalletScan() {
-  const card=$('wallet-scan'),wallet=typeof currentWallet==='function'?currentWallet():null;
-  const session=wallet?KiraView.researchSession(jobList,wallet):null;
-  card.hidden=!session;if(!session)return;
-  const {job,mode}=session,p=KiraView.jobPresentation(job,Date.now(),jobsConnected),progress=KiraView.jobProgress(job,Date.now(),jobsConnected);
-  const focused=card.contains(document.activeElement)?document.activeElement.dataset.jobId||'heading':null;
-  const detailsOpen=card.querySelector('details')?.open,working=KiraView.active(job);
-  const action=localSession?.controls&&!state?.demo&&session.action?scanButton(session.action,job.job_id,session.actionLabel,session.action!=='cancel',working&&job.cancel_requested):'';
-  card.dataset.mode=mode;
-  card.innerHTML=`<div class="scan-heading"><div><h2 id="wallet-scan-title" tabindex="-1">${p.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(session.title)}</h2><p>${escapeHTML(session.description)}</p></div><div class="scan-actions">${action}<a class="text-link" href="#/activity">Activity ↗</a></div></div>
-    ${working?`<div class="scan-current"><div class="scan-current-heading"><strong>${escapeHTML(jobStage(job))}</strong><span data-job-timer="${escapeHTML(job.job_id)}">${p.timerLabel} ${KiraView.duration(p.elapsed)}</span></div>${progress.count?`<p>${escapeHTML(progress.count)}</p>`:''}${progress.total&&!progress.cumulative?`<progress value="${progress.checked}" max="${progress.total}" aria-label="${escapeHTML(progress.count)}"></progress>`:''}${progress.eta?`<p data-job-estimate="${escapeHTML(job.job_id)}">${escapeHTML(progress.eta)}</p>`:''}</div>`:''}
-    ${session.failure?`<p class="scan-failure">${escapeHTML(session.failure)}</p>`:''}
+  const card=$('wallet-scan'),options=$('wallet-analysis'),wallet=typeof currentWallet==='function'?currentWallet():null;
+  card.hidden=!wallet;options.hidden=true;if(!wallet)return;
+  const status=KiraView.walletStatus(jobList,wallet),session=KiraView.researchSession(jobList,wallet);
+  const job=session?.job,working=!!job&&KiraView.active(job),deep=!!session?.isDeep;
+  const p=job?KiraView.jobPresentation(job,Date.now(),jobsConnected):null,progress=job?KiraView.jobProgress(job,Date.now(),jobsConnected):{};
+  const sameWallet=card.dataset.wallet===wallet.key;
+  const detailsOpen=sameWallet&&card.querySelector('details')?.open,optionsOpen=sameWallet&&options.querySelector('details')?.open;
+  const focused=[card,options].some(el=>el.contains(document.activeElement))?{id:document.activeElement.id,job:document.activeElement.dataset.jobId}:null;
+  const canWrite=localSession?.controls&&!state?.demo;
+  const action=canWrite&&session?.action&&session.action!=='deepen'?scanButton(session.action,job.job_id,session.actionLabel,false,working&&job.cancel_requested):'';
+  card.dataset.mode=status.mode;card.dataset.wallet=wallet.key;
+  const pending=status.lookup&&KiraView.active(status.lookup.job),disconnected=localSession?.controls&&!jobsConnected;
+  const secondary=disconnected?'Connection lost':deep?session.title:working?jobStage(job):'';
+  card.innerHTML=`<div class="wallet-status-row"><details class="wallet-status-details" ${detailsOpen?'open':''}><summary id="wallet-scan-title"><span class="wallet-status-label"><span class="wallet-status-dot ${pending&&jobsConnected?'is-working':''}" data-mode="${status.mode}" aria-hidden="true"></span>${escapeHTML(status.label)}</span><span class="status-chevron" aria-hidden="true">⌄</span></summary><div class="wallet-status-body">
+    <p>${escapeHTML(status.description)}</p>${session?.failure?`<p class="status-failure">${escapeHTML(session.failure)}</p>`:''}
+    ${deep?`<p><strong>${escapeHTML(session.title)}</strong> · ${escapeHTML(session.description)}</p>`:''}
+    ${working?`<p><strong>${escapeHTML(jobStage(job))}</strong> · <span data-job-timer="${escapeHTML(job.job_id)}">${p.timerLabel} ${KiraView.duration(p.elapsed)}</span></p>${progress.count?`<p>${escapeHTML(progress.count)}</p>`:''}${progress.total&&!progress.cumulative?`<progress value="${progress.checked}" max="${progress.total}" aria-label="${escapeHTML(progress.count)}"></progress>`:''}${progress.eta?`<p data-job-estimate="${escapeHTML(job.job_id)}">${escapeHTML(progress.eta)}</p>`:''}`:''}
     ${progress.assets?`<p>${escapeHTML(assetProgressText(progress))}</p>`:''}
-    ${!jobsConnected?'<p class="scan-notice">Connection lost. Showing saved progress.</p>':''}
-    ${session.basicReady||session.isDeep?`<details class="scan-explainer" ${detailsOpen?'open':''}><summary>About sell-route analysis</summary><p>This optional analysis estimates what a sale or Mint Club redemption could return. It uses saved holdings and does not look for more tokens. A representative route is not a best-price guarantee. Pause and resume at any time.</p></details>`:''}`;
-  if(focused){const next=[...card.querySelectorAll('[data-job-id]')].find(el=>el.dataset.jobId===focused);(next||$('wallet-scan-title')).focus({preventScroll:true});}
-  const announcement=job.job_id+':'+mode+':'+jobsConnected;
-  if(announcement!==scanAnnouncement){scanAnnouncement=announcement;$('scan-announcement').textContent=[session.title,session.failure].filter(Boolean).join('. ');}
+    ${disconnected?'<p>Connection lost. This is the last recorded status. Actions are available after reconnecting.</p>':''}
+    ${wallet.analysed_at?`<p>Holdings saved ${stamp(wallet.analysed_at)}. See network coverage below for missing checks.</p>`:''}
+    <a class="text-link" href="#/activity">View activity ↗</a></div></details>
+    ${secondary?`<span class="wallet-status-note" ${deep?`data-mode="${session.mode}"`:''}>${escapeHTML(secondary)}</span>`:''}${action}</div>`;
+  const optional=canWrite&&session?.action==='deepen';options.hidden=!optional;
+  options.innerHTML=optional?`<details id="scan-analysis-options" ${optionsOpen?'open':''}><summary class="quiet-button" id="scan-options-title">More analysis <span aria-hidden="true">⌄</span></summary><div class="analysis-options-body"><strong>Sell-out analysis</strong><p>Explore additional sale and redemption routes for your saved holdings. This is optional and can take time. It does not look for more tokens or execute trades.</p>${scanButton('deepen',job.job_id,'Analyze sell routes')}<small>Estimates exclude gas and do not guarantee execution or the best price. You can pause and resume.</small></div></details>`:'';
+  if(focused){const next=focused.job?[...card.querySelectorAll('[data-job-id]'),...options.querySelectorAll('[data-job-id]')].find(el=>el.dataset.jobId===focused.job):focused.id&&$(focused.id);(next||$('wallet-scan-title')).focus({preventScroll:true});}
+  const announcement=wallet.key+':'+status.mode+':'+(deep?session.mode:'')+':'+disconnected;
+  if(announcement!==scanAnnouncement){scanAnnouncement=announcement;$('scan-announcement').textContent=[status.label,deep&&session.title,session?.failure,disconnected&&'Connection lost'].filter(Boolean).join('. ');}
 }
 async function localAPI(path,options={}){
   const response=await fetch(path,{cache:'no-store',...options,headers:{'X-Kira-Session':localSession?.token||'',...options.headers},signal:options.signal||AbortSignal.timeout(12000)});
@@ -166,7 +176,7 @@ formAction($('tags-form'),$('tags-error'),async()=>{await submitOperation('walle
 async function handleScanAction(event) {
   const button=event.target.closest('[data-job-action]');if(!button||button.disabled||!jobsConnected)return;
   const id=button.dataset.jobId,action=button.dataset.jobAction;
-  if($('wallet-scan').contains(button))$('wallet-scan-title').focus({preventScroll:true});
+  if($('wallet-scan').contains(button)||$('wallet-analysis').contains(button)){$('wallet-scan-title').focus({preventScroll:true});const options=$('scan-analysis-options');if(options)options.open=false;}
   if(scanBusyJobs.has(id))return;scanBusyJobs.add(id);button.disabled=true;
   button.textContent=action==='cancel'?'Pausing…':action==='deepen'?'Starting…':'Resuming…';
   try{if(action==='refresh'){const job=jobList.find(j=>j.job_id===id);await submitOperation('wallet.refresh',{wallet:job.input.wallet||job.input.address});}else await submitOperation('job.'+action,{job_id:id});}
@@ -175,6 +185,9 @@ async function handleScanAction(event) {
 }
 $('jobs-list').addEventListener('click',handleScanAction);
 $('wallet-scan').addEventListener('click',handleScanAction);
+$('wallet-analysis').addEventListener('click',handleScanAction);
+document.addEventListener('click',event=>{const menu=$('scan-analysis-options');if(menu?.open&&!menu.contains(event.target))menu.open=false;});
+document.addEventListener('keydown',event=>{const menu=$('scan-analysis-options');if(event.key==='Escape'&&menu?.open){menu.open=false;$('scan-options-title').focus();}});
 $('chat-research').addEventListener('click',handleScanAction);
 let connectionConfig = null, connectionReadiness = null, connectionRevision = 0, workspaceSettingsRevision = 0, pendingSetting = null, settingSaving = false, settingSaved = false, settingFailed = false, connectionWallet = null;
 function connectionSummary(config) {

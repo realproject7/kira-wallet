@@ -160,6 +160,17 @@ vm.createContext(routeHarness);
 vm.runInContext(source.slice(source.indexOf('function renderView(){'),source.indexOf('function renderKiraNote(){')),routeHarness);
 routeHarness.renderView();assert.equal(routeHarness.route,'#/activity');assert.match(routeHarness.note,/waiting for registration/);
 routeHarness.pendingWalletJob=()=>null;routeHarness.renderView();assert.equal(routeHarness.route,'#/activity');assert.match(routeHarness.note,/not registered/);
+// Once registered, a new wallet can show its own compact progress without
+// redirecting to Activity or borrowing the previous wallet's saved balances.
+const registered={key:'0x'+'3'.repeat(40),name:'New wallet',analysed_at:null};
+const registeredRoute={selectedView:'wallet',selectedWallet:registered.key,state:{wallets:[registered]},currentWallet:()=>registered,
+ pendingWalletJob:()=>({state:'running'}),navigate:hash=>{registeredRoute.route=hash;},toast(){},renderWallets(){},
+ renderWallet:()=>{registeredRoute.rendered=true;},renderKiraNote(){},document:{title:''},$:()=>({})};
+vm.createContext(registeredRoute);
+vm.runInContext(source.slice(source.indexOf('function selectWallet('),source.indexOf('function goHome(')),registeredRoute);
+vm.runInContext(source.slice(source.indexOf('function renderView(){'),source.indexOf('function renderKiraNote(){')),registeredRoute);
+registeredRoute.selectWallet(registered.key);assert.equal(registeredRoute.route,'#/wallet/'+registered.key);
+registeredRoute.route=null;registeredRoute.renderView();assert.equal(registeredRoute.rendered,true);assert.equal(registeredRoute.route,null);
 Object.assign(routeHarness,{busy:false,state:null,etag:null,currentSignature:null,$:node,AbortSignal,
   fetch:async()=>({status:200,ok:true,headers:{get:()=> 'fresh-state'},json:async()=>({wallets:[],demo:false})})});
 vm.runInContext(source.slice(source.indexOf('async function poll(){'),source.indexOf("document.querySelector('.skip-link')")),routeHarness);
