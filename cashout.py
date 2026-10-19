@@ -136,6 +136,7 @@ def classify(token, market, *, environment='mainnet'):
             proceeds = output * Decimal(price['usd'])
         result['quotes'].append({'kind': quote.get('kind'), 'input_amount_raw': str(quote['input_amount_raw']),
                                  'output_amount': format(output, 'f'), 'output_address': quote['output_address'].lower(),
+                                 'output_symbol': quote.get('output_symbol'),
                                  'quoted_output_usd': format(proceeds, 'f'), 'qualifies': proceeds >= Decimal('1'),
                                  'block_number': block, 'block_hash': block_hash, 'observed_at': quote['observed_at'],
                                  'output_price': price, 'partial_input': amount < holding,

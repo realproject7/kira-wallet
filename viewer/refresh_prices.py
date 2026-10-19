@@ -1,4 +1,4 @@
-"""Refresh price references for registered snapshots. Agent CLI, never a viewer action."""
+"""Refresh price references and bounded direct-sale quotes for registered snapshots."""
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import argparse
@@ -109,7 +109,7 @@ for w in selected:
  output={'observed_at':h.now(),'wallet_address':w['address'],'balance_refresh':False,
          'native_usd':native_prices,'tokens':list(by_address.values()),'markets':collected_markets(fetched,DEX_CHAINS,previous=previous_market.get('markets',[])),
          'source_requests':fetched,'rpc_price_state':rpc,
-         'note':'Prices only. Balances and research coverage remain at their recorded analysis time.'}
+         'note':'Prices and bounded sale estimates. Portfolio balances and research coverage remain at their recorded analysis time.'}
  from market_discovery import discover
  from market_records import merge_pools
  supplemental=discover(snapshot,evidence_folder)
@@ -151,6 +151,8 @@ for w in selected:
   published[key]={**p,'retained_from_previous':True};retained+=1
  output['tokens']=list(published.values());output['retained_price_records']=retained
  if retained:output['note']+=f' {retained} token price references retain their earlier observation times because fresh USD was unavailable.'
+ from sell_quotes import enrich as enrich_sell_quotes
+ output=enrich_sell_quotes(snapshot,output,evidence_folder/'sell-quotes',previous=previous_market)
  try:refresh_catalog([snapshot],h.ROOT,native_images=native_market['images'],market_metadata=fetched)
  except (OSError,ValueError):output['image_refresh_status']='unavailable'
  if os.environ.get('KIRA_JOB_SNAPSHOT'):

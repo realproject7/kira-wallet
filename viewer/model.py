@@ -12,7 +12,7 @@ from token_images import image_for, read_catalog, safe_image
 from chain_images import chain_image
 from native_assets import native_identity
 from details import project_details
-from cashout import classify as cashout_classification
+from sell_quotes import classify_with_cache as cashout_classification
 from market_records import canonical_token, canonical_source, merge_pools, market_url
 
 ROOT = Path(os.environ.get('KIRA_DATA_DIR',Path(__file__).resolve().parents[1])).expanduser().resolve()
@@ -95,7 +95,7 @@ def sell_out_estimate(quote, eligibility, reserve_price):
               and number((checked_price(q.get('output_price')) or {}).get('usd')) is not None]
     if routes:
         best = max(routes, key=lambda q: Decimal(q['quoted_output_usd']))
-        symbol = (best.get('output_price') or {}).get('symbol')
+        symbol = best.get('output_symbol') or (best.get('output_price') or {}).get('symbol')
         if quote and best.get('output_address') == quote['output_address']:
             symbol = quote['output_symbol']
         return {**best, 'value_usd': number(best['quoted_output_usd']),
@@ -265,7 +265,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None):
             'quantity_retained':bool(t.get('metadata_evidence_retained') or t.get('balance_evidence_retained')),
             'burn_quote':(t.get('mintclub') or {}).get('wallet_full_burn'),
             'exit_quote':exit_quote(t),
-            'cashout_eligibility':cashout_classification(t,market,environment=next((c.get('environment') for c in snapshot.get('coverage',[]) if c.get('chain_id')==t['chain_id']),'unknown')),
+            'cashout_eligibility':cashout_classification(t,market,wallet_address=entry['address'],environment=next((c.get('environment') for c in snapshot.get('coverage',[]) if c.get('chain_id')==t['chain_id']),'unknown')),
             'exit_route': 'mintclub_burn' if t.get('mintclub') else 'dex_unquoted' if t.get('dex_liquidity_found') or any(pool_has_liquidity(pool) for pool in t.get('dex_pools',[])) else 'unverified',
             'image_url':safe_image(t.get('indexer_image_url')) or image_for(images,t['chain_id'],t['token_address'],mint=bool(t.get('mintclub'))),
             'curve_reserve': {'amount':market_token.get('curve_reserve',t['mintclub']['reserve_balance']),'symbol':t['mintclub']['reserve_symbol'],'address':t['mintclub']['reserve_token'],

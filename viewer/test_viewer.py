@@ -332,6 +332,26 @@ class ViewerTests(unittest.TestCase):
         full['output_price'].update(basis='DEX market',liquidity_usd=0.02)
         self.assertIsNone(model.sell_out_estimate(None,{'quotes':[full]},None))
 
+    def test_cached_dex_quote_reaches_wallet_and_all_token_views_without_network_reads(self):
+        from test_sell_quotes import fixture
+        source,market,row=fixture()
+        token={**self.snapshot['tokens'][0],**source['tokens'][0],'mintclub':None,'symbol':'SYNTH'}
+        self.snapshot['tokens']=[token]
+        market['sell_quotes']={'version':1,'wallet_address':self.entry['address'].lower(),'records':[row]}
+        (self.directory/'market-prices.json').write_text(json.dumps(market))
+        before=deepcopy(self.snapshot)
+        with patch('sell_quotes.enrich',side_effect=AssertionError('Projection cannot collect quotes')):
+            wallet=model.project_wallet(self.entry,self.snapshot,self.root)
+        asset=next(a for a in wallet['assets'] if a['address']==token['token_address'])
+        self.assertEqual(asset['sell_out']['value_usd'],4000)
+        self.assertEqual(asset['sell_out']['output_symbol'],'WETH')
+        self.assertEqual(asset['sell_out']['block_number'],'9')
+        self.assertEqual(self.snapshot,before)
+        (self.directory/'results.json').write_text(json.dumps(self.snapshot))
+        state,_,_=model.load_state(self.root)
+        item=next(t for t in state['details']['tokens'] if t['id']==asset['id'])
+        self.assertEqual(item['sell_out']['value_usd'],4000)
+
     def test_sell_out_excludes_testnets_retired_networks_and_retained_quantities(self):
         token=self.quoted_token()
         for chain,environment,retained in ((8453,'testnet',False),(5112,'mainnet',False),(8453,'mainnet',True)):

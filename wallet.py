@@ -543,6 +543,9 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
     market={'observed_at':result['compiled_at'],'wallet_address':wallet['address'],
         'native_usd':{k.removesuffix('_USD'):{'usd':float(v['value']),'observed_at':v.get('observed_at'),'basis':v.get('basis'),'source':v.get('source')} for k,v in refs.items()},'tokens':[]}
     if prices:market=refresh_metadata(result,market,folder,native_images=native_market.get('images'),discover_prices=True,supplemental=True)
+    if prices and phase=='holdings':
+        from sell_quotes import enrich as enrich_sell_quotes
+        market=enrich_sell_quotes(result,market,folder/'sell-quotes')
     if phase=='holdings':
         result['scope']='Direct holdings across every configured network. Alchemy and available explorer indexes are independently verified by on-chain balance reads.'
         result['pipeline'].update(phase='holdings',enrichment_pending=False,sell_analysis_optional=True)

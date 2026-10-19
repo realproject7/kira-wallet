@@ -446,7 +446,7 @@ async function boundedMarket(promise,deadline) {
   try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new MarketBudget()),deadline-Date.now());})]);}
   finally{clearTimeout(timer);}
 }
-async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,representative=false}={}) {
+async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,representative=false,fullOnly=false}={}) {
   const identity=t=>h.serialize([t.chain_id,t.token_address.toLowerCase(),t.token_type,t.token_id??null,String(t.balance_block_number),String(t.wallet_balance_raw)]);
   const identities=new Set(tokens.map(identity));
   const fingerprint=crypto.createHash('sha256').update(h.serialize([...identities].sort())).digest('hex');
@@ -643,7 +643,7 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
         const q=await calls(c,[{address:quote,abi:erc20,functionName:'balanceOf',args:[p.pool]},{address:quote,abi:erc20,functionName:'decimals'},{address:quote,abi:erc20,functionName:'symbol'}],block);
         if(q.some(x=>x.status==='failure'))retry=true;
         if(q.every(x=>x.status==='success')) Object.assign(p.factory_measurement,{quote_token:quote,quote_symbol:q[2].result,quote_decimals:q[1].result,quote_balance:v.formatUnits(q[0].result,q[1].result)});
-        p.cashout_quote=await quotePool(c,n,t,p,block,snapshot.hash,deployments,{batchRead:contracts=>calls(c,contracts,block)});
+        p.cashout_quote=await quotePool(c,n,t,p,block,snapshot.hash,deployments,{batchRead:contracts=>calls(c,contracts,block),fullOnly});
         if(p.cashout_quote.status==='unknown'&&p.cashout_quote.reason.startsWith('Pool quote failed'))retry=true;
       }
     }catch(e){if(e.code==='market_budget'){paused=true;throw e;}retry=true;p.rpc_verification={verification:'unverified',error:h.safeError(e)};}
