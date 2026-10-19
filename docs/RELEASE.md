@@ -433,7 +433,7 @@ personal 0.1.14 installation, credentials, paused history and published archives
 Use a separate private workspace for candidate acceptance. No GitHub release,
 website deployment or personal app upgrade is part of this preparation.
 
-## Proposed 0.1.16
+## Release candidate: 0.1.16
 
 This version repairs Mint Club symbol routes, including ERC1155 NFT routes and
 encoded symbols, without rewriting historical snapshots. Market lookup attaches
@@ -456,8 +456,36 @@ Ham and OverProtocol are excluded by operator confirmation, distinguished from
 independently verified notices. Historical evidence is preserved. Successful
 price metadata batches are reused for artwork to avoid redundant source reads.
 
+Holdings give markets a separate row, retain every saved pool and open known
+venue destinations directly. Token-title Explorer links use the locally served
+Etherscan mark. Chain selectors show network artwork, sidebar actions align,
+and All tokens adds the same value filters as wallet holdings.
+
+Wallet, All tokens and network lists compare known value with saved sell-out
+estimates. Basic holdings and explicit price refreshes collect bounded direct
+pool quotes without viewer-triggered RPC reads or additional route discovery.
+Uniswap v2/v3 and Base Aerodrome classic pools are supported. Full-balance
+quantities are checked at the quote block. Unknown, unsupported, changed-input,
+testnet and archived positions cannot become a USD sale estimate. Output-price
+and quote clocks remain distinct. Independent quotes sharing liquidity are not
+summed into portfolio proceeds; gas and execution guarantees remain excluded.
+
+The wallet header separates identity, holdings status, valuation and optional
+sell analysis. New wallets can show progress before their first snapshot. A
+retired-network catalog mismatch no longer stops new holdings jobs. Failed work
+offers typed recovery guidance and preserves prior results and failure history.
+Completed sell analysis dismisses its progress card and briefly announces saved
+results. Activity retains stages, unresolved checks and durations frozen at the
+terminal event. Paused, interrupted and failed work retains recovery actions.
+
+Imported wallets and autonomous execution are deferred to post-MVP. The decision
+and reconsideration conditions are recorded in [wallet capabilities](WALLET_CAPABILITIES.md).
+This release adds no transaction signing, token approval or trading capability.
+
 Release acceptance covers the repository suite, clean installation, source and
 history privacy checks, exact archive membership, real unchanged natural-language
 questions and responsive market interactions. Review not selected. Publication
 remains operator-only. A feature-branch candidate is not a merged release or a
 published package; the final manifest must identify the accepted source commit.
+Preserve the superseded unpublished archive before creating the final 0.1.16
+candidate. Only the archive matching the final manifest is a publication target.
