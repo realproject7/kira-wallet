@@ -76,11 +76,6 @@ body.page-hidden .composer::before,body.page-hidden .thinking-dots i { animation
 
 /* Clear actions and bounded market groups share the existing component palette. */
 @media (min-width:981px) { .topbar,.workspace-tabs { width:calc(100% - var(--chat-width)); } .topbar .sync-status { display:none; } }
-.wallet-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:0; background:transparent; border:0; border-radius:0; }
-.wallet-actions button { display:inline-flex; align-items:center; justify-content:center; gap:7px; width:auto; min-height:40px; padding:9px 12px; border:1px solid #d8cde1; background:#fff; border-radius:9px; font-size:12px; box-shadow:0 1px 2px #36264408; cursor:pointer; }
-.wallet-actions button:first-child { background:#76558d; border-color:#76558d; color:#fff; }
-.wallet-actions button:hover { background:#f0e9f6; border-color:#a78db8; }.wallet-actions button:first-child:hover { background:#65457c; }.wallet-actions button:active { transform:translateY(1px); }
-.wallet-actions .ui-icon { width:16px; height:16px; }
 .market-links { display:flex; flex-direction:column; align-items:stretch; gap:6px; }
 .pool-link { display:flex; align-items:center; gap:8px; padding:9px 10px; border:1px solid #e5ddeb; border-radius:9px; background:#fff; min-width:0; color:#4d385e; }
 .pool-link:hover { background:#f4eef8; border-color:#c4aed2; }
@@ -91,7 +86,7 @@ body.page-hidden .composer::before,body.page-hidden .thinking-dots i { animation
 .venue-mark { display:inline-grid; place-items:center; width:19px; height:19px; background:#ece4f3; color:#715285; border-radius:5px; font-size:10px; flex:none; }
 .market-links .market-link { gap:6px; width:fit-content; }.detail-markets { margin-top:16px; }.detail-markets .pool-link { padding:12px; }.detail-markets .pool-description strong { font-size:13px; }
 .chat-icon-button:focus-visible,.pool-link:focus-visible,.more-pools summary:focus-visible { outline:3px solid #a58abd; outline-offset:3px; }
-@media(max-width:600px) { .wallet-actions button { flex:1 1 auto; }.pool-metrics { max-width:90px; }.detail-facts .fact-panel { min-width:0; } }
+@media(max-width:600px) { .pool-metrics { max-width:90px; }.detail-facts .fact-panel { min-width:0; } }
 
 /* Holdings keep identity and amounts together, with markets on a second row. */
 .holdings-table col:first-child { width:34%; }

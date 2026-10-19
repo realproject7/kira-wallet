@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync('viewer/static/app.js','utf8');
 const nodes=new Map(),buttons=[0,5,10].map(min=>({dataset:{min:String(min)},setAttribute(){}}));
-const node=id=>{if(!nodes.has(id))nodes.set(id,{textContent:'',innerHTML:'',hidden:false,querySelector:kind=>node(id+'-'+kind)});return nodes.get(id);};
+const node=id=>{if(!nodes.has(id))nodes.set(id,{dataset:{},textContent:'',innerHTML:'',hidden:false,querySelector:kind=>node(id+'-'+kind)});return nodes.get(id);};
 let click;const saved=new Map();
 const wallet={name:'Fixture',address:'0x'+'1'.repeat(40),tags:['Fixture'],analysed_at:'2026-10-04',known_value_usd:null,unpriced_count:3,
   assets:[1,33139,56].map((chain_id,i)=>({chain_id,environment:'mainnet',value_usd:null,symbol:['ETH','APE','BNB'][i]})),
@@ -200,11 +200,16 @@ controls.refreshControlState();
 assert.equal(node('refresh-wallet').disabled,true);
 assert.match(node('refresh-prices').title,/resumes automatically/);
 controls.jobList.push({operation:'prices.refresh',state:'queued',input:{wallet:controls.selectedWallet}});
-controls.refreshControlState();assert.equal(node('refresh-prices').disabled,true);assert.equal(node('refresh-prices').textContent,'Prices queued…');
-controls.jobList[1].state='running';controls.refreshControlState();assert.equal(node('refresh-prices').textContent,'Refreshing prices…');
+controls.refreshControlState();assert.equal(node('refresh-prices').disabled,true);assert.equal(node('refresh-prices-label').textContent,'Prices queued…');
+controls.jobList[1].state='running';controls.refreshControlState();assert.equal(node('refresh-prices-label').textContent,'Refreshing prices…');
 controls.jobList[1].state='succeeded';controls.refreshControlState();assert.equal(node('refresh-prices').disabled,false);
 wallet.analysed_at=null;controls.refreshControlState();assert.equal(node('refresh-prices').disabled,true);assert.match(node('refresh-prices').title,/first saved report/);
 wallet.analysed_at='2026-10-04';controls.state.demo=true;controls.refreshControlState();assert.equal(node('refresh-prices').disabled,true);
+// Secondary actions keep the same control-session boundary as the main action.
+controls.localSession.controls=false;controls.refreshControlState();
+assert.equal(node('wallet-actions').hidden,true);assert.equal(node('wallet-secondary-actions').hidden,true);assert.equal(node('wallet-tools').hidden,true);
+wallet.report_url='/saved-report';controls.refreshControlState();assert.equal(node('wallet-tools').hidden,false);assert.equal(node('wallet-secondary-actions').hidden,true);
+delete wallet.report_url;controls.localSession.controls=true;controls.state.demo=false;controls.refreshControlState();assert.equal(node('wallet-secondary-actions').hidden,false);
 // Render empty network copy from actual recorded counts rather than inactive filters.
 const networkContext={...context,state:{details:{tokens:[]}},tokenSearch:'',minimum:0,aggregateRow:a=>a.symbol};
 vm.createContext(networkContext);vm.runInContext(source.slice(source.indexOf('function renderNetworkTokens('),source.indexOf('function renderDetail(')),networkContext);

@@ -126,6 +126,7 @@ function renderHome(){
 }
 function renderWallet(){
   const w=currentWallet();if(!w)return;
+  if($('wallet-tools').dataset.wallet!==w.key){$('wallet-tools').open=false;$('wallet-tools').dataset.wallet=w.key;}
   $('wallet-name').textContent=w.name;renderBreadcrumb([{label:'Home',href:'#/home'},{label:w.name}]);$('address').textContent=w.address;$('address').title=w.address;
   $('wallet-tags').innerHTML=w.tags.slice(1).map(t=>`<span class="tag">${escapeHTML(t)}</span>`).join(' ');
   $('report-link').hidden=!w.report_url;if(w.report_url)$('report-link').href=safeURL(w.report_url);

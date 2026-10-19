@@ -38,31 +38,38 @@ function jobControls(job) {
   return '';
 }
 function renderWalletScan() {
-  const card=$('wallet-scan'),options=$('wallet-analysis'),wallet=typeof currentWallet==='function'?currentWallet():null;
-  card.hidden=!wallet;options.hidden=true;if(!wallet)return;
-  const status=KiraView.walletStatus(jobList,wallet),session=KiraView.researchSession(jobList,wallet);
-  const job=session?.job,working=!!job&&KiraView.active(job),deep=!!session?.isDeep;
-  const p=job?KiraView.jobPresentation(job,Date.now(),jobsConnected):null,progress=job?KiraView.jobProgress(job,Date.now(),jobsConnected):{};
+  const card=$('wallet-scan'),analysis=$('wallet-analysis'),wallet=typeof currentWallet==='function'?currentWallet():null;
+  card.hidden=!wallet;analysis.hidden=true;if(!wallet)return;
+  const status=KiraView.walletStatus(jobList,wallet),session=KiraView.researchSession(jobList,wallet),lookup=status.lookup;
+  const deep=!!session?.isDeep,canWrite=localSession?.controls&&!state?.demo;
   const sameWallet=card.dataset.wallet===wallet.key;
-  const detailsOpen=sameWallet&&card.querySelector('details')?.open,optionsOpen=sameWallet&&options.querySelector('details')?.open;
-  const focused=[card,options].some(el=>el.contains(document.activeElement))?{id:document.activeElement.id,job:document.activeElement.dataset.jobId}:null;
-  const canWrite=localSession?.controls&&!state?.demo;
-  const action=canWrite&&session?.action&&session.action!=='deepen'?scanButton(session.action,job.job_id,session.actionLabel,false,working&&job.cancel_requested):'';
+  const detailsOpen=sameWallet&&card.querySelector('details')?.open,aboutOpen=sameWallet&&analysis.querySelector('details')?.open;
+  const focused=[card,analysis].some(el=>el.contains(document.activeElement))?{id:document.activeElement.id,job:document.activeElement.dataset.jobId}:null;
   card.dataset.mode=status.mode;card.dataset.wallet=wallet.key;
-  const pending=status.lookup&&KiraView.active(status.lookup.job),disconnected=localSession?.controls&&!jobsConnected;
-  const secondary=disconnected?'Connection lost':deep?session.title:working?jobStage(job):'';
-  card.innerHTML=`<div class="wallet-status-row"><details class="wallet-status-details" ${detailsOpen?'open':''}><summary id="wallet-scan-title"><span class="wallet-status-label"><span class="wallet-status-dot ${pending&&jobsConnected?'is-working':''}" data-mode="${status.mode}" aria-hidden="true"></span>${escapeHTML(status.label)}</span><span class="status-chevron" aria-hidden="true">⌄</span></summary><div class="wallet-status-body">
-    <p>${escapeHTML(status.description)}</p>${session?.failure?`<p class="status-failure">${escapeHTML(session.failure)}</p>`:''}
-    ${deep?`<p><strong>${escapeHTML(session.title)}</strong> · ${escapeHTML(session.description)}</p>`:''}
-    ${working?`<p><strong>${escapeHTML(jobStage(job))}</strong> · <span data-job-timer="${escapeHTML(job.job_id)}">${p.timerLabel} ${KiraView.duration(p.elapsed)}</span></p>${progress.count?`<p>${escapeHTML(progress.count)}</p>`:''}${progress.total&&!progress.cumulative?`<progress value="${progress.checked}" max="${progress.total}" aria-label="${escapeHTML(progress.count)}"></progress>`:''}${progress.eta?`<p data-job-estimate="${escapeHTML(job.job_id)}">${escapeHTML(progress.eta)}</p>`:''}`:''}
-    ${progress.assets?`<p>${escapeHTML(assetProgressText(progress))}</p>`:''}
+  const pending=lookup&&KiraView.active(lookup.job),disconnected=localSession?.controls&&!jobsConnected;
+  const lookupAction=canWrite&&lookup?.action&&lookup.action!=='deepen'?scanButton(lookup.action,lookup.job.job_id,lookup.actionLabel,false,pending&&lookup.job.cancel_requested):'';
+  const progressHTML=job=>{
+    if(!job)return '';
+    const working=KiraView.active(job),p=KiraView.jobPresentation(job,Date.now(),jobsConnected),progress=KiraView.jobProgress(job,Date.now(),jobsConnected);
+    return `${working?`<p><strong>${escapeHTML(jobStage(job))}</strong> · <span data-job-timer="${escapeHTML(job.job_id)}">${p.timerLabel} ${KiraView.duration(p.elapsed)}</span></p>${progress.count?`<p>${escapeHTML(progress.count)}</p>`:''}${progress.total&&!progress.cumulative?`<progress value="${progress.checked}" max="${progress.total}" aria-label="${escapeHTML(progress.count)}"></progress>`:''}${progress.eta?`<p data-job-estimate="${escapeHTML(job.job_id)}">${escapeHTML(progress.eta)}</p>`:''}`:''}${progress.assets?`<p>${escapeHTML(assetProgressText(progress))}</p>`:''}`;
+  };
+  const secondary=disconnected?'Connection lost':pending?jobStage(lookup.job):wallet.analysed_at?'Saved '+stamp(wallet.analysed_at):'';
+  card.innerHTML=`<div class="wallet-status-row"><details class="wallet-status-details" ${detailsOpen?'open':''}><summary id="wallet-scan-title"><span class="wallet-status-label"><span class="wallet-status-dot ${pending&&jobsConnected?'is-working':''}" data-mode="${status.mode}" aria-hidden="true"></span><span class="status-prefix">Holdings</span>${escapeHTML(status.label)}</span><span class="status-chevron" aria-hidden="true">⌄</span></summary><div class="wallet-status-body">
+    <p>${escapeHTML(status.description)}</p>${progressHTML(lookup?.job)}
     ${disconnected?'<p>Connection lost. This is the last recorded status. Actions are available after reconnecting.</p>':''}
-    ${wallet.analysed_at?`<p>Holdings saved ${stamp(wallet.analysed_at)}. See network coverage below for missing checks.</p>`:''}
+    ${wallet.analysed_at?'<p>See network coverage below for missing checks.</p>':''}
     <a class="text-link" href="#/activity">View activity ↗</a></div></details>
-    ${secondary?`<span class="wallet-status-note" ${deep?`data-mode="${session.mode}"`:''}>${escapeHTML(secondary)}</span>`:''}${action}</div>`;
-  const optional=canWrite&&session?.action==='deepen';options.hidden=!optional;
-  options.innerHTML=optional?`<details id="scan-analysis-options" ${optionsOpen?'open':''}><summary class="quiet-button" id="scan-options-title">More analysis <span aria-hidden="true">⌄</span></summary><div class="analysis-options-body"><strong>Sell-out analysis</strong><p>Explore additional sale and redemption routes for your saved holdings. This is optional and can take time. It does not look for more tokens or execute trades.</p>${scanButton('deepen',job.job_id,'Analyze sell routes')}<small>Estimates exclude gas and do not guarantee execution or the best price. You can pause and resume.</small></div></details>`:'';
-  if(focused){const next=focused.job?[...card.querySelectorAll('[data-job-id]'),...options.querySelectorAll('[data-job-id]')].find(el=>el.dataset.jobId===focused.job):focused.id&&$(focused.id);(next||$('wallet-scan-title')).focus({preventScroll:true});}
+    ${secondary?`<span class="wallet-status-note">${escapeHTML(secondary)}</span>`:''}${lookupAction}</div>
+    ${lookup?.failure?`<p class="status-failure">${escapeHTML(lookup.failure)}</p>`:''}`;
+  const optional=canWrite&&session?.action==='deepen';analysis.hidden=!(optional||deep);
+  analysis.dataset.mode=deep?session.mode:'ready';
+  const job=session?.job,working=!!job&&KiraView.active(job);
+  const action=canWrite&&session?.action?scanButton(session.action,job.job_id,session.actionLabel,optional,working&&job.cancel_requested):'';
+  analysis.innerHTML=optional||deep?`<div class="analysis-card-heading"><div class="analysis-copy"><div class="analysis-title-row"><h2 id="wallet-analysis-title" tabindex="-1">${escapeHTML(deep?session.title:'Your holdings are ready')}</h2>${optional?'<span class="analysis-optional">Optional analysis</span>':''}</div><p>${escapeHTML(deep?session.description:'Balances and available prices are saved. Explore additional sale and redemption estimates when you need them.')}</p></div>${action?`<div class="analysis-card-action">${action}</div>`:''}</div>
+    ${deep?`<div class="analysis-progress">${session.failure?`<p class="status-failure">${escapeHTML(session.failure)}</p>`:''}${progressHTML(job)}</div>`:''}
+    ${disconnected?'<p class="analysis-connection">Connection lost. Actions are available after reconnecting.</p>':''}
+    <div class="analysis-card-footer"><details class="analysis-explainer" ${aboutOpen?'open':''}><summary id="analysis-explainer-toggle">About sell-route analysis</summary><p>Checks additional sale and redemption routes for your full balances. This is optional and can take time. It does not look for more tokens or execute trades. Estimates exclude gas and do not guarantee execution or the best price. You can pause and resume.</p></details><a class="text-link" href="#/activity">Activity ↗</a></div>`:'';
+  if(focused){const next=focused.job?[...card.querySelectorAll('[data-job-id]'),...analysis.querySelectorAll('[data-job-id]')].find(el=>el.dataset.jobId===focused.job):focused.id&&$(focused.id);(next||$('wallet-scan-title')).focus({preventScroll:true});}
   const announcement=wallet.key+':'+status.mode+':'+(deep?session.mode:'')+':'+disconnected;
   if(announcement!==scanAnnouncement){scanAnnouncement=announcement;$('scan-announcement').textContent=[status.label,deep&&session.title,session?.failure,disconnected&&'Connection lost'].filter(Boolean).join('. ');}
 }
@@ -86,6 +93,8 @@ async function submitOperation(operation,input){
 function refreshControlState(){
   const enabled=localSession?.controls===true;
   $('research-controls').hidden=!enabled;$('empty-add-wallet').hidden=!enabled;$('wallet-actions').hidden=!enabled;
+  $('wallet-secondary-actions').hidden=!enabled;
+  $('wallet-tools').hidden=!enabled&&!currentWallet()?.report_url;
   $('service-mode').textContent=enabled?'Local controls':'Watch only';
   const sample=state?.demo===true;
   for(const id of ['open-wallet','empty-add-wallet','refresh-wallet','refresh-prices']){
@@ -94,7 +103,7 @@ function refreshControlState(){
       (j.input.wallet||j.input.address)?.toLowerCase()===selectedWallet&&(!prices||j.operation==='prices.refresh'));
     const missing=prices&&!currentWallet()?.analysed_at;
     $(id).disabled=(sample&&id.startsWith('refresh'))||!!active||missing;
-    if(prices)$(id).textContent=active?.state==='queued'?'Prices queued…':active?'Refreshing prices…':'Refresh prices';
+    if(prices)$('refresh-prices-label').textContent=active?.state==='queued'?'Prices queued…':active?'Refreshing prices…':'Refresh prices';
     $(id).title=sample?'Sample research cannot contact providers.':active?(prices?'A price refresh is already '+active.state+' for this wallet.':'A research job is already active for this wallet.'):missing?'Wait for the first saved report before refreshing prices.':prices?'Update prices for the saved report. Detailed research pauses briefly and resumes automatically.':'';
   }
   $('discovery-refresh').disabled=$('refresh-wallet').disabled;
@@ -176,7 +185,8 @@ formAction($('tags-form'),$('tags-error'),async()=>{await submitOperation('walle
 async function handleScanAction(event) {
   const button=event.target.closest('[data-job-action]');if(!button||button.disabled||!jobsConnected)return;
   const id=button.dataset.jobId,action=button.dataset.jobAction;
-  if($('wallet-scan').contains(button)||$('wallet-analysis').contains(button)){$('wallet-scan-title').focus({preventScroll:true});const options=$('scan-analysis-options');if(options)options.open=false;}
+  if($('wallet-analysis').contains(button))$('wallet-analysis-title').focus({preventScroll:true});
+  else if($('wallet-scan').contains(button))$('wallet-scan-title').focus({preventScroll:true});
   if(scanBusyJobs.has(id))return;scanBusyJobs.add(id);button.disabled=true;
   button.textContent=action==='cancel'?'Pausing…':action==='deepen'?'Starting…':'Resuming…';
   try{if(action==='refresh'){const job=jobList.find(j=>j.job_id===id);await submitOperation('wallet.refresh',{wallet:job.input.wallet||job.input.address});}else await submitOperation('job.'+action,{job_id:id});}
@@ -186,8 +196,8 @@ async function handleScanAction(event) {
 $('jobs-list').addEventListener('click',handleScanAction);
 $('wallet-scan').addEventListener('click',handleScanAction);
 $('wallet-analysis').addEventListener('click',handleScanAction);
-document.addEventListener('click',event=>{const menu=$('scan-analysis-options');if(menu?.open&&!menu.contains(event.target))menu.open=false;});
-document.addEventListener('keydown',event=>{const menu=$('scan-analysis-options');if(event.key==='Escape'&&menu?.open){menu.open=false;$('scan-options-title').focus();}});
+document.addEventListener('click',event=>{const menu=$('wallet-tools');if(menu.open&&(!menu.contains(event.target)||event.target.closest('.wallet-tools-menu button, .wallet-tools-menu a')))menu.open=false;});
+document.addEventListener('keydown',event=>{const menu=$('wallet-tools');if(event.key==='Escape'&&menu.open){menu.open=false;$('wallet-tools-toggle').focus();}});
 $('chat-research').addEventListener('click',handleScanAction);
 let connectionConfig = null, connectionReadiness = null, connectionRevision = 0, workspaceSettingsRevision = 0, pendingSetting = null, settingSaving = false, settingSaved = false, settingFailed = false, connectionWallet = null;
 function connectionSummary(config) {

@@ -83,9 +83,12 @@ test('status details stay collapsed until requested and remain open across progr
  assert.doesNotMatch(h.el('wallet-scan').innerHTML,/<details[^>]* open/);
  assert.match(h.el('wallet-scan').innerHTML,/Not checked/);
 });
-test('compact status keeps unknowns visible and disables writes while disconnected or read-only',()=>{
+test('visible analysis card stays separate from lookup status and guards writes',()=>{
  const h=harness();h.run('renderWalletScan()');assert.doesNotMatch(h.el('wallet-scan').innerHTML,/Analyze sell routes|<h2|Your holdings are ready/);
- assert.match(h.el('wallet-analysis').innerHTML,/More analysis/);assert.match(h.el('wallet-analysis').innerHTML,/Analyze sell routes/);
+ assert.equal(h.el('wallet-analysis').hidden,false);
+ const analysis=h.el('wallet-analysis').innerHTML;
+ assert.match(analysis.slice(0,analysis.indexOf('<details')),/Your holdings are ready[\s\S]*Analyze sell routes/);
+ assert.doesNotMatch(analysis,/More analysis/);
  assert.match(h.el('wallet-analysis').innerHTML,/does not look for more tokens or execute trades/);
  assert.doesNotMatch(h.el('wallet-analysis').innerHTML,/<details[^>]* open/);
  h.context.jobsConnected=false;h.run('renderWalletScan()');assert.match(h.el('wallet-scan').innerHTML,/Connection lost/);assert.match(h.el('wallet-analysis').innerHTML,/disabled/);
@@ -94,9 +97,10 @@ test('compact status keeps unknowns visible and disables writes while disconnect
  h.context.jobsConnected=true;h.run('state.demo=false');h.context.testJobs=[deep,basic];h.setJobs?.(h.context.testJobs);
  h.run('jobList=testJobs;renderWalletScan()');assert.doesNotMatch(h.el('wallet-scan').innerHTML,/Overall remaining time is unknown/);assert.doesNotMatch(h.el('wallet-scan').innerHTML,/<progress/);
  h.setJobs([{...deep,state:'cancelled',cancel_requested:true},basic]);h.run('renderWalletScan()');
- assert.match(h.el('wallet-scan').innerHTML,/Resume/);assert.doesNotMatch(h.el('wallet-scan').innerHTML,/disabled/);
+ assert.match(h.el('wallet-analysis').innerHTML,/Resume/);assert.doesNotMatch(h.el('wallet-analysis').innerHTML,/disabled/);
+ assert.doesNotMatch(h.el('wallet-scan').innerHTML,/Resume|Sell analysis paused/);
  h.setJobs([{...deep,state:'queued',stage:'stopped',events:[{stage:'onchain_progress',counts:{checked:7,total:20},context:{operation:'pool_checks',attempt:deep.attempt}}]},basic]);h.run('renderWalletScan()');
- assert.match(h.el('wallet-scan').innerHTML,/Waiting to start/);assert.doesNotMatch(h.el('wallet-scan').innerHTML,/Research stopped|7 \/ 20|<progress|are being checked/);
+ assert.match(h.el('wallet-analysis').innerHTML,/Waiting to start/);assert.doesNotMatch(h.el('wallet-analysis').innerHTML,/Research stopped|7 \/ 20|<progress|are being checked/);
 });
 test('cumulative reviews remain visible through step resets, pause and resume',()=>{
  const h=harness(),asset_progress={'8453':{total:100,checked:72,quoted:12,unknown:60},'1':{total:20,checked:9,quoted:2,unknown:7}};
@@ -104,9 +108,9 @@ test('cumulative reviews remain visible through step resets, pause and resume',(
  for(const state of ['running','cancelled','queued','partial']){
   const job={...deep,state,asset_progress,events:[{stage:'onchain_progress',counts:{checked:0,total:10},context:{operation:'pool_checks',attempt:2}}]};
   assert.deepEqual(KiraView.jobProgress(job).assets,{total:120,checked:81,quoted:14,unknown:67});
-  h.setJobs([job,basic]);h.run('renderWalletScan()');const html=h.el('wallet-scan').innerHTML;
+  h.setJobs([job,basic]);h.run('renderWalletScan()');const html=h.el('wallet-analysis').innerHTML;
   assert.match(html,/81 \/ 120 assets reviewed/);assert.match(html,/14 sell estimates/);assert.match(html,/67 unresolved checks/);
-  assert.match(html,/Completed with gaps/);assert.equal(h.el('wallet-analysis').hidden,true);
+  assert.match(h.el('wallet-scan').innerHTML,/Completed with gaps/);assert.equal(h.el('wallet-analysis').hidden,false);
  }
  assert.equal(KiraView.assetProgress({...deep,asset_progress:{'1':{total:2,checked:2,quoted:2,unknown:1}}}),null);
 });
@@ -119,4 +123,16 @@ test('one click stays in flight through double clicks, preserves job identity an
  release({job_id:'deep'});await pending;assert.equal(h.run('scanBusyJobs.size'),0);
  button.disabled=false;h.context.submitOperation=async()=>{throw Error('Temporary failure');};await h.run('handleScanAction(event)');assert.equal(h.run('scanBusyJobs.size'),0);
  assert.equal(h.renders(),2);
+});
+
+test('sell-analysis failure is visible with its own retry while holdings stay completed',()=>{
+ const h=harness();h.setJobs([{...deep,state:'failed',errors:[{code:'engine_failed',message:'unsafe old provider message'}]},{...basic,state:'succeeded'}]);h.run('renderWalletScan()');
+ assert.match(h.el('wallet-scan').innerHTML,/Lookup complete/);
+ assert.doesNotMatch(h.el('wallet-scan').innerHTML,/failed|Retry/);
+ assert.equal(h.el('wallet-analysis').dataset.mode,'failed');
+ assert.match(h.el('wallet-analysis').innerHTML,/Sell analysis failed/);
+ assert.match(h.el('wallet-analysis').innerHTML,/Retry sell analysis/);
+ assert.doesNotMatch(h.el('wallet-analysis').innerHTML,/unsafe old provider message|Your holdings are ready/);
+ h.context.jobsConnected=false;h.run('renderWalletScan()');assert.match(h.el('wallet-analysis').innerHTML,/disabled/);
+ h.run('localSession={controls:false};renderWalletScan()');assert.equal(h.el('wallet-analysis').hidden,false);assert.doesNotMatch(h.el('wallet-analysis').innerHTML,/data-job-action/);
 });
