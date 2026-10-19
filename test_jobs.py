@@ -40,6 +40,28 @@ class JobFixtures:
         atomic(self.root/job['checkpoint']/'run.json',{'wallet_address':ADDRESS,**({'completed_at':'now'} if completed_manifest else {'status':'running'})})
         registry=json.loads((self.root/'wallets.json').read_text());registry['wallets'][0]['latest_snapshot']={'directory':job['checkpoint']};atomic(self.root/'wallets.json',registry)
 class JobsTest(JobFixtures, unittest.TestCase):
+    def test_engine_failures_expose_safe_causes_and_preserve_old_evidence(self):
+        job=self.running();job.update(state='failed',errors=[{'code':'engine_failed','message':'Old generic message'}]);self.store.save(job)
+        original=(self.store.jobs/(job['job_id']+'.json')).read_bytes()
+        legacy='Mint Club SDK network/deployment scope changed. Reconcile networks.json before analysis.'
+        for detail in ({'error':legacy},{'error_code':'network_scope_changed','error':'PRIVATE-DIAGNOSTIC'}):
+            atomic(self.root/job['checkpoint']/'run.json',{'wallet_address':ADDRESS,'status':'failed',**detail})
+            failure=self.store.engine_failure(job)
+            self.assertEqual(failure.code,'network_scope_changed');self.assertIn('Update Kira',str(failure))
+            public=self.store.get(job['job_id'])
+            self.assertEqual(public['errors'][0]['code'],'network_scope_changed')
+            self.assertNotIn('PRIVATE-DIAGNOSTIC',json.dumps(public))
+            self.assertEqual((self.store.jobs/(job['job_id']+'.json')).read_bytes(),original)
+        for detail in ({'error_code':'unknown','error':'https://provider.test/PRIVATE-KEY'},
+                       {'wallet_address':OTHER,'error_code':'network_scope_changed'},
+                       {'status':'running','error_code':'network_scope_changed'}):
+            atomic(self.root/job['checkpoint']/'run.json',{'wallet_address':ADDRESS,'status':'failed',**detail})
+            public=self.store.get(job['job_id'])
+            self.assertEqual(public['errors'][0]['code'],'engine_failed')
+            self.assertNotIn('PRIVATE',json.dumps(public));self.assertNotIn('connection',public['errors'][0]['message'])
+        (self.root/job['checkpoint']/'run.json').write_text('{broken')
+        self.assertEqual(self.store.engine_failure(job).code,'engine_failed')
+
     def test_completed_sell_counts_follow_final_classification_without_rewriting_events(self):
         job=self.running();self.publish(job)
         job.update(analysis_phase='enrichment',state='partial',stage='published',result={'snapshot_id':job['checkpoint'],'status':'completed_with_coverage_gaps'},

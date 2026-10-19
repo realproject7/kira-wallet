@@ -63,3 +63,5 @@ body{background:#fcfbf8;color:#292733}main{background:#fcfbf8}.sidebar{backgroun
 .scan-results{display:flex;gap:12px 24px;flex-wrap:wrap;margin:12px 0 8px;color:#71677d;font-size:11px}.scan-results span{display:flex;gap:6px;align-items:baseline}.scan-results strong{font-size:16px;color:#42364f;font-variant-numeric:tabular-nums}.scan-overall .scan-current-heading span{font-variant-numeric:tabular-nums}.retained-note{display:block;font-size:10px;line-height:1.5;color:#827888;margin-top:4px;max-width:230px}
 
 .venue-logo{width:18px;height:18px;object-fit:contain;flex:none;border-radius:4px}.pool-description small{display:flex;align-items:center;gap:5px;flex-wrap:wrap}.pool-description small .venue-logo{width:14px;height:14px}.pool-link.mint{background:#f6fcf9}.pool-metrics{max-width:45%;overflow-wrap:anywhere}.pool-art{flex-shrink:0}
+
+.wallet-scan[data-mode="failed"]{border-color:#dba49b;background:#fffaf8}.wallet-scan[data-mode="failed"] h2{color:#8d372c}.scan-failure{font-size:13px;line-height:1.7;color:#8d372c;margin:14px 0 0;max-width:760px}

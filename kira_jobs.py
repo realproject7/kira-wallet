@@ -191,7 +191,26 @@ class JobStore:
                 final=published_asset_progress(path,(stat.st_mtime_ns,stat.st_size,stat.st_ino))
                 if final and final[0]==wallet.lower():job['asset_progress']={chain:dict(row) for chain,row in final[1]}
             except (OSError,ValueError,TypeError,AttributeError):pass
+        if job['state']=='failed' and any(e.get('code')=='engine_failed' for e in job['errors']):
+            failure=self.engine_failure(job)
+            job['errors']=[{'code':failure.code,'message':str(failure)}]
         return job
+
+    def engine_failure(self, job):
+        """Expose only recognized failure categories, never engine diagnostics.
+
+        Older checkpoints predate error codes. Project their exact known error
+        without rewriting the historical job or leaking provider responses.
+        """
+        try:
+            run=read(self.root/job['checkpoint']/'run.json')
+            wallet=job['input'].get('wallet') or job['input'].get('address')
+            if run.get('status')=='failed' and run.get('wallet_address','').lower()==wallet.lower():
+                if (run.get('error_code')=='network_scope_changed' or
+                        run.get('error')=='Mint Club SDK network/deployment scope changed. Reconcile networks.json before analysis.'):
+                    return JobError('network_scope_changed',"Kira's network configuration did not pass its compatibility check. Update Kira, then retry.")
+        except (OSError,ValueError,TypeError,AttributeError):pass
+        return JobError('engine_failed','The lookup stopped unexpectedly. Retry to continue from any saved checks.')
 
     def list(self):
         with self.locked():
@@ -702,7 +721,7 @@ class JobStore:
             if yielded:raise JobError('yielded','Detailed research yielded to a short operation. Saved checkpoints are retained and detailed research resumes automatically.')
             if self.get(job['job_id'])['stage']=='market_paused':raise JobError('market_budget','Balances are saved. Market verification reached its time budget. Resume this job in Activity to continue saved checks. Pending pools are not verified absent.')
             if self.get(job['job_id'])['stage']=='research_paused':raise JobError('research_pending','Research has saved unfinished ranges ready for continuation.')
-            raise JobError('engine_failed', 'Analysis stopped before publication. Check connection settings and resume saved evidence.')
+            raise self.engine_failure(job)
         finally:
             stop_child(); selector.close(); child.stdout.close()
 

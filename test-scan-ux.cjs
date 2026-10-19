@@ -26,6 +26,17 @@ test('deep waits, pause, disconnect recovery and new basic generations stay dist
  const done=KiraView.researchSession([{...deep,state:'partial'},basic],wallet);
  assert.equal(done.mode,'saved');assert.equal(done.action,null);assert.match(done.description,/unknown/);
 });
+test('failed new lookups identify the error without claiming balances or a voluntary pause',()=>{
+ const failed={...basic,state:'failed',result:null,errors:[{code:'network_scope_changed',message:'Update Kira, then retry.'}]};
+ const p=KiraView.researchSession([failed],{key:A});
+ assert.equal(p.mode,'failed');assert.equal(p.title,'Holdings lookup failed');
+ assert.match(p.description,/wallet is saved/);assert.match(p.description,/Holdings are not available yet/);
+ assert.equal(p.failure,'Update Kira, then retry.');assert.equal(p.action,'resume');assert.equal(p.actionLabel,'Retry holdings');
+ const old=KiraView.researchSession([{...failed,scan_policy:undefined,errors:[{code:'engine_failed',message:'Check connection settings'}]}],wallet);
+ assert.equal(old.mode,'failed');assert.equal(old.action,'refresh');assert.match(old.description,/saved holdings/);assert.doesNotMatch(old.failure,/connection/);
+ const sell=KiraView.researchSession([{...deep,state:'failed',previous_result:basic.result},basic],wallet);
+ assert.equal(sell.title,'Sell analysis failed');assert.equal(sell.actionLabel,'Retry sell analysis');
+});
 function harness(){
  const nodes=new Map();let focus=null,rendered=0;
  const el=id=>{if(!nodes.has(id))nodes.set(id,{hidden:false,dataset:{},textContent:'',innerHTML:'',contains:node=>!!node&&node===focus,querySelector:()=>null,querySelectorAll:()=>[],focus(){},addEventListener(){}});return nodes.get(id);};
@@ -39,6 +50,18 @@ function harness(){
  context.setJobs=jobs=>{context.testJobs=jobs;vm.runInContext('jobList=testJobs',context);};context.setJobs([basic]);
  return {context,el,setJobs:context.setJobs,run:s=>vm.runInContext(s,context),renders:()=>rendered};
 }
+test('failed wallet card shows escaped cause and one retry action with an accessible announcement',async()=>{
+ const h=harness();h.context.currentWallet=()=>({key:A});
+ h.setJobs([{...basic,state:'failed',result:null,errors:[{code:'network_scope_changed',message:'Compatibility check failed <details>'}]}]);
+ h.run('renderWalletScan()');const html=h.el('wallet-scan').innerHTML;
+ assert.equal(h.el('wallet-scan').dataset.mode,'failed');
+ assert.match(html,/Holdings lookup failed/);assert.match(html,/Retry holdings/);assert.match(html,/&lt;details>/);
+ assert.doesNotMatch(html,/paused|progress is saved|About sell-route analysis/);
+ assert.match(h.el('scan-announcement').textContent,/Compatibility check failed/);
+ const calls=[];h.context.submitOperation=async(operation,input)=>{calls.push({operation,input});};
+ h.context.event={target:{closest:()=>({disabled:false,dataset:{jobAction:'resume',jobId:'basic'}})}};
+ await h.run('handleScanAction(event)');assert.equal(calls.length,1);assert.equal(calls[0].operation,'job.resume');assert.equal(calls[0].input.job_id,'basic');
+});
 test('wallet card keeps unknowns visible and disables writes while disconnected or read-only',()=>{
  const h=harness();h.run('renderWalletScan()');assert.match(h.el('wallet-scan').innerHTML,/Analyze sell routes/);
  assert.match(h.el('wallet-scan').innerHTML,/does not look for more tokens/);

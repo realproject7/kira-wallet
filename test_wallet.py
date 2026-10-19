@@ -140,6 +140,10 @@ class WalletPipelineTests(unittest.TestCase):
                'wallet_balance':'1','symbol':'TEST','mintclub':None,'dex_pools':[],'dex_liquidity_found':False}
         chain={'chain_id':8453,'rpc_status':'available','native_balance':'1','tokens':[token],
                'registry_scan':{'checked':0,'registry_count':None,'complete':False,'phase':'deferred'}}
+        def verify_catalog(networks,folder):
+            # SDK deployment validation includes retired entries, even though
+            # the actual holdings scan must exclude those networks.
+            self.assertEqual(networks,wallet.read(self.folder/'networks.json')['networks'])
         def scan(mode,source,destination,on_chain=None):
             self.assertEqual(mode,'scan')
             network_ids=[n['chain_id'] for n in wallet.read(source)['networks']]
@@ -148,9 +152,18 @@ class WalletPipelineTests(unittest.TestCase):
             wallet.atomic(destination/'chain-8453.json',chain)
             on_chain({'stage':'chain','chain_id':8453})
             wallet.atomic(destination/'onchain-summary.json',{'chains':[chain]})
-        with patch.object(wallet,'ROOT',self.folder),patch('kira_config.require_alchemy'),patch.object(wallet,'source_check'),patch.object(wallet,'validate_address',return_value=self.address),patch.object(wallet,'run_node',side_effect=scan),patch.object(wallet,'discover',return_value={'chain_id':8453,'complete':False,'tokens':[]}),patch('native_assets.market_metadata',return_value={'prices':{}}),patch.object(wallet,'fetch',return_value=[]),patch('token_images.refresh_catalog',return_value={}) as images,patch.object(sys,'argv',['wallet.py','add',self.address,'--tag','Fixture','--phase','baseline']),contextlib.redirect_stdout(io.StringIO()):
-            wallet.main()
+        with patch.object(wallet,'ROOT',self.folder.resolve()),patch('kira_config.require_alchemy'),patch.object(wallet,'source_check',side_effect=verify_catalog) as catalog_check,patch.object(wallet,'validate_address',return_value=self.address),patch.object(wallet,'run_node',side_effect=scan),patch.object(wallet,'discover',return_value={'chain_id':8453,'complete':False,'tokens':[]}),patch('native_assets.market_metadata',return_value={'prices':{}}),patch.object(wallet,'fetch',return_value=[]),patch('token_images.refresh_catalog',return_value={}) as images,patch.object(sys,'argv',['wallet.py','add',self.address,'--tag','Fixture','--phase','baseline']),contextlib.redirect_stdout(io.StringIO()):
+            catalog_check.side_effect=wallet.NetworkScopeError('Synthetic catalog mismatch')
+            with self.assertRaises(SystemExit):wallet.main()
+            failed=next((self.folder/'snapshots').rglob('run.json'))
+            self.assertEqual(wallet.read(failed)['error_code'],'network_scope_changed')
+            self.assertNotIn('latest_snapshot',wallet.read(self.folder/'wallets.json')['wallets'][0])
+            catalog_check.side_effect=verify_catalog
+            with patch.object(sys,'argv',sys.argv+['--resume',str(failed.parent.relative_to(self.folder))]):wallet.main()
         entry=wallet.read(self.folder/'wallets.json')['wallets'][0]
+        self.assertEqual(len(wallet.read(self.folder/'wallets.json')['wallets']),1)
+        self.assertEqual(entry['tags'],['Fixture'])
+        self.assertEqual(entry['latest_snapshot']['directory'],str(failed.parent.relative_to(self.folder)))
         folder=self.folder/entry['latest_snapshot']['directory']
         self.assertIn('completed_at',wallet.read(folder/'run.json'))
         self.assertEqual(wallet.read(folder/'results.json')['pipeline']['phase'],'holdings')
@@ -303,8 +316,9 @@ class WalletPipelineTests(unittest.TestCase):
             def __exit__(self,*args):pass
             def read(self):return b"  BOND: {\n    [base.id]: '0x0000000000000000000000000000000000000000',\n  },"
         with patch('urllib.request.urlopen',return_value=Response()):
-            with self.assertRaisesRegex(ValueError,'scope changed'):
+            with self.assertRaisesRegex(wallet.NetworkScopeError,'scope changed') as error:
                 wallet.source_check([{'chain_id':8453,'mintclub_bond_address':'0xc5a076cad94176c2996B32d8466Be1cE757FAa27'}],self.folder)
+            self.assertEqual(error.exception.code,'network_scope_changed')
 
     def test_outside_dex_scope_reserve_preserves_unknown_observation(self):
         token={'chain_id':54176,'token_address':'0x'+'3'*40,'token_type':'ERC20'}
