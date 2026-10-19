@@ -1,5 +1,70 @@
 # Wallet capability direction
 
+## Post-MVP decision: Imported wallets and execution, 2026-10-19
+
+The operator accepted deferring the proposed Imported wallet execution stack
+after the architecture, dependency and security discussion. It is post-MVP
+research, not an implementation ticket or permission to request wallet grants.
+This decision supersedes any earlier suggestion to begin a three-group rollout.
+
+Keep the current Watching and OWS experiences for the MVP. External browser
+connections remain public-address sources for Watching wallets. Existing
+human-submitted encrypted OWS creation and public-descriptor connection are
+implemented; transaction signing, transfers and trading are not implemented.
+Do not add a third wallet group before its distinct capability is approved.
+
+The evaluated future groups are Watching wallet, OWS wallet and Imported wallet.
+For this proposal, Imported means connecting an existing external account and
+explicit execution permissions while retaining its original keys in that wallet.
+It does not mean importing a seed phrase or private key into Kira. Keep account
+origin separate from execution capability. A future conversion must preserve the
+same account's holdings and history without double-counting the portfolio.
+
+The recommendation is to defer autonomous execution. Dependency size can be
+bounded, but grant enforcement, signer isolation, transaction validation, nonce
+ownership, duplicate prevention, revocation and uncertain-result recovery create
+substantial security and maintenance obligations. Saved sell-out estimates are
+research evidence and cannot be treated as ready-to-submit transactions.
+
+A metadata-only dependency experiment using Smart Accounts Kit 2.0.0 increased
+the lockfile package entries, excluding the root, from 18 to 53. Existing package
+versions did not change. The SDK's own reported unpacked size was 3,156,894 bytes,
+excluding its dependencies. This is not a browser bundle, memory or runtime
+benchmark. No SDK was installed in the project and no signing code was run.
+
+Reconsider only after a concrete recurring action justifies execution support:
+
+- Begin with one chain and one supported action, confirmed per transaction in
+  the external wallet. Native key import remains outside this proposal.
+- Consider limited automation later as an optional execution component. Define
+  actual on-chain restrictions for amounts, recipients, contracts and expiry;
+  local application checks alone do not constrain a compromised signing key.
+- Keep private signing material outside model processes, prompts, browser
+  storage, research records and logs. Package or process separation alone is
+  not proof of an effective security boundary.
+- Verify the granted permissions rather than assuming they equal the request.
+  Treat pause, disconnect and confirmed permission revocation as separate states.
+- Validate current balances, exact calldata, fees and minimum output before
+  submission. Recover ambiguous sends without automatic duplicate transactions.
+- Verify expiry, revocation, rejected actions and recovery with synthetic and
+  testnet evidence before considering mainnet. Independent security review is
+  recommended for that future scope and remains operator-selected.
+
+MetaMask Advanced Permissions was a researched candidate, not an operator-selected
+integration. ERC-7715 remains a draft and supported permission types and networks
+must be checked again when this work is scheduled. OWS execution would need the
+same security assessment; its current in-process policy and key handling are not
+an on-chain or hardware isolation guarantee. Review not selected.
+
+Primary references checked on 2026-10-19:
+[ERC-7715](https://eips.ethereum.org/EIPS/eip-7715),
+[EIP-7702 security](https://eips.ethereum.org/EIPS/eip-7702#security-considerations),
+[MetaMask supported permissions](https://docs.metamask.io/smart-accounts-kit/get-started/supported-advanced-permissions/),
+[delegation revocation](https://docs.metamask.io/smart-accounts-kit/guides/delegation/disable-delegation/),
+[OWS key isolation](https://github.com/open-wallet-standard/core/blob/main/docs/05-key-isolation.md).
+
+## Historical design context: 2026-10-04
+
 Agreed with the operator on 2026-10-04: begin with Watching wallet connection.
 Transfers, swaps and OWS Managed wallets need separate design and verification
 before implementation. This is a future direction, not a delivered capability.
