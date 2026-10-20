@@ -14,6 +14,71 @@ from kira_agent import AgentStore
 from test_kira_agent import settings, ready
 
 class ResearchToolsTest(unittest.TestCase):
+    def test_cached_full_balance_sale_reaches_details_and_compact_quote_indicator(self):
+        from copy import deepcopy
+        from test_sell_quotes import fixture, STAMP
+        import sys
+        sys.path.insert(0,str(Path(__file__).resolve().parent/'viewer'))
+        from model import load_state
+        snapshot,market,record=fixture()
+        snapshot.update(schema_version=1,wallet_address=self.first['address'],tags=['Demo wallet'],
+                        compiled_at=STAMP,status='completed_with_coverage_gaps',counts={})
+        snapshot['coverage'][0].update(name='Base',native_symbol='ETH',native_balance='0',
+                                      general_erc20_discovery='indexer_checked',rpc_status='available')
+        token=snapshot['tokens'][0]
+        token.update(network='base',symbol='HUNT',name='Synthetic HUNT',decimals=0,mintclub=None)
+        market.update(observed_at=STAMP,sell_quotes={'version':1,'wallet_address':self.first['address_key'],'records':[record]})
+        folder=self.root/self.first['latest_snapshot']['directory']
+        atomic(folder/'results.json',snapshot);atomic(folder/'market-prices.json',market)
+        expected=load_state(self.root)[0]['wallets'][0]['assets'][0]['sell_out']
+        self.assertEqual(expected['value_usd'],4000)
+        self.assertEqual(expected['valuation'],'terminal_reference')
+        detail=self.call('token_read',{'chain_id':8453,'address':token['token_address']})['positions'][0]['asset']
+        self.assertEqual(detail['sell_out'],expected)
+        self.assertTrue(detail['exit_quote_recorded'])
+        self.assertIsNone(detail['exit_quote'])  # No Mint Club burn record.
+        search=self.call('holdings_query',{'mode':'search','query':'HUNT'})['results'][0]['positions'][0]['asset']
+        self.assertEqual(search['sell_out'],expected)
+        compact=self.call('wallet_read',{'wallet':self.first['address_key']})['assets'][0]
+        self.assertTrue(compact['exit_quote_recorded'])
+        self.assertNotIn('sell_out',compact)
+        self.assertNotIn('exit_quote',compact)
+        for change in ('wrong_wallet','partial_input','testnet'):
+            altered=deepcopy(market);saved=deepcopy(snapshot)
+            if change=='wrong_wallet':altered['sell_quotes']['wallet_address']=self.other
+            elif change=='partial_input':altered['sell_quotes']['records'][0]['quote']['partial_input']=True
+            else:saved['coverage'][0]['environment']='testnet'
+            atomic(folder/'results.json',saved);atomic(folder/'market-prices.json',altered)
+            detail=self.call('token_read',{'chain_id':8453,'address':token['token_address']})['positions'][0]['asset']
+            self.assertIsNone(detail['sell_out'],change)
+            self.assertFalse(detail['exit_quote_recorded'],change)
+        self.assertEqual(JobStore(self.root).list(),[])
+
+    def test_burn_sell_out_keeps_reserve_valuation_and_independent_clocks(self):
+        from test_sell_quotes import fixture, STAMP
+        snapshot,market,_=fixture()
+        snapshot.update(schema_version=1,wallet_address=self.first['address'],tags=['Demo wallet'],
+                        compiled_at=STAMP,status='completed_with_coverage_gaps',counts={})
+        snapshot['coverage'][0].update(name='Base',native_symbol='ETH',native_balance='0',
+                                      general_erc20_discovery='indexer_checked',rpc_status='available')
+        reserve='0x'+'9'*40;quoted='2026-10-01T00:00:00Z';token=snapshot['tokens'][0]
+        token.update(network='base',symbol='CURVE',name='Synthetic curve',decimals=0,
+                     mintclub={'reserve_token':reserve,'reserve_symbol':'RESERVE','reserve_balance':'100',
+                               'funded':True,'price_for_next_mint_in_reserve_token':'1',
+                               'source_url':'https://example.com/curve','observed_at':quoted,'block_number':'7',
+                               'wallet_full_burn':{'net_refund':'12','gas_included':False}})
+        market['tokens'].append({**market['tokens'][0],'address':reserve,'usd':'2'})
+        folder=self.root/self.first['latest_snapshot']['directory']
+        atomic(folder/'results.json',snapshot);atomic(folder/'market-prices.json',market)
+        asset=self.call('token_read',{'chain_id':8453,'address':token['token_address']})['positions'][0]['asset']
+        estimate=asset['sell_out']
+        self.assertEqual(estimate['valuation'],'reserve_reference')
+        self.assertEqual(estimate['value_usd'],24)
+        self.assertEqual(estimate['observed_at'],quoted)
+        self.assertEqual(estimate['output_price']['observed_at'],STAMP)
+        self.assertFalse(estimate['execution_verified']);self.assertFalse(estimate['gas_included'])
+        self.assertEqual(asset['exit_quote']['output_amount'],'12')
+
     def test_large_inventory_queries_search_rank_aggregate_without_dumping_pages(self):
         from copy import deepcopy
         from kira_agent import read_completion, read_receipt

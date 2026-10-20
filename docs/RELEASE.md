@@ -79,7 +79,7 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep published GitHub tags, release assets and npm versions through 0.1.15
+Keep published GitHub tags, release assets and npm versions through 0.1.16
 immutable. Do not rebuild them from later documentation commits. Future package
 changes need a new version. Release preparation does not publish a GitHub
 release, promote the website or publish to npm.
@@ -95,12 +95,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.16.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.17.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.16.tgz --access public
+npm publish ./dist/kira-wallet-0.1.17.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
@@ -433,7 +433,7 @@ personal 0.1.14 installation, credentials, paused history and published archives
 Use a separate private workspace for candidate acceptance. No GitHub release,
 website deployment or personal app upgrade is part of this preparation.
 
-## Release candidate: 0.1.16
+## Published 0.1.16
 
 This version repairs Mint Club symbol routes, including ERC1155 NFT routes and
 encoded symbols, without rewriting historical snapshots. Market lookup attaches
@@ -487,5 +487,33 @@ history privacy checks, exact archive membership, real unchanged natural-languag
 questions and responsive market interactions. Review not selected. Publication
 remains operator-only. A feature-branch candidate is not a merged release or a
 published package; the final manifest must identify the accepted source commit.
-Preserve the superseded unpublished archive before creating the final 0.1.16
-candidate. Only the archive matching the final manifest is a publication target.
+The final 0.1.16 archive was frozen from landed source. Superseded unpublished
+candidates are preserved. Only the archive matching its final manifest was a
+publication target.
+
+The operator published 0.1.16 on October 20, 2026. Its registry archive matched
+the frozen manifest and all 101 installed package members. Live acceptance
+found the agent-context omission addressed in 0.1.17 below. The published
+archive remains immutable.
+
+## Release candidate: 0.1.17
+
+After a price refresh saved a full-balance DEX quote, chat could report that no
+estimate existed while the UI displayed it. Detailed agent facts now include
+the same validated `sell_out` projection used by the UI. Compact holdings pages
+retain quote presence and defer the detailed output to a scoped token read.
+The separate legacy Mint Club burn field does not represent every sale route.
+
+Output amounts, quote and price observation times, reference valuations, gas
+exclusions and execution caveats stay intact. Wrong-wallet caches, partial
+inputs and testnet positions remain excluded. Independent wallet estimates
+sharing liquidity cannot be added into portfolio proceeds. This change adds
+no provider calls or quote calculations.
+
+Acceptance includes the full repository suite, clean installation, tracked and
+history privacy checks, and exact archive membership. An isolated exact package
+using the same saved records, model settings, prior conversation and unchanged
+question returned the recorded DEX output and reference valuation without
+starting provider jobs. Product acceptance applies only to identical product
+bytes. Review not selected. Freeze the final archive from the landed source
+and dry-run that archive. npm publication remains operator-only.

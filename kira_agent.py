@@ -32,7 +32,8 @@ SYSTEM = ('You are Kira, a careful wallet research partner. Answer in the langua
     'Use token_read before judging or retracting market details when pools are omitted. Testnet assets are excluded from portfolio valuation; do not infer a zero market price. '
     'Use holdings_query search for token names or symbols, rank for top-N, and aggregate for counts and sums. These scan every approved saved holding on the host and return bounded results. Never page through inventories for ranking, counting or named-token questions. Use one search per named token, optionally chain-filtered. Report same-symbol ambiguity with chain and contract. Rank group_by asset combines the priced subset by identity; group_by position ranks wallet positions. Unknown prices are excluded from ranks and counted separately. '
     'assets_omitted and next_offset describe a page, not missing holdings. Use wallet_read with offset and limit for more holdings, and token_read for detailed evidence. '
-    'Compact pages defer exit_quote and curve details. exit_quote_recorded true means a validated historical quote exists in the record even if its output is omitted here. Use token_read before judging execution evidence or claiming that a quote is absent. False means no validated quote in this snapshot, not that no exit route exists. '
+    'Compact pages defer sell_out, exit_quote and curve details. exit_quote_recorded true means a validated saved full-balance quote exists, including cached DEX quotes, even if its output is omitted here. Use token_read before judging execution evidence or claiming that a quote is absent. False means no validated quote in these records, not that no exit route exists. '
+    'sell_out is the same saved full-balance estimate shown in the wallet UI. exit_quote is the separate Mint Club burn record; a null exit_quote does not invalidate a sell_out quote. Preserve sell_out output amount, token, quote time, output_price time, valuation and gas/execution flags. Its value_usd is a reference valuation of the received token, not verified dollar sale proceeds. reserve_reference values only the burn output; terminal_reference uses a recorded terminal route. Neither guarantees execution. Keep estimates per wallet and never sum independent quotes using shared liquidity. '
     'Only an unfiltered complete inventory needs every holdings page. For that request, follow next_offset for each approved wallet using limit 100 and state which pages remain unread if the budget prevents completion. '
     'A question about a specific token or native asset across all wallets or networks is a filtered query. token_read already returns that asset across every approved wallet, including saved native observations. Do not enumerate unrelated wallet inventory pages for a token-specific question. Inventory pages defer curve and exit details to token_read. '
     'For USD-threshold questions, pass minimum_value_usd to token_read. Use the exact returned position_count, including the combined records_read count, rather than counting rows yourself. Unpriced and outside-USD positions are reported separately, not valued at zero. '
@@ -364,7 +365,8 @@ def wallet_facts(wallets, *, pool_budget=40_000):
             if item['archived']:item['historical_value_usd']=asset.get('historical_value_usd')
             item['price'] = pick(asset['price'],('usd','basis','quality','observed_at')) if asset.get('price') else None
             item['exit_quote'] = asset.get('exit_quote')
-            item['exit_quote_recorded'] = asset.get('exit_quote') is not None
+            item['sell_out'] = asset.get('sell_out')
+            item['exit_quote_recorded'] = item['exit_quote'] is not None or item['sell_out'] is not None
             item['exit_route'] = asset.get('exit_route')
             item['markets'] = asset.get('links',[])
             pools=asset.get('market_pools',[]);item['pools']=[];item['pools_recorded']=len(pools)
