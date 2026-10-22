@@ -73,6 +73,40 @@ class ConfigurationTests(unittest.TestCase):
         with patch.object(config,'secret_values',side_effect=ValueError('Configured secret file cannot be read.')),patch.object(sys,'argv',['kira','config','import-env','--file',str(bad),'--key-env','TEST_KEY']),contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(kira_cli.main(),1)
         self.assertEqual(config.config_path().read_bytes(),original)
+
+    def test_import_reference_case_is_preserved_when_cli_is_idle_or_busy(self):
+        import fcntl
+        from kira_jobs import JobStore
+        kira_cli.initialize(self.root)
+        file=self.root/'case.env'
+        for name in ('alchemy_key','Alchemy_Key','ALCHEMY_KEY'):
+            with self.subTest(name=name):
+                file.write_text(name+'=synthetic-case-value\n')
+                args=['kira','config','import-env','--file',str(file),'--key-env',name]
+                self.save(config.default_config())
+                with patch.object(sys,'argv',args),contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(kira_cli.main(),0)
+                idle=config.load_config()
+                self.assertEqual(idle['discovery']['key_env'],name)
+                self.save(config.default_config())
+                output=io.StringIO()
+                with (self.root/'.analysis.lock').open('a') as held:
+                    fcntl.flock(held,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                    with patch.object(sys,'argv',args),patch.object(JobStore,'launch'),contextlib.redirect_stdout(output):
+                        self.assertEqual(kira_cli.main(),0)
+                queued=json.loads(output.getvalue())
+                self.assertEqual(queued['status'],'configuration_queued')
+                store=JobStore(self.root);store.worker()
+                self.assertEqual(store.get(queued['job_id'])['state'],'succeeded')
+                self.assertEqual(config.load_config(),idle)
+                self.assertTrue(config.public_status()['discovery_key_available'])
+                self.assertNotIn('synthetic-case-value',json.dumps(store.get(queued['job_id'])))
+        file.write_text('ALCHEMY_KEY=synthetic-upper-only\n')
+        original=config.config_path().read_bytes()
+        job=store.queue_import(file,'alchemy_key');store.worker()
+        self.assertEqual(store.get(job['job_id'])['errors'][0]['code'],'connection_key_missing')
+        self.assertEqual(config.config_path().read_bytes(),original)
+
     def test_custom_fallback_defaults_automatic_and_respects_explicit_opt_out(self):
         cfg=config.default_config();cfg['rpc'].update(mode='custom',chains={'8453':{'url_env':'BASE_RPC'}});self.save(cfg)
         self.assertEqual(config.endpoints(self.network),['https://public.example'])

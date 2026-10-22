@@ -17,6 +17,7 @@ import tempfile
 import time
 from typing import Literal, TypedDict, NotRequired
 import uuid
+from kira_config import valid_env_reference
 
 ASSETS = Path(__file__).resolve().parent
 
@@ -238,13 +239,13 @@ class JobStore:
         if operation == 'settings.importEnv':
             fields(value,['import_id','key_env'])
             identifier(value['import_id'])
-            if not isinstance(value['key_env'],str) or not re.fullmatch(r'[A-Z_][A-Z0-9_]{0,99}',value['key_env']):
+            if not valid_env_reference(value['key_env'],max_length=100):
                 raise JobError('invalid_settings','Use a local credential reference.')
             self.import_reference(value)
             return value.copy()
         if operation == 'settings.provider':
             fields(value,['provider','key_env'])
-            if value['provider']!='alchemy' or not isinstance(value['key_env'],str) or not re.fullmatch(r'[A-Z_][A-Z0-9_]{0,99}',value['key_env']):
+            if value['provider']!='alchemy' or not valid_env_reference(value['key_env'],max_length=100):
                 raise JobError('invalid_settings','Choose a data provider and a local credential reference.')
             return value.copy()
         if operation == 'settings.rpc':
@@ -257,14 +258,14 @@ class JobStore:
             chains={}
             for chain in value['chains']:
                 fields(chain,['chain_id','url_env'])
-                if type(chain['chain_id']) is not int or chain['chain_id'] not in available or not isinstance(chain['url_env'],str) or not re.fullmatch(r'[A-Z_][A-Z0-9_]{0,99}',chain['url_env']) or str(chain['chain_id']) in chains:
+                if type(chain['chain_id']) is not int or chain['chain_id'] not in available or not valid_env_reference(chain['url_env'],max_length=100) or str(chain['chain_id']) in chains:
                     raise JobError('invalid_settings','Use a known chain and a unique environment variable reference.')
                 chains[str(chain['chain_id'])]={'url_env':chain['url_env']}
             if value['mode']=='custom' and not chains:raise JobError('invalid_settings','Custom RPC requires at least one endpoint reference.')
             return {'mode':value['mode'],'chains':chains,'allow_public_fallback':value['allow_public_fallback'],**({'priority':value['priority']} if 'priority' in value else {})}
         if operation == 'settings.discovery':
             fields(value,['provider','key_env'])
-            if value['provider'] not in ('none','alchemy') or not isinstance(value['key_env'],str) or not re.fullmatch(r'[A-Z_][A-Z0-9_]{0,99}',value['key_env']):raise JobError('invalid_settings','Use a supported indexer and environment variable reference.')
+            if value['provider'] not in ('none','alchemy') or not valid_env_reference(value['key_env'],max_length=100):raise JobError('invalid_settings','Use a supported indexer and environment variable reference.')
             return value.copy()
         if operation == 'wallet.add':
             fields(value, ['address', 'tag'])
@@ -308,7 +309,7 @@ class JobStore:
         return record['file']
 
     def queue_import(self, file, key_env):
-        if not isinstance(key_env,str) or not re.fullmatch(r'[A-Z_][A-Z0-9_]{0,99}',key_env):
+        if not valid_env_reference(key_env,max_length=100):
             raise JobError('invalid_settings','Use a local credential reference.')
         file=Path(file).expanduser().resolve()
         if not file.is_file():raise JobError('invalid_import','Secret environment file does not exist.')

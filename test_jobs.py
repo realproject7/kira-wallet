@@ -201,6 +201,47 @@ class JobsTest(JobFixtures, unittest.TestCase):
         self.assertEqual(load_config()['discovery']['provider'],'alchemy')
         with self.assertRaises(JobError):self.store.submit(self.request('settings.importEnv',{'import_id':str(uuid.uuid4()),'key_env':'TEST_KEY'},'missing-reference'))
 
+    def test_settings_reference_validation_accepts_case_without_relaxing_bounds(self):
+        for name,valid in [('alchemy_key',True),('Alchemy_Key2',True),('_rpc',True),('A'*100,True),
+                           ('A'*101,False),('',False),('2KEY',False),('bad name',False),
+                           ('bad-name',False),('KEY=value',False),('https://example.invalid',False),
+                           (None,False),(123,False)]:
+            for operation,value in [('settings.provider',{'provider':'alchemy','key_env':name}),
+                                    ('settings.discovery',{'provider':'alchemy','key_env':name}),
+                                    ('settings.rpc',{'mode':'custom','allow_public_fallback':True,
+                                                     'chains':[{'chain_id':8453,'url_env':name}]})]:
+                with self.subTest(name=name,operation=operation):
+                    if valid:
+                        normalized=self.store.normalize(operation,value)
+                        self.assertEqual(normalized['chains']['8453']['url_env'] if operation=='settings.rpc' else normalized['key_env'],name)
+                    else:
+                        with self.assertRaises(JobError):self.store.normalize(operation,value)
+            if not valid:
+                with self.assertRaises(JobError):self.store.queue_import(self.root/'synthetic.env',name)
+
+    def test_reference_contracts_match_the_settings_field_and_job_validator(self):
+        import re
+        from kira_config import valid_env_reference
+        root=Path(__file__).resolve().parent
+        schema=json.loads((root/'sources/job-request-v1.schema.json').read_text())
+        patterns=[]
+        def collect(node):
+            if isinstance(node,dict):
+                for name,value in node.get('properties',{}).items():
+                    if name in ('key_env','url_env'):patterns.append(value['pattern'])
+                for value in node.values():collect(value)
+            elif isinstance(node,list):
+                for value in node:collect(value)
+        collect(schema);self.assertEqual(len(patterns),4)
+        field=re.search(r'<input id="discovery-key"[^>]+>',(root/'viewer/static/index.html').read_text())[0]
+        pattern=re.search(r'pattern="([^"]+)"',field)[1]
+        maximum=int(re.search(r'maxlength="(\d+)"',field)[1])
+        for name in ('alchemy_key','Mixed_Key2','_key','A'*100,'A'*101,'2key','bad-name','bad name',''):
+            expected=valid_env_reference(name,max_length=100)
+            self.assertEqual(len(name)<=maximum and re.fullmatch(pattern,name) is not None,expected,name)
+            for contract in patterns:self.assertEqual(re.fullmatch(contract,name) is not None,expected,name)
+
+
     def test_market_interim_receipt_is_scoped_and_budget_is_resumable(self):
         job=self.running();identity=job['checkpoint']+'/market-initial-0001';self.snapshot(identity,'2')
         self.store.event(job['job_id'],{'stage':'first_evidence','snapshot':identity})

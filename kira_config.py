@@ -8,6 +8,10 @@ from urllib.parse import urlparse
 
 ASSETS = Path(__file__).resolve().parent
 
+def valid_env_reference(name, max_length=None):
+    return (isinstance(name,str) and (max_length is None or len(name)<=max_length)
+            and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*',name) is not None)
+
 def data_root():
     # Direct historical scripts keep their workspace. The supported CLI sets this.
     return Path(os.environ.get('KIRA_DATA_DIR', ASSETS)).expanduser().resolve()
@@ -64,7 +68,7 @@ def load_config(path=None):
     if set(rpc)-{'mode','allow_public_fallback','priority','chains'} or set(discovery)-{'provider','key_env','explorers','public'}:raise ValueError('Unknown provider configuration fields.')
     if any(not isinstance(row,dict) or set(row)-{'url_env','alchemy_network'} for row in rpc['chains'].values()):raise ValueError('Unknown RPC endpoint fields.')
     for name in [discovery.get('key_env'),*[row.get('url_env') if isinstance(row,dict) else None for row in rpc['chains'].values()]]:
-        if not isinstance(name,str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*',name):raise ValueError('Credentials must use valid environment references.')
+        if not valid_env_reference(name):raise ValueError('Credentials must use valid environment references.')
     if any(not str(cid).isdigit() or int(cid)<=0 for cid in rpc['chains']):raise ValueError('Invalid RPC chain ID.')
     if 'secret_env_file' in cfg and not isinstance(cfg['secret_env_file'],str):raise ValueError('Invalid secret file reference.')
     return cfg
