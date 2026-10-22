@@ -20,6 +20,23 @@ def ready():
     return [{'id':p,'installed':True,'supported':True,'logged_in':True} for p in ('codex','claude')]
 
 class AgentTest(unittest.TestCase):
+    def test_rank_completion_combines_only_contiguous_pages_of_the_same_query(self):
+        from kira_agent import read_completion,read_receipt
+        def page(offset,count,available=40,**filters):
+            args={'mode':'rank','offset':offset,'limit':25,**filters}
+            result={'query_scope':{'mode':'rank','full_inventory_scanned':True,'complete':True,
+                    'offset':offset,'returned_count':count,'requested_limit':25,'result_count':available}}
+            return read_receipt('holdings_query',args,result)
+        def status(rows):return read_completion('top 30 tokens',rows,None)['status']
+        first=page(0,25)
+        self.assertEqual(status([first]),'partial')
+        self.assertEqual(status([first,page(25,5)]),'complete')
+        self.assertEqual(status([first,first]),'partial')
+        self.assertEqual(status([first,page(26,5)]),'partial')
+        self.assertEqual(status([first,page(25,5,chain_id=8453)]),'partial')
+        self.assertEqual(status([page(0,7,available=7)]),'complete')
+        self.assertEqual(status([page(0,0,available=0)]),'complete')
+
     def test_probe_failure_is_unknown_and_verified_version_is_unsupported(self):
         from kira_agent import capabilities
         import subprocess
