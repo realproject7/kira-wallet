@@ -203,14 +203,22 @@ def read_completion(message, receipts, tools):
         if not finished and (exhaustive or any(r.get('next_offset') is not None for r in pages)):
             unread.append({'name':name,'arguments':{**json.loads(identity),'offset':offset},'snapshot_id':snapshot})
     if requested_rank:
+        from decimal import Decimal
         ranked=[r for r in completed if r['name']=='holdings_query' and (r.get('query_scope') or {}).get('mode')=='rank']
-        rank_pages={}
+        rank_pages={};approved_wallets=None
         for r in ranked:
             q=r['query_scope']
             if not q.get('full_inventory_scanned') or not q.get('complete'):continue
-            identity={'environment':'mainnet','group_by':'asset',
+            identity={'environment':'mainnet','group_by':'asset','query':'',
                       **{k:v for k,v in r['arguments'].items() if k not in ('offset','limit')}}
-            rank_pages.setdefault((json.dumps(identity,sort_keys=True),q['result_count']),[]).append(q)
+            identity['query']=identity['query'].strip().casefold()
+            if 'minimum_value_usd' in identity:identity['minimum_value_usd']=Decimal(str(identity['minimum_value_usd']))
+            if 'wallet' in identity and tools:
+                try:
+                    if approved_wallets is None:approved_wallets=tools.allowed()[1]
+                    identity['wallet']=tools.wallet(identity['wallet'],approved_wallets)
+                except JobError:continue
+            rank_pages.setdefault((tuple(sorted(identity.items())),q['result_count']),[]).append(q)
         rank_complete=False
         for (_,available),pages in rank_pages.items():
             covered=0

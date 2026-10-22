@@ -37,6 +37,37 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(status([page(0,7,available=7)]),'complete')
         self.assertEqual(status([page(0,0,available=0)]),'complete')
 
+    def test_rank_completion_normalizes_filters_used_by_real_queries(self):
+        from copy import deepcopy
+        from kira_agent import scoped_wallets,read_receipt,read_completion
+        from kira_research_tools import ResearchTools
+        config=settings(scope='portfolio',wallet_tools=True)
+        tools=ResearchTools(self.root,config)
+        wallet=scoped_wallets(self.root,config)[0];base=wallet['assets'][0]
+        wallet['assets']=[{**deepcopy(base),'id':f'8453:0x{i:040x}','address':f'0x{i:040x}',
+            'symbol':'FIX','name':'Fixture '+str(i),'chain_id':8453,'value_usd':i+100,
+            'environment':'mainnet','archived':False} for i in range(40)]
+        cases=[({'wallet':wallet['name']},{'wallet':wallet['address']},'complete'),
+               ({'minimum_value_usd':100},{'minimum_value_usd':'1e2'},'complete'),
+               ({'query':'FIX'},{'query':' fix '},'complete'),
+               ({},{'environment':'mainnet','group_by':'asset','query':' '},'complete'),
+               ({'query':'FIX'},{'query':'Fixture'},'partial'),
+               ({'minimum_value_usd':100},{'minimum_value_usd':'99'},'partial'),
+               ({},{'environment':'all'},'partial'),
+               ({},{'group_by':'position'},'partial')]
+        with patch('kira_agent.scoped_wallets',return_value=[wallet]):
+            for first,second,expected in cases:
+                with self.subTest(first=first,second=second):
+                    receipts=[];identities=[]
+                    for offset,filters in ((0,first),(25,second)):
+                        args={'mode':'rank','limit':25,'offset':offset,**filters}
+                        result=tools.call('holdings_query',args,'rank-regression')
+                        receipts.append(read_receipt('holdings_query',args,result))
+                        identities.extend(row['identity'] for row in result['results'])
+                    self.assertEqual(len(set(identities)),40)
+                    for pages in (receipts,list(reversed(receipts))):
+                        self.assertEqual(read_completion('top 30 tokens',pages,tools)['status'],expected)
+
     def test_probe_failure_is_unknown_and_verified_version_is_unsupported(self):
         from kira_agent import capabilities
         import subprocess
