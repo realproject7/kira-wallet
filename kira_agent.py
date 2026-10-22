@@ -203,10 +203,31 @@ def read_completion(message, receipts, tools):
         if not finished and (exhaustive or any(r.get('next_offset') is not None for r in pages)):
             unread.append({'name':name,'arguments':{**json.loads(identity),'offset':offset},'snapshot_id':snapshot})
     if requested_rank:
-        count=requested_rank
+        from decimal import Decimal
         ranked=[r for r in completed if r['name']=='holdings_query' and (r.get('query_scope') or {}).get('mode')=='rank']
-        if not any(q.get('full_inventory_scanned') and q.get('complete') and q.get('offset')==0 and q.get('requested_limit',0)>=count for r in ranked for q in [r['query_scope']]):
-            missing.append('holdings_query rank for the requested top '+str(count))
+        rank_pages={};approved_wallets=None
+        for r in ranked:
+            q=r['query_scope']
+            if not q.get('full_inventory_scanned') or not q.get('complete'):continue
+            identity={'environment':'mainnet','group_by':'asset','query':'',
+                      **{k:v for k,v in r['arguments'].items() if k not in ('offset','limit')}}
+            identity['query']=identity['query'].strip().casefold()
+            if 'minimum_value_usd' in identity:identity['minimum_value_usd']=Decimal(str(identity['minimum_value_usd']))
+            if 'wallet' in identity and tools:
+                try:
+                    if approved_wallets is None:approved_wallets=tools.allowed()[1]
+                    identity['wallet']=tools.wallet(identity['wallet'],approved_wallets)
+                except JobError:continue
+            rank_pages.setdefault((tuple(sorted(identity.items())),q['result_count']),[]).append(q)
+        rank_complete=False
+        for (_,available),pages in rank_pages.items():
+            covered=0
+            for page in sorted(pages,key=lambda q:q['offset']):
+                if page['offset']>covered:break
+                covered=max(covered,page['offset']+page['returned_count'])
+            if covered>=min(requested_rank,available):rank_complete=True;break
+        if not rank_complete:
+            missing.append('holdings_query rank for the requested top '+str(requested_rank))
     for r in completed:
         q=r.get('query_scope')
         if q and not q.get('complete'):missing.append('holdings_query result detail was truncated')
