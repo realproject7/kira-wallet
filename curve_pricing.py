@@ -24,7 +24,7 @@ def resolve(graph, prices):
         if key in seen:return None
         existing=known.get(key)
         node=nodes.get(key)
-        if existing and existing.get('quality')=='unreliable' and not (node and node.get('is_curve')):
+        if existing and existing.get('quality') in ('unfunded','unreliable') and not (node and node.get('is_curve')):
             cache[key]={**existing,'usd':None};return cache[key]
         unfunded=node and not node.get('error') and node.get('is_curve') and node.get('funded') is False
         if existing and existing.get('usd') is not None and existing.get('quality') not in ('unfunded','unreliable') and (existing.get('basis')!='Curve spot' or not unfunded and not rejected_reserve(key,set())):

@@ -86,5 +86,24 @@ class CurvePricingTests(unittest.TestCase):
                     self.assertIsNone(result['usd']);self.assertEqual(result['quality'],'unfunded')
                     self.assertEqual(result['observed_at'],graph[0]['observed_at'])
 
+    def test_saved_unfunded_ancestor_invalidates_partial_graph_and_retained_prices(self):
+        from wallet import retain_price_evidence
+        graph=[self.curve('leaf','child'),self.curve('child','parent')]
+        prices=[{'chain_id':8453,'address':address,'usd':100,'basis':'Curve spot','quality':'estimated',
+                 'observed_at':'2026-10-02T00:00:00Z'} for address in ('leaf','child')]
+        invalid={'chain_id':8453,'address':'parent','usd':None,'basis':'Curve spot','quality':'unfunded'}
+        for ancestor in ([],[{'chain_id':8453,'address':'parent','error':'unavailable'}]):
+            with self.subTest(ancestor=ancestor):
+                resolved=resolve(graph+ancestor,prices+[invalid])
+                retained=retain_price_evidence({'tokens':resolved},{'tokens':prices})
+                result={r['address']:r for r in retained['tokens']}
+                for address in ('leaf','child'):
+                    self.assertIsNone(result[address]['usd'])
+                    self.assertEqual(result[address]['quality'],'unfunded')
+                independent={**prices[1],'basis':'DEX market','usd':2}
+                result={r['address']:r for r in resolve(graph+ancestor,prices+[invalid,independent])}
+                self.assertEqual(result['child']['usd'],2)
+                self.assertIsNotNone(result['leaf']['usd'])
+
 
 if __name__=='__main__':unittest.main()
