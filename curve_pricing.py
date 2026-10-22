@@ -15,15 +15,16 @@ def resolve(graph, prices):
     def rejected_reserve(key,seen):
         if key in seen:return False
         node=nodes.get(key);price=known.get(key)
-        if not node or not node.get('is_curve'):return bool(price and price.get('quality')=='unreliable')
+        if not node or not node.get('is_curve'):return bool(price and price.get('quality') in ('unfunded','unreliable'))
         if price and price.get('usd') is not None and price.get('basis')!='Curve spot' and price.get('quality') not in ('unfunded','unreliable'):return False
+        if not node.get('error') and node.get('funded') is False:return True
         return rejected_reserve((key[0],node['reserve_token'].lower()),seen|{key})
     def visit(key,seen):
         if key in cache:return cache[key]
         if key in seen:return None
         existing=known.get(key)
         node=nodes.get(key)
-        if existing and existing.get('quality')=='unreliable' and not (node and node.get('is_curve')):
+        if existing and existing.get('quality') in ('unfunded','unreliable') and not (node and node.get('is_curve')):
             cache[key]={**existing,'usd':None};return cache[key]
         unfunded=node and not node.get('error') and node.get('is_curve') and node.get('funded') is False
         if existing and existing.get('usd') is not None and existing.get('quality') not in ('unfunded','unreliable') and (existing.get('basis')!='Curve spot' or not unfunded and not rejected_reserve(key,set())):
@@ -35,8 +36,8 @@ def resolve(graph, prices):
                     'observed_at':node.get('observed_at'),'block_number':node.get('block_number')}
             cache[key]=record;return record
         parent=visit((key[0],node['reserve_token'].lower()),seen|{key})
-        if parent and parent.get('quality')=='unreliable':
-            record={'chain_id':key[0],'address':node['address'],'usd':None,'basis':'Curve spot','quality':'unreliable',
+        if parent and parent.get('quality') in ('unfunded','unreliable'):
+            record={'chain_id':key[0],'address':node['address'],'usd':None,'basis':'Curve spot','quality':parent['quality'],
                     'source':node.get('source'),'observed_at':node.get('observed_at'),'block_number':node.get('block_number')}
             cache[key]=record;return record
         if not parent or parent.get('usd') is None:return None
