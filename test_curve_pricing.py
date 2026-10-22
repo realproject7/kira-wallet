@@ -59,6 +59,23 @@ class CurvePricingTests(unittest.TestCase):
         self.assertIsNone(result['empty']['usd'])
         self.assertEqual(result['empty']['quality'],'unfunded')
 
+    def test_unfunded_ancestor_invalidates_cached_descendants_but_not_dex_prices(self):
+        graph=[self.curve('leaf','child'),self.curve('child','parent'),
+               self.curve('parent','weth',funded=False),
+               {'chain_id':8453,'address':'weth','is_curve':False}]
+        prices=[{'chain_id':8453,'address':address,'usd':100,'basis':'Curve spot','quality':'estimated'}
+                for address in ('leaf','child')]
+        prices.append({'chain_id':8453,'address':'weth','usd':2000,'basis':'Market index','quality':'estimated'})
+        result={r['address']:r for r in resolve(graph,prices)}
+        for address in ('leaf','child','parent'):
+            self.assertIsNone(result[address]['usd'])
+            self.assertEqual(result[address]['quality'],'unfunded')
+        for address in ('child','parent'):
+            independent={'chain_id':8453,'address':address,'usd':2,'basis':'DEX market','quality':'estimated'}
+            result={r['address']:r for r in resolve(graph,prices+[independent])}
+            self.assertEqual(result[address]['usd'],2)
+            self.assertIsNotNone(result['leaf']['usd'])
+
     def test_fresh_unfunded_graph_invalidates_curve_quote_but_keeps_dex_quote(self):
         graph=[self.curve('asset','reserve',funded=False)]
         for basis in ('Curve spot','DEX market'):
