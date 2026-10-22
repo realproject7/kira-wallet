@@ -163,6 +163,8 @@ Environment overrides the file. An unreadable file or unavailable selected key
 rejects the import and preserves existing settings, whether applied immediately
 or queued in Activity. Malformed configuration fails with safe errors.
 The import does not contact providers. Private settings are never served.
+Reference names are case-sensitive. Lowercase and mixed-case names work in
+both immediate and queued imports; Kira does not convert them to uppercase.
 
 Analysis output contains wallet addresses and tags. Keep runtime directories
 outside repositories or ignored. Never publish operator holdings as demos.

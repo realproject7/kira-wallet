@@ -180,7 +180,7 @@
       <p id="provider-key-status" class="form-note" role="status"></p>
       <button id="provider-recheck" class="quiet-button" type="button">Check connection</button>
       <button id="provider-save" class="primary-button" type="submit">Connect Alchemy</button>
-      <details id="connection-advanced"><summary>Use an existing key reference</summary><label>Environment variable name<input id="discovery-key" value="ALCHEMY_API_KEY" pattern="[A-Z_][A-Z0-9_]*" maxlength="100"></label><p class="form-note">Name only. For an existing private environment file, use <code>kira config import-env --file PATH --key-env NAME</code> in your terminal.</p></details>
+      <details id="connection-advanced"><summary>Use an existing key reference</summary><label>Environment variable name<input id="discovery-key" value="ALCHEMY_API_KEY" pattern="[A-Za-z_][A-Za-z0-9_]*" maxlength="100"></label><p class="form-note">Name only. For an existing private environment file, use <code>kira config import-env --file PATH --key-env NAME</code> in your terminal.</p></details>
     </form>
     <p id="provider-status" class="form-note" role="status"></p><p id="settings-error" class="form-error" role="alert"></p>
     <button id="settings-refresh" class="primary-button" type="button" hidden>Refresh holdings</button>

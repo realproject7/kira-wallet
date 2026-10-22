@@ -79,7 +79,7 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep published GitHub tags, release assets and npm versions through 0.1.16
+Keep published GitHub tags, release assets and npm versions through 0.1.17
 immutable. Do not rebuild them from later documentation commits. Future package
 changes need a new version. Release preparation does not publish a GitHub
 release, promote the website or publish to npm.
@@ -95,12 +95,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.17.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.18.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.17.tgz --access public
+npm publish ./dist/kira-wallet-0.1.18.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
@@ -496,7 +496,7 @@ the frozen manifest and all 101 installed package members. Live acceptance
 found the agent-context omission addressed in 0.1.17 below. The published
 archive remains immutable.
 
-## Release candidate: 0.1.17
+## Published 0.1.17
 
 After a price refresh saved a full-balance DEX quote, chat could report that no
 estimate existed while the UI displayed it. Detailed agent facts now include
@@ -517,3 +517,26 @@ question returned the recorded DEX output and reference valuation without
 starting provider jobs. Product acceptance applies only to identical product
 bytes. Review not selected. Freeze the final archive from the landed source
 and dry-run that archive. npm publication remains operator-only.
+
+## Release candidate: 0.1.18
+
+Lowercase and mixed-case environment references now work in both immediate and
+queued configuration imports, provider settings and custom RPC settings. The
+settings form and job schema accept the same case-sensitive names. Job requests
+retain their 100-character bound and reject malformed names. Missing or
+differently cased keys preserve the previous working configuration.
+
+This candidate also includes the fixes from PR39 through PR44: immutable release
+archives, invalidation of prices backed by unfunded reserves, full-input evidence
+for sell-out estimates, safe failed imports, complete paginated rankings, and
+selection event, menu cleanup and table header corrections. No signing, trading,
+new provider requests or dependency changes are introduced.
+
+Required acceptance is the full repository suite, a clean package installation,
+tracked-source and history privacy checks, the focused browser settings check,
+and exact archive/source/installed-file comparison. Preserve raw history results
+and apply only the exact authorized CLI merge-metadata exception described above.
+Freeze the archive from the landed source, record its SHA-256 and member hashes,
+and dry-run that exact archive. Prior review evidence remains attached to its
+PRs; a new independent review is not selected for this bounded follow-up. npm
+publication remains operator-only.

@@ -269,7 +269,7 @@
                   },
                   "url_env": {
                     "type": "string",
-                    "pattern": "^[A-Z_][A-Z0-9_]{0,99}$"
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,99}$"
                   }
                 },
                 "required": [
@@ -331,7 +331,7 @@
             },
             "key_env": {
               "type": "string",
-              "pattern": "^[A-Z_][A-Z0-9_]{0,99}$"
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,99}$"
             }
           },
           "required": [
@@ -374,7 +374,7 @@
             },
             "key_env": {
               "type": "string",
-              "pattern": "^[A-Z_][A-Z0-9_]{0,99}$"
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,99}$"
             }
           },
           "required": [
@@ -415,7 +415,7 @@
             },
             "key_env": {
               "type": "string",
-              "pattern": "^[A-Z_][A-Z0-9_]{0,99}$"
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,99}$"
             }
           },
           "required": [
