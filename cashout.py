@@ -77,6 +77,15 @@ def valid_path(token, quote, block, block_hash):
             and decimal(quote.get('output_amount'))==decimal(legs[-1].get('output_amount')))
 
 
+def full_input_established(quote):
+    """Every leg must consume its full input, including historical V3 records."""
+    legs=quote['legs'] if quote.get('kind')=='liquidation_path' else [quote]
+    return all(decimal(leg.get('input_amount_raw'))==decimal(leg.get('holding_amount_raw'))
+               and leg.get('partial_input') is not True
+               and (leg.get('kind')!='uniswap_v3_quoter' or leg.get('input_amount_is_maximum') is False)
+               for leg in legs)
+
+
 def classify(token, market, *, environment='mainnet'):
     result = {'criteria_version': CRITERIA['version'], 'minimum_quoted_usd': '1',
               'status': 'unknown', 'gas_included': False, 'execution_verified': False,
@@ -139,7 +148,7 @@ def classify(token, market, *, environment='mainnet'):
                                  'output_symbol': quote.get('output_symbol'),
                                  'quoted_output_usd': format(proceeds, 'f'), 'qualifies': proceeds >= Decimal('1'),
                                  'block_number': block, 'block_hash': block_hash, 'observed_at': quote['observed_at'],
-                                 'output_price': price, 'partial_input': amount < holding,
+                                 'output_price': price, 'partial_input': not full_input_established(quote),
                                  'transfer_tax_included': quote.get('transfer_tax_included'),
                                  **({'legs':quote['legs']} if quote.get('kind')=='liquidation_path' else {}),
                                  'execution_verified': False, 'gas_included': False})

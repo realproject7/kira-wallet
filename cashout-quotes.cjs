@@ -39,18 +39,16 @@ async function quotePool(client,network,token,pool,block,blockHash,deployments,{
     return unknown('Output token metadata unavailable');
   const canonical=protocol=>deployments.find(d=>d.chainId===network.chain_id&&d.protocol===protocol&&d.contract===(protocol==='v2'?'UniswapV2Factory':'UniswapV3Factory')&&d.address.toLowerCase()===state.factory?.toLowerCase());
   const quoter=deployments.find(d=>d.chainId===network.chain_id&&d.protocol==='v3'&&d.contract==='QuoterV2'&&d.status==='active');
-  let kind,quote,request,decode;
+  let kind,quote,request,decode,inputIsMaximum=false;
   if(canonical('v3')&&quoter&&Number.isInteger(state.fee)&&state.fee>=0&&state.fee<1_000_000) {
     kind='uniswap_v3_quoter';
     request=amount=>({address:quoter.address,abi:v3Abi,functionName:'quoteExactInputSingle',args:[{tokenIn:token.token_address,tokenOut:output,amountIn:amount,fee:state.fee,sqrtPriceLimitX96:0n}]});
     decode=result=>{
       // QuoterV2's default limit is MIN_SQRT_RATIO+1 / MAX_SQRT_RATIO-1
       // (Uniswap v3-core TickMath). At that boundary input can be unspent.
-      if(fullOnly){
-        const after=integer(result[1]);
-        if(after===null||after<=4295128740n||after>=1461446703485210103287273052203988822378723970341n)
-          throw Error('Full input consumption is not established at the pool price limit');
-      }
+      const after=integer(result[1]);
+      inputIsMaximum=after===null||after<=4295128740n||after>=1461446703485210103287273052203988822378723970341n;
+      if(fullOnly&&inputIsMaximum)throw Error('Full input consumption is not established at the pool price limit');
       return result[0];
     };
   }else if(network.chain_id===8453&&state.factory?.toLowerCase()==='0x420dd381b31aef6683db6b902084cb0ffece40da'&&pool.venue==='aerodrome') {
@@ -84,12 +82,12 @@ async function quotePool(client,network,token,pool,block,blockHash,deployments,{
     }
     catch(error){if(error.code==='market_budget')throw error;failures++;if(contractRevert(error))continue;break;}
     if(result===null){failures++;continue;}
-    if(result>0n)return {status:'quoted',kind,input_amount_raw:amount.toString(),input_amount_is_maximum:kind==='uniswap_v3_quoter',
+    if(result>0n)return {status:'quoted',kind,input_amount_raw:amount.toString(),input_amount_is_maximum:inputIsMaximum,
       holding_amount_raw:balance.toString(),output_amount_raw:result.toString(),output_amount:formatUnits(result,measured.quote_decimals),
       input_address:token.token_address.toLowerCase(),pool:pool.pool,output_address:output.toLowerCase(),output_symbol:measured.quote_symbol,
       output_decimals:measured.quote_decimals,block_number:String(block),block_hash:blockHash,
       observed_at:new Date().toISOString(),route_fees_included:true,price_impact_included:true,gas_included:false,
-      execution_verified:false,transfer_tax_included:false,partial_input:amount<balance,source_url:pool.source_url};
+      execution_verified:false,transfer_tax_included:false,partial_input:amount<balance||inputIsMaximum,source_url:pool.source_url};
   }
   return unknown(failures?'Pool quote failed; smaller-input and other routes remain unknown':'Sampled inputs returned zero; other routes remain unknown');
 }
