@@ -9,6 +9,15 @@ HASH='0x'+'a'*64
 
 
 class CashoutTests(unittest.TestCase):
+    def test_historical_v3_quotes_require_consumption_evidence_for_full_sellout(self):
+        for evidence in (None,True,False):
+            with self.subTest(evidence=evidence):
+                self.quote.pop('input_amount_is_maximum',None)
+                if evidence is not None:self.quote['input_amount_is_maximum']=evidence
+                result=classify(self.token,self.market)
+                self.assertEqual(result['status'],'quoted_at_least_1_usd')
+                self.assertEqual(result['quotes'][0]['partial_input'],evidence is not False)
+
     def setUp(self):
         self.quote={'status':'quoted','kind':'uniswap_v3_quoter','input_amount_raw':'100',
                     'holding_amount_raw':'100','output_amount':'1','output_address':OUTPUT,
@@ -95,7 +104,18 @@ class CashoutTests(unittest.TestCase):
         path={**self.quote,'kind':'liquidation_path','output_amount_raw':'1000000','output_decimals':6,
               'legs':[leg(TOKEN,reserve,'100','200'),leg(reserve,OUTPUT,'150','1000000',6)]}
         self.token['dex_pools']=[];self.token['liquidation_routes']=[path]
-        self.assertEqual(classify(self.token,self.market)['status'],'quoted_at_least_1_usd')
+        result=classify(self.token,self.market)
+        self.assertEqual(result['status'],'quoted_at_least_1_usd')
+        self.assertTrue(result['quotes'][0]['partial_input'])
+        complete=deepcopy(self.token)
+        second=complete['liquidation_routes'][0]['legs'][1]
+        second.update(input_amount_raw='200',kind='uniswap_v3_quoter',pool='0x'+'3'*40)
+        for evidence in (None,True,False):
+            second.pop('input_amount_is_maximum',None)
+            if evidence is not None:second['input_amount_is_maximum']=evidence
+            result=classify(complete,self.market)
+            self.assertEqual(result['status'],'quoted_at_least_1_usd')
+            self.assertEqual(result['quotes'][0]['partial_input'],evidence is not False)
         for field,value in [('input_amount_raw','201'),('input_address',TOKEN),('funded',False),('block_hash','0x'+'b'*64),
                             ('output_amount','2'),('reserve_balance_raw','999999'),('route_fees_included',False)]:
             token=deepcopy(self.token);token['liquidation_routes'][0]['legs'][1][field]=value
