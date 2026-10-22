@@ -248,3 +248,40 @@ test('reopening starts at Account and a dismissed status read cannot overwrite a
   h.el('agent-dialog').close();h.el('agent-model').value='later-draft';pending.resolve(status());await opening;
   assert.equal(h.el('agent-model').value,'later-draft');assert.equal(h.el('agent-dialog').open,false);
 });
+
+test('custom selects emit native input events and release replaced controls', () => {
+  const selects=[], created=[]; let observe;
+  class Element {
+    constructor(tag='DIV'){this.tagName=tag.toUpperCase();this.nodeType=1;this.isConnected=true;this.children=[];this.listeners={};this.dataset={};this.attrs={};this.style={};this.classList={add(){},toggle(){}};this.value='';this.scrollHeight=100;this.offsetWidth=240;created.push(this);}
+    addEventListener(type,fn){(this.listeners[type]??=[]).push(fn);}
+    dispatchEvent(event){for(const fn of this.listeners[event.type]||[])fn(event);}
+    setAttribute(k,v){this.attrs[k]=v;} getAttribute(k){return this.attrs[k];} removeAttribute(k){delete this.attrs[k];}
+    append(child){if(child.parent)child.parent.children=child.parent.children.filter(c=>c!==child);this.children.push(child);child.parent=this;}
+    remove(){this.isConnected=false;if(this.parent)this.parent.children=this.parent.children.filter(c=>c!==this);}
+    before(){} closest(){return null;} insertAdjacentHTML(){} focus(){} querySelectorAll(){return [];}
+    matches(selector){return selector==='select'&&this.tagName==='SELECT';}
+    getBoundingClientRect(){return {width:240,left:10,top:10,bottom:40};}
+    get selectedOptions(){return this.options.filter(o=>o.value===this.value);}
+  }
+  const body=new Element(),select=new Element('select');select.id='agent-wallet';select.options=[{value:'',textContent:'Choose',dataset:{}},{value:'wallet',textContent:'Wallet',dataset:{}}];selects.push(select);
+  const events=[];select.addEventListener('input',()=>events.push('input'));select.addEventListener('change',()=>events.push('change'));
+  const context=vm.createContext({document:{body,querySelectorAll:()=>selects.filter(s=>s.isConnected),createElement:tag=>new Element(tag),addEventListener(){}},
+    window:{addEventListener(){}},MutationObserver:class {constructor(fn){observe=fn;}observe(){}},Event:class {constructor(type){this.type=type;}},
+    escapeHTML:String,bindImages(){},innerHeight:800,innerWidth:1200,setTimeout,clearTimeout});
+  vm.runInContext(fs.readFileSync('viewer/static/selects.js','utf8'),context);
+  const button=created.find(e=>e.tagName==='BUTTON'),popup=body.children[0];
+  button.dispatchEvent({type:'click'});popup.dispatchEvent({type:'click',target:{closest:()=>({dataset:{value:'wallet'}})}});
+  assert.equal(select.value,'wallet');assert.deepEqual(events,['input','change']);
+  button.dispatchEvent({type:'click'});popup.dispatchEvent({type:'click',target:{closest:()=>({dataset:{value:'wallet'}})}});
+  assert.deepEqual(events,['input','change']);
+  for(let i=0;i<10;i++){
+    const previous=selects.at(-1);previous.isConnected=false;
+    const replacement=new Element('select');replacement.id='agent-wallet';replacement.options=select.options;selects.push(replacement);
+    observe([{target:body,addedNodes:[replacement],removedNodes:[previous]}]);
+    assert.equal(body.children.length,1);assert.equal(body.children[0].id,'agent-wallet-listbox');
+  }
+  const last=selects.at(-1),lastButton=created.filter(e=>e.tagName==='BUTTON').at(-1);
+  lastButton.dispatchEvent({type:'click'});last.isConnected=false;
+  observe([{target:body,addedNodes:[],removedNodes:[last]}]);
+  assert.equal(body.children.length,0);assert.equal(lastButton.attrs['aria-expanded'],'false');
+});

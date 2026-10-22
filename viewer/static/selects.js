@@ -3,11 +3,12 @@
 const KiraSelect=(()=>{
   const entries=new Map();let opened=null,search='',searchTimer;
   function close(focus=false){if(!opened)return;opened.popup.hidden=true;opened.button.setAttribute('aria-expanded','false');opened.button.removeAttribute('aria-activedescendant');if(focus)opened.button.focus();opened=null;}
+  function prune(){for(const [select,entry] of entries){if(select.isConnected)continue;if(opened===entry)close();entry.popup.remove();entries.delete(select);}}
   function optionLabel(option){
     const chain=option?.dataset.chainId&&typeof state!=='undefined'?state?.details?.networks.find(c=>String(c.id)===option.dataset.chainId):null;
     return `<span class="select-option-label">${chain?chainIcon(chain):''}<span>${escapeHTML(option?.textContent||'Choose')}</span></span>`;
   }
-  function refresh(){for(const entry of entries.values()){const option=entry.select.selectedOptions[0];entry.label.innerHTML=optionLabel(option);entry.button.disabled=entry.select.disabled;}bindImages();}
+  function refresh(){prune();for(const entry of entries.values()){const option=entry.select.selectedOptions[0];entry.label.innerHTML=optionLabel(option);entry.button.disabled=entry.select.disabled;}bindImages();}
   function focusOption(index){if(!opened)return;const options=[...opened.popup.querySelectorAll('[role="option"]')];if(!options.length)return;opened.index=(index+options.length)%options.length;for(const [i,node] of options.entries())node.classList.toggle('highlighted',i===opened.index);const node=options[opened.index];opened.button.setAttribute('aria-activedescendant',node.id);node.scrollIntoView({block:'nearest'});}
   function open(entry){close();refresh();opened=entry;const options=[...entry.select.options].filter(o=>!o.disabled);
     entry.popup.innerHTML=options.map((o,i)=>`<div role="option" id="${entry.select.id}-option-${i}" aria-selected="${String(o.selected)}" data-value="${escapeHTML(o.value)}">${optionLabel(o)}<span aria-hidden="true">${o.selected?'✓':''}</span></div>`).join('');
@@ -17,8 +18,8 @@ const KiraSelect=(()=>{
     entry.popup.style.top=(below<height&&rect.top>height?rect.top-height-6:Math.min(rect.bottom+6,innerHeight-height-10))+'px';
     bindImages();focusOption(Math.max(0,options.findIndex(o=>o.selected)));
   }
-  function choose(value){if(!opened)return;const select=opened.select;select.value=value;select.dispatchEvent(new Event('change',{bubbles:true}));close(true);refresh();}
-  function enhance(){for(const select of document.querySelectorAll('select')){
+  function choose(value){if(!opened)return;const select=opened.select,previous=select.value;select.value=value;close(true);if(select.value!==previous){select.dispatchEvent(new Event('input',{bubbles:true}));select.dispatchEvent(new Event('change',{bubbles:true}));}refresh();}
+  function enhance(){prune();for(const select of document.querySelectorAll('select')){
     if(entries.has(select)||!select.id)continue;
     const wrapper=document.createElement('div');wrapper.className='kira-select';select.before(wrapper);wrapper.append(select);select.classList.add('custom-select-source');select.tabIndex=-1;select.setAttribute('aria-hidden','true');
     const label=document.createElement('span'),button=document.createElement('button');button.type='button';button.className='kira-select-trigger';button.setAttribute('role','combobox');button.setAttribute('aria-haspopup','listbox');button.setAttribute('aria-expanded','false');button.setAttribute('aria-label',select.closest('label')?.querySelector('span')?.textContent||select.closest('label')?.childNodes[0]?.textContent?.trim()||'Choose an option');
@@ -43,6 +44,6 @@ const KiraSelect=(()=>{
   document.addEventListener('pointerdown',event=>{if(opened&&!opened.button.contains(event.target)&&!opened.popup.contains(event.target))close();});
   document.addEventListener('close',()=>close(),true);
   window.addEventListener('resize',()=>close());window.addEventListener('scroll',event=>{if(opened&&!opened.popup.contains(event.target))close();},true);
-  new MutationObserver(records=>{if(records.some(r=>r.target.tagName==='SELECT'||r.target.closest?.('select')||[...r.addedNodes].some(n=>n.nodeType===1&&(n.matches?.('select')||n.querySelector?.('select')))))enhance();}).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled']});
+  new MutationObserver(records=>{if(records.some(r=>r.target.tagName==='SELECT'||r.target.closest?.('select')||[...r.addedNodes,...r.removedNodes].some(n=>n.nodeType===1&&(n.matches?.('select')||n.querySelector?.('select')))))enhance();}).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled']});
   enhance();return {refresh,close};
 })();
