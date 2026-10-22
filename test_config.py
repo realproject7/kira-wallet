@@ -50,6 +50,29 @@ class ConfigurationTests(unittest.TestCase):
         with patch.object(wallet,'load_config',return_value=config.default_config()),patch.object(wallet.h,'secrets',return_value={}),patch.object(wallet,'fetch') as fetch:
             result=wallet.discover('0x'+'1'*40,self.network,self.root)
         fetch.assert_not_called();self.assertFalse(result['complete']);self.assertEqual(result['tokens'],[])
+
+    def test_failed_import_preserves_working_settings_for_idle_and_queued_paths(self):
+        from kira_jobs import JobStore
+        kira_cli.initialize(self.root)
+        good=self.root/'good.env';good.write_text('TEST_KEY=synthetic-working-value\n')
+        self.save(config.import_alchemy_config(config.default_config(),good,'TEST_KEY'))
+        original=config.config_path().read_bytes()
+        bad=self.root/'bad.env'
+        for content in ('OTHER_KEY=synthetic-other-value\n','TEST_KEY=\n'):
+            bad.write_text(content)
+            with patch.object(sys,'argv',['kira','config','import-env','--file',str(bad),'--key-env','TEST_KEY']),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(kira_cli.main(),1)
+            self.assertEqual(config.config_path().read_bytes(),original)
+            store=JobStore(self.root);job=store.queue_import(bad,'TEST_KEY');store.worker()
+            saved=store.get(job['job_id'])
+            self.assertEqual(saved['state'],'failed')
+            self.assertEqual(saved['errors'][0]['code'],'connection_key_missing')
+            self.assertEqual(config.config_path().read_bytes(),original)
+        with patch.dict(os.environ,{'TEST_KEY':'synthetic-environment-value'}):
+            self.assertEqual(config.secret_values(config.import_alchemy_config(config.load_config(),bad,'TEST_KEY'))['TEST_KEY'],'synthetic-environment-value')
+        with patch.object(config,'secret_values',side_effect=ValueError('Configured secret file cannot be read.')),patch.object(sys,'argv',['kira','config','import-env','--file',str(bad),'--key-env','TEST_KEY']),contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(kira_cli.main(),1)
+        self.assertEqual(config.config_path().read_bytes(),original)
     def test_custom_fallback_defaults_automatic_and_respects_explicit_opt_out(self):
         cfg=config.default_config();cfg['rpc'].update(mode='custom',chains={'8453':{'url_env':'BASE_RPC'}});self.save(cfg)
         self.assertEqual(config.endpoints(self.network),['https://public.example'])

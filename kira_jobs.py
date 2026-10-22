@@ -649,11 +649,9 @@ class JobStore:
             from kira_config import config_path,load_config
             config=load_config()
             if job['operation']=='settings.importEnv':
-                from kira_config import provider_config,secret_values
-                config=provider_config(config,'alchemy',job['input']['key_env'])
-                config['secret_env_file']=self.import_reference(job['input']);config['discovery']['explorers']=True
-                if not secret_values(config).get(job['input']['key_env']):
-                    raise JobError('connection_key_missing','The local file does not contain the selected Alchemy key. Check the file and run import-env again. Existing settings are unchanged.')
+                from kira_config import import_alchemy_config
+                try:config=import_alchemy_config(config,self.import_reference(job['input']),job['input']['key_env'])
+                except ValueError as error:raise JobError('connection_key_missing',str(error)) from None
             elif job['operation']=='settings.rpc':
                 updated={**job['input'],'chains':{key:dict(row) for key,row in job['input']['chains'].items()}}
                 updated.setdefault('priority',config['rpc'].get('priority','public_first'))

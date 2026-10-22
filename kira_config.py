@@ -39,6 +39,14 @@ def require_alchemy(root=None):
     if public_status(root).get('discovery_key_available') is not True:
         raise ValueError('Connect Alchemy before researching wallets. Open Workspace settings > Alchemy, or follow the Alchemy setup guide. Saved portfolios remain available.')
 
+def import_alchemy_config(config, file, key_env):
+    """Prepare the same validated import for immediate and queued writers."""
+    result=provider_config(config,'alchemy',key_env)
+    result['secret_env_file']=str(file)
+    if not secret_values(result).get(key_env):
+        raise ValueError('The local file does not contain the selected Alchemy key. Check the file and run import-env again. Existing settings are unchanged.')
+    return result
+
 def load_config(path=None):
     path=Path(path) if path is not None else config_path()
     if not path.exists():return default_config()
