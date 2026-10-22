@@ -158,8 +158,10 @@ kira config import-env --file /absolute/private/rpc.env --key-env ALCHEMY_API_KE
 
 The import references the file instead of copying keys. It configures Alchemy
 RPC and portfolio discovery together, preserving existing custom chain overrides
-and explicit fallback preferences. New configurations allow public fallback. Environment overrides the file. Missing files or keys
-produce limited coverage; malformed configuration fails with safe errors.
+and explicit fallback preferences. New configurations allow public fallback.
+Environment overrides the file. An unreadable file or unavailable selected key
+rejects the import and preserves existing settings, whether applied immediately
+or queued in Activity. Malformed configuration fails with safe errors.
 The import does not contact providers. Private settings are never served.
 
 Analysis output contains wallet addresses and tags. Keep runtime directories

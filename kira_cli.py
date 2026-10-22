@@ -259,9 +259,8 @@ def main():
             if args.command=='config':
                 file=Path(args.file).expanduser().resolve()
                 if not file.is_file():raise ValueError('Secret environment file does not exist.')
-                from kira_config import provider_config
-                cfg=provider_config(cfg,'alchemy',args.key_env)
-                cfg['secret_env_file']=str(file);cfg['discovery']['explorers']=True
+                from kira_config import import_alchemy_config
+                cfg=import_alchemy_config(cfg,file,args.key_env)
             elif args.command=='discovery':cfg['discovery']={**cfg['discovery'],'provider':args.provider,'key_env':args.key_env,'explorers':args.explorers}
             elif args.setting=='public':cfg['rpc']['mode']='public'
             else:
