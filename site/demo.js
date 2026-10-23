@@ -8,7 +8,7 @@ const viewport = motion.querySelector('.motion-scroll');
 const stream = motion.querySelector('.motion-stream');
 const draft = motion.querySelector('.motion-draft');
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-const placeholder = 'Ask Kira about your wallets…';
+const placeholder = 'Ask your agent about your wallets…';
 const caseSeconds = 16;
 let visible = true;
 let elapsed = 0;
@@ -26,7 +26,7 @@ welcomeArt.height = 188;
 const welcomeTitle = document.createElement('p');
 welcomeTitle.textContent = 'Let’s look at your wallets.';
 const welcomeDetail = document.createElement('span');
-welcomeDetail.textContent = 'Your questions. Your AI.';
+welcomeDetail.textContent = 'Your agent session. Kira’s wallet tools.';
 welcome.append(welcomeArt, welcomeTitle, welcomeDetail);
 stream.append(welcome);
 

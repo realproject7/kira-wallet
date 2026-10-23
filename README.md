@@ -10,130 +10,110 @@
   <a href="docs/CLI.md">CLI guide</a>
 </p>
 
-Bring the AI you already use to your wallets. Add public wallet addresses, see
-what you hold across supported EVM chains, and ask Kira to research your tokens
-or refresh your holdings. Kira runs on your computer and uses your existing
-Codex or Claude Code account.
+Kira collects and explains public wallet holdings in a local workspace. Use its
+web app to manage wallets, inspect token markets and follow research. Your
+existing AI agent can use the same records and actions through the Kira CLI or
+optional MCP connection, then open the web app beside your conversation.
 
-The 0.1.20 candidate adds optional native Codex and Claude workspaces for web research,
-files, commands and configured integrations, combined with Kira's scoped wallet
-tools. Approvals and questions appear in chat; generated files can be downloaded.
-Existing connections keep their current work mode until you select the new mode
-in connection settings. Both providers use their installed CLI and account.
-See [native workspace behavior](docs/CLI.md#native-agent-workspaces-0120-candidate).
-
-![Kira portfolio overview with network allocation and research priorities](docs/screenshots/kira-readme-overview.jpg)
+**This branch prepares 0.2.0.** Kira now supplies wallet tools and a full-window
+management app. Your agent host manages its own conversations, models, files and
+approvals. Kira does not launch a model CLI or require a model login.
 
 ## Get started
 
-**Requires Node.js 22+ and Python 3.11+. macOS is verified.** The research and
-background-process features require a POSIX environment.
-
-Install Kira:
+**Requires Node.js 22+ and Python 3.11+. macOS is verified.** Research and
+background processes require POSIX. Install Kira and open the local app:
 
 ```sh
 npm install -g kira-wallet
 kira setup
 ```
 
-Open the local app at [127.0.0.1:8787](http://127.0.0.1:8787).
+When installing a prepared release before publication, use its reviewed archive
+instead of assuming the npm default already contains this branch.
 
-After your first setup, open Kira with:
+1. **Connect Alchemy.** Follow the [setup guide](docs/ALCHEMY_SETUP.md). Run
+   `kira connect alchemy` in your terminal and enter the app key at the hidden
+   prompt. The key stays in a private local file. Existing environment or file
+   references can also be configured through the CLI.
+2. **Add a watching wallet.** Enter a public EVM address and an exact name.
+   Kira checks configured networks and discovered candidates, including the
+   reachable Mint Club registry. Balances appear as they are checked; prices
+   and artwork follow. Follow, pause or resume the job in Activity.
+3. **Use your agent session.** Ask a capable local agent to read `kira skill`,
+   check `kira info --json`, and use Kira's CLI. It can open the URL returned by
+   `kira start --no-open` using its own browser or app panel. A host that only
+   supports MCP can connect to `kira tools`.
 
-```sh
-kira start
-```
+Human controls remain available without an agent. `kira start` opens the app;
+`kira stop` closes its server. `kira start --read-only` disables browser actions.
+Stopping the app or ending an agent session does not cancel accepted research.
 
-It starts your local app and opens the browser. Use `kira stop` to stop it.
-For a viewer without wallet or research actions, use `kira start --read-only`.
+## Work from any agent session
 
-Prefer an archive? [GitHub releases](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2)
-include the same package and its checksum.
-
-1. **Connect Alchemy.** Alchemy supplies the token index across networks.
-   Open **Connect Alchemy** in Kira and follow the [simple setup guide](docs/ALCHEMY_SETUP.md).
-   Run `kira connect alchemy` in your terminal and enter your app key at the
-   hidden prompt. The key stays in a private local file. No wallet key is needed.
-2. **Add a watching wallet.** Paste a public EVM address and give it a name.
-   Kira checks every configured network and all discovered token candidates,
-   including the full reachable Mint Club registry. There is no 128-candidate
-   limit. Balances appear as they are checked; prices and artwork follow.
-   **Analyze sell routes** is optional. It estimates sales and redemptions from
-   saved holdings and does not discover more tokens. Pause and resume work in Activity.
-3. **Connect your AI.** Install and sign in to the
-   [Codex CLI](https://developers.openai.com/codex/cli) or
-   [Claude Code](https://code.claude.com/docs/en/quickstart), then choose your
-   account from **Connect a model** in Kira Chat. Select one wallet or your whole
-   portfolio, test the connection, and choose whether to allow research tools.
-4. **Ask Kira.** Start with a question, or ask it to refresh a wallet's holdings
-   or prices. Follow the job in **Activity** while it runs.
-
-Want to look around first? Try the demo:
+The CLI reads saved data even when the web server is stopped. The default
+workspace is `~/.local/share/kira-wallet`, independent of the current folder or
+agent session. Use `--data-dir` or `KIRA_DATA_DIR` to choose another workspace.
 
 ```sh
-kira --data-dir /tmp/kira-demo demo --port 8790
+kira info --json
+kira call holdings_query --arguments '{"mode":"rank","limit":5}' --json
+kira refresh 'Daily wallet' --json --idempotency-key 'daily-refresh-001'
+kira jobs wait JOB_ID --timeout 30 --json
+kira start --no-open
 ```
 
-Open [127.0.0.1:8790](http://127.0.0.1:8790). Stop it with
-`kira --data-dir /tmp/kira-demo stop`.
+`--json` makes add, holdings refresh and price refresh return an immediate job
+receipt. A receipt is not completion: read or wait for its job, then inspect the
+published result and coverage. Reuse the same idempotency key when retrying the
+same request. [Agent tools and MCP](docs/AGENT_TOOLS.md) ·
+[Packaged agent skill](skills/kira-wallet/SKILL.md).
 
-## What can I ask?
+Useful questions include:
 
-- “Which chains do I have ETH worth $10 or more on?”
-- “Find tokens I may have overlooked. Show their quantity, recorded price,
-  market venues and any available full-balance exit quote.”
-- “Review my Blast holdings across all my wallets. What is known, and where
-  is coverage missing?”
-- “Compare my saved analyses. What changed?”
-- “Refresh prices for my daily wallet, then tell me what the job actually found.”
+- “Which chains have ETH worth at least $10 in my saved records?”
+- “Show my top five recorded holdings across all wallets.”
+- “Compare these saved analyses and explain what remains unknown.”
+- “Refresh this wallet, then show the completed result in the web app.”
 
-Kira can read approved records, compare saved analyses, and start holdings or
-price research when you enable its wallet tools. It distinguishes recorded spot
-value from an execution quote. Missing prices and holdings stay unknown;
-transfer inactivity needs transfer-history evidence. Testnets and pool liquidity
-are excluded from your portfolio's USD value.
-
-![USDC markets and balances by wallet with matching Kira analysis](docs/screenshots/kira-readme-markets.jpg)
-
-*Markets, paired token logos and each wallet's balance in one view.*
+Names and symbols can match different assets. Kira identifies tokens by chain
+and contract, retains unknown prices, and separates recorded spot value from
+amount-specific sell estimates. Saved balances alone do not establish transfer
+activity. Testnets, curve reserves and pool liquidity are excluded from USD
+portfolio totals.
 
 ## Your wallets, your controls
 
-- **Watch an existing wallet** using its public address. Watching does not grant
-  Kira permission to spend.
-- **Create an OWS wallet** with **Create wallet** in the sidebar, powered by
-  [Open Wallet Standard](https://openwallet.sh/).
-  Enter the encryption passphrase in the local form. Kira connects the public
-  EVM account; keys stay in the local OWS vault.
-- **Choose what AI can see.** Wallet access can be off, limited to one wallet,
-  or cover your portfolio. Approved context is sent through your selected
-  native CLI and model account. Their data policies still apply.
-- **Keep records locally.** No Kira account or hosted portfolio database is
-  required. Chat drafts stay in memory; saving Kira chat history is opt-in.
+- **Manage public addresses.** Add wallets, change names, review history and
+  refresh holdings or prices in the app or through the CLI.
+- **Refresh when needed.** Provider research starts with an explicit action.
+  Opening a page or querying records does not refresh blockchain or price data.
+  The app notices saved changes made by your agent and displays job progress.
+- **Keep records locally.** Wallets, snapshots and provider references survive
+  upgrades and agent sessions. Your agent host controls which facts it sends to
+  its model service and how it stores conversations.
+- **Create an optional OWS wallet.** The local form uses
+  [Open Wallet Standard](https://openwallet.sh/) and follows its public EVM
+  account. Enter the encryption passphrase yourself; keys stay in the local
+  encrypted OWS vault. Kira has no signing or trading tool.
 
-Chat currently handles research and wallet records. Signing, transfers and trade
-execution are not implemented. [Wallet onboarding details](docs/CLI.md#browser-and-local-ows-wallets).
+Alchemy remains required for new holdings and price research. Token indexes
+provide candidates; on-chain reads verify balances. Unsupported indexes and
+failed reads remain coverage gaps. **Analyze sell routes** is optional and uses
+saved holdings; it does not discover additional tokens. Price refresh preserves
+recorded balances and does not recover missing holdings.
 
-## Useful commands
+DEX price references require at least $1,000 of reported pool liquidity and
+exclude extremely one-sided pools. A displayed value is an estimate, not a
+promise of sale proceeds. Observation timestamps remain attached to the facts.
 
-```sh
-kira add <public-address> --tag 'Daily wallet'
-kira refresh 'Daily wallet'
-kira prices 'Daily wallet'
-kira status
-kira stop
-```
+## Upgrading from 0.1.20
 
-Data defaults to `~/.local/share/kira-wallet`, separate from the installed
-package. Use `--data-dir /absolute/private/directory` before a command to choose
-another workspace. For connection, model or provider help, see the
-[CLI guide](docs/CLI.md) and [viewer guide](viewer/README.md).
-
-From 0.1.4, a partial wallet analysis explains disabled discovery, missing
-credentials and network failures directly beside the holdings. After connecting
-discovery, use **Refresh holdings** to create a new analysis. **Refresh prices**
-does not discover missing tokens. Existing workspace provider settings and
-published snapshots are preserved.
+Wallet names, provider references, jobs and snapshots retain their existing
+format. The embedded chat interface and its model runtimes are removed. Saved
+conversations and generated workspaces remain on disk and can be inspected with
+`kira archive`; they are not automatically sent to your new agent session.
+[Archive commands](docs/CLI.md#read-earlier-conversation-archives).
 
 ## Build and contribute
 
@@ -144,25 +124,7 @@ npm test
 python3 scripts/check-public.py
 ```
 
-From source, use `node bin/kira.cjs` in place of `kira`.
-[Local AI tool setup](docs/AGENT_TOOLS.md) ·
-[Release preparation](docs/RELEASE.md).
-
-Original code and Kira character assets are available under the [MIT license](LICENSE).
-Third-party artwork and references retain their own terms; see
-[Third-party notices](THIRD_PARTY_NOTICES.md).
-
-### Alchemy and token coverage
-
-An Alchemy connection is required for new holdings and price lookups. Alchemy
-RPC is preferred on configured supported networks; verified public endpoints
-remain a fallback where allowed. Dedicated indexes provide token candidates,
-then on-chain reads verify balances. Other configured networks still receive
-native and Mint Club registry checks, plus an available explorer index.
-Unsupported discovery and failed reads remain unknown.
-
-DEX spot prices require at least $1,000 of source-reported pool liquidity.
-Extremely one-sided pools are also excluded. This is a conservative estimate
-policy, not a claim that holdings can be sold at the displayed price. Saved
-thin-pool quotes are excluded from totals without changing their raw evidence.
-See the [Alchemy setup guide](docs/ALCHEMY_SETUP.md).
+From source, replace `kira` with `node bin/kira.cjs`.
+[Viewer guide](viewer/README.md) · [Release preparation](docs/RELEASE.md).
+Original code and Kira character assets use the [MIT license](LICENSE).
+See [third-party notices](THIRD_PARTY_NOTICES.md) for other assets and references.

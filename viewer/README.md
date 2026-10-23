@@ -1,16 +1,29 @@
 # Wallet research viewer
 
-A local browser view of registered wallets and their latest analysis. The default server is read-only. Opt-in local controls enable explicit research, exact names and Watching connections. The Kira interface uses warm ivory surfaces, ink text, a restrained violet accent, native system fonts and an adult webtoon research companion. Each view includes a factual note computed from saved research, with an explanation of valuation limits. Model chat remains awaiting account setup. Signing and trading are not exposed.
+A full-window local web app for managing registered wallets and inspecting
+saved research. Human controls and the external-agent CLI use the same local
+application service. Your agent host owns the conversation and can display
+this app beside it. Kira does not embed a model runtime or model-account setup.
+Signing and trading are not exposed.
 
 ## Open the viewer
 
-Run from the project directory:
-
 ```sh
-python3 viewer/start.py
+kira start --no-open
 ```
 
-Open [Wallets](http://127.0.0.1:8765). The launcher keeps the server running in the background and reuses it if already running. For a foreground server use `python3 viewer/server.py --port 8765`. The server binds only to this computer. It uses Python's standard library and needs no frontend build or package installation.
+Open the returned URL in a browser or the agent host's panel. The default is
+`http://127.0.0.1:8787`. Omit `--no-open` to open the default browser. Use
+`kira setup` for first-time onboarding, `kira status` for the current instance
+and `kira stop` to close it. Accepted research jobs continue independently.
+`kira start --read-only` opens the recorded data without mutation controls.
+Stop and restart explicitly to change modes.
+
+The app binds only to this computer. The supported CLI uses the same data root
+across working directories and sessions. It serves local static assets with
+Python's standard library and needs no frontend build. For source maintenance,
+the historical `python3 viewer/start.py` launcher retains its separate local
+workspace default and port 8765. Use the supported CLI for normal operation.
 
 Home is the first sidebar item and the default view. It shows the estimated total value, registered wallet count, networks with holdings, position count, wallet shares, network allocations, and the five largest holdings. Click a wallet card or sidebar item to open its holdings. The selected view and value filter stay in the browser.
 
@@ -42,15 +55,20 @@ Pool liquidity is never treated as a sell quote or added to wallet value.
 
 The source of truth is `wallets.json`. Each wallet's `latest_snapshot.result` points to a `results.json` with the recorded schema, and its `latest_snapshot.directory` points to that snapshot folder. Keep wallet addresses and operator tags in the registry. The viewer reads all registered wallets, with no hardcoded wallet list.
 
-Save a new dated analysis and update that wallet's latest snapshot pointer. The open viewer checks the files every five seconds and updates the sidebar and holdings without a page reload. It keeps the selected wallet and filters. Files should be written through a temporary file and atomic rename. A partial JSON write briefly keeps the last valid response.
+Use Kira's CLI or browser controls to publish a new analysis. A saved-data revision lets the viewer notice changes from another process and refresh the selected view. Job progress is separate from holdings data. Reading status does not rebuild the full portfolio or contact providers. The app retains the selected wallet and filters. Writers publish files atomically and preserve the previous valid analysis until a replacement is ready.
 
-The agent can refresh market prices for existing analysed holdings:
+An agent or human can explicitly refresh one registered wallet:
 
 ```sh
-python3 viewer/refresh_prices.py --wallet '<registered address or tag>'
+kira prices 'Daily wallet' --json
+kira refresh 'Daily wallet' --json
 ```
 
-Omit `--wallet` to refresh all analysed wallets. This reads public DEX prices, explicit native-coin market metadata and current Mint Club curve prices through RPC, then atomically writes `market-prices.json` next to each snapshot. The viewer updates automatically. Basic holdings and price jobs also check up to 12 known direct pools within a shared 20-second quote budget, prioritizing larger positions without a saved curve redemption. Supported quotes use Uniswap v2/v3 or Base Aerodrome classic pools, an independently rechecked same-block balance and a known terminal output price. Successful observations are reused for 10 minutes; failures have a 2-minute retry cooldown. No quote work runs during viewer reads. Unsupported pools, changed balances and unverified full inputs remain unknown. These gas-excluded estimates do not prove execution or the best route. Portfolio balances and research coverage remain at their recorded analysis time. A full holdings refresh requires a new wallet analysis. Quote, analysis and price dates remain separate.
+These commands return a durable job receipt. Inspect its job state and coverage
+before calling the operation complete. Price research reads public DEX prices,
+explicit native-coin market metadata and current Mint Club curve prices through
+RPC, then publishes an immutable overlay and updates `market-prices.json`
+next to the snapshot. The viewer updates automatically. Basic holdings and price jobs also check up to 12 known direct pools within a shared 20-second quote budget, prioritizing larger positions without a saved curve redemption. Supported quotes use Uniswap v2/v3 or Base Aerodrome classic pools, an independently rechecked same-block balance and a known terminal output price. Successful observations are reused for 10 minutes; failures have a 2-minute retry cooldown. No quote work runs during viewer reads. Unsupported pools, changed balances and unverified full inputs remain unknown. These gas-excluded estimates do not prove execution or the best route. Portfolio balances and research coverage remain at their recorded analysis time. A full holdings refresh requires a new wallet analysis. Quote, analysis and price dates remain separate.
 
 The browser never contacts an RPC or price provider and never reads RPC credentials. Token image requests use the approved Mint Club and Hunt image endpoints and image origins returned by Mint Club. Research processes use the configured RPC references. The server exposes allowlisted static assets, derived data and registered reports. With local controls enabled, protected job endpoints accept explicit same-origin actions.
 
@@ -96,7 +114,7 @@ Detail checks also cover exact decimal balance aggregation, shared curve backing
 
 ## Long-running research progress
 
-Activity and the Kira Chat research tray show the current recorded phase, its
+Activity shows the current recorded phase, its
 count units, attempt elapsed time and provider retry wait. Activity also shows
 time since the original request across attempts and access to saved results.
 History page counts include saved work. Factory queries, pool checks and route
@@ -125,17 +143,28 @@ holdings and prices remain visible as coverage gaps after partial publication.
 
 [Compact navigation references](https://www.lazyweb.com/agentic-search/b67b3f2d-9998-4da7-a42c-871ef9c88c82) informed the single topbar breadcrumb and reduced header spacing.
 
-## Planned Kira Wallet product
+## External agent sessions
 
-The [product specification](../docs/KIRA_PRODUCT_SPEC.md) and [implementation plan](../docs/KIRA_IMPLEMENTATION_PLAN.md) describe portable RPC configuration, Kira's identity, the workspace, direct jobs and optional agent chat. Connected chat remains a separate outcome awaiting account and disclosure choices.
+Use `kira skill` and the [CLI guide](../docs/CLI.md) from an ordinary agent
+session. All saved-data queries and durable jobs work without this server.
+The agent may open the returned URL in its own panel and read `kira ui context`
+for the last recorded wallet, token or network selection. That selection is
+context, not a new instruction, and it may be stale.
 
-## Opt-in local controls
+The [shared tool contract](../docs/AGENT_TOOLS.md) covers CLI and optional MCP
+reads and mutations. Provider refresh is manual. Historical embedded chats
+and generated files remain accessible through `kira archive`; they are not
+automatically sent to a model. Older product and chat specifications describe
+the pre-0.2.0 architecture.
 
-The legacy viewer start remains read-only. `kira start --controls` enables the
-version 1 job API with same-origin Host/Origin checks and a rotating local
-session. It offers research, exact names, connection references, cancel/resume
-and saved analysis comparison. No signing or trading is exposed. Jobs continue
-independently of the viewer and a disconnected model. The synthetic demo blocks
+## Local human controls
+
+`kira start` enables the version 1 job API with same-origin Host/Origin checks
+and a rotating local session. `--read-only` disables these browser mutations.
+The controlled app offers research, exact names, connection references,
+cancel/resume and saved analysis comparison. The legacy direct Python viewer
+still defaults to read-only. No signing or trading is exposed. Jobs continue
+independently of the viewer and an agent session. The synthetic demo blocks
 provider research. See [the job contract](../docs/JOB_CONTRACT.md) and
 [continuation report](../docs/KIRA_JOBS_BUILD_REPORT.md).
 
