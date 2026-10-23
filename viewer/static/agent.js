@@ -14,7 +14,7 @@ const questionStarters = {
 const agentPost = (path, body) => localAPI(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
 function currentSetup() {
   return {provider: agentProvider, model: $('agent-model').value.trim(), scope: document.querySelector('[name="agent-scope"]:checked').value,
-    wallet: $('agent-wallet').value || null, retain_history: $('agent-retain').checked, trust_native_cli: $('agent-trust').checked, wallet_tools: $('agent-tools').checked, ...($('agent-native').checked && agentProvider === 'codex' ? {native_agent:true} : {})};
+    wallet: $('agent-wallet').value || null, retain_history: $('agent-retain').checked, trust_native_cli: $('agent-trust').checked, wallet_tools: $('agent-tools').checked, ...($('agent-native').checked ? {native_agent:true} : {})};
 }
 function invalidateSetup() { setupRevision++; agentVerified = false; $('agent-save').disabled = true; $('agent-test-status').textContent = ''; }
 function scopeLabel(config) {
@@ -98,7 +98,6 @@ function updateStep() {
   $('agent-back').hidden = agentStep === 1; $('agent-next').hidden = agentStep === 3; $('agent-save').hidden = agentStep !== 3;
   const selected = agentState?.providers.find(p => p.id === agentProvider);
   $('agent-next').disabled = agentStep === 1 ? !(selected?.installed && selected.supported && selected.logged_in) : !$('agent-trust').checked || (currentSetup().scope === 'wallet' && !$('agent-wallet').value);
-  $('agent-native-field').hidden = agentProvider !== 'codex';
   $('agent-wallet-field').hidden = currentSetup().scope !== 'wallet';
   $('agent-tools').disabled = currentSetup().scope === 'none';
   if (agentStep === 3) {
@@ -144,7 +143,7 @@ async function openAgent() {
     const config = agentState.config;
     agentProvider = config?.provider || agentState.providers.find(p => p.installed && p.supported && p.logged_in)?.id || 'codex';
     $('agent-model').value = config?.model || '';
-    $('agent-native').checked = config ? config.native_agent === true : agentProvider === 'codex';
+    $('agent-native').checked = config ? config.native_agent === true : true;
     document.querySelector('[name="agent-scope"][value="' + (config?.scope || 'portfolio') + '"]').checked = true;
     $('agent-wallet').innerHTML = '<option value="">Choose a wallet</option>' + (state?.wallets || []).map(w => `<option value="${escapeHTML(w.key)}">${escapeHTML(w.name)}</option>`).join('');
     $('agent-wallet').value = config?.wallet || ''; $('agent-retain').checked = config ? config.retain_history === true : true; $('agent-trust').checked = config?.trust_native_cli || false; $('agent-tools').checked = config ? config.wallet_tools === true : true;
@@ -297,7 +296,7 @@ function renderNativeRequest(request) {
   if (request.kind === 'input') {
     panel.innerHTML = '<strong>Kira needs your input</strong>' + (details.questions || []).map(q => '<label>' + escapeHTML(q.question) + (q.options?.length ? '<small>' + q.options.map(o => escapeHTML(o.label + ': ' + o.description)).join('<br>') + '</small>' : '') + '<textarea data-native-question="' + escapeHTML(q.id) + '" maxlength="8000" rows="2"></textarea></label>').join('') + '<button class="quiet-button" type="button" data-native-decision="input">Send response</button>';
   } else {
-    const visible = Object.fromEntries(['command','cwd','reason','changes','permissions','message'].filter(k => details[k] != null).map(k => [k, details[k]]));
+    const visible = Object.fromEntries(['tool','input','command','cwd','reason','changes','permissions','message'].filter(k => details[k] != null).map(k => [k, details[k]]));
     const canAccept = request.kind !== 'notice' && (!details.availableDecisions || details.availableDecisions.includes('accept'));
     panel.innerHTML = '<strong>' + (request.kind === 'notice' ? 'Integration needs attention' : 'Your approval is needed') + '</strong><pre>' + escapeHTML(JSON.stringify(visible, null, 2)) + '</pre>' + (canAccept ? '<button class="quiet-button" type="button" data-native-decision="accept">' + (request.kind === 'permissions' ? 'Allow for this turn' : 'Allow once') + '</button> ' : '') + '<button class="quiet-button" type="button" data-native-decision="decline">' + (request.kind === 'notice' ? 'Continue' : 'Decline') + '</button>';
   }

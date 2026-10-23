@@ -33,8 +33,8 @@ test('native workspace is an explicit choice and existing accounts stay in recor
   assert.equal(h.run('currentSetup().native_agent'),true);
   assert.match(h.el('agent-review').innerHTML,/Native agent workspace/);
   h.run("agentProvider='claude';updateStep()");
-  assert.equal(h.el('agent-native-field').hidden,true);
-  assert.equal(h.run('currentSetup().native_agent'),undefined);
+  assert.equal(h.el('agent-native-field').hidden,false);
+  assert.equal(h.run('currentSetup().native_agent'),true);
 });
 test('native approval polling escapes commands and preserves a pending answer',()=>{
   const h=harness(async()=>status());
@@ -45,6 +45,14 @@ test('native approval polling escapes commands and preserves a pending answer',(
   const writes=h.el('chat-approval').writes;h.run("agentState.tool_status='Waiting';renderAgent()");
   assert.equal(h.el('chat-approval').writes,writes);
   h.run('chatTurn=null;renderAgent()');assert.equal(h.el('chat-approval').hidden,true);
+});
+test('Claude file approval displays escaped tool arguments before allowing the request',()=>{
+  const h=harness(async()=>status());
+  h.run(`chatTurn='turn';agentState.pending_input={id:'claude',kind:'approval',details:{tool:'Write',input:{file_path:'/workspace/report.csv',content:'<script>DEMO,125</script>'}}};renderAgent()`);
+  assert.match(h.el('chat-approval').innerHTML,/Write/);
+  assert.match(h.el('chat-approval').innerHTML,/report.csv/);
+  assert.match(h.el('chat-approval').innerHTML,/DEMO,125/);
+  assert.doesNotMatch(h.el('chat-approval').innerHTML,/<script>/);
 });
 test('approval responses use exact request identities and only offered decisions are shown',async()=>{
   const calls=[];const h=harness(async(path,options)=>{calls.push({path,body:JSON.parse(options.body)});return {accepted:true};});

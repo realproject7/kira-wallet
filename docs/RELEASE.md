@@ -95,12 +95,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.19.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.20.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.19.tgz --access public
+npm publish ./dist/kira-wallet-0.1.20.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
@@ -566,3 +566,24 @@ signing, trading or production changes are required. Review not selected.
 Prepare a new immutable archive from this candidate's exact committed source.
 Preserve all previous archives. Preparation and a publish dry-run do not publish
 the package. Registry publication remains operator-only.
+
+## Release candidate: 0.1.20
+
+Completes native Claude workspaces alongside Codex. The public Anthropic Agent
+SDK is pinned to 0.3.309 and explicitly launches the installed Claude Code CLI.
+Native settings, integrations, web, file and command tools remain available.
+SDK callbacks route one-invocation approvals and non-secret questions through
+Kira chat. No private control protocol or authentication copy is introduced.
+The existing recorded chat mode stays available and saved choices remain exact.
+
+Both providers share bounded process I/O, cancellation, process-group cleanup,
+scoped wallet MCP transport and protected downloads. Claude requires its wallet
+MCP connection to initialize successfully. Its SDK session persists across turns
+and resumes the saved native thread after process restart when history is on.
+Tests use synthetic holdings, never operator portfolio refreshes. Acceptance
+covers actual wallet/web/CSV work, allow and decline, multi-turn and restart
+resume, browser interactions, full tests, clean installation, privacy scans and
+exact archive/source/installed-file comparison. Review not selected.
+
+Preserve the frozen 0.1.19 archive and prepare a separate immutable 0.1.20 archive.
+A publish dry-run does not publish. Registry publication remains operator-only.

@@ -32,7 +32,7 @@ class NativeTest(unittest.TestCase):
         self.assertTrue(config_input(config(),self.root)['native_agent'])
         for value in ('yes',1):
             with self.assertRaises(JobError):config_input(config(native_agent=value),self.root)
-        with self.assertRaises(JobError):config_input(config(provider='claude'),self.root)
+        self.assertTrue(config_input(config(provider='claude'),self.root)['native_agent'])
         old=config();old.pop('native_agent');self.assertNotIn('native_agent',config_input(old,self.root))
 
     def test_native_tools_reuse_existing_scoped_research(self):

@@ -169,12 +169,12 @@ class NativeSession:
             if 'id' in value and 'method' in value:
                 self.send({'id':value['id'],'error':{'code':-32601,'message':'No active turn is available to approve this request.'}},cancel)
 
-    def start(self,cancel,instructions):
-        from kira_agent import native_env
-        path=shutil.which('codex')
-        if not path:raise JobError('cli_missing','Install the official Codex CLI first.')
-        self.bridge=ToolBridge()
-        self.child=subprocess.Popen([path,'app-server'],cwd=self.workspace,env=native_env(),
+    def receive_event(self,value):
+        """Provider adapters may observe cancellation before a pending input returns."""
+        pass
+
+    def launch(self,command,env):
+        self.child=subprocess.Popen(command,cwd=self.workspace,env=env,
             stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,bufsize=0,start_new_session=True)
         os.set_blocking(self.child.stdin.fileno(),False)
         os.set_blocking(self.child.stdout.fileno(),False)
@@ -191,6 +191,7 @@ class NativeSession:
                         if len(line)>2_000_000:raise ValueError()
                         value=json.loads(line)
                         if not isinstance(value,dict):raise ValueError()
+                        self.receive_event(value)
                         while not self.closed:
                             try:self.events.put(value,timeout=.1);break
                             except queue.Full:pass
@@ -200,7 +201,14 @@ class NativeSession:
                 try:self.events.put_nowait(None)
                 except queue.Full:pass
         self.reader=threading.Thread(target=receive,daemon=True);self.reader.start()
-        self.rpc('initialize',{'clientInfo':{'name':'kira_wallet','version':'0.1.19'},'capabilities':{'experimentalApi':False}},cancel)
+
+    def start(self,cancel,instructions):
+        from kira_agent import native_env
+        path=shutil.which('codex')
+        if not path:raise JobError('cli_missing','Install the official Codex CLI first.')
+        self.bridge=ToolBridge()
+        self.launch([path,'app-server'],native_env())
+        self.rpc('initialize',{'clientInfo':{'name':'kira_wallet','version':'0.1.20'},'capabilities':{'experimentalApi':False}},cancel)
         self.send({'method':'initialized'})
         bridge=self.bridge
         config={'web_search':'live','features.code_mode_host':True,

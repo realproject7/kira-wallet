@@ -78,7 +78,7 @@ Prototype Codex app-server as the first session adapter. Use the official authen
 
 Implement structured session events, reconnect, cancellation, local conversation persistence and resumed jobs. Keep agent-turn state separate from analysis-job state. Retrying a connection must not duplicate wallet registration or rerun a completed refresh.
 
-Define a provider interface so other integrations can be added later. Anthropic currently requires approval to offer claude.ai login or subscription limits in third-party products; otherwise use its documented API-key path. Do not advertise arbitrary existing CLI subscriptions as interchangeable. [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview)
+Define a provider interface so other integrations can be added later. Claude native mode uses the public Agent SDK with the user-installed Claude CLI and its existing account. Anthropic documents Claude-plan access for SDK applications, subject to the account’s plan limits and policies. Kira does not implement login or copy credentials. [Claude-plan SDK access](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)
 
 ## Financial data and research quality
 

@@ -10,7 +10,7 @@ npm install -g kira-wallet
 kira setup
 ```
 
-The operator published npm version 0.1.18. Version 0.1.19 is a preparation candidate. GitHub v0.1.3 remains
+The operator published npm version 0.1.18. Version 0.1.20 is a preparation candidate. GitHub v0.1.3 remains
 a draft; the previous archive and checksum are available from the
 [0.1.2 GitHub release](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2).
 Registry publication remains an operator action. The code and original character assets use the MIT license.
@@ -109,10 +109,10 @@ replayed. Native CLI, administrator policy and provider data policies remain a
 separate trust boundary. With wallet research enabled, Kira can read saved analyses, compare history and queue holdings or price updates. Jobs appear in Activity and continue independently of chat. Signing and trading stay outside the agent.
 See [the conversation contract](ONBOARDING_CHAT_CONTRACT.md).
 
-### Native Codex workspace (0.1.19 candidate)
+### Native agent workspaces (0.1.20 candidate)
 
-In connection settings, choose **Use the native Codex agent** to combine general
-work with Kira's saved wallet facts. Codex can research the web, run commands,
+In connection settings, choose **Use the native agent** to combine general
+work with Kira's saved wallet facts. Codex and Claude can research the web, run commands,
 create files and use the integrations available to the installed CLI. Kira
 displays progress, approval requests and questions in chat. Choose **Allow once**
 or **Decline** for a command or file approval. Permission requests can grant the
@@ -120,8 +120,7 @@ displayed permissions for the current turn only. Unsupported interactions fail
 without granting access. Kira does not automatically approve requests.
 
 Existing connections remain in recorded wallet chat until this mode is selected
-and its generic connection check succeeds. Claude remains in recorded wallet
-chat; this candidate does not claim equivalent native Claude support. Changing
+and its generic connection check succeeds. Changing
 work mode starts a new conversation, just like changing wallet permissions.
 
 Each native conversation has a separate output workspace alongside the private
@@ -132,8 +131,12 @@ paths outside that workspace are rejected. Output discovery is bounded.
 
 Wallet context and research permission govern Kira's projections and wallet
 tools. They do not create an OS boundary around a native agent's file access.
-The native workspace permits writes in its working directory and delegates
-further access to native approval and administrator policies. The installed
+Codex requests workspace-write sandboxing and on-request approval. Claude uses
+the public Agent SDK with the installed CLI, native default permission mode and
+user/project/local settings. Existing native permission rules may allow or deny
+a tool before an interactive request. Kira displays requested tool inputs and
+approves only the selected invocation; it never saves a blanket permission rule.
+Further access follows native approval and administrator policies. The installed
 CLI's account, configuration, integrations and data policies remain trusted.
 Kira does not copy credentials, add signing tools or add trading tools.
 

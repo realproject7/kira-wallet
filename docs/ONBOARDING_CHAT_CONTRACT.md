@@ -1,9 +1,9 @@
 # Native CLI onboarding and conversation
 
-## Native Codex workspace, 0.1.19 candidate
+## Native agent workspaces, 0.1.20 candidate
 
-An explicit native-agent choice adds persistent Codex app-server conversations,
-native tools and a scoped Kira MCP bridge. Existing settings do not acquire this
+An explicit native-agent choice adds persistent Codex app-server or Claude
+Agent SDK conversations, native tools and a scoped Kira MCP bridge. Existing settings do not acquire this
 capability automatically. Connection testing still sends a generic greeting
 without wallet facts. The Ready page identifies the selected work mode.
 
@@ -24,7 +24,14 @@ or jobs are silently refreshed by opening a conversation.
 
 The wallet projection and research scope remain enforced by Kira tools. Native
 CLI filesystem permissions, configured integrations and account policies are a
-separate trust boundary. Claude's equivalent native adapter is not included.
+separate trust boundary. Claude uses the public Agent SDK with the installed
+CLI executable, native preset prompt and user/project/local configuration. It
+uses default permissions, without bypass mode, a blanket allowlist or persisted
+approval grants. Existing native rules may settle permissions before the SDK
+callback. Interactive approvals show the tool and original inputs. Non-secret
+AskUserQuestion answers preserve the SDK question keys. External elicitation
+and unsupported dialogs decline. A missing wallet MCP connection fails closed.
+No private Claude control protocol is reimplemented.
 The invocation restrictions and forced read-plan loop documented below describe
 **recorded wallet chat**, which remains available for existing connections.
 

@@ -283,7 +283,6 @@ def config_input(value, root):
         raise JobError('invalid_model','Use a model ID supported by your CLI, or leave the default selected.')
     if value['wallet'] is not None and not isinstance(value['wallet'],str): raise JobError('invalid_wallet','Choose a registered wallet.')
     if 'native_agent' in value and type(value['native_agent']) is not bool:raise JobError('invalid_agent_settings','Choose the native agent mode explicitly.')
-    if value.get('native_agent') and value['provider']!='codex':raise JobError('native_provider','Native workspace mode currently supports Codex. Claude recorded chat remains available.')
     result = {**value,'wallet_tools':value.get('wallet_tools',False)}
     if value['scope'] == 'wallet':
         from kira_jobs import JobStore
@@ -796,6 +795,7 @@ class AgentStore:
 
     def _run_native_session(self,key,config,message,epoch):
         from kira_native import NativeSession
+        from kira_claude import ClaudeSession
         from kira_research_tools import ResearchTools
         session=None
         try:
@@ -822,7 +822,8 @@ class AgentStore:
             with self.lock:
                 session=self.native_session
                 if session is None or session.closed or turn['test']:
-                    session=NativeSession(self.root,self.conversation,config,None if turn['test'] else self.native_threads.get(self.conversation))
+                    native=ClaudeSession if config['provider']=='claude' else NativeSession
+                    session=native(self.root,self.conversation,config,None if turn['test'] else self.native_threads.get(self.conversation))
                     if not turn['test']:self.native_session=session
                 turn['workspace']=str(session.workspace)
             instructions=('You are Kira, a general-purpose agent with wallet research tools. Complete the user request with your available native tools. '
