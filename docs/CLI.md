@@ -1,9 +1,9 @@
 # CLI and provider configuration
 
-Kira 0.2.0 is a local wallet engine, CLI and web interface. Any capable agent
+Kira 0.2.1 is a local wallet engine, CLI and web interface. Any capable agent
 can use the CLI; MCP is optional. Your agent host supplies its own model,
 conversation, general tools and approvals. Kira does not start a model process.
-This branch prepares 0.2.0. Registry publication remains an operator action.
+This branch prepares 0.2.1. Registry publication remains an operator action.
 
 ## Install and choose a workspace
 
@@ -14,7 +14,7 @@ kira info --json
 kira skill
 ```
 
-Before 0.2.0 is published, install the prepared package archive to try these
+Before this version is published, install the prepared package archive to try these
 commands. The default registry install may still provide an earlier version.
 Node.js 22+, Python 3.11+ and a POSIX host are required; macOS is verified.
 The package includes the engine, browser assets and declared dependencies.

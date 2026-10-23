@@ -1,6 +1,26 @@
 # Release preparation
 
-## Prepared release: 0.2.0
+## Prepared release: 0.2.1
+
+Includes the external-agent architecture described in the preserved 0.2.0
+candidate below and four approved UI refinements. Short desktop windows can
+scroll the navigation to reach every action. Compact mobile actions stay on
+one line, a single wallet card fills its available grid width, and token detail
+captions and addresses use larger, darker text. Wallet records, research,
+financial projections, CLI and MCP behavior are unchanged.
+
+Preserve the already frozen 0.2.0 archive and manifest. This 0.2.1 candidate is
+the next publication target; an unpublished earlier candidate is not overwritten.
+Before freezing, run the full repository suite, clean package installation,
+source and history privacy checks, responsive browser acceptance including short
+windows and multiple wallets, and exact source/archive/installed-member checks.
+Freeze from the accepted clean commit, dry-run the exact archive and leave
+registry publication to the operator. Review not selected.
+
+The separate real-device acceptance, fresh public website screenshots and site
+content update remain a follow-up after installation of the new version.
+
+## Preserved candidate: 0.2.0
 
 The operator confirmed npm 0.1.20 is published. Preserve its archive and all
 previous release assets. This branch prepares the separate 0.2.0 release;
@@ -131,12 +151,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.2.0.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.2.1.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.2.0.tgz --access public
+npm publish ./dist/kira-wallet-0.2.1.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
