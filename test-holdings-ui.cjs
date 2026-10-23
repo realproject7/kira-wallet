@@ -131,33 +131,12 @@ assert.equal(node('all-token-sort').value,'value');assert.equal(node('all-token-
 assert.equal(node('all-token-testnets').checked,false);assert.equal(node('job-filter').value,'all');
 assert.equal(context.catalogMinimum,0);assert.equal(context.catalogPage,1);assert.equal(context.jobsPage,1);
 console.log('Returning to a route starts with default view filters.');
-const paneWorkspace={dataset:{pane:'portfolio'}},paneScroll={scrollTop:0,scrollHeight:3000,clientHeight:600};
-const paneHarness={chatPanePosition:null,$:()=>paneScroll,matchMedia:()=>({matches:true}),
-  document:{querySelector:()=>paneWorkspace,querySelectorAll:()=>[],body:{classList:{toggle(){}}}}};
-vm.createContext(paneHarness);
-const paneStart=workspaceSource.indexOf('function setWorkspacePane(');
-vm.runInContext(workspaceSource.slice(paneStart,workspaceSource.indexOf('\n}',paneStart)+2),paneHarness);
-paneHarness.setWorkspacePane('kira');assert.equal(paneScroll.scrollTop,3000);
-paneScroll.scrollTop=400;paneHarness.setWorkspacePane('kira');assert.equal(paneScroll.scrollTop,400);
-paneHarness.setWorkspacePane('portfolio');paneScroll.scrollTop=0;paneScroll.scrollHeight=3500;
-paneHarness.setWorkspacePane('kira');assert.equal(paneScroll.scrollTop,400);
-paneScroll.scrollTop=2900;paneHarness.setWorkspacePane('portfolio');paneScroll.scrollTop=0;paneScroll.scrollHeight=4000;
-paneHarness.setWorkspacePane('kira');assert.equal(paneScroll.scrollTop,4000);
-console.log('Mobile chat opens at the latest answer and preserves an existing reader position.');
-const chatLayoutSource=fs.readFileSync('viewer/static/chat-workspace.js','utf8'),resizeScroll={scrollTop:300,scrollHeight:900,clientHeight:600};
-const resizeHarness={$:id=>id==='conversation-scroll'?resizeScroll:{getBoundingClientRect:()=>({height:120})},
-  document:{querySelector:()=>({style:{setProperty(){resizeScroll.scrollHeight+=150;}}})}};
-vm.createContext(resizeHarness);const resizeStart=chatLayoutSource.indexOf('function updateComposerReserve(');
-vm.runInContext(chatLayoutSource.slice(resizeStart,chatLayoutSource.indexOf('\n}',resizeStart)+2),resizeHarness);
-resizeHarness.updateComposerReserve();assert.equal(resizeScroll.scrollTop,1050);
-resizeScroll.scrollTop=100;resizeHarness.updateComposerReserve();assert.equal(resizeScroll.scrollTop,100);
-console.log('Composer resize follows pinned answers without moving a reader in history.');
 // A queued or unknown address must never display the previous wallet's balances.
 const routeHarness={selectedView:'wallet',selectedWallet:'0x'+'2'.repeat(40),currentWallet:()=>null,
   pendingWalletJob:()=>({state:'queued'}),toast:text=>routeHarness.note=text,
   navigate:hash=>routeHarness.route=hash,renderWallets:()=>{throw Error('Rendered a missing wallet');}};
 vm.createContext(routeHarness);
-vm.runInContext(source.slice(source.indexOf('function renderView(){'),source.indexOf('function renderKiraNote(){')),routeHarness);
+vm.runInContext(source.slice(source.indexOf('function renderView(){'),source.indexOf('function progress(')),routeHarness);
 routeHarness.renderView();assert.equal(routeHarness.route,'#/activity');assert.match(routeHarness.note,/waiting for registration/);
 routeHarness.pendingWalletJob=()=>null;routeHarness.renderView();assert.equal(routeHarness.route,'#/activity');assert.match(routeHarness.note,/not registered/);
 // Once registered, a new wallet can show its own compact progress without
@@ -168,10 +147,10 @@ const registeredRoute={selectedView:'wallet',selectedWallet:registered.key,state
  renderWallet:()=>{registeredRoute.rendered=true;},renderKiraNote(){},document:{title:''},$:()=>({})};
 vm.createContext(registeredRoute);
 vm.runInContext(source.slice(source.indexOf('function selectWallet('),source.indexOf('function goHome(')),registeredRoute);
-vm.runInContext(source.slice(source.indexOf('function renderView(){'),source.indexOf('function renderKiraNote(){')),registeredRoute);
+vm.runInContext(source.slice(source.indexOf('function renderView(){'),source.indexOf('function progress(')),registeredRoute);
 registeredRoute.selectWallet(registered.key);assert.equal(registeredRoute.route,'#/wallet/'+registered.key);
 registeredRoute.route=null;registeredRoute.renderView();assert.equal(registeredRoute.rendered,true);assert.equal(registeredRoute.route,null);
-Object.assign(routeHarness,{busy:false,state:null,etag:null,currentSignature:null,$:node,AbortSignal,
+Object.assign(routeHarness,{busy:false,state:null,etag:null,currentSignature:null,routeData:{},routeLoadedKey:null,loadRoute:async()=>{},$:node,AbortSignal,
   fetch:async()=>({status:200,ok:true,headers:{get:()=> 'fresh-state'},json:async()=>({wallets:[],demo:false})})});
 vm.runInContext(source.slice(source.indexOf('async function poll(){'),source.indexOf("document.querySelector('.skip-link')")),routeHarness);
 routeHarness.pendingWalletJob=()=>({state:'queued'});

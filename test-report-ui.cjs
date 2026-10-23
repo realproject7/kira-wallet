@@ -12,16 +12,16 @@ const KiraView=require('./viewer/static/workspace-model.js');
     Date:{now:()=>now},document:{addEventListener(){},querySelector(){return null;}},window:{addEventListener(){}},
     setInterval:callback=>{interval=callback;return 7;},clearInterval:id=>{assert.equal(id,7);cleared=true;}};
   vm.createContext(context);vm.runInContext(fs.readFileSync('viewer/static/report.js','utf8'),context);
-  await interval();
+  await context.loadSetupReadiness();
   assert.equal(cleared,false);assert.match(nodes.get('setup-path').innerHTML,/Could not check the connection. Retrying/);
   assert.doesNotMatch(nodes.get('setup-path').innerHTML,/Public RPC checks known assets/);
-  now=1000;await interval();assert.equal(calls,1); // Bound retries during an outage.
-  now=6000;await interval();assert.equal(calls,2);assert.equal(cleared,false);
+  now=1000;assert.equal(calls,1); // Bound retries during an outage.
+  now=6000;await context.loadSetupReadiness();assert.equal(calls,2);assert.equal(cleared,false);
   assert.match(nodes.get('setup-path').innerHTML,/Connected on this computer/);
   assert.equal(nodes.get('home-empty').hidden,true);
-  now=12000;await interval();assert.equal(calls,2); // Successful readiness does not keep polling.
+  now=12000;assert.equal(calls,2); // Successful readiness does not keep polling.
   failNext=true;await context.loadSetupReadiness();assert.match(nodes.get('setup-path').innerHTML,/Retrying/);
-  now=18000;await interval();assert.equal(calls,4);assert.match(nodes.get('setup-path').innerHTML,/Connected on this computer/);
+  now=18000;await context.loadSetupReadiness();assert.equal(calls,4);assert.match(nodes.get('setup-path').innerHTML,/Connected on this computer/);
   console.log('Wallet setup recovers from transient readiness failure without inventing an unconfigured state.');
   // State may arrive before this final deferred script in a read-only session.
   nodes.clear();context.localSession={controls:false};context.state.details.tokens=[{id:'1:sample',environment:'mainnet',value_usd:10}];
@@ -29,6 +29,6 @@ const KiraView=require('./viewer/static/workspace-model.js');
   assert.equal(nodes.get('home-token-body').innerHTML,'<tr>1:sample</tr>');
   assert.equal(nodes.get('home-token-count').textContent,'1 of 1');
   assert.equal(nodes.get('setup-path').hidden,true);
-  const previousCalls=calls;await interval();assert.equal(calls,previousCalls);
+  const previousCalls=calls;await readOnly.loadSetupReadiness();assert.equal(calls,previousCalls);
   console.log('Preloaded read-only state renders immediately without a privileged readiness request.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -1,5 +1,7 @@
 'use strict';
 let localSession=null, jobList=[], jobsSignature='', localPolling=false;
+let recentJobs=[],activeJobs=[],walletJobs=[],activityData=null,activityEpoch=0,walletJobsEpoch=0;
+let workspaceStatus=null,workspacePolling=false,workspaceTimer=null,lastJobsRevision=null;
 let discoverySettingsRevision='';
 const pendingActions=new Set();
 const scanBusyJobs=new Set();
@@ -88,7 +90,7 @@ async function submitOperation(operation,input){
     const result=await localAPI('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schema_version:1,operation,input,idempotency_key:key})});
     sessionStorage.removeItem(storageKey);
     const scanMessage=operation==='job.deepen'?'Sell-route analysis queued. Your holdings stay available.':operation==='job.resume'?'Scan queued to resume from saved work.':operation==='job.cancel'?'Pause requested. Saved results stay available.':null;
-    toast(scanMessage||(operation.startsWith('settings.')?'Queued ':'Saved ')+(jobLabels[operation]||'job').toLowerCase());await pollJobs();return result;
+    toast(scanMessage||(operation.startsWith('settings.')?'Queued ':'Saved ')+(jobLabels[operation]||'job').toLowerCase());await pollJobs();await pollWorkspace();return result;
   }finally{pendingActions.delete(fingerprint);}
 }
 function refreshControlState(){
@@ -119,14 +121,16 @@ function notifyResearchCompletions(){
 function renderJobs(){
   notifyResearchCompletions();
   const active=jobList.filter(KiraView.active).sort((a,b)=>(a.state!=='running')-(b.state!=='running'));
-  $('activity-count').textContent=active.length||'';
+  $('activity-count').textContent=(workspaceStatus?.active_job_count??active.length)||'';
   $('jobs-summary').textContent=active.length?active.length+' in progress':jobList.length+(jobList.length===1?' saved job':' saved jobs');
   $('jobs-freshness').textContent=!localSession?.controls?'Activity needs a local control session.':!jobsConnected?'Reconnecting. Last recorded states shown.':lastJobsPoll?'Checked '+stamp(lastJobsPoll):'Loading saved jobs…';
   const filter=$('job-filter').value;
   const filtered=jobList.filter(j=>filter==='all'||(filter==='active'?KiraView.active(j):filter==='attention'?['partial','interrupted','failed'].includes(j.state):j.state===filter));
-  const pages=Math.max(1,Math.ceil(filtered.length/20));jobsPage=Math.min(jobsPage,pages);
+  const history=selectedView==='activity'&&activityData;
+  const total=history?history.total:filtered.length;
+  const pages=Math.max(1,Math.ceil(total/20));jobsPage=Math.min(jobsPage,pages);
   $('jobs-page').textContent=jobsPage+' / '+pages;$('jobs-prev').disabled=jobsPage===1;$('jobs-next').disabled=jobsPage===pages;
-  const rows=filtered.slice((jobsPage-1)*20,jobsPage*20);
+  const rows=history?history.jobs:filtered.slice((jobsPage-1)*20,jobsPage*20);
   $('jobs-list').innerHTML=rows.map(j=>{
     const presentation=KiraView.jobPresentation(j,Date.now(),jobsConnected),progress=KiraView.jobProgress(j,Date.now(),jobsConnected);
     const counts=j.events?.at(-1)?.counts||{},context=j.events?.at(-1)?.context;
@@ -139,7 +143,7 @@ function renderJobs(){
     return `<article class="job-row"><div class="job-identity"><span class="job-state ${escapeHTML(j.state)}">${presentation.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(presentation.label)}</span><strong>${escapeHTML(jobLabels[j.operation]||j.operation)}</strong>${link?`<a href="#/wallet/${escapeHTML(link.toLowerCase())}">${escapeHTML(name||shortAddress(link))}</a>`:''}<p>${escapeHTML(jobStage(j))}${j.state==='partial'?' · coverage gaps remain':''}</p><p class="job-timer" data-job-timer="${escapeHTML(j.job_id)}">${KiraView.jobTimeText(j,Date.now(),jobsConnected)}</p>${progress.assets?`<p class="job-progress">${escapeHTML(assetProgressText(progress))}</p>`:''}${progress.count&&!progress.cumulative?`<p class="job-progress">${escapeHTML(progress.count)}</p>`:''}<p class="job-estimate" data-job-estimate="${escapeHTML(j.job_id)}">${escapeHTML(progress.eta)}</p>${progress.saved?`<p class="job-saved">${escapeHTML(progress.saved)}</p>`:''}${evidence?`<p class="job-evidence">${escapeHTML(evidence)}</p>`:''}${presentation.freshness?`<p class="job-freshness">${escapeHTML(presentation.freshness)}</p>`:''}${j.errors?.length?`<p class="job-error">${escapeHTML(KiraView.jobErrorMessage(j))}</p>`:''}${stages}<small>Last update ${stamp(j.updated_at)} · attempt ${j.attempt} · ${escapeHTML(j.job_id.slice(0,8))}</small></div><div class="job-actions">${controls}</div></article>`;
   }).join('')||'<div class="empty"><h3>'+(!localSession?.controls?'Activity is not available in this session':'No jobs in this view')+'</h3><p>Research jobs appear here when a local action starts.</p></div>';
   $('active-work').hidden=true;$('active-work').innerHTML='';
-  if(typeof renderBriefing==='function')renderBriefing();
+  renderActiveWork();
   if(typeof renderWallets==='function'&&state)renderWallets();
   renderWalletScan();
 }
@@ -148,22 +152,71 @@ function tickJobTimers(){
   document.querySelectorAll('[data-job-timer]').forEach(node=>{const job=jobList.find(j=>j.job_id===node.dataset.jobTimer);if(!job)return;node.textContent=KiraView.jobTimeText(job,Date.now(),jobsConnected);});
   document.querySelectorAll('[data-job-estimate]').forEach(node=>{const job=jobList.find(j=>j.job_id===node.dataset.jobEstimate);if(job)node.textContent=KiraView.jobProgress(job,Date.now(),jobsConnected).eta;});
 }
-$('job-filter').addEventListener('change',()=>{jobsPage=1;renderJobs();});
-$('jobs-prev').addEventListener('click',()=>{jobsPage--;renderJobs();});
-$('jobs-next').addEventListener('click',()=>{jobsPage++;renderJobs();});
-setInterval(tickJobTimers,1000);
-async function pollJobs(){
-  if(localPolling)return;localPolling=true;
+$('job-filter').addEventListener('change',()=>{jobsPage=1;loadActivity();});
+$('jobs-prev').addEventListener('click',()=>{jobsPage--;loadActivity();});
+$('jobs-next').addEventListener('click',()=>{jobsPage++;loadActivity();});
+setInterval(()=>{if(!document.hidden&&jobList.some(KiraView.active))tickJobTimers();},1000);
+function pendingWalletJob(wallet){return jobList.find(job=>KiraView.active(job)&&['wallet.add','wallet.refresh','prices.refresh'].includes(job.operation)&&String(job.input?.wallet||job.input?.address||'').toLowerCase()===wallet.key);}
+function mergeJobs(){const rows=new Map();for(const job of [...recentJobs,...activeJobs,...walletJobs,...(activityData?.jobs||[])]){const prior=rows.get(job.job_id);if(!prior||(job.sequence??0)>=(prior.sequence??0))rows.set(job.job_id,job);}jobList=[...rows.values()].sort((a,b)=>b.created_at.localeCompare(a.created_at));}
+function renderActiveWork(){
+  const active=jobList.filter(KiraView.active).slice(0,5),panel=$('active-work');
+  panel.hidden=!active.length;panel.innerHTML=active.map(job=>{
+    const name=state?.wallets.find(w=>w.key===String(job.input?.wallet||job.input?.address||'').toLowerCase())?.name||job.input?.tag||jobLabels[job.operation]||'Research';
+    const p=KiraView.jobPresentation(job,Date.now(),jobsConnected);
+    return '<div class="active-work-row"><a href="#/activity"><span>'+ (p.spinner?'<span class="spinner" aria-hidden="true"></span>':'')+'<strong>'+escapeHTML(name)+'</strong> · '+escapeHTML(jobStage(job))+'</span><small data-job-timer="'+escapeHTML(job.job_id)+'">'+escapeHTML(KiraView.jobTimeText(job))+'</small></a><div class="job-actions">'+jobControls(job)+'</div></div>';
+  }).join('');
+}
+async function loadActivity(){
+  if(!localSession?.controls)return;
+  const epoch=++activityEpoch,page=jobsPage,filter=$('job-filter').value;
+  $('jobs-prev').disabled=true;$('jobs-next').disabled=true;
   try{
-    if(!localSession){const response=await fetch('/api/session',{cache:'no-store',signal:AbortSignal.timeout(5000)});if(!response.ok)return;localSession=await response.json();}
-    refreshControlState();if(!localSession.controls){renderJobs();return;}
-    const jobs=await localAPI('/api/jobs');jobList=jobs;const reconnected=!jobsConnected;jobsConnected=true;lastJobsPoll=new Date().toISOString();
-    const setting=jobs.filter(j=>j.operation.startsWith('settings.')&&j.state==='succeeded').map(j=>j.job_id+':'+j.updated_at).sort().join(',');
+    const result=await localAPI('/api/job-history?offset='+((page-1)*20)+'&limit=20&state='+encodeURIComponent(filter));
+    if(epoch!==activityEpoch||selectedView!=='activity')return;
+    activityData=result;mergeJobs();renderJobs();
+  }catch(error){if(epoch===activityEpoch){$('jobs-freshness').textContent=error.message;toast(error.message);}}
+}
+async function loadWalletJobs(wallet){
+  if(!localSession?.controls)return;
+  const epoch=++walletJobsEpoch;
+  try{const result=await localAPI('/api/job-history?wallet='+encodeURIComponent(wallet)+'&offset=0&limit=50');
+    if(epoch!==walletJobsEpoch||selectedView!=='wallet'||selectedWallet!==wallet)return;
+    walletJobs=result.jobs;mergeJobs();renderJobs();
+  }catch{/* Keep the last recorded job state until the next successful check. */}
+}
+async function pollJobs(){
+  if(localPolling||!localSession?.controls)return;localPolling=true;
+  try{
+    recentJobs=await localAPI('/api/jobs?limit=50');
+    const missing=(workspaceStatus?.active_jobs||[]).filter(active=>!recentJobs.some(job=>job.job_id===active.job_id));
+    activeJobs=await Promise.all(missing.map(job=>localAPI('/api/jobs/'+encodeURIComponent(job.job_id))));
+    mergeJobs();const reconnected=!jobsConnected;jobsConnected=true;lastJobsPoll=new Date().toISOString();
+    const setting=recentJobs.filter(j=>j.operation.startsWith('settings.')&&j.state==='succeeded').map(j=>j.job_id+':'+j.updated_at).sort().join(',');
     if(setting!==discoverySettingsRevision){discoverySettingsRevision=setting;if(typeof loadSetupReadiness==='function')await loadSetupReadiness();}
-    const signature=JSON.stringify(jobs)+JSON.stringify(jobs.map(j=>KiraView.jobPresentation(j).quiet));if(signature!==jobsSignature||reconnected){jobsSignature=signature;renderJobs();}else{$('jobs-freshness').textContent='Checked '+stamp(lastJobsPoll);}
+    const signature=JSON.stringify(jobList)+JSON.stringify(jobList.map(j=>KiraView.jobPresentation(j).quiet));
+    if(signature!==jobsSignature||reconnected){jobsSignature=signature;renderJobs();}else $('jobs-freshness').textContent='Checked '+stamp(lastJobsPoll);
+    if(selectedView==='activity')await loadActivity();
+    if(selectedView==='wallet')await loadWalletJobs(selectedWallet);
     refreshControlState();
   }catch{jobsConnected=false;renderJobs();}
   finally{localPolling=false;}
+}
+function scheduleWorkspacePoll(){
+  clearTimeout(workspaceTimer);
+  if(!document.hidden)workspaceTimer=setTimeout(pollWorkspace,workspaceStatus?.active_job_count?2500:10000);
+}
+async function pollWorkspace(){
+  if(workspacePolling||document.hidden)return;workspacePolling=true;
+  try{
+    if(!localSession){const response=await fetch('/api/session',{cache:'no-store',signal:AbortSignal.timeout(5000)});if(!response.ok)throw Error('Local session unavailable');localSession=await response.json();}
+    const next=await readAPI('/api/status');workspaceStatus=next;
+    if((!state||state.data_revision!==next.data_revision)&&await poll()===false)throw Error('Saved research unavailable');
+    if(localSession.controls&&(lastJobsRevision!==next.jobs_revision||!jobsConnected)){await pollJobs();if(jobsConnected)lastJobsRevision=next.jobs_revision;}
+    if(localSession.controls&&typeof loadSetupReadiness==='function'&&!setupReadiness&&Date.now()>=setupRetryAfter)await loadSetupReadiness();
+    if(localSession.controls&&typeof loadOws==='function'&&!owsState&&!state?.demo)await loadOws().catch(()=>{});
+    refreshControlState();$('connection').textContent='Connected';
+  }catch{$('connection').textContent='Reconnecting';if(!state){$('load-error').hidden=false;$('content').hidden=true;}}
+  finally{workspacePolling=false;scheduleWorkspacePoll();}
 }
 for(const button of document.querySelectorAll('[data-close-dialog]'))button.addEventListener('click',()=>button.closest('dialog').close());
 function openAdd(){if(!localSession?.controls)return;if(setupReadiness?.discovery_key_available!==true){openDataConnections();return;}if(!watchingSubmission)$('wallet-form-error').textContent='';if(typeof renderWatching==='function')renderWatching();$('wallet-dialog').showModal();if(typeof loadSetupReadiness==='function')loadSetupReadiness();}
@@ -205,7 +258,7 @@ $('wallet-scan').addEventListener('click',handleScanAction);
 $('wallet-analysis').addEventListener('click',handleScanAction);
 document.addEventListener('click',event=>{const menu=$('wallet-tools');if(menu.open&&(!menu.contains(event.target)||event.target.closest('.wallet-tools-menu button, .wallet-tools-menu a')))menu.open=false;});
 document.addEventListener('keydown',event=>{const menu=$('wallet-tools');if(event.key==='Escape'&&menu.open){menu.open=false;$('wallet-tools-toggle').focus();}});
-$('chat-research').addEventListener('click',handleScanAction);
+$('active-work').addEventListener('click',handleScanAction);
 let connectionConfig = null, connectionReadiness = null, connectionRevision = 0, workspaceSettingsRevision = 0, pendingSetting = null, settingSaving = false, settingSaved = false, settingFailed = false, connectionWallet = null;
 function connectionSummary(config) {
   return config.discovery.provider==='alchemy'?'Alchemy selected · all-network holdings':'Alchemy connection required for research';
@@ -220,21 +273,61 @@ function renderConnectionForm() {
   $('settings-refresh').hidden=!connectionWallet||!connected;
   $('settings-refresh').disabled=settingSaving||jobList.some(j=>KiraView.active(j)&&j.input?.wallet===connectionWallet);
 }
-async function openWorkspaceSettings() {
-  if (!localSession?.controls) return;
-  const revision = ++workspaceSettingsRevision;
-  if (!$('workspace-settings-dialog').open) $('workspace-settings-dialog').showModal();
-  $('workspace-model-summary').textContent = 'Checking saved model and permissions…';
-  $('workspace-data-summary').textContent = 'Checking the saved connection…';
-  const [modelResult, dataResult] = await Promise.allSettled([localAPI('/api/agent'), localAPI('/api/settings')]);
-  if (revision !== workspaceSettingsRevision || !$('workspace-settings-dialog').open) return;
-  if (modelResult.status === 'fulfilled') {
-    const config = modelResult.value.config;
-    $('workspace-model-summary').textContent = config ? (config.provider === 'codex' ? 'Codex' : 'Claude') + ' · ' + (config.model || 'Default model') + ' · ' + (config.scope === 'none' ? 'No wallet context' : config.scope === 'wallet' ? 'One wallet' : 'Whole portfolio') + ' · History ' + (config.retain_history ? 'saved locally' : 'off') + ' · Research ' + (config.wallet_tools && config.scope !== 'none' ? 'on' : 'off') : 'Connect Codex or Claude. Choose wallet context, local history and research access.';
-  } else $('workspace-model-summary').textContent = 'Could not check saved model settings. Reopen to retry.';
-  $('workspace-data-summary').textContent = dataResult.status === 'fulfilled' ? connectionSummary(dataResult.value) : 'Could not check the data connection. Reopen to retry.';
-
+let rpcRows=[],rpcNetworks=[],rpcSaving=false,rpcLoaded=false;
+function renderRpcRows(){
+  $('rpc-rows').innerHTML=rpcRows.map((row,index)=>{
+    const network=rpcNetworks.find(item=>item.chain_id===row.chain_id);
+    return '<div class="rpc-row"><label>'+escapeHTML(network?.name||'Network '+row.chain_id)+'<input data-rpc-reference="'+index+'" value="'+escapeHTML(row.url_env)+'" pattern="[A-Za-z_][A-Za-z0-9_]*" maxlength="100" required autocomplete="off"></label><button class="quiet-button" type="button" data-rpc-remove="'+index+'" aria-label="Remove '+escapeHTML(network?.name||'network '+row.chain_id)+' reference">Remove</button></div>';
+  }).join('')||'<p class="form-note">No custom references saved.</p>';
 }
+function loadRpcSettings(config){
+  const rpc=config.rpc||{};
+  rpcNetworks=config.rpc_networks||[];
+  rpcRows=Object.entries(rpc.chains||{}).map(([chain_id,entry])=>({chain_id:Number(chain_id),url_env:entry.url_env||''}));
+  $('rpc-mode').value=rpc.mode||'public';$('rpc-priority').value=rpc.priority||'public_first';$('rpc-fallback').checked=rpc.allow_public_fallback!==false;
+  $('rpc-network').innerHTML=rpcNetworks.map(network=>'<option value="'+network.chain_id+'">'+escapeHTML(network.name)+'</option>').join('');
+  $('rpc-reference').value='';renderRpcRows();rpcLoaded=true;$('rpc-fields').disabled=false;
+}
+function rpcSettingsInput(){
+  if(!rpcLoaded)throw Error('Wait for saved RPC settings before making changes.');
+  const mode=$('rpc-mode').value,priority=$('rpc-priority').value,seen=new Set();
+  if(!['public','custom'].includes(mode)||!['public_first','custom_first'].includes(priority))throw Error('Choose a connection mode and priority.');
+  if(rpcRows.length>30)throw Error('Use at most 30 network references.');
+  const chains=rpcRows.map(row=>{
+    if(!Number.isSafeInteger(row.chain_id)||row.chain_id<=0||seen.has(row.chain_id))throw Error('Use one reference per network.');
+    if(!/^[A-Za-z_][A-Za-z0-9_]{0,99}$/.test(row.url_env))throw Error('Enter an environment variable name, such as ETHEREUM_RPC_URL. URLs and keys are not accepted.');
+    seen.add(row.chain_id);return {...row};
+  });
+  if(mode==='custom'&&!chains.length)throw Error('Add at least one network reference for custom RPC.');
+  return {mode,chains,allow_public_fallback:$('rpc-fallback').checked,priority};
+}
+async function saveRpcSettings(){
+  if(rpcSaving)return;
+  const input=rpcSettingsInput();rpcSaving=true;$('rpc-fields').disabled=true;$('rpc-status').textContent='Submitting RPC settings…';$('rpc-activity').hidden=true;
+  try{await submitOperation('settings.rpc',input);$('rpc-status').textContent='RPC settings submitted. Check Activity for the saved result.';$('rpc-activity').hidden=false;}
+  catch(error){$('rpc-status').textContent='Could not confirm the settings result. Retry checks the same request.';throw error;}
+  finally{rpcSaving=false;$('rpc-fields').disabled=!rpcLoaded;}
+}
+async function openWorkspaceSettings(){
+  if(!localSession?.controls||rpcSaving)return;
+  const revision=++workspaceSettingsRevision;
+  if(!$('workspace-settings-dialog').open)$('workspace-settings-dialog').showModal();
+  rpcLoaded=false;$('rpc-fields').disabled=true;$('rpc-error').textContent='';$('rpc-status').textContent='';$('rpc-activity').hidden=true;
+  $('workspace-data-summary').textContent='Checking the saved connection…';
+  try{const config=await localAPI('/api/settings');if(revision===workspaceSettingsRevision&&$('workspace-settings-dialog').open){$('workspace-data-summary').textContent=connectionSummary(config);loadRpcSettings(config);}}
+  catch{if(revision===workspaceSettingsRevision)$('workspace-data-summary').textContent='Could not check the data connection. Reopen to retry.';}
+}
+$('rpc-add').addEventListener('click',()=>{
+  $('rpc-error').textContent='';const chain_id=Number($('rpc-network').value),url_env=$('rpc-reference').value.trim();
+  if(!rpcNetworks.some(network=>network.chain_id===chain_id)){$('rpc-error').textContent='Choose a supported network.';return;}
+  if(rpcRows.some(row=>row.chain_id===chain_id)){$('rpc-error').textContent='This network already has a reference. Edit its existing row.';return;}
+  if(!/^[A-Za-z_][A-Za-z0-9_]{0,99}$/.test(url_env)){$('rpc-error').textContent='Enter an environment variable name only.';return;}
+  if(rpcRows.length>=30){$('rpc-error').textContent='Use at most 30 network references.';return;}
+  rpcRows.push({chain_id,url_env});$('rpc-reference').value='';renderRpcRows();
+});
+$('rpc-rows').addEventListener('input',event=>{if(event.target.dataset.rpcReference!==undefined){const row=rpcRows[Number(event.target.dataset.rpcReference)];if(row)row.url_env=event.target.value;}});
+$('rpc-rows').addEventListener('click',event=>{const button=event.target.closest('[data-rpc-remove]');if(button){rpcRows.splice(Number(button.dataset.rpcRemove),1);renderRpcRows();}});
+formAction($('rpc-form'),$('rpc-error'),saveRpcSettings);
 async function openDataConnections(advanced = false, recommend = false, walletKey = null) {
   if (!localSession?.controls) return;
   const revision = ++connectionRevision;
@@ -324,6 +417,6 @@ formAction($('provider-form'),$('settings-error'),async()=>{
 });
 $('view-history').addEventListener('click',async()=>{try{const rows=await localAPI('/api/snapshots?wallet='+encodeURIComponent(selectedWallet));$('history-list').innerHTML=rows.map(row=>`<article class="history-row"><strong>${stamp(row.compiled_at)}</strong><span>${escapeHTML(row.status==='completed'?'Saved':'Saved with coverage gaps')}</span><small>${escapeHTML(row.snapshot_id)}</small></article>`).join('')||'<p>No analysis has been published yet.</p>';$('compare-form').hidden=rows.length<2;for(const id of ['compare-before','compare-after'])$(id).innerHTML=rows.map(row=>`<option value="${escapeHTML(row.snapshot_id)}">${stamp(row.compiled_at)} · ${escapeHTML(row.snapshot_id.split('/').at(-1))}</option>`).join('');$('compare-after').selectedIndex=Math.max(0,rows.length-1);$('comparison-result').textContent='';$('history-error').textContent='';$('history-dialog').showModal();}catch(error){toast(error.message);}});
 formAction($('compare-form'),$('history-error'),async()=>{const comparison=await localAPI('/api/compare?before='+encodeURIComponent($('compare-before').value)+'&after='+encodeURIComponent($('compare-after').value));$('comparison-result').innerHTML=`<p>${escapeHTML(comparison.note)}</p><p>Coverage observations ${comparison.coverage_changed?'changed':'unchanged'} · native price references ${comparison.price_references_changed?'changed':'unchanged'}</p><div class="table-wrap"><table><thead><tr><th>Token / chain</th><th>Earlier balance</th><th>Later balance</th><th>Change</th></tr></thead><tbody>${comparison.positions.map(p=>`<tr><td>${escapeHTML(p.symbol||shortAddress(p.address))} · ${p.chain_id}<small>${escapeHTML(p.presence.replaceAll('_',' '))}${p.price_references_changed?' · price references changed':''}${p.valuation_method_changed?' · method changed':''}</small></td><td>${escapeHTML(p.before_balance??'Unknown')}</td><td>${escapeHTML(p.after_balance??'Unknown')}</td><td>${escapeHTML(p.balance_delta??'Unknown')}</td></tr>`).join('')}</tbody></table></div>`;});
-window.addEventListener('hashchange',()=>{refreshControlState();renderJobs();});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)pollJobs();});
-pollJobs();setInterval(pollJobs,2500);
+window.addEventListener('hashchange',()=>{activityEpoch++;walletJobsEpoch++;activityData=null;walletJobs=[];mergeJobs();refreshControlState();renderJobs();});
+document.addEventListener('visibilitychange',()=>{clearTimeout(workspaceTimer);if(!document.hidden)pollWorkspace();});
+pollWorkspace();

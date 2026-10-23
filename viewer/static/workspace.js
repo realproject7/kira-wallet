@@ -13,16 +13,17 @@ function catalogRow(a) {
 }
 function renderCatalog() {
   if (!state) return;
-  const result = KiraView.catalog(state.details.tokens, catalogFilters());
-  catalogPage = result.page;
+  const page=state.paged?routeData.page:null;
+  const result=state.paged?{rows:page?.assets||[],count:page?.matched_count||0,page:Math.floor((page?.offset??(catalogPage-1)*50)/50)+1,pages:Math.max(1,Math.ceil((page?.matched_count||0)/50))}:KiraView.catalog(state.details.tokens,catalogFilters());
+  if(!routeLoading)catalogPage=result.page;
   document.querySelectorAll('[data-catalog-min]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.catalogMin)===catalogMinimum)));
   $('catalog-filter-note').hidden=catalogMinimum===0;
   $('catalog-filter-note').textContent=catalogMinimum?'Showing tokens with at least $'+catalogMinimum+' in known value across wallets. Unpriced tokens and testnets are hidden.':'';
   $('all-token-result').textContent = result.count + (result.count === 1 ? ' token · ' : ' tokens · ') + (result.count ? ((result.page - 1) * 50 + 1) + '–' + Math.min(result.page * 50, result.count) + ' shown' : 'none shown');
   $('tokens-page').textContent = result.page + ' / ' + result.pages;
-  $('tokens-prev').disabled = result.page === 1;
-  $('tokens-next').disabled = result.page === result.pages;
-  $('all-token-empty').hidden = result.count > 0;
+  $('tokens-prev').disabled = routeLoading || result.page === 1;
+  $('tokens-next').disabled = routeLoading || result.page === result.pages;
+  $('all-token-empty').hidden = routeLoading || result.count > 0;
   $('all-token-body').innerHTML = result.rows.map(catalogRow).join('');
   bindImages();
 }
@@ -35,12 +36,12 @@ function renderWorkspace() {
     if (current) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   });
   if (selectedView === 'home') $('brand-home').setAttribute('aria-current', 'page'); else $('brand-home').removeAttribute('aria-current');
-  $('all-token-count').textContent = state.details.tokens.filter(t => t.environment !== 'testnet').length;
+  $('all-token-count').textContent = state.dashboard.unique_asset_count;
   if (selectedView === 'tokens') {
     renderBreadcrumb([{ label: 'Home', href: '#/home' }, { label: 'All tokens' }]);
     document.title = 'All tokens · Kira Wallet';
     const network = $('all-token-network').value;
-    const recordedChains = new Set(state.details.tokens.map(t => t.chain_id));
+    const recordedChains = new Set(state.paged?state.details.networks.filter(n=>n.position_count>0).map(n=>n.id):state.details.tokens.map(t=>t.chain_id));
     $('all-token-network').innerHTML = '<option value="all">All chains</option>' + state.details.networks.filter(n => recordedChains.has(n.id)).map(n => `<option value="${n.id}" data-chain-id="${n.id}">${escapeHTML(n.name)}${n.environment === 'testnet' ? ' · Testnet' : ''}</option>`).join('');
     $('all-token-network').value = [...$('all-token-network').options].some(o => o.value === network) ? network : 'all';
     $('sync-label').textContent = 'Latest recorded holdings'; renderCatalog();
@@ -48,12 +49,6 @@ function renderWorkspace() {
     renderBreadcrumb([{ label: 'Home', href: '#/home' }, { label: 'Activity' }]);
     document.title = 'Activity · Kira Wallet'; $('sync-label').textContent = 'Local research history';
   }
-  renderBriefing();
-}
-function renderBriefing() {
-  if (!state) return;
-  renderKiraNote();
-  if (typeof renderResearchChat === 'function') renderResearchChat();
 }
 function resetRouteFilters() {
   for (const [id,value] of Object.entries({'all-token-network':'all','all-token-pricing':'all','all-token-sort':'value','all-token-search':'','job-filter':'all'})) $(id).value=value;
@@ -61,11 +56,11 @@ function resetRouteFilters() {
   if(typeof jobsPage!=='undefined')jobsPage=1;
   if(typeof KiraSelect!=='undefined')KiraSelect.refresh();
 }
-for (const id of ['all-token-network', 'all-token-pricing', 'all-token-sort', 'all-token-testnets']) $(id).addEventListener('change', () => { catalogPage = 1; renderCatalog(); });
-$('all-token-search').addEventListener('input', () => { clearTimeout(catalogTimer); catalogTimer = setTimeout(() => { catalogPage = 1; renderCatalog(); }, 120); });
-document.querySelectorAll('[data-catalog-min]').forEach(button=>button.addEventListener('click',()=>{catalogMinimum=Number(button.dataset.catalogMin);catalogPage=1;renderCatalog();}));
-$('tokens-prev').addEventListener('click', () => { catalogPage--; renderCatalog(); });
-$('tokens-next').addEventListener('click', () => { catalogPage++; renderCatalog(); });
+for (const id of ['all-token-network', 'all-token-pricing', 'all-token-sort', 'all-token-testnets']) $(id).addEventListener('change', () => { catalogPage = 1; state?.paged?loadRoute():renderCatalog(); });
+$('all-token-search').addEventListener('input', () => { clearTimeout(catalogTimer); catalogTimer = setTimeout(() => { catalogPage = 1; state?.paged?loadRoute():renderCatalog(); }, 120); });
+document.querySelectorAll('[data-catalog-min]').forEach(button=>button.addEventListener('click',()=>{catalogMinimum=Number(button.dataset.catalogMin);catalogPage=1;state?.paged?loadRoute():renderCatalog();}));
+$('tokens-prev').addEventListener('click', () => { catalogPage--; state?.paged?loadRoute():renderCatalog(); });
+$('tokens-next').addEventListener('click', () => { catalogPage++; state?.paged?loadRoute():renderCatalog(); });
 $('home-view-all').addEventListener('click', () => {
   $('all-token-search').value = '';
   $('all-token-network').value = 'all';
@@ -74,25 +69,5 @@ $('home-view-all').addEventListener('click', () => {
   $('all-token-testnets').checked = false;
   catalogPage = 1;catalogMinimum=0;
 });
-let chatPanePosition=null;
-function setWorkspacePane(pane) {
-  const workspace=document.querySelector('.workspace'),scroller=$('conversation-scroll'),mobile=matchMedia('(max-width: 980px)').matches,previous=workspace.dataset.pane;
-  if(mobile&&pane==='portfolio'&&previous==='kira')chatPanePosition={top:scroller.scrollTop,pinned:scroller.scrollHeight-scroller.clientHeight-scroller.scrollTop<80};
-  workspace.dataset.pane = pane;
-  document.body.classList.toggle('chat-pane',pane==='kira');
-  if(mobile&&pane==='kira'&&previous!=='kira')scroller.scrollTop=!chatPanePosition||chatPanePosition.pinned?scroller.scrollHeight:chatPanePosition.top;
-  document.querySelectorAll('.mobile-pane-control [data-pane]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.pane === pane)));
-}
-document.querySelectorAll('.mobile-pane-control [data-pane]').forEach(button => button.addEventListener('click', () => {
-  setWorkspacePane(button.dataset.pane);
-  if (button.dataset.pane === 'kira' && matchMedia('(max-width: 980px)').matches) {
-    document.querySelector('.workspace').scrollIntoView({ block: 'start', behavior: 'instant' });
-  }
-}));
-// Explicit navigation must reveal the selected evidence, including same-route clicks.
-document.addEventListener('click', event => {
-  if (event.target.closest('a[href^="#/"]')) setWorkspacePane('portfolio');
-});
-window.addEventListener('hashchange', () => { setWorkspacePane('portfolio'); renderWorkspace(); });
-try { localStorage.removeItem('kira-draft'); } catch { /* Drafts are now memory-only. */ }
+window.addEventListener('hashchange',renderWorkspace);
 renderWorkspace();
