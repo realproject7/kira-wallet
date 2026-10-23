@@ -10,8 +10,7 @@ from unittest.mock import patch
 from kira_cli import sample
 from kira_jobs import JobStore, JobError, atomic
 from kira_research_tools import ResearchTools, compare_curve_states
-from kira_agent import AgentStore
-from test_kira_agent import settings, ready
+from test_records import settings
 
 class ResearchToolsTest(unittest.TestCase):
     def test_cached_full_balance_sale_reaches_details_and_compact_quote_indicator(self):
@@ -81,7 +80,7 @@ class ResearchToolsTest(unittest.TestCase):
 
     def test_large_inventory_queries_search_rank_aggregate_without_dumping_pages(self):
         from copy import deepcopy
-        from kira_agent import read_completion, read_receipt
+        from kira_records import read_completion, read_receipt
         import model
         state,stamp,stale=model.load_state(self.root)
         wallet=state['wallets'][0];base=deepcopy(wallet['assets'][0])
@@ -144,7 +143,7 @@ class ResearchToolsTest(unittest.TestCase):
             self.assertEqual(result['position_count'],1);self.assertEqual(result['outside_usd_scope_count'],1)
             batch=tools.call('records_read',{'reads':[{'name':'token_read','arguments':args}]*2},str(uuid.uuid4()))
             self.assertEqual(batch['position_count'],1);self.assertEqual(batch['completed_reads'],2)
-            from kira_agent import read_completion,read_receipt
+            from kira_records import read_completion,read_receipt
             failed=read_receipt('token_read',{**args,'minimum_value_usd':'10.0'},{'error':'Temporary read failure'})
             recovered=read_receipt('token_read',args,result)
             self.assertEqual(read_completion('Read '+json.dumps({'name':'token_read','arguments':failed['arguments']}),[failed,recovered],tools)['status'],'complete')
@@ -161,41 +160,8 @@ class ResearchToolsTest(unittest.TestCase):
                 with self.assertRaises(JobError):self.call('records_read',{'reads':invalid})
         self.assertEqual(JobStore(self.root).list(),[])
 
-    def test_natural_question_requires_a_complete_plan_before_answering(self):
-        reads=[{'name':'token_read','arguments':{'chain_id':chain,'address':'native'}} for chain in range(1,10)]
-        outputs=['Tools are unavailable.',json.dumps({'kira_tool':'records_read','arguments':{'reads':reads}}),'Nine sources were read.']
-        store=AgentStore(self.root,runner=lambda *args:outputs.pop(0),detector=ready);store.config=self.config
-        key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
-        store._run(key,self.config,'Read nine requested chains.','아홉 체인의 저장된 ETH 기록을 각각 읽어줘.',store.epoch)
-        turn=store.turns[key]
-        self.assertEqual(turn['state'],'succeeded');self.assertEqual(turn['answer'],'Nine sources were read.')
-        self.assertEqual(len(turn['tool_calls'][0]['reads']),9)
-        self.assertEqual(turn['read_completion']['status'],'complete')
-        self.assertEqual(turn['read_completion']['completed_reads'],9)
 
-    def test_natural_plan_failure_cannot_become_successful_prose(self):
-        reads=[{'name':'token_read','arguments':{'chain_id':chain,'address':'native'}} for chain in (8453,0)]
-        prompts=[]
-        def runner(config,prompt,cancel):
-            prompts.append(prompt)
-            return json.dumps({'kira_tool':'records_read','arguments':{'reads':reads}}) if len(prompts)==1 else 'Everything is complete.'
-        store=AgentStore(self.root,runner=runner,detector=ready);store.config=self.config
-        key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
-        store._run(key,self.config,'Read the requested sources.','요청한 두 체인의 저장 기록을 읽어줘.',store.epoch)
-        turn=store.turns[key]
-        self.assertEqual(turn['state'],'partial');self.assertEqual(len(prompts),3)
-        self.assertIn('unfinished requested reads',prompts[-1]);self.assertIn('일부 기록',turn['answer']);self.assertNotIn('token_read',turn['answer'])
-        self.assertTrue(turn['read_completion']['failed'])
 
-    def test_planning_cannot_enqueue_and_action_runs_once_after_empty_plan(self):
-        refresh={'kira_tool':'prices_refresh','arguments':{'wallet':self.first['address_key']}}
-        outputs=[json.dumps(refresh),json.dumps({'kira_tool':'records_read','arguments':{'reads':[]}}),json.dumps(refresh),'Price update queued.']
-        store=AgentStore(self.root,runner=lambda *args:outputs.pop(0),detector=ready);store.config=self.config
-        key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
-        with patch.object(JobStore,'launch') as launch:
-            store._run(key,self.config,'Refresh this wallet once.','가격만 한 번 새로고침해줘.',store.epoch)
-        self.assertEqual(store.turns[key]['state'],'succeeded');self.assertEqual(len(JobStore(self.root).list()),1)
-        self.assertEqual(launch.call_count,1)
 
     def test_read_plan_returns_precise_receipts_and_cannot_enqueue(self):
         reads=[{'name':'portfolio_read','arguments':{}},{'name':'wallet_read','arguments':{'wallet':self.first['address_key']}},{'name':'wallet_read','arguments':{'wallet':self.other}}]
@@ -205,7 +171,7 @@ class ResearchToolsTest(unittest.TestCase):
         with self.assertRaises(JobError):self.call('records_read',{'reads':[{'name':'holdings_refresh','arguments':{'wallet':self.first['address_key']}}]})
         self.assertEqual(JobStore(self.root).list(),[])
     def test_literal_multiple_reads_are_partial_when_native_skips_one(self):
-        from kira_agent import read_completion
+        from kira_records import read_completion
         config={**self.config,'scope':'portfolio','wallet':None};tools=ResearchTools(self.root,config)
         receipts=[{'name':'portfolio_read','arguments':{},'status':'completed'}]
         result=read_completion('Run portfolio_read + wallet_read for all wallets.',receipts,tools)
@@ -225,7 +191,7 @@ class ResearchToolsTest(unittest.TestCase):
         self.assertEqual(compare_curve_states(different)['comparisons'][0]['status'],'unknown')
 
     def test_delivered_retry_recovers_only_the_same_requested_read(self):
-        from kira_agent import read_completion,read_receipt
+        from kira_records import read_completion,read_receipt
         args={'wallet':self.first['address_key'],'offset':0,'limit':1}
         failed=read_receipt('wallet_read',args,{'error':'context limit'})
         message='Run '+json.dumps({'name':'wallet_read','arguments':args})
@@ -260,7 +226,7 @@ class ResearchToolsTest(unittest.TestCase):
                 self.assertEqual(result['status'],'partial');self.assertTrue(result['failed'])
 
     def test_completion_matches_token_arguments_and_contiguous_inventory_pages(self):
-        from kira_agent import read_completion,read_receipt
+        from kira_records import read_completion,read_receipt
         token='0x'+'a'*40
         message='Run token_read '+json.dumps({'reads':[{'name':'token_read','arguments':{'chain_id':cid,'address':token}} for cid in (1,8453)]})
         receipt=read_receipt('token_read',{'chain_id':1,'address':token},{'positions':[],'offset':0,'next_offset':None})
@@ -394,63 +360,3 @@ class ResearchToolsTest(unittest.TestCase):
         tools=ResearchTools(self.root,self.config,guard)
         with self.assertRaises(JobError):tools.call('holdings_refresh',{'wallet':self.first['address_key']},str(uuid.uuid4()))
         self.assertFalse(JobStore(self.root).list())
-    def test_native_tool_loop_reads_then_answers_without_execution_tools(self):
-        calls=[]
-        def runner(config,prompt,cancel):
-            calls.append(prompt)
-            return json.dumps({'kira_tool':'records_read','arguments':{'reads':[{'name':'snapshots_list','arguments':{'wallet':self.first['address_key']}}]}}) if len(calls)==1 else 'I found the saved analysis.'
-        store=AgentStore(self.root,runner=runner,detector=ready);store.config=self.config
-        key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
-        store._run(key,self.config,'Inspect the saved wallet analysis.','Inspect the saved wallet analysis.',store.epoch)
-        self.assertEqual(store.turns[key]['state'],'succeeded');self.assertIn('snapshot_id',calls[1]);self.assertEqual(store.turns[key]['answer'],'I found the saved analysis.')
-
-    def test_mixed_tool_protocol_is_repaired_before_any_tool_executes(self):
-        outputs=['I will check. {"kira_tool":"portfolio_read","arguments":{}}',
-                 '{"kira_tool":"records_read","arguments":{"reads":[]}}','Recorded evidence only.']
-        calls=[]
-        def runner(config,prompt,cancel):calls.append(prompt);return outputs.pop(0)
-        store=AgentStore(self.root,runner=runner,detector=ready);store.config=self.config
-        key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
-        with patch.object(ResearchTools,'call',return_value={'recorded':True}) as tool:
-            store._run(key,self.config,'Inspect records.','Inspect records.',store.epoch)
-        self.assertEqual(tool.call_count,1);self.assertIn('not executed',calls[1])
-        self.assertEqual(store.turns[key]['answer'],'Recorded evidence only.')
-
-    def test_repeated_mixed_tool_protocol_fails_without_leaking_or_executing_it(self):
-        store=AgentStore(self.root,runner=lambda *args:'Prose {"kira_tool":"holdings_refresh","arguments":{}}',detector=ready);store.config=self.config
-        key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
-        with patch.object(ResearchTools,'call') as tool:
-            store._run(key,self.config,'Refresh records.','Refresh records.',store.epoch)
-        tool.assert_not_called();self.assertEqual(store.turns[key]['error']['code'],'invalid_tool_response')
-        self.assertNotIn('answer',store.turns[key]);self.assertEqual(store.messages,[])
-
-    def test_malformed_protocol_after_eight_tools_cannot_fall_through_as_answer(self):
-        outputs=['{"kira_tool":"records_read","arguments":{"reads":[]}}']+['{"kira_tool":"portfolio_read","arguments":{}}']*7+['Prose {"kira_tool":"portfolio_read","arguments":{}}']
-        store=AgentStore(self.root,runner=lambda *args:outputs.pop(0),detector=ready);store.config=self.config
-        key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
-        with patch.object(ResearchTools,'call',return_value={}):
-            store._run(key,self.config,'Inspect records.','Inspect records.',store.epoch)
-        self.assertEqual(store.turns[key]['state'],'failed');self.assertEqual(store.messages,[])
-        self.assertEqual(store.turns[key]['error']['code'],'invalid_tool_response')
-
-    def test_permissions_changed_during_model_turn_prevent_job_admission(self):
-        store=None
-        def runner(config,prompt,cancel):
-            store.config={**config,'scope':'none'}
-            return json.dumps({'kira_tool':'holdings_refresh','arguments':{'wallet':self.first['address_key']}})
-        store=AgentStore(self.root,runner=runner,detector=ready);store.config=self.config
-        key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
-        store._run(key,self.config,'Refresh my holdings.','Refresh my holdings.',store.epoch)
-        self.assertEqual(store.turns[key]['state'],'cancelled');self.assertFalse(JobStore(self.root).list())
-    def test_accumulated_tool_context_and_step_limit_are_bounded(self):
-        prompts=[]
-        def runner(config,prompt,cancel):
-            prompts.append(prompt)
-            return json.dumps({'kira_tool':'records_read','arguments':{'reads':[]}}) if len(prompts)==1 else json.dumps({'kira_tool':'portfolio_read','arguments':{}})
-        store=AgentStore(self.root,runner=runner,detector=ready);store.config=self.config
-        key=str(uuid.uuid4());store.turns[key]={'id':key,'state':'running','cancel':threading.Event(),'test':False,'conversation_id':store.conversation};store.active=key
-        with patch.object(ResearchTools,'call',return_value={'data':'界'*100000}):
-            store._run(key,self.config,'Inspect records.','Inspect records.',store.epoch)
-        self.assertEqual(store.turns[key]['error']['code'],'context_limit');self.assertEqual(len(prompts),3)
-        self.assertTrue(all(len(p.encode())<=400000 for p in prompts));self.assertIn('context limit',prompts[1])
-        self.assertTrue(all(row['status']=='failed' for row in store.turns[key]['tool_calls']))

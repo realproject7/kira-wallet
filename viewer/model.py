@@ -403,7 +403,7 @@ def dashboard(wallets):
         'prices_from':min(dates,default=None),'prices_to':max(dates,default=None),
         'networks':network_rows,'largest_holdings':[a for a in asset_rows if a['value_usd'] is not None][:5]}
 
-def load_state(root=ROOT):
+def load_state(root=ROOT, *, include_details=True, encode=True):
     registry=read(root/'wallets.json');wallets=[];images=read_catalog(root)
     for entry in registry.get('wallets',[]):
         latest=entry.get('latest_snapshot')
@@ -416,7 +416,8 @@ def load_state(root=ROOT):
                 'name':(entry.get('tags') or [entry['address'][:10]])[0],'assets':[],'chains':[],
                 'known_value_usd':0,'unpriced_count':0,'analysed_at':None,'status':'awaiting_analysis','counts':{}})
     state={'wallets':wallets,'currency':'USD','dashboard':dashboard(wallets),
-           'details':project_details(wallets,root)}
+           'details':project_details(wallets,root) if include_details else {'tokens':[], 'networks':[]}}
     if registry.get('demo') is True:state['demo']=True
+    if not encode:return state,None,None
     encoded=json.dumps(state,ensure_ascii=False,allow_nan=False,separators=(',',':')).encode()
     return state,encoded,hashlib.sha256(encoded).hexdigest()

@@ -48,8 +48,8 @@ class ResearchTools:
     def allowed(self):
         if self.config['scope']=='none' or not self.config.get('wallet_tools'):
             raise JobError('wallet_access_off','Wallet research access is off. Enable it in model settings.')
-        from kira_agent import projection
-        current=projection(self.root,self.config)
+        from kira_records import projection
+        current=projection(self.root,self.config,limit=0 if self.config.get('external') else 12)
         return current, {w['address'].lower() for w in current['wallets']}
 
     def wallet(self, selector, approved):
@@ -63,7 +63,7 @@ class ResearchTools:
         if identity not in visible:raise JobError('snapshot_scope','This analysis is outside the current conversation scope.')
         result=self.store.snapshot(identity)
         if result.get('wallet_address','').lower() not in approved:raise JobError('snapshot_scope','This analysis does not belong to the approved wallet.')
-        from kira_agent import wallet_facts, compact_wallet_facts, recorded_valuation
+        from kira_records import wallet_facts, compact_wallet_facts, recorded_valuation
         from model import project_wallet
         entry=self.store.wallet(result['wallet_address'])
         entry={**entry,'latest_snapshot':{'directory':identity}}
@@ -126,7 +126,7 @@ class ResearchTools:
                 raise JobError('invalid_tool','Expected a bounded recorded identifier.')
         context,approved=self.allowed()
         if name=='holdings_query':
-            from kira_agent import scoped_wallets
+            from kira_records import scoped_wallets
             from holdings_query import query_holdings
             wallets=scoped_wallets(self.root,self.config)
             if 'wallet' in arguments:
@@ -136,7 +136,7 @@ class ResearchTools:
         if name=='portfolio_read':return context
         if name=='wallet_read':
             wallet=self.wallet(arguments['wallet'],approved)
-            from kira_agent import projection
+            from kira_records import projection
             page=projection(self.root,self.config,wallet_key=wallet,offset=arguments.get('offset',0),limit=arguments.get('limit',100),inventory=True)
             return {**page['wallets'][0],'note':page['note'],'research_connection':page['research_connection']}
         if name=='token_read':
@@ -144,7 +144,7 @@ class ResearchTools:
             address=arguments['address'].lower()
             if address!='native' and not ADDRESS.fullmatch(address):raise JobError('invalid_token','Expected native or a 20-byte contract address.')
             identity=str(arguments['chain_id'])+':'+address
-            from kira_agent import projection
+            from kira_records import projection
             specific=projection(self.root,self.config,token_id=identity)
             positions=[{'wallet':row['address'],'snapshot_id':row.get('snapshot_id'),'asset':asset} for row in specific['wallets'] for asset in row['assets']]
             total=len(positions)

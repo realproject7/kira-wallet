@@ -50,7 +50,7 @@ def observed_range(rows, key):
     return {'from': min(dates, default=None), 'to': max(dates, default=None)}
 
 
-def project_details(wallets, root):
+def project_details(wallets, root, *, include_wallets=True):
     catalog = {}
     path = root / 'networks.json'
     if path.exists():
@@ -92,7 +92,7 @@ def project_details(wallets, root):
         token['market_pools']=sorted(pools.values(),key=lambda p:-(p.get('liquidity_usd') or 0))
         rows = []
         by_wallet = {w['key']: a for w, a in holdings}
-        for wallet in wallets:
+        for wallet in wallets if include_wallets else []:
             asset = by_wallet.get(wallet['key'])
             coverage = coverage_for(wallet, first['chain_id'])
             row = wallet_identity(wallet)
@@ -102,7 +102,7 @@ def project_details(wallets, root):
                         'status': 'Held' if asset else 'No holding recorded' if coverage_status(wallet,coverage)=='Researched' else 'Unknown'})
             rows.append(row)
         token['wallets'] = rows
-        held_rows = [r for r in rows if r['asset']]
+        held_rows = [r for r in rows if r['asset']] if include_wallets else [dict(wallet_identity(w), price_observed_at=(a.get('price') or {}).get('observed_at')) for w,a in holdings]
         token['analysis_times'] = observed_range(held_rows, 'analysed_at')
         token['price_times'] = observed_range(held_rows, 'price_observed_at')
         tokens.append(token)

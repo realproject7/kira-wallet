@@ -609,7 +609,7 @@ class ViewerTests(unittest.TestCase):
         self.assertEqual(next(t for t in w['assets'] if t['symbol']=='HEX')['value_usd'],7)
 
     def test_http_etag_and_private_files(self):
-        with patch.object(server,'ROOT',self.root), patch.object(server,'load_state',lambda:model.load_state(self.root)), patch.object(server,'last_good',None):
+        with patch.object(server,'ROOT',self.root):
             app=ThreadingHTTPServer(('127.0.0.1',0),server.Handler)
             thread=threading.Thread(target=app.serve_forever,daemon=True);thread.start()
             base=f'http://127.0.0.1:{app.server_port}'

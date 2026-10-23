@@ -1,4 +1,4 @@
-"""Prepare a reviewed public tarball. This script never publishes to a registry."""
+"""Prepare a verified public tarball. This script never publishes to a registry."""
 import argparse
 import hashlib
 import importlib.util
@@ -13,7 +13,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 def clean_head():
     if subprocess.check_output(['git','status','--porcelain'],cwd=ROOT).strip():
-        raise SystemExit('Commit and review all source changes before preparing a release.')
+        raise SystemExit('Commit all source changes before preparing a release.')
     return subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
 
 def main():
