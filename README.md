@@ -15,6 +15,13 @@ what you hold across supported EVM chains, and ask Kira to research your tokens
 or refresh your holdings. Kira runs on your computer and uses your existing
 Codex or Claude Code account.
 
+The 0.1.19 candidate adds an optional native Codex workspace for web research,
+files, commands and configured integrations, combined with Kira's scoped wallet
+tools. Approvals and questions appear in chat; generated files can be downloaded.
+Existing connections keep their current work mode until you select the new mode
+in connection settings. Claude retains recorded wallet chat in this candidate.
+See [native workspace behavior](docs/CLI.md#native-codex-workspace-0119-candidate).
+
 ![Kira portfolio overview with network allocation and research priorities](docs/screenshots/kira-readme-overview.jpg)
 
 ## Get started

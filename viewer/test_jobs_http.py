@@ -52,6 +52,30 @@ class JobsHTTPTest(unittest.TestCase):
         registry=json.loads((self.root/'wallets.json').read_text());registry['demo']=True;atomic(self.root/'wallets.json',registry)
         self.assertEqual(self.request('/api/ows/create',body=b'{}')[0],400)
 
+    def test_native_approval_and_artifact_transport_boundaries(self):
+        from kira_native import workspace_path
+        import uuid
+        agent=self.http.agent
+        agent.config={'provider':'codex','model':'','scope':'none','wallet':None,'retain_history':False,'wallet_tools':False,'trust_native_cli':True,'native_agent':True}
+        turn=str(uuid.uuid4());request_id=str(uuid.uuid4())
+        agent.turns[turn]={'state':'running','cancel':threading.Event()}
+        agent.pending_inputs[turn]={'public':{'id':request_id},'event':threading.Event()}
+        payload=json.dumps({'id':turn,'request_id':request_id,'response':{'decision':'decline'}}).encode()
+        for headers in ({'Origin':'https://foreign.test'},{'X-Kira-Session':''}):
+            self.assertEqual(self.request('/api/chat/respond',headers=headers,body=payload)[0],403)
+        self.assertEqual(self.request('/api/chat/respond',body=payload),(200,{'accepted':True}))
+        self.assertEqual(self.request('/api/chat/respond',body=payload)[0],400)
+        workspace=workspace_path(self.root,agent.conversation);workspace.mkdir(parents=True)
+        (workspace/'report.csv').write_text('token,value\nDEMO,125\n')
+        path='/api/chat/artifact?conversation='+agent.conversation+'&path=report.csv'
+        self.assertEqual(self.request(path,headers={'X-Kira-Session':''},method='GET')[0],403)
+        req=urllib.request.Request(self.url+path,headers={'X-Kira-Session':self.http.session_token})
+        with urllib.request.urlopen(req,timeout=5) as response:
+            self.assertEqual(response.headers['Content-Type'],'application/octet-stream')
+            self.assertEqual(response.read(),b'token,value\nDEMO,125\n')
+        self.assertEqual(self.request(path.replace('report.csv','../fixture.env'),method='GET')[0],400)
+        self.assertEqual(self.request(path.replace(agent.conversation,str(uuid.uuid4())),method='GET')[0],400)
+
     def test_chat_history_assets_and_upgrade_receipt_boundaries(self):
         for asset in ('chat-workspace.css','chat-workspace.js','selects.js'):
             with urllib.request.urlopen(self.url+'/'+asset) as response:self.assertEqual(response.status,200)

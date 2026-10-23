@@ -25,6 +25,44 @@ function harness(api) {
   return {el,run:code=>vm.runInContext(code,context),context};
 }
 const status = () => ({config:{provider:'codex',model:'',scope:'none',retain_history:false},providers:[],conversation_id:'conversation',messages:[],active_turn:null});
+test('native workspace is an explicit choice and existing accounts stay in recorded chat',async()=>{
+  const h=harness(async()=>status());await h.run('openAgent()');
+  assert.equal(h.el('agent-native').checked,false);
+  assert.equal(h.run('currentSetup().native_agent'),undefined);
+  h.el('agent-native').checked=true;h.run('agentStep=3;updateStep()');
+  assert.equal(h.run('currentSetup().native_agent'),true);
+  assert.match(h.el('agent-review').innerHTML,/Native agent workspace/);
+  h.run("agentProvider='claude';updateStep()");
+  assert.equal(h.el('agent-native-field').hidden,true);
+  assert.equal(h.run('currentSetup().native_agent'),undefined);
+});
+test('native approval polling escapes commands and preserves a pending answer',()=>{
+  const h=harness(async()=>status());
+  h.run(`chatTurn='turn';agentState.pending_input={id:'approval',kind:'approval',details:{command:'<script>bad</script>',cwd:'/workspace'}};renderAgent()`);
+  assert.equal(h.el('chat-approval').hidden,false);
+  assert.doesNotMatch(h.el('chat-approval').innerHTML,/<script>/);
+  assert.match(h.el('chat-approval').innerHTML,/Allow once/);
+  const writes=h.el('chat-approval').writes;h.run("agentState.tool_status='Waiting';renderAgent()");
+  assert.equal(h.el('chat-approval').writes,writes);
+  h.run('chatTurn=null;renderAgent()');assert.equal(h.el('chat-approval').hidden,true);
+});
+test('approval responses use exact request identities and only offered decisions are shown',async()=>{
+  const calls=[];const h=harness(async(path,options)=>{calls.push({path,body:JSON.parse(options.body)});return {accepted:true};});
+  h.run(`chatTurn='turn';agentState.pending_input={id:'request',kind:'approval',details:{availableDecisions:['decline']}};renderAgent()`);
+  assert.doesNotMatch(h.el('chat-approval').innerHTML,/Allow once/);
+  const button={dataset:{nativeDecision:'decline'}};
+  await h.el('chat-approval').listeners.click({target:{closest:()=>button}});
+  assert.deepEqual(calls,[{path:'/api/chat/respond',body:{id:'turn',request_id:'request',response:{decision:'decline'}}}]);
+  assert.equal(h.el('chat-approval').hidden,true);
+});
+test('artifact controls stay stable during progress and filenames are escaped',()=>{
+  const h=harness(async()=>status());h.run(`agentState.artifacts=[{path:'<bad>.csv',size:10}];renderAgent()`);
+  const writes=h.el('chat-artifacts').writes;
+  assert.match(h.el('chat-artifacts').innerHTML,/&lt;bad>/);
+  h.run("agentState.tool_status='Working';renderAgent()");
+  assert.equal(h.el('chat-artifacts').writes,writes);
+  h.run('agentState.artifacts=[];renderAgent()');assert.equal(h.el('chat-artifacts').hidden,true);
+});
 test('setup leaves the portfolio visible until the connection button is selected',async()=>{
   const calls=[];const h=harness(async(path,options)=>{calls.push({path,options});return {...status(),config:null};});
   h.run("location.search='?setup=1';location.hash='#/activity'");

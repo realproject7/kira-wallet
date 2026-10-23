@@ -48,7 +48,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get('Origin')!=expected:self.send_error(403,'Same origin required.');return
         if self.headers.get('Content-Type')!='application/json':self.send_error(415);return
         path=urlparse(self.path).path
-        if path not in ('/api/operations','/api/agent/test','/api/agent/settings','/api/chat/send','/api/chat/reset','/api/chat/cancel','/api/chat/open','/api/ows/connect','/api/ows/create','/api/ows/disconnect'):self.send_error(404);return
+        if path not in ('/api/operations','/api/agent/test','/api/agent/settings','/api/chat/send','/api/chat/reset','/api/chat/cancel','/api/chat/open','/api/chat/respond','/api/ows/connect','/api/ows/create','/api/ows/disconnect'):self.send_error(404);return
         try:
             self.connection.settimeout(5)
             length=int(self.headers.get('Content-Length','0'))
@@ -68,6 +68,7 @@ class Handler(BaseHTTPRequestHandler):
                 if path=='/api/agent/test':result=self.server.agent.start(request,test=True)
                 elif path=='/api/agent/settings':result=self.server.agent.configure(request)
                 elif path=='/api/chat/send':result=self.server.agent.start(request)
+                elif path=='/api/chat/respond':result=self.server.agent.respond(request)
                 elif path=='/api/chat/open':
                     if set(request)!={'id'}:raise ValueError()
                     result=self.server.agent.open_history(request['id'])
@@ -100,7 +101,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.json({'instance':os.environ.get('KIRA_INSTANCE_ID'),'read_only':not getattr(self.server,'controls',False),'controls':getattr(self.server,'controls',False)});return
             if path=='/api/session':
                 self.json({'controls':getattr(self.server,'controls',False),'token':self.server.session_token if getattr(self.server,'controls',False) else None});return
-            if path.startswith('/api/jobs') or path.startswith('/api/chat/turn/') or path in ('/api/agent','/api/agent/models','/api/chat','/api/chat/history','/api/onboarding','/api/snapshots','/api/snapshot','/api/compare','/api/settings','/api/ows'):
+            if path.startswith('/api/jobs') or path.startswith('/api/chat/turn/') or path in ('/api/chat/artifact','/api/agent','/api/agent/models','/api/chat','/api/chat/history','/api/onboarding','/api/snapshots','/api/snapshot','/api/compare','/api/settings','/api/ows'):
                 if not self.authenticated():return
                 query=parse_qs(urlparse(self.path).query)
                 if path in ('/api/agent','/api/chat'):
@@ -108,6 +109,9 @@ class Handler(BaseHTTPRequestHandler):
                         self.json({'config':None,'providers':[],'conversation_id':None,'messages':[],'active_turn':None})
                     else:self.json(self.server.agent.status(query.get('recheck')==['1']))
                 elif path.startswith('/api/chat/turn/'):self.json(self.server.agent.read(path.removeprefix('/api/chat/turn/')))
+                elif path=='/api/chat/artifact':
+                    body=self.server.agent.artifact(query.get('conversation',[''])[0],query.get('path',[''])[0])
+                    self.respond(body,'application/octet-stream')
                 elif path=='/api/agent/models':
                     self.json({'models':[],'note':'Model choices are available in a personal workspace.'} if json.loads((ROOT/'wallets.json').read_text()).get('demo') else self.server.agent.models(query.get('provider',[''])[0],query.get('recheck')==['1']))
                 elif path=='/api/chat/history':self.json(self.server.agent.history(query.get('id',[None])[0]))

@@ -1,6 +1,6 @@
 {
   "name": "kira-wallet",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "Manage your wallets with your own AI. Track tokens, research markets and refresh holdings in a local workspace.",
   "license": "MIT",
   "private": false,
@@ -52,6 +52,8 @@
     "docs/WALLET_CAPABILITIES.md",
     "docs/character/workspace-generation.json",
     "kira_agent.py",
+    "kira_native.py",
+    "kira_native_mcp.py",
     "docs/ONBOARDING_CHAT_CONTRACT.md",
     "docs/RELEASE.md",
     "viewer/onboarding.py",

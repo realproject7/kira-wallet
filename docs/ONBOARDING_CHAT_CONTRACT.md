@@ -1,5 +1,35 @@
 # Native CLI onboarding and conversation
 
+## Native Codex workspace, 0.1.19 candidate
+
+An explicit native-agent choice adds persistent Codex app-server conversations,
+native tools and a scoped Kira MCP bridge. Existing settings do not acquire this
+capability automatically. Connection testing still sends a generic greeting
+without wallet facts. The Ready page identifies the selected work mode.
+
+Approvals, turn-scoped permission grants and non-secret user questions appear
+in chat. Responses must match an active turn and its pending request identity;
+duplicate, stale, foreign and cancelled replies cannot grant permission. Secret
+entry and unsupported interactions fail without approval. Changing settings,
+resetting chat and stopping the server cancel the native session. Native I/O,
+request acknowledgements and process cleanup have bounded waits. Native work
+has no forced JSON plan, eight-call limit or overall seven-minute deadline.
+
+Downloads require the authenticated local session and the current native
+conversation. Directory-relative no-follow opens reject symlink replacement,
+traversal, devices and files over 20 MB. Listing is bounded. Generated files
+remain on disk independently of conversation retention. Saved native thread IDs
+are restored only with exactly matching conversation settings. No wallet facts
+or jobs are silently refreshed by opening a conversation.
+
+The wallet projection and research scope remain enforced by Kira tools. Native
+CLI filesystem permissions, configured integrations and account policies are a
+separate trust boundary. Claude's equivalent native adapter is not included.
+The invocation restrictions and forced read-plan loop documented below describe
+**recorded wallet chat**, which remains available for existing connections.
+
+## Shared setup and recorded wallet chat
+
 Kira connects the user's installed, unmodified Codex or Claude Code CLI. It does not collect account passwords, copy authentication, run an OAuth proxy, or add a hosted portfolio service. Installation and login happen through the vendor's CLI. A generic response test verifies the selected model before setup is saved. Subscription access and limits remain the vendor's responsibility.
 
 The setup flow separates account readiness, model choice, context permission, and confirmation. The conversation composer remains visible. It shows the connected CLI, automatic context scope, response state, cancellation, and a new conversation action. Enter sends; Shift+Enter adds a line; composition events never send.

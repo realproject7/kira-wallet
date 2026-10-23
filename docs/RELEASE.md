@@ -79,7 +79,7 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep published GitHub tags, release assets and npm versions through 0.1.17
+Keep published GitHub tags, release assets and npm versions through 0.1.18
 immutable. Do not rebuild them from later documentation commits. Future package
 changes need a new version. Release preparation does not publish a GitHub
 release, promote the website or publish to npm.
@@ -95,12 +95,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.18.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.1.19.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.18.tgz --access public
+npm publish ./dist/kira-wallet-0.1.19.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
@@ -518,7 +518,7 @@ starting provider jobs. Product acceptance applies only to identical product
 bytes. Review not selected. Freeze the final archive from the landed source
 and dry-run that archive. npm publication remains operator-only.
 
-## Release candidate: 0.1.18
+## Published 0.1.18
 
 Lowercase and mixed-case environment references now work in both immediate and
 queued configuration imports, provider settings and custom RPC settings. The
@@ -540,3 +540,29 @@ Freeze the archive from the landed source, record its SHA-256 and member hashes,
 and dry-run that exact archive. Prior review evidence remains attached to its
 PRs; a new independent review is not selected for this bounded follow-up. npm
 publication remains operator-only.
+
+
+## Release candidate: 0.1.19
+
+Adds an explicitly selected native Codex workspace. Persistent app-server
+sessions keep native web, command, file and configured integration capabilities
+while a private MCP bridge reuses Kira's scoped research tools. The browser
+shows approval requests, questions, progress and generated-file downloads.
+Existing connections retain recorded wallet chat. Claude remains on that
+recorded adapter; equivalent native support is not claimed.
+
+Cancellation handles blocked writes, silent or exited protocol leaders and
+remaining descendants. Request acknowledgements cannot be extended indefinitely
+by unrelated notifications. Server shutdown waits for native cleanup within a
+shared deadline. Downloads use directory-relative no-follow reads, reject
+replaced workspace links and preserve unknown financial values.
+
+Acceptance includes the full repository suite, protocol and HTTP boundaries,
+responsive browser approval/input/download/cancel checks, clean package
+installation and an actual synthetic wallet-query, web-search, CSV-write and
+native-thread-resume workflow. No personal portfolio refresh, credentials,
+signing, trading or production changes are required. Review not selected.
+
+Prepare a new immutable archive from this candidate's exact committed source.
+Preserve all previous archives. Preparation and a publish dry-run do not publish
+the package. Registry publication remains operator-only.

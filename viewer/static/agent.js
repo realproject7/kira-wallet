@@ -1,6 +1,8 @@
 'use strict';
 let agentState = null, agentProvider = 'codex', agentStep = 1, setupRevision = 0, agentVerified = false;
 let chatTurn = null, chatEpoch = 0, chatRequest = null, chatRetry = null, agentLoading = false, setupTesting = false, setupTurn = null, draftRevision = 0;
+let nativeRequestId = null;
+let nativeFilesSignature = '';
 let chatSignature = '', agentReady = false, chatDraftRevision = 0, modelCatalogRevision = 0, modelOpenRevision = 0;
 let modelChoices = [], modelChoicesProvider = null;
 const scopeNames = {none: 'No wallet context', wallet: 'One approved wallet', portfolio: 'Whole portfolio'};
@@ -12,7 +14,7 @@ const questionStarters = {
 const agentPost = (path, body) => localAPI(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
 function currentSetup() {
   return {provider: agentProvider, model: $('agent-model').value.trim(), scope: document.querySelector('[name="agent-scope"]:checked').value,
-    wallet: $('agent-wallet').value || null, retain_history: $('agent-retain').checked, trust_native_cli: $('agent-trust').checked, wallet_tools: $('agent-tools').checked};
+    wallet: $('agent-wallet').value || null, retain_history: $('agent-retain').checked, trust_native_cli: $('agent-trust').checked, wallet_tools: $('agent-tools').checked, ...($('agent-native').checked && agentProvider === 'codex' ? {native_agent:true} : {})};
 }
 function invalidateSetup() { setupRevision++; agentVerified = false; $('agent-save').disabled = true; $('agent-test-status').textContent = ''; }
 function scopeLabel(config) {
@@ -21,6 +23,16 @@ function scopeLabel(config) {
   return config.scope === 'portfolio' ? 'Connected to your portfolio' : 'Wallet access is off';
 }
 function renderAgent() {
+  const scroller=$('conversation-scroll'), previousTop=scroller.scrollTop;
+  const follow=scroller.scrollHeight-scroller.clientHeight-previousTop<80;
+  renderNativeRequest(agentState?.pending_input);
+  const files = agentState?.artifacts || [];
+  $('chat-artifacts').hidden = !files.length;
+  const filesSignature = JSON.stringify([agentState?.conversation_id, files]);
+  if (filesSignature !== nativeFilesSignature) {
+    nativeFilesSignature = filesSignature;
+    $('chat-artifacts').innerHTML = files.map(file => '<button class="quiet-button" type="button" data-native-file="' + escapeHTML(file.path) + '">↓ ' + escapeHTML(file.path) + '</button>').join('');
+  }
   const config = agentState?.config;
   $('chat-model-label').textContent = config ? (config.provider === 'codex' ? 'Codex' : 'Claude') + ' · ' + modelName(config.model, config.provider) : 'Connect a model';
   $('chat-setup').classList.toggle('connected', Boolean(config));
@@ -36,10 +48,8 @@ function renderAgent() {
   if(typeof renderBriefing==='function')renderBriefing();
   const messages = agentState?.messages || [];
   $('kira-panel').classList.toggle('chatting', Boolean(messages.length || chatTurn));
-  const signature = JSON.stringify([messages, chatTurn, chatRequest?.message, agentState?.tool_status]);
+  const signature = JSON.stringify([messages, chatTurn, chatRequest?.message, agentState?.tool_status, agentState?.pending_input?.id, filesSignature]);
   if (signature !== chatSignature) {
-    const scroller=$('conversation-scroll'), previousTop=scroller.scrollTop;
-    const follow=scroller.scrollHeight-scroller.clientHeight-previousTop<80;
     chatSignature = signature;
     $('chat-messages').innerHTML = messages.map(message => `<article class="chat-message ${message.role === 'user' ? 'user' : 'assistant'}"><strong>${message.role === 'user' ? 'YOU' : 'KIRA'}</strong>${message.role === 'user' ? '<p>' + escapeHTML(message.text) + '</p>' : '<div class="kira-reply-identity"><img src="/kira-explain.png" width="48" height="60" alt=""><span>Kira</span></div><div class="markdown-body">' + KiraMarkdown.render(message.text) + '</div>'}</article>`).join('') + (chatTurn && chatRequest?.message ? `<article class="chat-message user"><strong>YOU</strong><p>${escapeHTML(chatRequest.message)}</p></article>` : '') + (chatTurn ? '<div class="chat-message pending"><img src="/kira-research.png" width="72" height="90" alt="Kira analysing your question"><div><strong>Kira</strong><p>' + escapeHTML(agentState?.tool_status || 'Let me take a look…') + '</p><span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span></div></div>' : '');
     scroller.scrollTop=follow?scroller.scrollHeight:previousTop;
@@ -88,11 +98,12 @@ function updateStep() {
   $('agent-back').hidden = agentStep === 1; $('agent-next').hidden = agentStep === 3; $('agent-save').hidden = agentStep !== 3;
   const selected = agentState?.providers.find(p => p.id === agentProvider);
   $('agent-next').disabled = agentStep === 1 ? !(selected?.installed && selected.supported && selected.logged_in) : !$('agent-trust').checked || (currentSetup().scope === 'wallet' && !$('agent-wallet').value);
+  $('agent-native-field').hidden = agentProvider !== 'codex';
   $('agent-wallet-field').hidden = currentSetup().scope !== 'wallet';
   $('agent-tools').disabled = currentSetup().scope === 'none';
   if (agentStep === 3) {
     const config = currentSetup();
-    $('agent-review').innerHTML = '<dt>Account</dt><dd>' + escapeHTML(selected?.name || '') + '</dd><dt>Model</dt><dd>' + escapeHTML(modelName(config.model)) + '</dd><dt>Context</dt><dd>' + escapeHTML(scopeLabel(config)) + '</dd><dt>History</dt><dd>' + (config.retain_history ? 'Saved on this computer' : 'Memory only') + '</dd>';
+    $('agent-review').innerHTML = '<dt>Account</dt><dd>' + escapeHTML(selected?.name || '') + '</dd><dt>Model</dt><dd>' + escapeHTML(modelName(config.model)) + '</dd><dt>Work mode</dt><dd>' + (config.native_agent ? 'Native agent workspace' : 'Recorded wallet chat') + '</dd><dt>Context</dt><dd>' + escapeHTML(scopeLabel(config)) + '</dd><dt>History</dt><dd>' + (config.retain_history ? 'Saved on this computer' : 'Memory only') + '</dd>';
   }
 }
 async function loadAgent(recheck = false) {
@@ -133,6 +144,7 @@ async function openAgent() {
     const config = agentState.config;
     agentProvider = config?.provider || agentState.providers.find(p => p.installed && p.supported && p.logged_in)?.id || 'codex';
     $('agent-model').value = config?.model || '';
+    $('agent-native').checked = config ? config.native_agent === true : agentProvider === 'codex';
     document.querySelector('[name="agent-scope"][value="' + (config?.scope || 'portfolio') + '"]').checked = true;
     $('agent-wallet').innerHTML = '<option value="">Choose a wallet</option>' + (state?.wallets || []).map(w => `<option value="${escapeHTML(w.key)}">${escapeHTML(w.name)}</option>`).join('');
     $('agent-wallet').value = config?.wallet || ''; $('agent-retain').checked = config ? config.retain_history === true : true; $('agent-trust').checked = config?.trust_native_cli || false; $('agent-tools').checked = config ? config.wallet_tools === true : true;
@@ -157,7 +169,7 @@ $('agent-model-choice').addEventListener('change', () => {
   else { $('agent-model').value = value; invalidateSetup(); updateStep(); }
 });
 $('agent-model').addEventListener('input', renderModelChoice);
-for (const id of ['agent-model', 'agent-wallet', 'agent-retain', 'agent-trust', 'agent-tools']) $(id).addEventListener('input', () => { invalidateSetup(); updateStep(); });
+for (const id of ['agent-model', 'agent-wallet', 'agent-retain', 'agent-trust', 'agent-tools', 'agent-native']) $(id).addEventListener('input', () => { invalidateSetup(); updateStep(); });
 document.querySelectorAll('[name="agent-scope"]').forEach(input => input.addEventListener('change', () => { invalidateSetup(); updateStep(); }));
 $('agent-next').addEventListener('click', () => { if (!$('agent-next').disabled) { agentStep++; updateStep(); $('agent-dialog').scrollTop = 0; } });
 $('agent-back').addEventListener('click', () => { agentStep--; updateStep(); });
@@ -170,7 +182,7 @@ async function waitTurn(id, valid) {
   while (valid()) {
     const turn = await localAPI('/api/chat/turn/' + encodeURIComponent(id));
     if (turn.state !== 'running') return turn;
-    if(chatTurn===id&&agentState){agentState.tool_status=turn.tool_status||null;renderAgent();}
+    if(chatTurn===id&&agentState){agentState.tool_status=turn.tool_status||null;agentState.pending_input=turn.pending_input||null;renderAgent();}
     await new Promise(resolve => setTimeout(resolve, 700));
   }
   return null;
@@ -273,3 +285,44 @@ renderAgent(); initialAgent(); const agentStartup = setInterval(() => {
   initialAgent();
   if (agentReady) clearInterval(agentStartup);
 }, 1000);
+
+
+function renderNativeRequest(request) {
+  const panel = $('chat-approval');
+  panel.hidden = !request || !chatTurn;
+  if (!request || !chatTurn) { nativeRequestId = null; return; }
+  if (nativeRequestId === request.id) return;
+  nativeRequestId = request.id;
+  const details = request.details || {};
+  if (request.kind === 'input') {
+    panel.innerHTML = '<strong>Kira needs your input</strong>' + (details.questions || []).map(q => '<label>' + escapeHTML(q.question) + (q.options?.length ? '<small>' + q.options.map(o => escapeHTML(o.label + ': ' + o.description)).join('<br>') + '</small>' : '') + '<textarea data-native-question="' + escapeHTML(q.id) + '" maxlength="8000" rows="2"></textarea></label>').join('') + '<button class="quiet-button" type="button" data-native-decision="input">Send response</button>';
+  } else {
+    const visible = Object.fromEntries(['command','cwd','reason','changes','permissions','message'].filter(k => details[k] != null).map(k => [k, details[k]]));
+    const canAccept = request.kind !== 'notice' && (!details.availableDecisions || details.availableDecisions.includes('accept'));
+    panel.innerHTML = '<strong>' + (request.kind === 'notice' ? 'Integration needs attention' : 'Your approval is needed') + '</strong><pre>' + escapeHTML(JSON.stringify(visible, null, 2)) + '</pre>' + (canAccept ? '<button class="quiet-button" type="button" data-native-decision="accept">' + (request.kind === 'permissions' ? 'Allow for this turn' : 'Allow once') + '</button> ' : '') + '<button class="quiet-button" type="button" data-native-decision="decline">' + (request.kind === 'notice' ? 'Continue' : 'Decline') + '</button>';
+  }
+}
+$('chat-approval').addEventListener('click', async event => {
+  const button = event.target.closest('[data-native-decision]');
+  if (!button || !chatTurn || !nativeRequestId) return;
+  const id = chatTurn, requestId = nativeRequestId;
+  const response = button.dataset.nativeDecision === 'input' ? {answers:Object.fromEntries(Array.from($('chat-approval').querySelectorAll('[data-native-question]')).map(el => [el.dataset.nativeQuestion, el.value]))} : {decision:button.dataset.nativeDecision};
+  button.disabled = true;
+  try {
+    await agentPost('/api/chat/respond', {id, request_id:requestId, response});
+    if (nativeRequestId === requestId) { agentState.pending_input = null; renderNativeRequest(null); }
+  } catch (error) { $('chat-error').textContent = error.message; button.disabled = false; }
+});
+
+$('chat-artifacts').addEventListener('click', async event => {
+  const button = event.target.closest('[data-native-file]');
+  if (!button || !agentState?.conversation_id) return;
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/chat/artifact?conversation=' + encodeURIComponent(agentState.conversation_id) + '&path=' + encodeURIComponent(button.dataset.nativeFile), {headers:{'X-Kira-Session':localSession?.token || ''},cache:'no-store'});
+    if (!response.ok) throw Error('This workspace file could not be downloaded.');
+    const url = URL.createObjectURL(await response.blob()), link = document.createElement('a');
+    link.href = url; link.download = button.dataset.nativeFile.split('/').pop(); link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) { $('chat-error').textContent = error.message; }
+  finally { button.disabled = false; }
+});

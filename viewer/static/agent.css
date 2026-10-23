@@ -98,3 +98,8 @@
   .kira-panel { position: static; height: auto; min-height: 620px; max-height: none; }
   .kira-conversation { flex: none; overflow: visible; }
 }
+
+.native-request{margin:12px;padding:16px;border:1px solid var(--border,#d8cce7);border-radius:12px;background:var(--surface,#fff)}
+.native-request[hidden]{display:none}.native-request pre{max-height:220px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}.native-request label{display:grid;gap:8px;margin:12px 0}.native-request textarea{width:100%;box-sizing:border-box}.native-request button{margin-top:8px;min-height:40px}
+
+.native-artifacts{display:flex;gap:8px;flex-wrap:wrap;padding:8px 12px}.native-artifacts[hidden]{display:none}.native-artifacts button{max-width:100%;overflow-wrap:anywhere;min-height:36px}

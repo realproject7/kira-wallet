@@ -26,6 +26,24 @@ Kira does not edit the operator's Codex configuration automatically.
 
 ## Connected Kira chat
 
+The 0.1.19 candidate adds a separate, explicitly selected native Codex work mode.
+It exposes the existing `ResearchTools` catalog through a private per-session
+MCP bridge, with the same wallet scope and durable research-job implementation.
+The native agent chooses its own reads and general tools; it does not use the
+recorded chat's forced read plan or eight-call loop. Each tool request is checked
+against the live turn and current permissions. Refresh retries within a turn
+reuse the durable request identity. No model or native child receives provider
+credentials or portfolio-directory configuration through the bridge.
+
+The bridge accepts only authenticated loopback requests without an Origin
+header and is disabled between turns. It is distinct from the public read-only
+`kira tools` adapter above. Native sessions preserve configured user integrations
+and use a separate output workspace. Wallet scope controls Kira tools; it is not
+an OS restriction on the native CLI. See [work modes](CLI.md#native-codex-workspace-0119-candidate).
+
+The following describes recorded wallet chat, retained for existing connections
+and Claude until their native migration is separately validated.
+
 The in-app conversation uses a supported installed Codex or Claude CLI account.
 A generic response check is required before saving a selected provider, model,
 wallet scope and research permission. It sends no wallet facts. Authentication
