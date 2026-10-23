@@ -17,6 +17,7 @@ for row in CATALOG:
     for name,description in {**row['arguments'],**row.get('optional_arguments',{})}.items():
         schema={'type':'integer','minimum':1 if name in ('chain_id','limit') else 0} if name in ('chain_id','offset','limit') else dict(STRING)
         if name=='minimum_value_usd':schema={'type':['string','number']}
+        if name=='limit':schema['maximum']=25 if row['name']=='holdings_query' else 100
         properties[name]={**schema,'description':description}
     if row['name'] in ('portfolio_read','job_list','snapshots_list'):
         properties.update(offset=INTEGER,limit={'type':'integer','minimum':1,'maximum':100})
@@ -45,12 +46,12 @@ MUTATIONS={
     'job_cancel':('job.cancel',{'job_id':STRING}),
     'job_resume':('job.resume',{'job_id':STRING}),
     'job_deepen':('job.deepen',{'job_id':STRING}),
-    'settings_rpc':('settings.rpc',{'mode':STRING,'chains':{'type':'array','items':{'type':'object'}},'allow_public_fallback':{'type':'boolean'},'priority':STRING}),
-    'settings_discovery':('settings.discovery',{'provider':STRING,'key_env':STRING}),
+    'settings_rpc':('settings.rpc',{'mode':{'type':'string','enum':['public','custom']},'chains':{'type':'array','maxItems':30,'items':{'type':'object','properties':{'chain_id':{'type':'integer','minimum':1},'url_env':STRING},'required':['chain_id','url_env'],'additionalProperties':False}},'allow_public_fallback':{'type':'boolean'},'priority':{'type':'string','enum':['public_first','custom_first']}}),
+    'settings_discovery':('settings.discovery',{'provider':STRING,'key_env':STRING,'explorers':{'type':'boolean'}}),
     'settings_provider':('settings.provider',{'provider':STRING,'key_env':STRING}),
 }
 WRITE_TOOLS=[tool(name,'Submit '+operation+' as a durable local job. Returns a receipt, not a completed result.',
-    {**props,'idempotency_key':STRING},required=[k for k in props if k!='priority']+['idempotency_key'],write=True)
+    {**props,'idempotency_key':{'type':'string','minLength':8,'maxLength':200}},required=[k for k in props if k not in ('priority','explorers')]+['idempotency_key'],write=True)
     for name,(operation,props) in MUTATIONS.items()]
 
 

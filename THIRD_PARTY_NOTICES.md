@@ -4,12 +4,6 @@ Kira's original code and character assets are provided under the root MIT
 license. Third-party reference files retain their original terms. The root
 license does not relicense them.
 
-Claude native workspaces use Anthropic's official `@anthropic-ai/claude-agent-sdk`
-0.3.309 package. That dependency and its optional platform packages retain their
-upstream terms; Kira's MIT license does not relicense them. Kira explicitly uses
-the user's installed Claude Code executable and existing native account. See
-the SDK package README and [upstream SDK](https://github.com/anthropics/claude-agent-sdk-typescript).
-
 - `sources/mintclub-multitoken.sol` retains its `BUSL-1.1` SPDX identifier.
   It is a research reference, not a contract deployed by Kira.
 - `sources/uniswap-state-view.sol` retains its MIT SPDX identifier.

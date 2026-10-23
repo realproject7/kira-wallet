@@ -127,8 +127,19 @@ browser. A registry publication receipt is authoritative even if a crash
 precedes the final run manifest update. A completed price overlay can reconstruct
 its projection receipt without another provider request.
 
-The read-only stdio MCP adapter uses the same job and snapshot service. It has
-no mutation tools and requires separate operator-approved client setup.
+The local stdio MCP adapter and `kira call` share the application catalogue.
+Read-only is the MCP default. `kira tools --allow-writes` also exposes named
+mutations with explicit idempotency keys and durable receipts. Wallet, token,
+network and historical reads use recorded facts. Search, ranking and aggregate
+queries cover the complete saved inventory and return bounded details.
+Portfolio, wallet, snapshot and job pages expose their continuation offsets.
+See [AGENT_TOOLS.md](AGENT_TOOLS.md) for schemas and mode boundaries.
+
+Provider refresh remains explicit. The web app checks small saved-data and job
+revisions while visible; it loads summary and focused pages only when needed.
+Unchanged revisions do not reread/rebuild portfolio JSON. Data invalidation
+includes atomic registry, snapshot, price-overlay and artwork changes made by
+other processes, without depending on a viewer callback.
 
 ## Initial evidence and continuations in 0.1.7
 

@@ -46,7 +46,10 @@ def live_record(root):
 
 def start(root,port,controls=False):
     if item:=live_record(root):
-        if bool((health(item['port']) or {}).get('controls')) != controls:
+        status=health(item['port']) or {}
+        if status.get('api_version')!=2:
+            raise ValueError('An earlier Kira viewer is running. Run kira stop, then kira start to load this version. Saved records and research jobs are preserved.')
+        if bool(status.get('controls')) != controls:
             mode='local controls' if controls else 'read-only mode'
             command='kira start' if controls else 'kira start --read-only'
             raise ValueError(f'The running app uses a different mode. Run kira stop, then {command} to use {mode}.')

@@ -29,7 +29,7 @@ npm install -g kira-wallet
 kira setup
 ```
 
-When installing a prepared release before publication, use its reviewed archive
+When installing a prepared release before publication, use its verified archive
 instead of assuming the npm default already contains this branch.
 
 1. **Connect Alchemy.** Follow the [setup guide](docs/ALCHEMY_SETUP.md). Run
@@ -109,6 +109,8 @@ promise of sale proceeds. Observation timestamps remain attached to the facts.
 
 ## Upgrading from 0.1.20
 
+Run `kira stop` before replacing the installed package, then restart the app
+after installation. This closes the viewer and leaves research jobs intact.
 Wallet names, provider references, jobs and snapshots retain their existing
 format. The embedded chat interface and its model runtimes are removed. Saved
 conversations and generated workspaces remain on disk and can be inspected with

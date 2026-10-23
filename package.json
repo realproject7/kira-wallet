@@ -36,7 +36,29 @@
     "viewer/chain_images.py",
     "viewer/refresh_prices.py",
     "viewer/refresh-curve-prices.cjs",
-    "viewer/static",
+    "viewer/static/alchemy-create-app.png",
+    "viewer/static/alchemy-guide.css",
+    "viewer/static/alchemy-guide.html",
+    "viewer/static/app.js",
+    "viewer/static/explorers/etherscan.png",
+    "viewer/static/favicon.svg",
+    "viewer/static/index.html",
+    "viewer/static/jobs.js",
+    "viewer/static/kira-logo.png",
+    "viewer/static/ows-logo.svg",
+    "viewer/static/ows.js",
+    "viewer/static/report.css",
+    "viewer/static/report.js",
+    "viewer/static/selects.js",
+    "viewer/static/style.css",
+    "viewer/static/venues/aerodrome.svg",
+    "viewer/static/venues/mintclub.png",
+    "viewer/static/venues/uniswap.svg",
+    "viewer/static/watching-model.js",
+    "viewer/static/watching.js",
+    "viewer/static/workspace-model.js",
+    "viewer/static/workspace.css",
+    "viewer/static/workspace.js",
     "README.md",
     "viewer/README.md",
     "docs/CLI.md",
@@ -82,7 +104,7 @@
     "skills/kira-wallet"
   ],
   "scripts": {
-    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node test-onchain-continuation.cjs && node test-asset-review.cjs && node test-cashout-quotes.cjs && node test-cashout-routes.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node test-scan-ux.cjs && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js && node test-watching.cjs && node test-watching-ui.cjs && node --check viewer/static/watching.js && node --check viewer/static/watching-model.js && node test-markdown.cjs && node --check viewer/static/report.js && node test-report-ui.cjs && node test-holdings-ui.cjs && node test-settings-ui.cjs && node test-rpc-fallback.cjs && node test-ows.cjs && node test-ows-ui.cjs && node --check viewer/static/ows.js && node --check viewer/static/selects.js && node --check site/demo.js && node test-rpc-pool.cjs && node test-zero-verification.cjs && node test-market-discovery.cjs && node test-sell-quotes.cjs"
+    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node test-onchain-continuation.cjs && node test-asset-review.cjs && node test-cashout-quotes.cjs && node test-cashout-routes.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node test-scan-ux.cjs && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js && node test-watching.cjs && node test-watching-ui.cjs && node --check viewer/static/watching.js && node --check viewer/static/watching-model.js && node --check viewer/static/report.js && node test-report-ui.cjs && node test-holdings-ui.cjs && node test-settings-ui.cjs && node test-rpc-fallback.cjs && node test-ows.cjs && node test-ows-ui.cjs && node --check viewer/static/ows.js && node --check viewer/static/selects.js && node --check site/demo.js && node test-rpc-pool.cjs && node test-zero-verification.cjs && node test-market-discovery.cjs && node test-sell-quotes.cjs && node test-external-ui.cjs"
   },
   "dependencies": {
     "viem": "2.57.2"

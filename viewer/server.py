@@ -82,7 +82,7 @@ class Handler(BaseHTTPRequestHandler):
         path=urlparse(self.path).path
         try:
             if path=='/api/health':
-                self.json({'instance':os.environ.get('KIRA_INSTANCE_ID'),'read_only':not getattr(self.server,'controls',False),'controls':getattr(self.server,'controls',False)});return
+                self.json({'api_version':2,'instance':os.environ.get('KIRA_INSTANCE_ID'),'read_only':not getattr(self.server,'controls',False),'controls':getattr(self.server,'controls',False)});return
             if path=='/api/session':
                 self.json({'controls':getattr(self.server,'controls',False),'token':self.server.session_token if getattr(self.server,'controls',False) else None});return
             query=parse_qs(urlparse(self.path).query)
@@ -136,7 +136,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not entry or not entry.get('latest_snapshot',{}).get('report'):self.send_error(404);return
                 body=within(ROOT,entry['latest_snapshot']['report']).read_bytes()
                 self.respond(body,'text/plain; charset=utf-8');return
-            files={**{f'/explorers/{name}':f'explorers/{name}' for name in ('etherscan.png',)},**{f'/venues/{name}':f'venues/{name}' for name in ('mintclub.png','uniswap.svg','aerodrome.svg')},'/alchemy-guide.html':'alchemy-guide.html','/alchemy-guide.css':'alchemy-guide.css','/alchemy-create-app.png':'alchemy-create-app.png','/':'index.html','/index.html':'index.html','/app.js':'app.js','/jobs.js':'jobs.js','/workspace.js':'workspace.js','/workspace-model.js':'workspace-model.js','/workspace.css':'workspace.css','/ows.js':'ows.js','/selects.js':'selects.js','/markdown.js':'markdown.js','/report.js':'report.js','/report.css':'report.css','/watching.js':'watching.js','/watching-model.js':'watching-model.js','/style.css':'style.css','/favicon.svg':'favicon.svg','/kira.png':'kira.png','/kira-logo.png':'kira-logo.png','/ows-logo.svg':'ows-logo.svg',**{f'/kira-{pose}.png':f'kira-{pose}.png' for pose in ('research','explain','review','attention')}}
+            files={**{f'/explorers/{name}':f'explorers/{name}' for name in ('etherscan.png',)},**{f'/venues/{name}':f'venues/{name}' for name in ('mintclub.png','uniswap.svg','aerodrome.svg')},'/alchemy-guide.html':'alchemy-guide.html','/alchemy-guide.css':'alchemy-guide.css','/alchemy-create-app.png':'alchemy-create-app.png','/':'index.html','/index.html':'index.html','/app.js':'app.js','/jobs.js':'jobs.js','/workspace.js':'workspace.js','/workspace-model.js':'workspace-model.js','/workspace.css':'workspace.css','/ows.js':'ows.js','/selects.js':'selects.js','/report.js':'report.js','/report.css':'report.css','/watching.js':'watching.js','/watching-model.js':'watching-model.js','/style.css':'style.css','/favicon.svg':'favicon.svg','/kira-logo.png':'kira-logo.png','/ows-logo.svg':'ows-logo.svg'}
             if path not in files:self.send_error(404);return
             file=STATIC/files[path]
             content={'html':'text/html; charset=utf-8','js':'text/javascript; charset=utf-8','css':'text/css; charset=utf-8','svg':'image/svg+xml','png':'image/png'}[file.suffix[1:]]

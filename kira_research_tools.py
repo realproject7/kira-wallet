@@ -1,4 +1,4 @@
-"""Scoped wallet research for in-app agents. No shell, secrets or signing tools."""
+"""Recorded wallet queries and scoped durable research operations."""
 from contextlib import nullcontext
 from decimal import Decimal, InvalidOperation
 import json
@@ -47,9 +47,12 @@ class ResearchTools:
 
     def allowed(self):
         if self.config['scope']=='none' or not self.config.get('wallet_tools'):
-            raise JobError('wallet_access_off','Wallet research access is off. Enable it in model settings.')
+            raise JobError('wallet_access_off','Wallet research access is off for the selected scope.')
+        if self.config.get('external'):
+            wallets=json.loads((self.root/'wallets.json').read_text()).get('wallets',[])
+            return {'scope':'portfolio','wallets':[{'address':w['address'],'tags':w.get('tags',[])} for w in wallets]}, {w['address_key'] for w in wallets}
         from kira_records import projection
-        current=projection(self.root,self.config,limit=0 if self.config.get('external') else 12)
+        current=projection(self.root,self.config)
         return current, {w['address'].lower() for w in current['wallets']}
 
     def wallet(self, selector, approved):

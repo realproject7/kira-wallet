@@ -388,6 +388,7 @@ $('home-discovery-settings').addEventListener('click',()=>openDataConnections(fa
 $('wallet-discovery-settings').addEventListener('click',()=>openDataConnections(false,true));
 $('settings-done').addEventListener('click',()=>$('settings-dialog').close());
 $('workspace-settings-dialog').addEventListener('close',()=>{workspaceSettingsRevision++;});
+$('rpc-activity').addEventListener('click',()=>{$('workspace-settings-dialog').close();});
 $('settings-dialog').addEventListener('close',()=>{connectionRevision++; if ($('workspace-settings-dialog').open) openWorkspaceSettings();});
 $('provider-recheck').addEventListener('click',async()=>{
   if(settingSaving||!connectionConfig||$('provider-recheck').disabled)return;

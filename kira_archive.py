@@ -15,14 +15,15 @@ def conversation_read(root, conversation):
         info = os.fstat(stream.fileno())
         if not stat.S_ISREG(info.st_mode) or info.st_size > 500000:raise JobError('invalid_archive','Choose a regular saved conversation under 500 KB.')
         body = stream.read(500001)
+        if len(body)>500000:raise JobError('invalid_archive','Choose a saved conversation under 500 KB.')
     try:
         value = json.loads(body)
         messages = value['messages']
         if value.get('schema_version') != 1 or value.get('conversation_id') != conversation or not isinstance(messages,list) or len(messages)>24:raise ValueError()
         if any(not isinstance(m,dict) or set(m)!={'role','text'} or m['role'] not in ('user','assistant') or not isinstance(m['text'],str) for m in messages):raise ValueError()
         if sum(len(m['text'].encode()) for m in messages)>400000:raise ValueError()
-        return {'conversation_id':conversation,'messages':messages,
-                'started_at':value.get('started_at'),'updated_at':value.get('updated_at')}
+        dates={k:value.get(k) if isinstance(value.get(k),str) and len(value[k])<=100 else None for k in ('started_at','updated_at')}
+        return {'conversation_id':conversation,'messages':messages,**dates}
     except (ValueError, TypeError, KeyError, RecursionError):
         raise JobError('invalid_archive','This saved conversation is not a supported archive.') from None
 

@@ -20,6 +20,8 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(result['messages'],self.value['messages']);self.assertNotIn('config',result)
         self.assertEqual(conversations(self.root)[0]['conversation_id'],self.identity)
         self.assertEqual(workspace_list(self.root),[self.identity])
+        self.value['updated_at']={'legacy':'malformed'};self.file.write_text(json.dumps(self.value))
+        self.assertIsNone(conversations(self.root)[0]['updated_at'])
     def test_malformed_links_fifo_and_oversize_are_bounded(self):
         self.file.write_text('['*3000)
         with self.assertRaises((JobError,ValueError)):conversation_read(self.root,self.identity)
