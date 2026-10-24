@@ -1,9 +1,10 @@
 """Disposable product acceptance workspace. Never reads an operator portfolio.
 
-Provider research workers are disabled. --native-provider exercises the installed
-CLI with synthetic context only. OWS uses a separate disposable test vault.
+Provider research workers are disabled. Human controls use synthetic records.
+OWS uses a separate disposable test vault.
 """
 import argparse
+from copy import deepcopy
 from http.server import ThreadingHTTPServer
 import json
 import os
@@ -12,16 +13,13 @@ import secrets
 import shutil
 import sys
 import tempfile
-import time
-import uuid
 
 PROJECT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(PROJECT),str(PROJECT/'viewer')]
-from kira_cli import sample
+from kira_cli import sample, initialize
 from kira_jobs import JobStore,atomic
-from kira_agent import AgentStore,capabilities,run_native
 from kira_ows import OwsStore
-from model import load_state
+from kira_service import Application
 import server
 
 class FixtureHandler(server.Handler):
@@ -36,18 +34,19 @@ class FixtureHandler(server.Handler):
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--port',type=int,default=8801)
-    parser.add_argument('--native-provider',choices=['codex','claude'])
+    parser.add_argument('--wallet-count',type=int,choices=range(1,13),default=1,
+                        help='Number of independent synthetic wallets (1 to 12).')
     args=parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='kira-product-fixture-') as directory:
         root=Path(directory)
         os.environ['KIRA_DATA_DIR']=str(root)
         os.environ.pop('KIRA_CONFIG',None);os.environ.pop('KIRA_RPC_ENV',None)
-        atomic(root/'wallets.json',{'schema_version':1,'wallets':[]})
+        initialize(root)
         shutil.copy(PROJECT/'networks.json',root/'networks.json');sample(root)
         registry=json.loads((root/'wallets.json').read_text());registry.pop('demo')
         entry=registry['wallets'][0];entry['tags']=['Synthetic wallet']
-        atomic(root/'wallets.json',registry)
         path=root/entry['latest_snapshot']['result'];snapshot=json.loads(path.read_text())
+        snapshot['tags']=entry['tags'][:]
         token=snapshot['tokens'][0];token.update({'symbol':'USDC','name':'Synthetic USD Coin'})
         token['dex_pools']=[{'venue':'uniswap-v3','pool':'0x'+str(i)*40,
             'paired_tokens':[{'symbol':'USDC','address':token['token_address']},
@@ -56,35 +55,36 @@ def main():
             'reported_price_usd':'1.25','source_url':'https://example.com/synthetic-pool/'+str(i),
             'observed_at':snapshot['compiled_at']} for i in range(3,7)]
         atomic(path,snapshot)
+        prices=json.loads((path.parent/'market-prices.json').read_text())
+        for index in range(2,args.wallet_count+1):
+            address=f'0x{index:040x}';folder=f'snapshots/synthetic-{index}/initial'
+            wallet=deepcopy(entry);wallet.update(address=address,address_key=address,
+                tags=[f'Synthetic wallet {index}'],
+                latest_snapshot={'directory':folder,'result':folder+'/results.json'})
+            observation=deepcopy(snapshot)
+            observation.update(wallet_address=address,tags=wallet['tags'][:])
+            observation['tokens'][0]['wallet_balance']=str(100*index)
+            atomic(root/folder/'results.json',observation)
+            atomic(root/folder/'market-prices.json',deepcopy(prices))
+            registry['wallets'].append(wallet)
+        atomic(root/'wallets.json',registry)
         atomic(root/'cache/token-images.json',{'tokens':{
             f"8453:{token['token_address']}":{'image_url':'https://fc.hunt.town/tokens/logo/8453/0x833589fcd6edb6e08f4c7c32d4f71b54bda02913/image'},
             '8453:0x'+'9'*40:{'image_url':'https://mint.club/assets/networks/ethereum@2x.png'}}})
+        from kira_config import default_config,provider_config
+        cfg=provider_config(default_config(),'alchemy','KIRA_FIXTURE_KEY');cfg['secret_env_file']=str(root/'fixture.env')
+        atomic(root/'.kira.local.json',cfg);(root/'fixture.env').write_text('KIRA_FIXTURE_KEY=synthetic-preview-only\n')
         # All research admissions remain queued and observable. No RPC is called.
         JobStore.launch=lambda _:None
-        server.ROOT=root;server.last_good=None;server.load_state=lambda:load_state(root)
+        server.ROOT=root
         http=ThreadingHTTPServer(('127.0.0.1',args.port),FixtureHandler)
         http.controls=True;http.session_token=secrets.token_urlsafe(32)
-        http.jobs=JobStore(root);http.ows=OwsStore(root,vault=root/'disposable-vault')
-        def simulated(config,prompt,cancel):
-            if 'Generic connection test' in prompt:return 'Kira connection ready.'
-            return ('Your synthetic wallet has **100 USDC**, recorded at **$1.25** each, '
-                'for **$125.00 in spot value**. Four USDC / WETH pools are recorded.\n\n'
-                '| Quantity | Unit price | Spot value | Sale output |\n| --- | --- | --- | --- |\n'
-                '| 100 USDC | $1.25 | $125.00 | Unknown, no execution quote |\n\n'
-                'Transfer history is unavailable, so inactivity is unconfirmed. '
-                'Gas, fees and price impact need an executable quote. These are synthetic test records.')
-        detector=capabilities if args.native_provider else lambda:[{'id':p,'installed':True,'supported':True,'logged_in':True,'version':'fixture'} for p in ('codex','claude')]
-        http.agent=AgentStore(root,runner=run_native if args.native_provider else simulated,detector=detector)
-        config={'provider':args.native_provider or 'codex','model':'','scope':'portfolio','wallet':None,
-                'retain_history':False,'trust_native_cli':True,'wallet_tools':True}
-        turn=http.agent.start({'config':config,'idempotency_key':str(uuid.uuid4())},test=True)
-        deadline=time.monotonic()+200
-        while http.agent.read(turn['id'])['state']=='running' and time.monotonic()<deadline:time.sleep(.1)
-        if http.agent.read(turn['id'])['state']!='succeeded':raise RuntimeError('Synthetic-context CLI readiness failed.')
-        http.agent.configure(config)
+        http.daemon_threads=True
+        http.application=Application(root);http.jobs=http.application.jobs
+        http.ows=OwsStore(root,vault=root/'disposable-vault')
         print(f'Synthetic product acceptance: http://127.0.0.1:{args.port}',flush=True)
         try:http.serve_forever()
         except KeyboardInterrupt:pass
-        finally:http.agent.shutdown();http.server_close()
+        finally:http.server_close()
 
 if __name__=='__main__':main()

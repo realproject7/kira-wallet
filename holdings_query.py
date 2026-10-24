@@ -32,7 +32,7 @@ def query_holdings(wallets, args):
             if value is None:unpriced+=1
             if minimum is not None and (value is None or Decimal(str(value))<minimum):continue
             selected.append((wallet,asset))
-    from kira_agent import recorded_valuation, wallet_facts
+    from kira_records import recorded_valuation, wallet_facts
     valuation=recorded_valuation([a for _,a in selected])
     groups={}
     for wallet,asset in selected:

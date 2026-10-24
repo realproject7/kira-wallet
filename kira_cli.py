@@ -46,7 +46,10 @@ def live_record(root):
 
 def start(root,port,controls=False):
     if item:=live_record(root):
-        if bool((health(item['port']) or {}).get('controls')) != controls:
+        status=health(item['port']) or {}
+        if status.get('api_version')!=2:
+            raise ValueError('An earlier Kira viewer is running. Run kira stop, then kira start to load this version. Saved records and research jobs are preserved.')
+        if bool(status.get('controls')) != controls:
             mode='local controls' if controls else 'read-only mode'
             command='kira start' if controls else 'kira start --read-only'
             raise ValueError(f'The running app uses a different mode. Run kira stop, then {command} to use {mode}.')
@@ -64,7 +67,10 @@ def start(root,port,controls=False):
             url=f'http://127.0.0.1:{port}'
             print(json.dumps({'status':'running','url':url}));return url
         time.sleep(.1)
-    child.terminate();raise ValueError('Viewer startup timed out.')
+    child.terminate()
+    try:child.wait(timeout=3)
+    except subprocess.TimeoutExpired:child.kill();child.wait(timeout=3)
+    raise ValueError('Viewer startup timed out.')
 
 def stop(root):
     item=live_record(root)
@@ -161,8 +167,28 @@ def connect_alchemy(root):
     store=JobStore(root);job=store.queue_import(name,'ALCHEMY_API_KEY');store.launch()
     print(json.dumps({'status':'configuration_queued','job_id':job['job_id'],'note':'Your key is stored privately on this computer. Return to Kira and check the connection.'}))
 
+def finish_configuration(store,job,*,enqueue=False):
+    """Use the same job executor in a terminal, without waiting on an active writer."""
+    import fcntl
+    with (store.root/'.analysis.lock').open('a') as writer:
+        try:fcntl.flock(writer,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:enqueue=True
+    if enqueue:
+        store.launch()
+        print(json.dumps({'status':'configuration_queued','job_id':job['job_id']}))
+        return 0
+    store.worker();job=store.get(job['job_id'])
+    if job['state']!='succeeded':
+        from kira_jobs import JobError
+        error=(job.get('errors') or [{'code':'configuration_failed','message':'Configuration was not applied.'}])[0]
+        raise JobError(error['code'],error['message'])
+    print(json.dumps({'status':'configuration_saved','job_id':job['job_id']}))
+    return 0
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--version',action='version',version=json.loads((ASSETS/'package.json').read_text())['version'])
+    parser.add_argument('--json',action='store_true',help='Return structured output; research commands enqueue without waiting.')
     parser.add_argument('--data-dir',default=os.environ.get('KIRA_DATA_DIR',str(Path.home()/'.local/share/kira-wallet')))
     sub=parser.add_subparsers(dest='command',required=True)
     sub.add_parser('init');s=sub.add_parser('start');s.add_argument('--port',type=int,default=8787)
@@ -172,8 +198,14 @@ def main():
     s.set_defaults(controls=True)
     s.add_argument('--no-open',action='store_true',help='Print the local app URL without opening a browser.')
     setup=sub.add_parser('setup');setup.add_argument('--port',type=int,default=8787);setup.add_argument('--no-open',action='store_true')
-    sub.add_parser('stop');sub.add_parser('status');sub.add_parser('wallets')
-    sub.add_parser('tools')
+    sub.add_parser('stop');sub.add_parser('status');sub.add_parser('info')
+    wallets=sub.add_parser('wallets');walletsub=wallets.add_subparsers(dest='wallet_action')
+    tags=walletsub.add_parser('tags');tags.add_argument('wallet');tags.add_argument('--tag',action='append',required=True);tags.add_argument('--idempotency-key')
+    tools=sub.add_parser('tools');tools.add_argument('--allow-writes',action='store_true')
+    call=sub.add_parser('call');call.add_argument('tool');call.add_argument('--arguments',default='{}')
+    sub.add_parser('skill')
+    ui=sub.add_parser('ui');ui.add_argument('action',choices=['context'])
+    archive=sub.add_parser('archive');archive.add_argument('action',choices=['list','read','workspaces','files','export']);archive.add_argument('conversation',nargs='?');archive.add_argument('--path');archive.add_argument('--output')
     connection=sub.add_parser('connect');connection.add_argument('provider',choices=['alchemy'])
     d=sub.add_parser('doctor');d.add_argument('--live',action='store_true');d.add_argument('--chains',default='1,8453,81457');d.add_argument('--budget',type=int,default=30)
     demo=sub.add_parser('demo');demo.add_argument('--port',type=int,default=8790)
@@ -183,6 +215,7 @@ def main():
     for mutation in (add,refresh,prices):mutation.add_argument('--idempotency-key');mutation.add_argument('--enqueue',action='store_true')
     jobs=sub.add_parser('jobs');jobsub=jobs.add_subparsers(dest='action',required=True)
     jobsub.add_parser('list');jobsub.add_parser('run')
+    wait=jobsub.add_parser('wait');wait.add_argument('job_id');wait.add_argument('--timeout',type=float,default=30)
     for action in ('read','resume','cancel','deepen'):
         item=jobsub.add_parser(action);item.add_argument('job_id');item.add_argument('--idempotency-key')
     config=sub.add_parser('config');configsub=config.add_subparsers(dest='setting',required=True)
@@ -192,16 +225,20 @@ def main():
     rpcsub.add_parser('public')
     custom=rpcsub.add_parser('set');custom.add_argument('--chain',type=int,required=True);custom.add_argument('--url-env',required=True);custom.add_argument('--priority',choices=['public_first','custom_first']);fallback=custom.add_mutually_exclusive_group();fallback.add_argument('--public-fallback',action='store_true',default=None);fallback.add_argument('--custom-only',dest='public_fallback',action='store_false')
     discovery=sub.add_parser('discovery');discovery.add_argument('provider',choices=['none','alchemy']);discovery.add_argument('--key-env',default='ALCHEMY_API_KEY');discovery.add_argument('--explorers',action='store_true')
-    args=parser.parse_args();root=Path(args.data_dir).expanduser().resolve();os.environ['KIRA_DATA_DIR']=str(root)
+    argv=sys.argv[1:]
+    # A global machine-output switch works before or after a subcommand.
+    if '--json' in argv:argv=['--json']+[a for a in argv if a!='--json']
+    args=parser.parse_args(argv);root=Path(args.data_dir).expanduser().resolve();os.environ['KIRA_DATA_DIR']=str(root)
     if sys.version_info<(3,11):raise ValueError('Python 3.11 or newer is required.')
     if os.name!='posix':raise ValueError('This development build requires a POSIX host. macOS is verified.')
     if args.command=='tools':
         from kira_tools import serve
-        serve(root);return 0
+        initialize(root)
+        serve(root,allow_write=args.allow_writes);return 0
     if getattr(args,'resume',None) and (args.enqueue or args.idempotency_key):raise ValueError('Legacy snapshot resume cannot enqueue or use an idempotency key. Use jobs resume for durable jobs.')
     root.mkdir(parents=True,exist_ok=True,mode=0o700)
     operation_lock=None;viewer_lock=None
-    if args.command in ('init','demo','rpc','discovery') or args.command=='config' and args.setting!='show':
+    if args.command in ('init','demo'):
         import fcntl
         operation_lock=(root/'.analysis.lock').open('a')
         try:fcntl.flock(operation_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -222,7 +259,32 @@ def main():
     from kira_config import load_config,config_path,redact
     try:
         initialize(root)
+        from kira_service import Application
+        app=Application(root)
         if args.command=='connect':connect_alchemy(root)
+        elif args.command=='info':
+            print(json.dumps({'version':json.loads((ASSETS/'package.json').read_text())['version'],
+                'data_dir':str(root),**app.call('workspace_status'), 'ui':live_record(root) is not None,
+                'skill':str(ASSETS/'skills/kira-wallet/SKILL.md')},allow_nan=False))
+        elif args.command=='call':
+            try:value=json.loads(args.arguments,parse_constant=lambda _:(_ for _ in ()).throw(ValueError()))
+            except ValueError:raise ValueError('Expected JSON tool arguments.') from None
+            print(json.dumps(app.call(args.tool,value,allow_write=True),allow_nan=False))
+        elif args.command=='skill':print((ASSETS/'skills/kira-wallet/SKILL.md').read_text())
+        elif args.command=='ui':print(json.dumps(app.call('ui_context')))
+        elif args.command=='archive':
+            from kira_archive import conversations,conversation_read,workspace_list,artifacts,read_artifact
+            if args.action=='list':result=conversations(root)
+            elif args.action=='workspaces':result=workspace_list(root)
+            elif not args.conversation:raise ValueError('Choose a saved conversation or workspace ID.')
+            elif args.action=='read':result=conversation_read(root,args.conversation)
+            elif args.action=='files':result=artifacts(root,args.conversation)
+            else:
+                if not args.path or not args.output:raise ValueError('Use --path and --output to export a historical generated file.')
+                body=read_artifact(root,args.conversation,args.path)
+                with Path(args.output).expanduser().open('xb') as file:file.write(body)
+                result={'status':'exported','size':len(body)}
+            print(json.dumps(result))
         elif args.command=='init':print(json.dumps({'status':'initialized','rpc_mode':load_config()['rpc']['mode']}))
         elif args.command=='start':
             url=start(root,args.port,args.controls)
@@ -230,26 +292,30 @@ def main():
                 import webbrowser
                 webbrowser.open(url)
         elif args.command=='setup':
-            url=start(root,args.port,True)+'/?setup=1'
+            import contextlib,io
+            with contextlib.redirect_stdout(io.StringIO()):url=start(root,args.port,True)+'/?setup=1'
             if not args.no_open:
                 import webbrowser
                 webbrowser.open(url)
-            print(json.dumps({'setup_url':url,'note':'Connect Alchemy, then add a public wallet. AI connection is optional.'}))
+            print(json.dumps({'setup_url':url,'note':'Connect Alchemy, then add a public wallet. Use your agent session or the web controls.'}))
         elif args.command=='stop':stop(root)
         elif args.command=='status':
             item=live_record(root);print(json.dumps({'status':'running' if item else 'stopped','url':f"http://127.0.0.1:{item['port']}" if item else None}))
         elif args.command=='doctor':return doctor(args,root)
-        elif args.command=='wallets':print(json.dumps(json.loads((root/'wallets.json').read_text())['wallets'],indent=2))
+        elif args.command=='wallets':
+            if args.wallet_action=='tags':result=app.submit({'schema_version':1,'operation':'wallet.setTags','input':{'wallet':args.wallet,'tags':args.tag},'idempotency_key':args.idempotency_key or str(uuid.uuid4())})
+            else:result=json.loads((root/'wallets.json').read_text())['wallets']
+            print(json.dumps(result,indent=2))
         elif args.command=='demo':sample(root);start(root,args.port)
         elif args.command=='jobs':
             from kira_jobs import JobStore
             store=JobStore(root)
-            if args.action=='list':result=store.list()
+            if args.action=='list':result=store.page()
             elif args.action=='read':result=store.get(args.job_id)
+            elif args.action=='wait':result=app.wait(args.job_id,args.timeout)
             elif args.action=='run':store.launch();result={'status':'worker_started'}
             else:
-                result=store.submit({'schema_version':1,'operation':'job.'+args.action,'input':{'job_id':args.job_id},'idempotency_key':args.idempotency_key or str(uuid.uuid4())})
-                if args.action in ('resume','deepen'):store.launch()
+                result=app.submit({'schema_version':1,'operation':'job.'+args.action,'input':{'job_id':args.job_id},'idempotency_key':args.idempotency_key or str(uuid.uuid4())})
             print(json.dumps(result,indent=2))
         elif args.command in ('rpc','discovery','config'):
             cfg=load_config()
@@ -257,34 +323,28 @@ def main():
                 safe={key:cfg[key] for key in ['schema_version','rpc','discovery']};safe['secret_file_configured']=bool(cfg.get('secret_env_file'))
                 print(json.dumps(safe,indent=2));return 0
             if args.command=='config':
-                file=Path(args.file).expanduser().resolve()
-                if not file.is_file():raise ValueError('Secret environment file does not exist.')
-                from kira_config import import_alchemy_config
-                cfg=import_alchemy_config(cfg,file,args.key_env)
-            elif args.command=='discovery':cfg['discovery']={**cfg['discovery'],'provider':args.provider,'key_env':args.key_env,'explorers':args.explorers}
-            elif args.setting=='public':cfg['rpc']['mode']='public'
+                job=app.jobs.queue_import(args.file,args.key_env)
+                return finish_configuration(app.jobs,job,enqueue=args.json)
+            elif args.command=='discovery':
+                operation='settings.discovery';value={'provider':args.provider,'key_env':args.key_env,'explorers':args.explorers}
             else:
-                cfg['rpc'].update(mode='custom')
-                if args.priority:cfg['rpc']['priority']=args.priority
-                if args.public_fallback is not None:cfg['rpc']['allow_public_fallback']=args.public_fallback
-                cfg['rpc']['chains'][str(args.chain)]={'url_env':args.url_env}
-            # Validate before replacing the user's working configuration.
-            import kira_config
-            previous=kira_config.config_path
-            temporary=root/'.kira.validate.json';atomic(temporary,cfg)
-            try:
-                kira_config.config_path=lambda:temporary;kira_config.load_config()
-            finally:kira_config.config_path=previous;temporary.unlink(missing_ok=True)
-            atomic(config_path(),cfg);print(json.dumps({'status':'configuration_saved'}))
+                rpc=cfg['rpc'];chains=dict(rpc['chains'])
+                if args.setting=='set':chains[str(args.chain)]={'url_env':args.url_env}
+                operation='settings.rpc';value={'mode':'public' if args.setting=='public' else 'custom',
+                    'chains':[{'chain_id':int(cid),'url_env':row['url_env']} for cid,row in chains.items()],
+                    'allow_public_fallback':rpc['allow_public_fallback'] if args.setting=='public' or args.public_fallback is None else args.public_fallback,
+                    'priority':getattr(args,'priority',None) or rpc.get('priority','public_first')}
+            result=app.submit({'schema_version':1,'operation':operation,'input':value,'idempotency_key':str(uuid.uuid4())},launch=False)
+            return finish_configuration(app.jobs,result,enqueue=args.json)
         else:
             if os.name!='posix':raise ValueError('Analysis currently requires a POSIX host for file locking. macOS is verified.')
             if not getattr(args,'resume',None):
                 from kira_jobs import JobStore
                 store=JobStore(root)
-                result=store.submit({'schema_version':1,'operation':{'add':'wallet.add','refresh':'wallet.refresh','prices':'prices.refresh'}[args.command],
-                    'input':{'address':args.address,'tag':args.tag} if args.command=='add' else {'wallet':args.wallet},'idempotency_key':args.idempotency_key or str(uuid.uuid4())})
+                result=app.submit({'schema_version':1,'operation':{'add':'wallet.add','refresh':'wallet.refresh','prices':'prices.refresh'}[args.command],
+                    'input':{'address':args.address,'tag':args.tag} if args.command=='add' else {'wallet':args.wallet},'idempotency_key':args.idempotency_key or str(uuid.uuid4())},launch=args.enqueue or args.json)
                 print(json.dumps(result),flush=True)
-                if args.enqueue:store.launch();return 0
+                if args.enqueue or args.json:return 0
                 store.worker();result=store.get(result['job_id']);print(json.dumps(result))
                 return 0 if result['state'] in ('succeeded','partial') else 1
             if args.command=='prices':command=[sys.executable,str(ASSETS/'viewer/refresh_prices.py'),'--wallet',args.wallet]
@@ -294,7 +354,10 @@ def main():
                 if args.resume:command+=['--resume',args.resume]
             return subprocess.run(command).returncode
     except (ValueError,OSError) as error:
-        print(redact(error),file=sys.stderr);return 1
+        message=redact(error)
+        if args.json:print(json.dumps({'error':{'code':getattr(error,'code','invalid_request'),'message':message}}))
+        else:print(message,file=sys.stderr)
+        return 1
     finally:
         if viewer_lock:viewer_lock.close()
         if operation_lock:operation_lock.close()

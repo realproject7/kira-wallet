@@ -1,0 +1,36 @@
+{
+  "kind": "actual_installed_ui_with_synthetic_records",
+  "package": "kira-wallet",
+  "version": "0.2.1",
+  "registry_archive_sha256": "aed02bc57c0fec8eec8b8fe8539ddcc45592d7876f04b86045e1d136b51804e0",
+  "captured_on": "2026-10-24",
+  "device": "Mac running Google Chrome",
+  "desktop_mode": "Default native Chrome viewport",
+  "mobile_mode": "390x844 browser viewport on the same Mac; not a physical phone",
+  "fixture": "scripts/readme-preview.py",
+  "fixture_observed_at": "2026-10-05T00:00:00Z",
+  "records": "Handwritten demonstration balances and historical prices with public demo wallet/token identities. Unknown prices remain unknown. No personal portfolio data. No provider research performed.",
+  "image_processing": "Lossless WebP encoding only; decoded RGB pixels match the original browser capture. No UI retouching.",
+  "assets": [
+    {
+      "asset": "/assets/kira-021-desktop.webp",
+      "width": 1727,
+      "height": 941,
+      "bytes": 148266,
+      "sha256": "24c9c31fd38688b4859ac48a54a89387922df72a39f526a690803316c599b959",
+      "capture_sha256": "3c808be09e590d66ec002a06f834fa5cd31506bc02110da8a0d80adce33876f0",
+      "pixel_identical_to_capture": true,
+      "route": "All tokens"
+    },
+    {
+      "asset": "/assets/kira-021-mobile.webp",
+      "width": 390,
+      "height": 844,
+      "bytes": 95406,
+      "sha256": "74adbfea5d6ca3c1358f56590969309590742976eee6baed6dd9cbbe2e98150f",
+      "capture_sha256": "d7bbc7d0a655718f9403711b060a5e53e2f72d364fe6608cd483ef809345cde2",
+      "pixel_identical_to_capture": true,
+      "route": "USDC token detail"
+    }
+  ]
+}

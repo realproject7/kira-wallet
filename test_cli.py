@@ -72,7 +72,7 @@ class StartTest(unittest.TestCase):
         for controls in (True, False):
             with self.subTest(controls=controls), \
                     patch.object(kira_cli, 'live_record', return_value={'port': 8788}), \
-                    patch.object(kira_cli, 'health', return_value={'controls': controls}), \
+                    patch.object(kira_cli, 'health', return_value={'api_version':2,'controls': controls}), \
                     patch.object(kira_cli.subprocess, 'Popen') as child, \
                     contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(kira_cli.start(self.root, 8787, controls), 'http://127.0.0.1:8788')
@@ -82,11 +82,19 @@ class StartTest(unittest.TestCase):
         for controls in (True, False):
             with self.subTest(controls=controls), \
                     patch.object(kira_cli, 'live_record', return_value={'port': 8788}), \
-                    patch.object(kira_cli, 'health', return_value={'controls': not controls}), \
+                    patch.object(kira_cli, 'health', return_value={'api_version':2,'controls': not controls}), \
                     patch.object(kira_cli.subprocess, 'Popen') as child:
                 with self.assertRaisesRegex(ValueError, 'Run kira stop'):
                     kira_cli.start(self.root, 8787, controls)
                 child.assert_not_called()
+
+    def test_upgrade_does_not_reuse_an_embedded_agent_viewer(self):
+        with patch.object(kira_cli,'live_record',return_value={'port':8788}), \
+                patch.object(kira_cli,'health',return_value={'controls':True}), \
+                patch.object(kira_cli.subprocess,'Popen') as child:
+            with self.assertRaisesRegex(ValueError,'earlier Kira viewer'):
+                kira_cli.start(self.root,8787,True)
+            child.assert_not_called()
 
 
 if __name__ == '__main__':

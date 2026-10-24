@@ -145,6 +145,7 @@ class JobStore:
         self.root = Path(root).resolve()
         self.jobs = self.root / 'jobs'
         self.jobs.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self._summary_cache = {}
 
     @contextmanager
     def locked(self):
@@ -164,6 +165,7 @@ class JobStore:
         names={'wallet.add':['address','tag'],'wallet.refresh':['wallet'],'prices.refresh':['wallet'],'wallet.setTags':['wallet','tags'],
             'settings.rpc':['mode','chains','allow_public_fallback'],'settings.discovery':['provider','key_env'],'settings.provider':['provider','key_env'],'settings.importEnv':['import_id','key_env']}[job['operation']]
         if job['operation']=='settings.rpc' and 'priority' in job['input']:names=names+['priority']
+        if job['operation']=='settings.discovery' and 'explorers' in job['input']:names=names+['explorers']
         fields(job['input'],names)
         if 'analysis_phase' in job and job['analysis_phase'] not in ('baseline','enrichment'):raise JobError('invalid_envelope','Invalid analysis phase.')
         if 'scan_policy' in job and job['scan_policy'] not in ('optional_depth_v1','alchemy_inventory_v1'):raise JobError('invalid_envelope','Invalid scan policy.')
@@ -217,6 +219,46 @@ class JobStore:
         with self.locked():
             return sorted((self.get(p.stem) for p in self.jobs.glob('*.json')), key=lambda j: j['created_at'], reverse=True)
 
+    def summaries(self):
+        """Read changed envelopes once; do not reread historical events on idle polls."""
+        rows = []
+        existing = set()
+        for path in self.jobs.glob('*.json'):
+            stat = path.stat(); version = (stat.st_mtime_ns, stat.st_size, stat.st_ino)
+            existing.add(path.stem)
+            cached = self._summary_cache.get(path.stem)
+            if cached is None or cached[0] != version:
+                job = self.get(path.stem)
+                row = {k: job.get(k) for k in ('job_id','operation','state','stage','created_at','updated_at','input','analysis_phase','parent_job_id','continuation_id')}
+                self._summary_cache[path.stem] = version, row
+            rows.append(self._summary_cache[path.stem][1])
+        for key in set(self._summary_cache) - existing:del self._summary_cache[key]
+        return rows
+
+    def page(self, offset=0, limit=50, state='all', wallet=None):
+        from kira_state import page_bounds
+        page_bounds(offset, limit)
+        groups = {'all': None, 'active': {'queued','running'}, 'succeeded': {'succeeded','partial'},
+                  'attention': {'interrupted','failed'}, 'cancelled': {'cancelled'}}
+        if state not in groups:raise JobError('invalid_state','Choose a supported job state filter.')
+        selected = self.wallet(wallet)['address_key'] if wallet else None
+        with self.locked():
+            rows = [r for r in self.summaries() if (groups[state] is None or r['state'] in groups[state])
+                    and (selected is None or (r['input'].get('wallet') or r['input'].get('address','')).lower() == selected)]
+            rows.sort(key=lambda r: r['created_at'], reverse=True)
+            jobs = [self.get(r['job_id']) for r in rows[offset:offset+limit]]
+        end = offset + len(jobs)
+        return {'jobs': jobs, 'offset': offset, 'total': len(rows), 'next_offset': end if end < len(rows) else None}
+
+    def status(self):
+        with self.locked():
+            rows = self.summaries()
+            active = sorted((r for r in rows if r['state'] in ('queued','running')), key=lambda r:r['created_at'])
+            revision = digest([(r['job_id'],r['updated_at'],r['state'],r['stage']) for r in sorted(rows,key=lambda r:r['job_id'])])
+            return {'jobs_revision': revision, 'active_job_count': len(active),
+                    'active_jobs': [{**{k:r[k] for k in ('job_id','operation','state','stage')},
+                                     'input':{k:str(v)[:80] for k,v in r['input'].items() if k in ('wallet','address','tag')}} for r in active[:5]]}
+
     def save(self, job):
         job['sequence'] += 1; job['updated_at'] = now()
         atomic(self.jobs / (job['job_id'] + '.json'), job)
@@ -264,7 +306,8 @@ class JobStore:
             if value['mode']=='custom' and not chains:raise JobError('invalid_settings','Custom RPC requires at least one endpoint reference.')
             return {'mode':value['mode'],'chains':chains,'allow_public_fallback':value['allow_public_fallback'],**({'priority':value['priority']} if 'priority' in value else {})}
         if operation == 'settings.discovery':
-            fields(value,['provider','key_env'])
+            fields(value,['provider','key_env']+(['explorers'] if isinstance(value,dict) and 'explorers' in value else []))
+            if 'explorers' in value and type(value['explorers']) is not bool:raise JobError('invalid_settings','Choose whether to use explorer discovery.')
             if value['provider'] not in ('none','alchemy') or not valid_env_reference(value['key_env'],max_length=100):raise JobError('invalid_settings','Use a supported indexer and environment variable reference.')
             return value.copy()
         if operation == 'wallet.add':

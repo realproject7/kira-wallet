@@ -54,7 +54,7 @@ class PublicReleaseTest(unittest.TestCase):
 
     def test_dirty_source_cannot_claim_committed_release_head(self):
         with patch.object(release.subprocess,'check_output',return_value=b' M kira_agent.py\n'):
-            with self.assertRaisesRegex(SystemExit,'Commit and review'):release.clean_head()
+            with self.assertRaisesRegex(SystemExit,'Commit all source'):release.clean_head()
         with patch.object(release.subprocess,'check_output',side_effect=[b'', 'synthetic-head\n']):
             self.assertEqual(release.clean_head(),'synthetic-head')
 

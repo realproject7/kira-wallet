@@ -30,6 +30,9 @@ def main():
                     assert str(Path.home()).encode() not in body, member.name
         run(['npm','install','--global','--ignore-scripts','--prefix',str(temp/'installation'),str(package)])
         cli=str(temp/'installation/bin/kira');data=str(temp/'portfolio')
+        info=json.loads(run([cli,'--data-dir',data,'info','--json']))
+        assert info['capabilities']['headless'] and not info['capabilities']['model_runtime']
+        assert 'SKILL.md' in run([cli,'--data-dir',data,'skill']) or 'Kira' in run([cli,'--data-dir',data,'skill'])
         doctor=json.loads(run([cli,'--data-dir',data,'doctor']))
         assert doctor['public_fallback'] is True and doctor['rpc_mode']=='public' and doctor['discovery']=='none' and not doctor['discovery_key_available']
         installed=temp/'installation/lib/node_modules/kira-wallet'
@@ -39,6 +42,9 @@ def main():
         try:
             run([cli,'--data-dir',data,'demo','--port',str(port)])
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/state') as response:state=json.load(response)
+            assert state['paged'] and state['wallets'][0]['assets']==[]
+            with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/wallet?wallet=Demo%20wallet') as response:assert len(json.load(response)['assets'])==1
+            assert json.loads(run([cli,'--data-dir',data,'call','holdings_query','--arguments','{"mode":"aggregate"}','--json']))['scanned_position_count']==1
             assert state['demo'] is True and len(state['wallets'])==1 and state['dashboard']['known_value_usd']==125
             first=json.loads(run([cli,'--data-dir',data,'status']))
             run([cli,'--data-dir',data,'start','--port',str(port),'--read-only','--no-open'])
@@ -49,11 +55,10 @@ def main():
                 try:urllib.request.urlopen(f'http://127.0.0.1:{port}'+path)
                 except urllib.error.HTTPError as error:assert error.code==404;error.close()
                 else:raise AssertionError('Private file was exposed.')
-            with urllib.request.urlopen(f'http://127.0.0.1:{port}/kira.png') as response:assert response.headers['Content-Type']=='image/png'
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/kira-logo.png') as response:assert response.headers['Content-Type']=='image/png'
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/ows-logo.svg') as response:
                 assert response.headers['Content-Type']=='image/svg+xml' and b'<svg' in response.read()
-            for asset in ['explorers/etherscan.png','venues/mintclub.png','venues/uniswap.svg','venues/aerodrome.svg','chat-workspace.js','chat-workspace.css','selects.js','agent.js','ows.js','agent.css','watching.js','watching-model.js','workspace.js','workspace-model.js','workspace.css','kira-research.png','kira-explain.png','kira-review.png','kira-attention.png']:
+            for asset in ['explorers/etherscan.png','venues/mintclub.png','venues/uniswap.svg','venues/aerodrome.svg','selects.js','ows.js','watching.js','watching-model.js','workspace.js','workspace-model.js','workspace.css']:
                 with urllib.request.urlopen(f'http://127.0.0.1:{port}/'+asset) as response:assert response.status==200 and len(response.read())>100
             transcript='\n'.join(json.dumps(item) for item in [
                 {'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-06-18'}},
@@ -61,7 +66,7 @@ def main():
                 {'jsonrpc':'2.0','id':2,'method':'tools/call','params':{'name':'portfolio_read','arguments':{}}}])+'\n'
             tools=[json.loads(line) for line in run([cli,'--data-dir',data,'tools'],input=transcript).splitlines()]
             assert tools[1]['result']['structuredContent']['data']['dashboard']['known_value_usd']==125
-            assert json.loads(run([cli,'--data-dir',data,'jobs','list']))==[]
+            assert json.loads(run([cli,'--data-dir',data,'jobs','list']))['jobs']==[]
             run([cli,'--data-dir',data,'stop']);run([cli,'--data-dir',data,'start','--port',str(port),'--no-open'])
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/session') as response:session=json.load(response)
             assert session['controls'] is True

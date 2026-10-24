@@ -4,161 +4,102 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>Kira Wallet · Manage your wallets with your own AI.</title>
-  <meta name="description" content="Bring your Codex or Claude account to your wallets. See your tokens together, ask Kira to research your holdings, and keep your keys and records on your computer.">
-  <meta property="og:title" content="Kira Wallet · Manage your wallets with your own AI.">
-  <meta property="og:description" content="Bring your Codex or Claude account to your wallets. See your tokens together, ask Kira to research your holdings, and keep your keys and records on your computer.">
+  <title>Kira Wallet · Your agent. Now wallet-aware.</title>
+  <meta name="description" content="Give your AI agent a new ability. Install Kira Wallet to research public EVM wallets, work with saved holdings, and combine wallet facts with your agent’s web search, code and files.">
+  <meta property="og:title" content="Kira Wallet · Your agent. Now wallet-aware.">
+  <meta property="og:description" content="Your agent’s search, code and creativity. Now with wallet research. A local CLI and dashboard for the agent you already use.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://kirawallet.app">
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Kira Wallet · Manage your wallets with your own AI.">
-  <meta name="twitter:description" content="Your wallets, your AI account, and Kira to do the research. Keys stay yours. Records stay local.">
+  <meta name="twitter:title" content="Kira Wallet · Your agent. Now wallet-aware.">
+  <meta name="twitter:description" content="Install wallet research as an ability in your own agent. Local records. A visual dashboard. Refresh on your terms.">
   <link rel="canonical" href="https://kirawallet.app">
   <link rel="icon" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/assets/kira-logo.png">
-  <link rel="stylesheet" href="/site.css?v=cb47a1dcdcc3">
-  <script src="/demo.js?v=cb47a1dcdcc3" defer></script>
+  <link rel="stylesheet" href="/site.css?v=capability021">
+  <script src="/demo.js?v=capability021" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav wrap">
   <a class="brand" href="/" aria-label="Kira Wallet home"><img src="/assets/kira-logo.png" width="38" height="38" alt=""><span>Kira Wallet</span></a>
   <nav aria-label="Main">
-    <a href="#meet-kira">Meet Kira</a>
-    <a href="#privacy">Your control</a>
-    <a class="nav-cta" href="#install">Get Kira <span aria-hidden="true">↗</span></a>
+    <a href="#possibilities">What it unlocks</a>
+    <a href="#workspace">The app</a>
+    <a href="https://github.com/realproject7/kira-wallet" target="_blank" rel="noreferrer">Source <span aria-hidden="true">↗</span></a>
+    <a class="nav-cta" href="#install">Add to your agent <span aria-hidden="true">↗</span></a>
   </nav>
 </header>
 <main id="main">
   <section class="hero wrap" aria-labelledby="hero-title">
     <div class="hero-copy">
-      <p class="eyebrow">YOUR WALLET RESEARCH PARTNER</p>
-      <h1 id="hero-title"><span>Manage your wallets.</span><span>With your own AI.</span></h1>
-      <p class="lead">Bring the Codex or Claude account you already use. See your tokens together, ask better questions, and let Kira do the research.</p>
+      <p class="eyebrow"><span class="small-spark" aria-hidden="true">✳</span> A NEW ABILITY FOR YOUR AI</p>
+      <h1 id="hero-title">Your agent.<br>Now <em>wallet-aware.</em></h1>
+      <p class="lead">Give the agent you already use the power to research your wallets. Then put its web search, code and creativity to work on what you hold.</p>
       <div class="hero-actions">
-        <a class="button" href="#install">Get Kira <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
-        <a class="source-link" href="https://github.com/realproject7/kira-wallet" target="_blank" rel="noreferrer">Explore the source <span aria-hidden="true">↗</span></a>
+        <a class="button button-dark" href="#install">Add Kira to your agent <span aria-hidden="true">↗</span></a>
+        <a class="text-link" href="#possibilities">See what you can do <span aria-hidden="true">↓</span></a>
       </div>
-      <p class="hero-meta"><span class="status-dot" aria-hidden="true"></span>Runs locally. Works with your AI account.</p>
+      <p class="hero-meta">Open source. Runs locally. Your choice of agent.</p>
     </div>
-    <div id="demo" class="demo" role="region" aria-label="Kira product examples">
-      <div class="demo-header">
-        <div class="demo-brand"><img src="/assets/kira-logo.png" width="30" height="30" alt=""><span>Kira Chat</span></div>
-      </div>
-      <div id="demo-motion" class="demo-motion" hidden aria-hidden="true">
-        <div class="motion-scroll"><div class="motion-stream"></div></div>
-        <div class="demo-composer motion-composer">
-          <div class="motion-draft">Ask Kira about your wallets…</div>
-          <div class="motion-composer-footer"><small><span class="status-dot"></span>Your AI account</small><span class="demo-send">↑</span></div>
-        </div>
-      </div>
-      <div class="demo-body" tabindex="0" role="region" aria-label="Demo conversation transcript">
-        <section id="demo-tokens" class="demo-panel" aria-label="Token values" data-working="Reading your holdings and recorded markets…">
-          <p class="demo-question">What are my overlooked tokens worth? Show balances, prices and markets.</p>
-          <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
-          <p class="demo-answer">SIGNET uses a HUNT-backed Mint Club curve. CASHCAT and APE trade on DEX markets.</p>
-          <div class="token-results">
-            <div class="results-header"><span>Holdings &amp; markets</span><span>Spot value</span></div>
-            <article class="token-result">
-              <div class="token-top"><img src="/assets/cashcat.png" width="36" height="36" alt=""><div class="token-identity"><strong>CASHCAT</strong><span>Robinhood · Daily wallet</span></div><strong class="token-value">$216.00</strong></div>
-              <div class="token-facts"><span><small>Balance</small><strong>1,200 CASHCAT</strong></span><span><small>Unit price</small><strong>$0.1800</strong></span></div>
-              <a class="token-market" href="https://lptoken.fun/trade/robinhood/0x020bfc650a365f8bb26819deaabf3e21291018b4" target="_blank" rel="noreferrer">Uniswap v4 · CASHCAT / USDG <span aria-hidden="true">↗</span></a>
-            </article>
-            <article class="token-result">
-              <div class="token-top"><img src="/assets/ape.png" width="36" height="36" alt=""><div class="token-identity"><strong>APE</strong><span>Ethereum · Daily wallet</span></div><strong class="token-value">$17.00</strong></div>
-              <div class="token-facts"><span><small>Balance</small><strong>20 APE</strong></span><span><small>Unit price</small><strong>$0.8500</strong></span></div>
-              <span class="token-market">Uniswap v3 · APE / WETH</span>
-            </article>
-            <article class="token-result">
-              <div class="token-top"><img src="/assets/signet.png" width="36" height="36" alt=""><div class="token-identity"><strong>SIGNET</strong><span>Base · Trading wallet</span></div><strong class="token-value">$39.65</strong></div>
-              <div class="token-facts"><span><small>Balance</small><strong>650 SIGNET</strong></span><span><small>Unit price</small><strong>$0.0610</strong></span></div>
-              <a class="token-market" href="https://mint.club/token/base/SIGNET" target="_blank" rel="noreferrer">Mint Club · 0.613 HUNT / SIGNET <span aria-hidden="true">↗</span></a>
-            </article>
-            <div class="demo-summary"><span>Recorded spot value</span><strong>$272.65 <small>Includes SIGNET’s curve value</small></strong></div>
-          </div>
-        </section>
-        <section id="demo-blast" class="demo-panel" aria-label="Blast holdings" data-working="Grouping your Blast wallets and token records…">
-          <p class="demo-question">Review my Blast wallets. What do I hold, and where can these tokens trade?</p>
-          <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
-          <p class="demo-answer">Your Blast holdings, together. Keep some ETH for fees before moving funds.</p>
-          <div class="token-results">
-            <div class="results-header"><span>Holdings &amp; markets</span><span>Spot value</span></div>
-            <article class="token-result">
-              <div class="token-top"><img src="/assets/eth.png" width="36" height="36" alt=""><div class="token-identity"><strong>ETH</strong><span>Blast · Daily wallet</span></div><strong class="token-value">$135.00</strong></div>
-              <div class="token-facts"><span><small>Balance</small><strong>0.050 ETH</strong></span><span><small>Unit price</small><strong>$2,700.00</strong></span></div>
-              <span class="token-market">Native gas asset</span>
-            </article>
-            <article class="token-result">
-              <div class="token-top"><img src="/assets/usdb.png" width="36" height="36" alt=""><div class="token-identity"><strong>USDB</strong><span>Blast · Daily wallet</span></div><strong class="token-value">$250.00</strong></div>
-              <div class="token-facts"><span><small>Balance</small><strong>250 USDB</strong></span><span><small>Unit price</small><strong>$1.0000</strong></span></div>
-              <a class="token-market" href="https://dexscreener.com/blast/0xf00da13d2960cf113edcef6e3f30d92e52906537" target="_blank" rel="noreferrer">Thruster v3 · USDB / WETH <span aria-hidden="true">↗</span></a>
-            </article>
-            <article class="token-result">
-              <div class="token-top"><img src="/assets/blast.png" width="36" height="36" alt=""><div class="token-identity"><strong>BLAST</strong><span>Blast · Trading wallet</span></div><strong class="token-value">$15.66</strong></div>
-              <div class="token-facts"><span><small>Balance</small><strong>100,000 BLAST</strong></span><span><small>Unit price</small><strong>$0.0001566</strong></span></div>
-              <a class="token-market" href="https://dexscreener.com/blast/0x9a0aa28d999a21d3cf6f2703cdbba9feaf4a32f7" target="_blank" rel="noreferrer">Thruster v3 · BLAST / WETH <span aria-hidden="true">↗</span></a>
-            </article>
-            <div class="demo-summary"><span>Recorded spot value</span><strong>$400.66 <small>across 2 wallets</small></strong></div>
-          </div>
-        </section>
-        <section id="demo-compare" class="demo-panel" aria-label="Saved analysis changes" data-working="Comparing your saved balances and prices…">
-          <p class="demo-question">What changed since the last time you checked my wallet?</p>
-          <div class="demo-answer-heading"><img src="/assets/kira-logo.png" width="28" height="28" alt=""><span>Kira</span></div>
-          <p class="demo-answer">Your balances stayed the same. Prices moved, and a few coverage gaps were filled.</p>
-          <div class="token-results">
-            <div class="results-header"><span>Price changes</span><span>Change</span></div>
-            <article class="token-result">
-              <div class="token-top"><img src="/assets/cashcat.png" width="36" height="36" alt=""><div class="token-identity"><strong>CASHCAT</strong><span>1,200 CASHCAT · unchanged</span></div><strong class="token-value change">+$12.00</strong></div>
-              <div class="comparison-facts"><span>Price</span><strong>$0.1800 <span aria-hidden="true">→</span> $0.1900</strong></div>
-              <span class="token-market">Robinhood · recorded spot value</span>
-            </article>
-            <article class="token-result">
-              <div class="token-top"><img src="/assets/eth.png" width="36" height="36" alt=""><div class="token-identity"><strong>ETH</strong><span>0.050 ETH · unchanged</span></div><strong class="token-value change">+$2.50</strong></div>
-              <div class="comparison-facts"><span>Price</span><strong>$2,700 <span aria-hidden="true">→</span> $2,750</strong></div>
-              <span class="token-market">Blast · recorded spot value</span>
-            </article>
-            <article class="coverage-result"><span class="coverage-icon" aria-hidden="true">✓</span><div><strong>Two balances verified as zero</strong><p>Previously unknown. Now observed on-chain.</p></div></article>
-            <div class="demo-summary"><span>Change in priced value</span><strong class="change">+$14.50 <small>balances unchanged</small></strong></div>
-          </div>
-        </section>
-      </div>
-      <div class="demo-composer" aria-hidden="true"><span>Ask Kira about your wallets…</span><div><small><span class="status-dot"></span>Your AI account</small><span class="demo-send">↑</span></div></div>
+    <div class="ability-scene" aria-label="Kira Wallet adds wallet research to an agent’s existing tools">
+      <div class="scene-top"><span><span class="status-dot" aria-hidden="true"></span> YOUR EXISTING AGENT</span><span class="scene-label">+ one new ability</span></div>
+      <div class="agent-core"><span class="agent-glyph" aria-hidden="true">✳</span><div><strong>The agent you know.</strong><span>The tools you already love.</span></div></div>
+      <div class="existing-abilities"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg>Web search</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-14-2 16"/></svg>Code</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6zm8 0v5h4M9 12h6m-6 4h6"/></svg>Files</span></div>
+      <div class="add-connector" aria-hidden="true"><span></span><b>+</b><span></span></div>
+      <div class="new-ability"><img src="/assets/kira-logo.png" width="58" height="58" alt=""><div><span class="ability-label">ABILITY ADDED</span><strong>Kira Wallet</strong><p>Wallets, holdings &amp; saved research.</p></div><span class="ability-check" aria-hidden="true">✓</span></div>
+      <div class="scene-prompt"><span class="prompt-label">YOUR NEXT QUESTION</span><p>“Research the projects in my wallet.<br>Build a brief with sources.”</p><div><span>Wallet facts</span><i aria-hidden="true">+</i><span>Everything your agent can do</span></div></div>
+      <p class="scene-note">A capability illustration, using an example request.</p>
     </div>
   </section>
 
-  <section id="meet-kira" class="meet wrap" aria-labelledby="meet-title">
-    <div class="companion-visual">
-      <span class="kira-greeting">Hi, I’m Kira.</span>
-      <img src="/assets/kira-explain.png" width="598" height="800" loading="lazy" alt="Kira holding her notebook and introducing your wallet research workspace">
-      <div class="companion-caption"><strong>A little help. A clearer picture.</strong><span>Your wallet research partner.</span></div>
+  <section class="agent-strip wrap" aria-labelledby="agents-title">
+    <p id="agents-title">Bring your agent.<br><strong>Kira brings the wallet tools.</strong></p>
+    <div class="agent-names" aria-label="Examples of agent hosts and models"><span>Codex</span><span>Claude Code</span><span>Gemini CLI</span><span>Grok<span class="name-detail">powered agents</span></span><span class="next-agent">Your next agent <span aria-hidden="true">↗</span></span></div>
+    <p class="compatibility-note">Use an agent with local terminal access on a supported host. Model choice is yours; Kira does not install or run a model. Grok-powered agents need a host that can run custom local tools; setup depends on the host.</p>
+  </section>
+
+  <section id="possibilities" class="possibilities wrap section-space" aria-labelledby="possibilities-title">
+    <div class="section-heading"><p class="eyebrow">WALLET FACTS MEET YOUR AGENT’S ABILITIES</p><h2 id="possibilities-title">Start with your wallet.<br>Take it <em>anywhere.</em></h2><p class="section-lead">The useful part is what happens next. Ask better questions, bring in outside context, or turn the research into something you can use.</p></div>
+    <div class="scenario-tabs" role="tablist" aria-label="Explore example agent workflows">
+      <button id="tab-understand" role="tab" aria-selected="true" aria-controls="case-understand" tabindex="0">01 <span>Understand</span></button>
+      <button id="tab-investigate" role="tab" aria-selected="false" aria-controls="case-investigate" tabindex="-1">02 <span>Investigate</span></button>
+      <button id="tab-create" role="tab" aria-selected="false" aria-controls="case-create" tabindex="-1">03 <span>Create</span></button>
     </div>
-    <div class="meet-copy">
-      <p class="eyebrow">MEET YOUR NEW RESEARCH PARTNER</p>
-      <h2 id="meet-title">Let Kira do<br>the legwork.</h2>
-      <p class="section-lead">Less hunting through explorers.<br>More understanding what you hold.</p>
-      <div class="capabilities">
-        <article><span class="capability-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h15a1 1 0 0 1 1 1v12H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h13v3M20 10h-5v5h5M16 12.5h1"/></svg></span><div><h3>Your wallets, in one place.</h3><p>Add a public address. Find your tokens across supported chains without connecting your keys.</p></div></article>
-        <article><span class="capability-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 4h16v12H9l-5 4V4M8 8h8M8 12h5"/></svg></span><div><h3>Ask. Compare. Refresh.</h3><p>Use your own AI to research tokens, compare saved checks, and refresh holdings or prices.</p></div></article>
-        <article><span class="capability-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v18M3 12h18M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></span><div><h3>A new wallet, built on OWS.</h3><p>Create a wallet with Open Wallet Standard. Your keys stay encrypted on your computer. Kira follows the public EVM account.</p><a class="ows-provider" href="https://openwallet.sh/" target="_blank" rel="noreferrer"><span>Powered by</span><img src="/assets/ows-logo.svg" width="148" height="31" alt="OWS · Open Wallet Standard"><span aria-hidden="true">↗</span></a></div></article>
-      </div>
+    <div class="scenario-panels">
+      <article id="case-understand" class="scenario" role="tabpanel" aria-labelledby="tab-understand" tabindex="0">
+        <div class="scenario-question"><span class="label">ASK YOUR AGENT</span><h3>“What do I own across my wallets? What’s missing from the picture?”</h3><p>Get a view across wallets and chains, with unpriced assets and incomplete checks kept visible.</p></div>
+        <ol class="tool-trail"><li><span class="trail-icon kira-icon"><img src="/assets/kira-logo.png" width="28" height="28" alt=""></span><div><span>KIRA WALLET</span><strong>Read saved holdings &amp; coverage</strong><p>Exact chain and contract identities. Observation times included.</p></div></li><li><span class="trail-icon" aria-hidden="true">⌘</span><div><span>YOUR AGENT + CODE</span><strong>Calculate across the full inventory</strong><p>Rank positions and compare exposure without treating unknown prices as zero.</p></div></li><li class="trail-result"><span class="trail-icon" aria-hidden="true">↗</span><div><span>THE RESULT</span><strong>A clearer portfolio brief</strong><p>What is known, what is incomplete, and what to check next.</p></div></li></ol>
+      </article>
+      <article id="case-investigate" class="scenario" role="tabpanel" aria-labelledby="tab-investigate" tabindex="0">
+        <div class="scenario-question"><span class="label">ASK YOUR AGENT</span><h3>“Have any projects in my wallet announced a token migration? Check the official sources.”</h3><p>Move from a ticker to the right project, then connect your holdings to the wider story.</p></div>
+        <ol class="tool-trail"><li><span class="trail-icon kira-icon"><img src="/assets/kira-logo.png" width="28" height="28" alt=""></span><div><span>KIRA WALLET</span><strong>Identify the assets you actually hold</strong><p>Use chain and contract, not a symbol match alone.</p></div></li><li><span class="trail-icon" aria-hidden="true">⌕</span><div><span>YOUR AGENT + WEB SEARCH</span><strong>Check first-party announcements</strong><p>Find official documentation and dated updates. Keep uncertain matches unresolved.</p></div></li><li class="trail-result"><span class="trail-icon" aria-hidden="true">↗</span><div><span>THE RESULT</span><strong>A brief you can trace to its sources</strong><p>Relevant findings, links and open questions. Any action remains your decision.</p></div></li></ol>
+      </article>
+      <article id="case-create" class="scenario" role="tabpanel" aria-labelledby="tab-create" tabindex="0">
+        <div class="scenario-question"><span class="label">ASK YOUR AGENT</span><h3>“Build a wallet report. Separate missing prices, compare saved checks, and export a CSV.”</h3><p>Use your usual agent tools to turn saved research into a report, a spreadsheet or your next workflow.</p></div>
+        <ol class="tool-trail"><li><span class="trail-icon kira-icon"><img src="/assets/kira-logo.png" width="28" height="28" alt=""></span><div><span>KIRA WALLET</span><strong>Read current &amp; historical records</strong><p>Saved balances, pricing observations and snapshot differences.</p></div></li><li><span class="trail-icon" aria-hidden="true">▤</span><div><span>YOUR AGENT + FILES</span><strong>Calculate, explain &amp; format</strong><p>Build on the file and coding tools available in your agent host.</p></div></li><li class="trail-result"><span class="trail-icon" aria-hidden="true">↗</span><div><span>THE RESULT</span><strong>Research that leaves the chat</strong><p>A reusable artifact with timestamps, assumptions and coverage limits.</p></div></li></ol>
+      </article>
+    </div>
+    <p class="example-note">Example workflows, not recorded answers. Web search, calculations and file creation come from your agent host. Kira supplies the wallet tools.</p>
+  </section>
+
+  <section id="workspace" class="workspace section-space" aria-labelledby="workspace-title">
+    <div class="wrap"><div class="workspace-heading"><div><p class="eyebrow">FOR YOUR AGENT. AND FOR YOU.</p><h2 id="workspace-title">One set of records.<br>Two ways to work.</h2></div><p class="section-lead">Let your agent do the legwork. Open the local app whenever you want the full picture. Both work with the same saved research.</p></div>
+      <div class="app-frame"><div class="app-frame-top"><span><i aria-hidden="true"></i> YOUR LOCAL WALLET WORKSPACE</span><span>Installed app · 0.2.1</span></div><a href="/assets/kira-021-desktop.webp" target="_blank" rel="noreferrer" aria-label="Open full-size Kira Wallet desktop screenshot"><img src="/assets/kira-021-desktop.webp" width="1727" height="941" loading="lazy" alt="Installed Kira Wallet 0.2.1 showing the token catalog across two fictional demo wallets"></a></div>
+      <div class="workspace-details"><div><h3>Your wallets, without the tab hunt.</h3><p>Add public EVM addresses, name wallets, review holdings and follow research jobs. The visual controls stay available while your agent works.</p></div><div><h3>A refresh when you need it.</h3><p>Saved records stay available between sessions. Request a new balance or price check yourself, or ask your agent. Opening the app does not start research.</p></div><div><h3>The same work, next time.</h3><p>Your next agent session can return to the same local records and history. The dashboard does not have to stay open for CLI queries.</p></div></div>
+      <p class="example-note">Actual installed 0.2.1 interface, captured on a Mac with fictional demo balances and saved example prices. <a href="/assets/kira-021-mobile.webp" target="_blank" rel="noreferrer">See the narrow browser layout <span aria-hidden="true">↗</span></a></p>
     </div>
   </section>
 
-  <section id="privacy" class="privacy wrap" aria-labelledby="privacy-title">
-    <div class="privacy-heading"><p class="eyebrow">BUILT AROUND YOUR CONTROL</p><h2 id="privacy-title">Your keys stay yours.</h2></div>
-    <div class="privacy-grid">
-      <article><span class="privacy-number">01</span><h3>Watch without granting access.</h3><p>A public address is enough. Watching a wallet gives Kira no permission to spend.</p></article>
-      <article><span class="privacy-number">02</span><h3>Keep your records local.</h3><p>Your portfolio and saved chats stay on your computer. New wallet keys stay encrypted in your local OWS vault.</p></article>
-      <article><span class="privacy-number">03</span><h3>Choose what your AI sees.</h3><p>You select the wallet context. Your messages and selected records go to your chosen AI provider.</p></article>
-    </div>
+  <section id="install" class="install wrap section-space" aria-labelledby="install-title">
+    <div class="install-copy"><p class="eyebrow">A SMALL INSTALL. A NEW POSSIBILITY.</p><h2 id="install-title">Same agent.<br><em>New ability.</em></h2><p class="section-lead">Give this prompt to your agent. It can install Kira, read the included instructions and open your local dashboard.</p><div class="setup-steps"><p><span>01</span> Install Kira and read its skill</p><p><span>02</span> Connect Alchemy and add your public address</p><p><span>03</span> Ask your agent what you want to know</p></div><p class="requirements">Node.js 22+ · Python 3.11+ · POSIX host<br>macOS verified. CLI access required.</p><a class="text-link" href="https://github.com/realproject7/kira-wallet/blob/8f47a00fc0d713ab13d9690ea2d67b035687dc17/docs/CLI.md" target="_blank" rel="noreferrer">Read the setup guide <span aria-hidden="true">↗</span></a></div>
+    <div class="install-box"><div class="prompt-card"><div class="copy-heading"><span class="label">PASTE INTO YOUR AGENT</span><button id="copy-prompt" class="copy-button" type="button" data-copy="install-prompt">Copy prompt <span aria-hidden="true">↗</span></button></div><p id="install-prompt">Install kira-wallet from npm. Read kira skill, use my existing Kira workspace if I have one, and open the local dashboard. Help me connect Alchemy and add my public EVM wallet address, then use Kira’s tools to research it. Ask me for any information you need.</p><span class="prompt-foot">Your agent handles the tools. You choose the task.</span></div><div class="terminal"><div class="copy-heading"><span class="label">OR RUN IT YOURSELF</span><button id="copy-install" class="copy-button" type="button" data-copy="install-command">Copy commands</button></div><pre><code id="install-command">npm install -g kira-wallet
+kira skill
+kira setup</code></pre><p>Finish provider setup locally. Your agent can then query the same workspace through the CLI.</p></div><p id="copy-status" class="copy-status" role="status" aria-live="polite"></p></div>
   </section>
 
-  <section id="install" class="install wrap" aria-labelledby="install-title">
-    <div class="install-copy"><p class="eyebrow">LET’S GET YOU SET UP</p><h2 id="install-title">Your next question<br>starts here.</h2><p>Install Kira, add a wallet, and connect your AI account. Your local workspace is ready when you are.</p><p class="requirements">macOS · Node.js 22+ · Python 3.11+</p><a class="source-link" href="https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/CLI.md" target="_blank" rel="noreferrer">Read the setup guide <span aria-hidden="true">↗</span></a></div>
-    <div class="terminal"><div class="terminal-top"><span>GET KIRA</span><button id="copy-install" type="button" aria-label="Copy installation commands">Copy commands</button></div><pre><code id="install-command">npm install -g kira-wallet
-kira setup</code></pre><p>Open your local app. Add a wallet. Say hello to Kira.</p><span id="copy-status" class="sr-only" role="status"></span></div>
-  </section>
+  <section id="control" class="control wrap" aria-labelledby="control-title"><div class="control-intro"><img src="/assets/kira-explain.png" width="598" height="800" loading="lazy" alt="Kira holding her wallet research notebook"><div><p class="eyebrow">THE TOOLS ARE YOURS TO USE</p><h2 id="control-title">Your model.<br>Your records.<br>Your call.</h2></div></div><div class="control-facts"><article><h3>Choose the agent.</h3><p>Kira is a local CLI with portable instructions and optional MCP. Use a terminal-capable agent on a supported host. Each host supplies its model, conversation and approvals.</p></article><article><h3>Keep the research local.</h3><p>Wallet records stay on your computer. Your chosen agent host controls which queried facts it sends to its model service and how it stores conversations.</p></article><article><h3>Watch with a public address.</h3><p>No wallet signature is needed for watching. Kira’s research tools do not sign or trade. Optional new-wallet creation uses a local encrypted OWS vault.</p></article><article><h3>Know what a number means.</h3><p>Saved observations have timestamps and coverage limits. An unknown price stays unknown. A spot estimate is not an executable sale quote.</p></article></div></section>
 </main>
-<footer class="footer wrap"><a class="brand" href="/"><img src="/assets/kira-logo.png" width="30" height="30" alt=""><span>Kira Wallet</span></a><p>Your wallets. Your AI. A little help from Kira.</p><a href="https://github.com/realproject7/kira-wallet" target="_blank" rel="noreferrer">Open source · MIT <span aria-hidden="true">↗</span></a></footer>
+<footer class="footer wrap"><a class="brand" href="/"><img src="/assets/kira-logo.png" width="30" height="30" alt=""><span>Kira Wallet</span></a><p>A new ability for the agent you already use.</p><a href="https://github.com/realproject7/kira-wallet" target="_blank" rel="noreferrer">Open source · MIT <span aria-hidden="true">↗</span></a></footer>
 </body>
 </html>

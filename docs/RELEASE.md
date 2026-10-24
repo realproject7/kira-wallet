@@ -1,5 +1,61 @@
 # Release preparation
 
+## Prepared release: 0.2.1
+
+Includes the external-agent architecture described in the preserved 0.2.0
+candidate below and four approved UI refinements. Short desktop windows can
+scroll the navigation to reach every action. Compact mobile actions stay on
+one line, a single wallet card fills its available grid width, and token detail
+captions and addresses use larger, darker text. Wallet records, research,
+financial projections, CLI and MCP behavior are unchanged.
+
+Preserve the already frozen 0.2.0 archive and manifest. This 0.2.1 candidate is
+the next publication target; an unpublished earlier candidate is not overwritten.
+Before freezing, run the full repository suite, clean package installation,
+source and history privacy checks, responsive browser acceptance including short
+windows and multiple wallets, and exact source/archive/installed-member checks.
+Freeze from the accepted clean commit, dry-run the exact archive and leave
+registry publication to the operator. Review not selected.
+
+The separate real-device acceptance, fresh public website screenshots and site
+content update remain a follow-up after installation of the new version.
+
+## Preserved candidate: 0.2.0
+
+The operator confirmed npm 0.1.20 is published. Preserve its archive and all
+previous release assets. This branch prepares the separate 0.2.0 release;
+preparation does not imply registry publication or website deployment.
+
+Kira becomes a wallet engine, CLI and local management app for ordinary
+external agent sessions. The embedded Codex/Claude runtime and model setup are
+removed. Human wallet, connection and research controls remain. The default
+data directory is stable across sessions; existing records, provider
+references, jobs, snapshots and historical conversation/output files remain
+available. Archive commands inspect and export earlier conversations/files
+without resuming their old model sessions.
+
+CLI, optional MCP and browser controls share one local application service.
+Machine-readable queries work without a web server. Mutations return durable
+job receipts; explicit manual refresh preserves recorded timestamps and
+coverage. MCP defaults to read-only and requires `--allow-writes` for mutations.
+The package includes a portable skill exposed by `kira skill`. The web app
+uses saved-data revisions and separate job status instead of rebuilding the
+full portfolio for unchanged status reads.
+
+Required validation before freezing this candidate: the full repository suite,
+clean package installation, public-source and history checks under the
+existing exact exception policy below, package/member comparison, headless
+CLI and MCP workflows, browser management and responsive layout, cross-process
+updates, job lifecycle, and preserved-record/archive migration checks. Use
+synthetic records. No live model connection or personal portfolio refresh is
+needed to establish these contracts. Do not mark a check passed without its
+actual result. Review not selected.
+
+Freeze the final archive from the accepted committed source and retain its
+manifest and checksum. The operator publishes the exact prepared archive.
+Site copy in this branch describes the new architecture; live deployment is
+a separate operator action.
+
 ## GitHub and npm distribution
 
 GitHub version releases and npm registry publication are separate. The GitHub
@@ -79,7 +135,7 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep published GitHub tags, release assets and npm versions through 0.1.17
+Keep published GitHub tags, release assets and npm versions through 0.1.20
 immutable. Do not rebuild them from later documentation commits. Future package
 changes need a new version. Release preparation does not publish a GitHub
 release, promote the website or publish to npm.
@@ -95,12 +151,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.1.18.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.2.1.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.1.18.tgz --access public
+npm publish ./dist/kira-wallet-0.2.1.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
@@ -518,7 +574,7 @@ starting provider jobs. Product acceptance applies only to identical product
 bytes. Review not selected. Freeze the final archive from the landed source
 and dry-run that archive. npm publication remains operator-only.
 
-## Release candidate: 0.1.18
+## Published 0.1.18
 
 Lowercase and mixed-case environment references now work in both immediate and
 queued configuration imports, provider settings and custom RPC settings. The
@@ -540,3 +596,51 @@ Freeze the archive from the landed source, record its SHA-256 and member hashes,
 and dry-run that exact archive. Prior review evidence remains attached to its
 PRs; a new independent review is not selected for this bounded follow-up. npm
 publication remains operator-only.
+
+
+## Release candidate: 0.1.19
+
+Adds an explicitly selected native Codex workspace. Persistent app-server
+sessions keep native web, command, file and configured integration capabilities
+while a private MCP bridge reuses Kira's scoped research tools. The browser
+shows approval requests, questions, progress and generated-file downloads.
+Existing connections retain recorded wallet chat. Claude remains on that
+recorded adapter; equivalent native support is not claimed.
+
+Cancellation handles blocked writes, silent or exited protocol leaders and
+remaining descendants. Request acknowledgements cannot be extended indefinitely
+by unrelated notifications. Server shutdown waits for native cleanup within a
+shared deadline. Downloads use directory-relative no-follow reads, reject
+replaced workspace links and preserve unknown financial values.
+
+Acceptance includes the full repository suite, protocol and HTTP boundaries,
+responsive browser approval/input/download/cancel checks, clean package
+installation and an actual synthetic wallet-query, web-search, CSV-write and
+native-thread-resume workflow. No personal portfolio refresh, credentials,
+signing, trading or production changes are required. Review not selected.
+
+Prepare a new immutable archive from this candidate's exact committed source.
+Preserve all previous archives. Preparation and a publish dry-run do not publish
+the package. Registry publication remains operator-only.
+
+## Published 0.1.20
+
+Completes native Claude workspaces alongside Codex. The public Anthropic Agent
+SDK is pinned to 0.3.309 and explicitly launches the installed Claude Code CLI.
+Native settings, integrations, web, file and command tools remain available.
+SDK callbacks route one-invocation approvals and non-secret questions through
+Kira chat. No private control protocol or authentication copy is introduced.
+The existing recorded chat mode stays available and saved choices remain exact.
+
+Both providers share bounded process I/O, cancellation, process-group cleanup,
+scoped wallet MCP transport and protected downloads. Claude requires its wallet
+MCP connection to initialize successfully. Its SDK session persists across turns
+and resumes the saved native thread after process restart when history is on.
+Tests use synthetic holdings, never operator portfolio refreshes. Acceptance
+covers actual wallet/web/CSV work, allow and decline, multi-turn and restart
+resume, browser interactions, full tests, clean installation, privacy scans and
+exact archive/source/installed-file comparison. Review not selected.
+
+The operator confirmed publication of 0.1.20. Preserve its frozen archive and
+the separate 0.1.19 archive. The behavior and acceptance scope above describe
+that release. Registry publication remains operator-only.
