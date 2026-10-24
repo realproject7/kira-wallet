@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>Kira Wallet · Manage your wallets with your own AI.</title>
-  <meta name="description" content="Use Kira from your own agent session. See your tokens together, research saved holdings, and manage wallets in a local app. Your keys stay yours.">
+  <meta name="description" content="Install Kira Wallet for your own AI agent. Manage saved wallet research in a local dashboard, query it through the CLI, and refresh when you choose. Your keys stay yours.">
   <meta property="og:title" content="Kira Wallet · Manage your wallets with your own AI.">
-  <meta property="og:description" content="Use Kira from your own agent session. See your tokens together, research saved holdings, and manage wallets in a local app. Your keys stay yours.">
+  <meta property="og:description" content="Install Kira Wallet for your own AI agent. Manage saved wallet research in a local dashboard, query it through the CLI, and refresh when you choose. Your keys stay yours.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://kirawallet.app">
   <meta name="twitter:card" content="summary">
@@ -16,14 +16,15 @@
   <link rel="canonical" href="https://kirawallet.app">
   <link rel="icon" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/assets/kira-logo.png">
-  <link rel="stylesheet" href="/site.css?v=cb47a1dcdcc3">
-  <script src="/demo.js?v=external020" defer></script>
+  <link rel="stylesheet" href="/site.css?v=published021">
+  <script src="/demo.js?v=external021" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav wrap">
   <a class="brand" href="/" aria-label="Kira Wallet home"><img src="/assets/kira-logo.png" width="38" height="38" alt=""><span>Kira Wallet</span></a>
   <nav aria-label="Main">
+    <a href="#workspace">The app</a>
     <a href="#meet-kira">Meet Kira</a>
     <a href="#privacy">Your control</a>
     <a class="nav-cta" href="#install">Get Kira <span aria-hidden="true">↗</span></a>
@@ -34,16 +35,16 @@
     <div class="hero-copy">
       <p class="eyebrow">YOUR WALLET RESEARCH PARTNER</p>
       <h1 id="hero-title"><span>Manage your wallets.</span><span>With your own AI.</span></h1>
-      <p class="lead">Use the agent session you already know. Let Kira collect your wallet data, open the local app, and help your agent answer better questions.</p>
+      <p class="lead">Keep using the agent session you already know. Install Kira’s wallet tools, open your local dashboard, and give your agent saved research to work with.</p>
       <div class="hero-actions">
         <a class="button" href="#install">Get Kira <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
         <a class="source-link" href="https://github.com/realproject7/kira-wallet" target="_blank" rel="noreferrer">Explore the source <span aria-hidden="true">↗</span></a>
       </div>
       <p class="hero-meta"><span class="status-dot" aria-hidden="true"></span>Runs locally. Works with your agent session.</p>
     </div>
-    <div id="demo" class="demo" role="region" aria-label="Kira product examples">
+    <div id="demo" class="demo" role="region" aria-label="Illustrative conversation in an external agent session, using fictional balances and prices">
       <div class="demo-header">
-        <div class="demo-brand"><img src="/assets/kira-logo.png" width="30" height="30" alt=""><span>Your agent + Kira · example</span></div>
+        <div class="demo-brand"><img src="/assets/kira-logo.png" width="30" height="30" alt=""><span>Your agent + Kira · illustration</span></div>
       </div>
       <div id="demo-motion" class="demo-motion" hidden aria-hidden="true">
         <div class="motion-scroll"><div class="motion-stream"></div></div>
@@ -126,6 +127,30 @@
     </div>
   </section>
 
+  <section id="workspace" class="product-preview wrap" aria-labelledby="product-preview-title">
+    <div class="product-preview-heading">
+      <p class="eyebrow">THE LOCAL APP, IN VIEW</p>
+      <h2 id="product-preview-title">Your research.<br>Room to see it.</h2>
+      <p class="section-lead">A full-width dashboard for your wallets, tokens and saved checks. Use it yourself, or let your agent work with the same records.</p>
+    </div>
+    <div class="product-preview-grid">
+      <figure class="product-preview-desktop">
+        <a href="/assets/kira-021-desktop.webp" target="_blank" rel="noreferrer" aria-label="Open full-size Kira Wallet desktop screenshot"><img src="/assets/kira-021-desktop.webp" width="1727" height="941" loading="lazy" alt="Installed Kira Wallet 0.2.1 token catalog showing combined balances and known values across two demo wallets"></a>
+        <figcaption>Installed Kira Wallet 0.2.1 · all tokens across demo wallets.</figcaption>
+      </figure>
+      <figure class="product-preview-mobile">
+        <a href="/assets/kira-021-mobile.webp" target="_blank" rel="noreferrer" aria-label="Open full-size Kira Wallet narrow-screen screenshot"><img src="/assets/kira-021-mobile.webp" width="390" height="844" loading="lazy" alt="USDC token details in installed Kira Wallet 0.2.1 at a narrow browser width, showing saved demo balances across two wallets"></a>
+        <figcaption>The same app's token details at a narrow browser width.</figcaption>
+      </figure>
+    </div>
+    <p class="product-preview-note">Captured from the installed 0.2.1 app with fictional demo balances and saved example prices. The agent conversation above is illustrative.</p>
+    <div class="workflow-grid">
+      <article><span class="privacy-number">01</span><h3>Start in your agent session.</h3><p>Ask your agent to install Kira, read <code>kira skill</code> and open the local app. The CLI gives it access to your chosen workspace.</p></article>
+      <article><span class="privacy-number">02</span><h3>Manage the same records.</h3><p>Add watching wallets, set names, review tokens and follow research jobs in the app. Your agent can use those records through the CLI too.</p></article>
+      <article><span class="privacy-number">03</span><h3>Refresh when you choose.</h3><p>Saved balances and prices stay available between checks. Request a holdings or price refresh in the app or through your agent when you need a new observation.</p></article>
+    </div>
+  </section>
+
   <section id="meet-kira" class="meet wrap" aria-labelledby="meet-title">
     <div class="companion-visual">
       <span class="kira-greeting">Hi, I’m Kira.</span>
@@ -138,7 +163,7 @@
       <p class="section-lead">Less hunting through explorers.<br>More understanding what you hold.</p>
       <div class="capabilities">
         <article><span class="capability-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h15a1 1 0 0 1 1 1v12H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h13v3M20 10h-5v5h5M16 12.5h1"/></svg></span><div><h3>Your wallets, in one place.</h3><p>Add a public address. Find your tokens across supported chains without connecting your keys.</p></div></article>
-        <article><span class="capability-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 4h16v12H9l-5 4V4M8 8h8M8 12h5"/></svg></span><div><h3>Ask. Compare. Refresh.</h3><p>Use your agent session to research tokens, compare saved checks, and request a holdings or price refresh.</p></div></article>
+        <article><span class="capability-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 4h16v12H9l-5 4V4M8 8h8M8 12h5"/></svg></span><div><h3>Ask. Compare. Refresh.</h3><p>Ask your own agent about saved holdings, prices and coverage. Compare earlier checks, or request fresh research. Opening the app does not start a refresh.</p></div></article>
         <article><span class="capability-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v18M3 12h18M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></span><div><h3>A new wallet, built on OWS.</h3><p>Create a wallet with Open Wallet Standard. Your keys stay encrypted on your computer. Kira follows the public EVM account.</p><a class="ows-provider" href="https://openwallet.sh/" target="_blank" rel="noreferrer"><span>Powered by</span><img src="/assets/ows-logo.svg" width="148" height="31" alt="OWS · Open Wallet Standard"><span aria-hidden="true">↗</span></a></div></article>
       </div>
     </div>
@@ -148,15 +173,15 @@
     <div class="privacy-heading"><p class="eyebrow">BUILT AROUND YOUR CONTROL</p><h2 id="privacy-title">Your keys stay yours.</h2></div>
     <div class="privacy-grid">
       <article><span class="privacy-number">01</span><h3>Watch without granting access.</h3><p>A public address is enough. Watching a wallet gives Kira no permission to spend.</p></article>
-      <article><span class="privacy-number">02</span><h3>Keep your records local.</h3><p>Your wallet records stay on your computer. Your agent host manages conversations. New keys stay encrypted in your local OWS vault.</p></article>
-      <article><span class="privacy-number">03</span><h3>Use your own agent.</h3><p>Connect the Kira workspace you want to use. Your agent host controls model access, approvals and conversation history.</p></article>
+      <article><span class="privacy-number">02</span><h3>Keep your records local.</h3><p>Kira saves wallet records on your computer. Your chosen agent host controls which queried facts it sends to its model service and how it stores conversations.</p></article>
+      <article><span class="privacy-number">03</span><h3>Use your own agent.</h3><p>Your agent host supplies the model, conversation and approvals. Kira supplies the wallet tools and local dashboard. New OWS keys stay encrypted in your local vault.</p></article>
     </div>
   </section>
 
   <section id="install" class="install wrap" aria-labelledby="install-title">
-    <div class="install-copy"><p class="eyebrow">LET’S GET YOU SET UP</p><h2 id="install-title">Your next question<br>starts here.</h2><p>Ask your agent to install Kira and open the app. Add a wallet there or through your agent. Refresh when you need an update.</p><p class="requirements">macOS · Node.js 22+ · Python 3.11+</p><a class="source-link" href="https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/CLI.md" target="_blank" rel="noreferrer">Read the setup guide <span aria-hidden="true">↗</span></a></div>
+    <div class="install-copy"><p class="eyebrow">LET’S GET YOU SET UP</p><h2 id="install-title">Your next question<br>starts here.</h2><p>Ask your agent to install Kira and read <code>kira skill</code>, or run the commands yourself. Set up your Alchemy connection, add a public EVM address, and follow its research in the app.</p><p>Return to the same workspace from your next agent session. Saved records remain available without keeping the dashboard open.</p><p class="requirements">macOS · Node.js 22+ · Python 3.11+</p><a class="source-link" href="https://github.com/realproject7/kira-wallet/blob/8f47a00fc0d713ab13d9690ea2d67b035687dc17/docs/CLI.md" target="_blank" rel="noreferrer">Read the setup guide <span aria-hidden="true">↗</span></a></div>
     <div class="terminal"><div class="terminal-top"><span>GET KIRA</span><button id="copy-install" type="button" aria-label="Copy installation commands">Copy commands</button></div><pre><code id="install-command">npm install -g kira-wallet
-kira setup</code></pre><p>Open the app. Add a wallet. Continue in your agent session.</p><span id="copy-status" class="sr-only" role="status"></span></div>
+kira setup</code></pre><p>Open your local app. Finish provider setup. Add a watching wallet, then continue in your own agent session.</p><span id="copy-status" class="sr-only" role="status"></span></div>
   </section>
 </main>
 <footer class="footer wrap"><a class="brand" href="/"><img src="/assets/kira-logo.png" width="30" height="30" alt=""><span>Kira Wallet</span></a><p>Your wallets. Your AI. A little help from Kira.</p><a href="https://github.com/realproject7/kira-wallet" target="_blank" rel="noreferrer">Open source · MIT <span aria-hidden="true">↗</span></a></footer>

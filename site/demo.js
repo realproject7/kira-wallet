@@ -30,6 +30,8 @@ welcomeDetail.textContent = 'Your agent session. Kira’s wallet tools.';
 welcome.append(welcomeArt, welcomeTitle, welcomeDetail);
 stream.append(welcome);
 
+// This illustrates a conversation in the user's external agent host. It is
+// not an embedded Kira chat or a recording of the installed dashboard.
 // Reuse the accessible transcript as the content source. The animated copy
 // has no focus targets and no live announcements, so it cannot interrupt reading.
 const cases = [...reading.querySelectorAll('.demo-panel')].map(source => {

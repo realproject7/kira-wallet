@@ -146,6 +146,25 @@ h2{font-size:44px;line-height:1.15;font-weight:500;letter-spacing:-.03em;margin:
 .terminal button{min-height:44px;font-size:12px}
 
 .companion-caption span,.install-copy>p.requirements,.footer{color:#716078}
+.product-preview{padding-block:0 104px}
+.product-preview-heading{max-width:700px;margin-bottom:34px}
+.product-preview-heading .eyebrow{margin-bottom:16px}
+.product-preview-heading h2{margin-bottom:20px}
+.product-preview-heading .section-lead{margin:0;font-size:17px;line-height:1.75}
+.product-preview-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,250px);gap:24px;align-items:start}
+.product-preview-grid figure{margin:0;min-width:0}
+.product-preview-grid figure>a{display:block;border-radius:14px}
+.product-preview-grid img{display:block;width:100%;height:auto;border:1px solid #ded5e4;border-radius:14px;background:#f8f7f4;box-shadow:0 16px 40px #4b305914}
+.product-preview-grid figcaption{font-size:12px;line-height:1.6;color:var(--muted);margin-top:14px}
+.product-preview-note{font-size:12px;line-height:1.7;color:var(--muted);margin:20px 0 0;max-width:760px}
+.workflow-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px;margin-top:46px}
+.workflow-grid article{min-width:0}
+.workflow-grid h3{font-size:17px;font-weight:550;letter-spacing:-.02em;line-height:1.4;margin:0 0 12px}
+.workflow-grid p{font-size:14px;line-height:1.8;color:var(--muted);margin:0}
+.workflow-grid code,.install-copy code{font-size:.92em;background:var(--lavender);padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}
+@media(min-width:701px) and (max-width:1000px){.nav nav{gap:20px;font-size:13px}.nav .nav-cta{gap:14px;padding-inline:14px}}
+@media(max-width:960px){.product-preview-grid{grid-template-columns:minmax(0,1fr) minmax(150px,190px);gap:18px}.workflow-grid{gap:24px}}
+@media(max-width:700px){.product-preview{padding-bottom:68px}.product-preview-heading{margin-bottom:26px}.product-preview-heading .section-lead{font-size:16px}.product-preview-grid{grid-template-columns:1fr;gap:28px}.product-preview-mobile{max-width:300px;justify-self:center;width:100%}.workflow-grid{grid-template-columns:1fr;gap:26px;margin-top:32px}.workflow-grid h3{font-size:16px}.workflow-grid .privacy-number{margin-bottom:10px}}
 .privacy-number{color:#796483}
 .privacy p:not(.eyebrow){color:#716078}
 .coverage-result strong{color:#56705f}

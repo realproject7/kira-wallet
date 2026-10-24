@@ -7,19 +7,13 @@ The actual viewer UI and snapshot projection render the screenshots unchanged.
 import argparse
 from http.server import ThreadingHTTPServer
 import json
+import os
 from pathlib import Path
 import secrets
 import sys
 import tempfile
-import time
-import uuid
 
 PROJECT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(PROJECT), str(PROJECT / 'viewer')]
-from kira_jobs import JobStore, atomic
-from kira_ows import OwsStore
-from model import load_state
-import server
 
 USDC = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
 WETH = '0x4200000000000000000000000000000000000006'
@@ -29,7 +23,7 @@ SIGNET = '0xdf2b673ec06d210c8a8be89441f8de60b5c679c9'
 STAMP = '2026-10-05T00:00:00Z'
 
 
-def records(root):
+def records(root, atomic):
     public = json.loads((PROJECT / 'docs/screenshots/kira-readme-sources.json').read_text())
     wallets = []
     pools = []
@@ -57,8 +51,11 @@ def records(root):
                            'name': label, 'wallet_balance': balance, 'decimals': 18,
                            'mintclub': None, 'dex_pools': markets, 'balance_observed_at': STAMP})
             if price is not None:
+                # Bind the saved USDC price to its existing handwritten pool so
+                # current liquidity validation can use that same demo evidence.
                 prices.append({'chain_id': chain, 'address': contract, 'usd': price,
-                               'basis': 'DEX market', 'quality': 'estimated', 'observed_at': STAMP})
+                               'basis': 'DEX market', 'quality': 'estimated', 'observed_at': STAMP,
+                               **({'source': markets[0]['source_url']} if markets else {})})
         atomic(root / folder / 'results.json', {'schema_version': 1, 'wallet_address': address,
                'tags': [name], 'compiled_at': STAMP, 'status': 'completed_with_coverage_gaps',
                'counts': {}, 'coverage': coverage, 'tokens': tokens})
@@ -77,18 +74,50 @@ def records(root):
                                      (8453, SIGNET, 'signet')]}})
 
 
-def main():
-    parser = argparse.ArgumentParser(); parser.add_argument('--port', type=int, default=8806)
-    args = parser.parse_args()
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--port', type=int, default=8806)
+    parser.add_argument('--package-root', type=Path, default=PROJECT,
+                        help='Absolute installed kira-wallet package directory; defaults to this repository.')
+    args = parser.parse_args(argv)
+    if not args.package_root.is_absolute():
+        parser.error('--package-root must be an absolute package directory.')
+    package_root = args.package_root.resolve()
+    if not (package_root / 'kira_service.py').is_file() or not (package_root / 'viewer/server.py').is_file():
+        parser.error('--package-root must contain the Kira application and viewer.')
     with tempfile.TemporaryDirectory(prefix='kira-readme-preview-') as folder:
-        root = Path(folder); records(root)
+        root = Path(folder)
+        # Configure isolation before importing runtime modules. In particular, no
+        # inherited operator configuration or OWS vault belongs in this preview.
+        os.environ['KIRA_DATA_DIR'] = str(root)
+        os.environ['KIRA_CONFIG'] = str(root / '.kira.local.json')
+        os.environ['KIRA_RPC_ENV'] = str(root / 'unused-provider.env')
+        os.environ['KIRA_OWS_VAULT'] = str(root / 'unused-vault')
+        sys.path[:0] = [str(package_root), str(package_root / 'viewer')]
+        from kira_jobs import JobStore, atomic
+        from kira_ows import OwsStore
+        from kira_service import Application
+        import server
+
+        records(root, atomic)
         server.ROOT = root
+        JobStore.launch = lambda _: None
+        application = Application(root)
+        state = application.views.refresh()
+        # USDB and BLAST have no handwritten liquidity evidence. The current
+        # application correctly leaves those saved spot references unpriced.
+        assert abs(state['dashboard']['known_value_usd'] - 13053.5) < .001
         http = ThreadingHTTPServer(('127.0.0.1', args.port), server.Handler)
         http.controls = True; http.session_token = secrets.token_urlsafe(32)
-        JobStore.launch=lambda _:None
-        http.jobs = JobStore(root); http.ows = OwsStore(root, vault=root / 'unused-vault')
-        state, _, _ = load_state(root)
-        assert abs(state['dashboard']['known_value_usd'] - 14253.5) < .001
+        http.daemon_threads = True
+        http.application = application; http.jobs = application.jobs
+        http.ows = OwsStore(root, vault=root / 'unused-vault', runner=lambda _: {'wallets': []})
+        package = json.loads((package_root / 'package.json').read_text())
+        print(json.dumps({'package_root': str(package_root), 'package_version': package['version'],
+                          'viewer_source': str(Path(server.__file__).resolve()),
+                          'fixture_source': str(Path(__file__).resolve()),
+                          'synthetic_demo': True, 'fixture_observed_at': STAMP,
+                          'provider_workers': False, 'isolated_ows': True}), flush=True)
         print(f'Isolated README preview: http://127.0.0.1:{args.port}', flush=True)
         try: http.serve_forever()
         except KeyboardInterrupt: pass
