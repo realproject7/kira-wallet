@@ -1,109 +1,194 @@
-# Native HTML showcase animation, 2026-10-05
+# Native HTML workflow simulations
 
-The showcase now renders the conversation as browser text, HTML and CSS.
-Encoded video cannot preserve small text at every responsive size. Native
-layout removes that compression and scaling step without adding a video or
-React runtime. The three examples still play automatically in one conversation.
+The public Kira site illustrates an external agent using Kira's local wallet
+tools. Both simulations use authored HTML, browser text and CSS. They do not run
+an agent, install software, query a wallet or provider, open a local app, or
+create files. The dashboard pane is an illustrative HTML reconstruction.
+Example balances and prices are fictional saved observations; missing prices
+remain unknown and excluded from priced totals. Web search, calculations and
+file creation belong to the agent host.
 
-## Behavior
+`site/index.html` owns the steps, result cards, dashboard views and readable
+transcripts. `site/demo.js` owns playback, typing, reveals, scrolling and manual
+controls. `site/site.css` owns native typography and responsive pane layouts.
+There is no video, canvas, rasterized text or transform-scaled application frame.
+Text reflows at its actual CSS size using the system font stack. Resizing does
+not select a new movie source or restart a simulation.
 
-A 48-second loop gives each example 16 seconds. The question types into the
-composer, Kira researches, the answer types, and result rows appear in order.
-Earlier messages stay above as the conversation scrolls. The composer stays
-at the bottom of the frame. There are no scenario tabs, Pause button, Demo
-badge or click-to-pause behavior.
+## Two simulations, one clock
 
-The animated copy has no interactive targets and is hidden from assistive
-technology. The original complete HTML transcript is the single content
-source. Screen readers can read it without repeated live announcements.
-Reduced motion or JavaScript being unavailable exposes the readable transcript
-with its source links. A focused fallback link is never hidden on recovery.
+Each root has its own elapsed time, pause state, visibility, chapter selection
+and scroll positions. One `requestAnimationFrame` manager serves both roots.
+Each cycle lasts 48 seconds, calculated from the step count and step duration.
+The `data-cycle` HTML attribute describes that duration; JavaScript calculates
+it from `data-duration` and the actual steps.
 
-The animation pauses while offscreen or while the document is hidden. It
-resumes at the same elapsed time. Responsive resizing reflows the same HTML
-without choosing a new media source or restarting the conversation. CSS uses
-native font sizes and actual scrolling, with no scaled canvas or video texture.
-Only small opacity reveals and research dots use CSS animation.
-
-## Layout
-
-| Viewport | Maximum frame width | Conversation height | Result panel height |
+| Simulation | Steps | Time per step | Content |
 | --- | --- | --- | --- |
-| Above 700px | 520px | 570px | 392–394px |
-| 421–700px | 440px | 520px | 392–394px |
-| Up to 420px | 360px | 520px | 392–394px |
+| Hero | 6 | 8 seconds | Install Kira; add public wallets; read holdings; check price gaps; add official web context; make a brief and CSV |
+| Workspace | 4 | 12 seconds | Open Overview; review All tokens; compare USDC wallet allocation; check Activity |
 
-The available result viewport is 450px on desktop and 402px on mobile.
-Token names and values use 14px text. Balances use 12px, market references
-11px, and subordinate labels 10px. All three rows and the subtotal fit above
-the composer even at a 320px page width. Normal page scrolling handles short
-screens rather than shrinking the text to fit the screen height.
+Each step types its question for approximately 1.65 seconds. The tool line
+appears at 1.8 seconds. The answer begins at 3.4 seconds and types over about
+1.1 seconds. Hero result cards appear at 4.7 seconds; workspace context appears
+at 5 seconds. The workspace switches the
+dashboard view to match its active step; its first step shows a loading state
+before revealing Overview. The browser address, breadcrumbs, tabs and app
+contents are illustrative rather than working browser or wallet controls.
 
-`site/index.html` owns the example contents. `site/demo.js` clones that
-transcript into a pointer-free animated stream and schedules its phases.
-`site/site.css` owns both responsive layouts and the readable fallback.
-The older renderer and MP4 exports remain available as offline exports;
-the public page no longer loads or plays them. Their scenario manifest is
-historical export provenance, not the animation's content source.
+The clock uses a monotonic RAF timestamp. It caps a single elapsed-time
+increment at 100ms and updates the DOM no more frequently than once per 50ms,
+approximately 20 paints per second. This limits repeated text and scroll writes
+without slowing the 48-second timeline. There is no separate playback-speed
+selector. Animated text and scrolling share the same clock.
 
-## Verification
+Only a running root advances or receives periodic DOM updates. A root stops
+while it is offscreen, manually paused, showing its transcript, or subject to
+reduced motion. A hidden document stops both roots. The shared RAF is cancelled
+when neither root can run. On resumption, the timestamp baseline resets so time
+spent paused is not added to the conversation. The other visible simulation
+can continue while one root is stopped.
 
-`python3 scripts/showcase-preview.py --port 8807 --frame 44.5` serves the
-public site with production security headers and freezes the QA clock at the
-last example's complete results. This is a test fixture, not the live page.
-The `--reduced-motion` and `--no-js` modes exercise the readable fallback
-without changing the operator's OS settings or accessing a wallet.
+## Controls and readable content
 
-Actual Chrome geometry checks covered 320, 390, 494, 700, 701 and 1440px.
-All three result panels fit the viewport, with zero horizontal page overflow.
-The last subtotal has at least 6px of space before the viewport edge. The
-production CSP permits the animation; the page contains no video or canvas.
-The reduced-motion preview stops playback and preserves keyboard access to
-market links. The JavaScript-free preview renders the full transcript.
+JavaScript reveals the chapter and Play/Pause buttons. Pause freezes the current
+step and text; Play resumes it. Selecting a chapter shows its completed state
+and pauses. Playing after a chapter selection restarts that chapter so its
+typing and reveals can be followed from the beginning.
 
-Live autoplay, click behavior, continuous scrolling and looping were checked
-separately from the frozen geometry fixture. Syntax, local asset references,
-ARIA IDs, diff formatting and the public-file privacy guard were also checked.
-This follow-up has implementer verification. The preceding independent review
-covered the older movie implementation and is not a review of this rewrite.
-No operator wallet, model provider or key vault was used for site QA.
+The hero's three chapter buttons are Install, Add wallets and Ask. Ask begins
+with Read holdings and remains the active chapter through the remaining wallet
+questions. The workspace has one chapter button for each of its four steps.
+Buttons use native keyboard interaction, descriptive labels and `aria-current`
+for the active chapter. The separate Understand/Investigate/Create tabs support
+Left/Right arrows, Home and End; those tabs do not control the simulation clock.
 
-## SIGNET pricing
+The animated surfaces are `aria-hidden`. They contain no live region or working
+input, so typing does not repeatedly announce partial answers. Each root also
+contains a native `details` transcript with its complete authored questions and
+answers. Opening it pauses that root; closing it allows playback to resume if
+the other playback conditions permit. Keep the transcript and animated example
+copy consistent when editing content. These are separate HTML representations,
+not a dynamically cloned transcript.
 
-SIGNET on Base is the Mint Club token
-`0xDF2B673Ec06d210C8A8Be89441F8de60B5C679c9`, backed by HUNT. The
-[official token page](https://mint.club/token/base/SIGNET), checked on 2026-10-05,
-showed a curve price of 0.613 HUNT and an approximately $0.061 USD reference.
-The animation shows a fictional balance of 650 SIGNET, $0.0610 per token and
-$39.65 spot value, alongside its HUNT curve price. The first subtotal is $272.65.
-These rounded references do not claim an executable burn output or a live price
-feed. The curve relationship and source are recorded in the scenario manifest.
+With `prefers-reduced-motion: reduce`, each root shows a completed static final
+step. Its playback button reads Static and is disabled. Chapter selection still
+provides static completed examples. Preference changes update the playback state.
+The CSS preference also disables smooth document scrolling.
 
-## README captures
+Without JavaScript, playback controls stay hidden. The hero's final report
+example and the workspace's initial Overview example remain visible as full
+HTML, and both transcripts can be opened with native summary controls. Scenario
+descriptions also remain present. Copy buttons and scripted tab selection
+require JavaScript.
 
-The two screenshots now use separate conversations relevant to each main view.
-Overview explains the $14,253.50 portfolio, network allocation and missing
-coverage. USDC Markets explains the 4,400 USDC balance, its two wallets and four
-recorded pools, with two initially visible. Pool liquidity remains separate
-from wallet value and executable proceeds.
+## Responsive panes and typography
 
-`python3 scripts/readme-preview.py --port 8806` reproduces a disposable local
-capture workspace with fictional public wallet identities and handwritten
-answers. The unchanged production viewer and snapshot projection render the
-images. The fixture cannot queue research, invoke a model CLI or create keys.
-No operator portfolio or chat is read. Chrome captures are 1728×1120; their
-provenance and hashes are in `docs/screenshots/kira-readme-sources.json`.
-README uses repository-relative image paths so each branch shows its own
-screenshots. These captures demonstrate the UI, not live model accuracy.
+The hero and workspace are independent animation viewports. In addition, the
+workspace has separate agent-chat and dashboard-content scroll containers.
+The chat scrolls toward its latest revealed content. Dashboard content starts
+at the top of each step and scrolls toward its bottom after seven seconds.
+Neither pane scrolls the page or the other simulation. Changing steps resets
+that root's content scroll positions.
 
-Design evidence for balance and price separation:
-[Coinbase and Gemini portfolio screens](https://www.lazyweb.com/agentic-search/9bde7e00-d871-4aee-ac36-77aeffd6df08).
+The workspace places the agent pane beside the browser pane on wide screens,
+then stacks them at its responsive breakpoint. Its sidebar and secondary chrome
+adapt at smaller widths. The page uses wrapping, pane dimensions and normal
+document scrolling instead of shrinking a desktop capture. Supporting text,
+including tool code and dashboard rows, uses explicit CSS font sizes. Check
+rendered text, clipping and controls at narrow widths rather than inferring
+readability from a source image's pixel dimensions.
 
-## Publication boundaries
+The page uses a small system-sans type scale: 17/26px body, 21/30px desktop
+intro, 19/28px mobile intro and 13/19px routine captions. Section titles use
+48/52px, 40/44px and 32/36px across the main breakpoints. The two-column hero
+uses 64/68px with restrained -0.015em tracking, adapting to its available width.
+Dense illustrative app and conversation text uses explicit component sizes.
+The hierarchy and rhythm reference [Apple's typography guidance](https://developer.apple.com/design/human-interface-guidelines/typography)
+and [the iPhone page](https://www.apple.com/iphone/).
+The site uses installed system fonts; it does not download or bundle Apple's
+proprietary webfonts or claim identical rendering across operating systems.
 
-PR 19 is merged. This animation and the distinct README screenshots remain
-in PR 20 until authorized merge. The operator explicitly authorized immediate
-showcase publication without another approval question. The HTML animation
-itself needs no npm release. The separately requested CLI startup change has
-its own package release boundary. Published npm 0.1.2 bytes and its tag remain
-immutable, and registry publication remains operator-only.
+## Agent marks
+
+The compatibility strip serves four local SVG assets from
+`site/assets/agents/`. All four use the same mark box and name treatment:
+
+| Label | Asset | Official source |
+| --- | --- | --- |
+| Codex | `openai.svg`, OpenAI Blossom | [Pinned OpenAI Cookbook asset](https://github.com/openai/openai-cookbook/blob/8495326b6f1b7cec94e7f5e393a4045e328a268e/examples/agents_sdk/deployment_manager/frontend/src/openai-logomark.svg) and [OpenAI brand guidance](https://openai.com/brand/) |
+| Claude Code | `claude.svg`, Claude Spark in Clay | [Anthropic media kit](https://www.anthropic.com/press-kit) and [trademark guidance](https://www.anthropic.com/legal/trademark-guidelines) |
+| Gemini CLI | `gemini.svg`, Gemini sparkle aurora | [Official product asset](https://www.gstatic.com/lamda/images/gemini_sparkle_aurora_33f86dc0c0257da337c63.svg) referenced by [Gemini](https://gemini.google.com/) |
+| Grok | `grok.svg`, Grok Logomark Dark | [Official logo archive](https://data.x.ai/logos/SpaceXAI_Grok_Assets.zip) and [xAI brand guidance](https://x.ai/legal/brand-guidelines) |
+
+The Codex label uses the OpenAI symbol rather than claiming a separate Codex
+mark. Preserve supplied proportions and colors. The Gemini vendor SVG contains
+a self-contained embedded gradient image; this does not rasterize page text or
+make an external request. The marks identify hosts or models and do not imply
+partnership or endorsement. Adjacent copy explains the requirement for a
+terminal-capable host, including custom local tools for a Grok-powered agent.
+
+## Local preview and acceptance contract
+
+Run these commands from the repository root. Use separate available loopback
+ports where previews need to coexist:
+
+```sh
+python3 scripts/showcase-preview.py --port 8807
+python3 scripts/showcase-preview.py --port 8808 --qa-frames
+python3 scripts/showcase-preview.py --port 8809 --reduced-motion
+python3 scripts/showcase-preview.py --port 8810 --no-js
+```
+
+The server binds to `127.0.0.1`, serves `site/`, applies the headers from
+`site/vercel.json`, and adds `Cache-Control: no-store`. It never loads wallet
+records. Its mutually exclusive QA modes are:
+
+- `--frame 44.5`: inject an external same-origin QA clock and freeze a simulated
+  frame between 0 and 47 seconds.
+- `--qa-frames`: enable loopback URLs such as
+  `http://127.0.0.1:8808/?frame=44.5` to select frozen frames without restarting
+  the preview. The frame parameter is ignored in ordinary preview mode and is
+  not a production animation feature.
+- `--reduced-motion`: replace JavaScript's exact reduced-motion `matchMedia`
+  response in this preview. It does not change the OS preference or emulate
+  every CSS media feature.
+- `--no-js`: remove the site's `/demo.js` script tag to exercise the authored
+  fallback. This is not a browser-wide script blocker.
+
+The frozen clock queues the single RAF manager and advances it in 1/60-second
+increments during `DOMContentLoaded`. Use it for geometry and content snapshots.
+It does not establish real autoplay, elapsed duration, visibility handling,
+controls or loop behavior. Keep future RAF work inside the shared manager so
+the one-callback QA clock remains representative.
+
+For frozen geometry, inspect every step's full results and early typing/tool
+states at desktop and narrow widths, including 320px, 390px and responsive
+breakpoint boundaries. Verify the actual viewport dimensions for each capture.
+Require no horizontal page overflow, no overlapping labels or values, readable
+native text, reachable chapter and playback controls, and independent scrolling
+that keeps result content available. Confirm local assets load under production
+CSP and no video or canvas is introduced.
+
+Use the ordinary preview's real clock for the full 48-second cycles. Check
+ordered typing and reveals, all six hero and four workspace steps, looping,
+manual Pause/Play, chapter completion and restart, transcript pause/resume,
+offscreen pause/resume, hidden-document behavior and responsive state retention.
+Check both roots independently, including one paused while the other runs.
+Exercise keyboard access, reduced-motion static chapters and no-JavaScript
+transcripts in their dedicated previews. Check installation copy controls and
+the separate scenario tabs. Syntax checks include `node --check site/demo.js`
+and Python compilation of the preview helper.
+
+This document defines implementation and acceptance procedures. It does not
+claim a new validation pass or independent review. The current request is for a
+new preview; production deployment is not authorized by this document.
+
+## Historical reference
+
+Commit `09e0c0a` replaced encoded showcase movies with native HTML after small
+text remained blurred even with 3x rendering. Commit `6daf3d7` retained that
+engine while clarifying the external-agent boundary. The current simulations
+reuse the native-text approach with new content and controls. Older MP4 exports
+and scenario manifests are historical artifacts, not the current page's content
+source or acceptance evidence.
