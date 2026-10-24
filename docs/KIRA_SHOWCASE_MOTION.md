@@ -1,113 +1,111 @@
 # Native HTML workflow simulations
 
-The public Kira site illustrates an external agent using Kira's local wallet
-tools. Both simulations use authored HTML, browser text and CSS. They do not run
-an agent, install software, query a wallet or provider, open a local app, or
-create files. The dashboard pane is an illustrative HTML reconstruction.
-Example balances and prices are fictional saved observations; missing prices
-remain unknown and excluded from priced totals. Web search, calculations and
-file creation belong to the agent host.
+The site illustrates a general agent using Kira's wallet tools alongside its own
+analysis, web research and file tools. Both animations use native HTML text and
+CSS at actual size. No video, canvas or transform-scaled app frame is used.
+Balances, prices and sell-out records are fictional examples. These animations
+do not run an agent, request provider data, create files or transfer funds.
 
-`site/index.html` owns the steps, result cards, dashboard views and readable
-transcripts. `site/demo.js` owns playback, typing, reveals, scrolling and manual
-controls. `site/site.css` owns native typography and responsive pane layouts.
-There is no video, canvas, rasterized text or transform-scaled application frame.
-Text reflows at its actual CSS size using the system font stack. Resizing does
-not select a new movie source or restart a simulation.
+## Hero restored from the earlier native version
 
-## Two simulations, one clock
+The hero restores the visual sequence from commit `6daf3d7`: Kira's welcome
+illustration, a typed question in the composer, the research illustration, an
+answer and sequential token cards. Three 16-second chapters form a 48-second
+cycle: overlooked token values, Blast holdings, then saved observation changes.
+Completed turns remain above the current one until the full cycle restarts.
 
-Each root has its own elapsed time, pause state, visibility, chapter selection
-and scroll positions. One `requestAnimationFrame` manager serves both roots.
-Each cycle lasts 48 seconds, calculated from the step count and step duration.
-The `data-cycle` HTML attribute describes that duration; JavaScript calculates
-it from `data-duration` and the actual steps.
+The authored transcript in `site/index.html` is the source for the animated
+clones. Links in the clones become inert text. The original transcript retains
+its links and is available through a native details element. Without JavaScript
+it is open and readable. Chapter selection shows a completed chapter; Play
+restarts that chapter. Pause freezes text, reveals and scrolling.
 
-| Simulation | Steps | Time per step | Content |
-| --- | --- | --- | --- |
-| Hero | 6 | 8 seconds | Install Kira; add public wallets; read holdings; check price gaps; add official web context; make a brief and CSV |
-| Workspace | 4 | 12 seconds | Open Overview; review All tokens; compare USDC wallet allocation; check Activity |
+## One connected agent/browser conversation
 
-Each step types its question for approximately 1.65 seconds. The tool line
-appears at 1.8 seconds. The answer begins at 3.4 seconds and types over about
-1.1 seconds. Hero result cards appear at 4.7 seconds; workspace context appears
-at 5 seconds. The workspace switches the
-dashboard view to match its active step; its first step shows a loading state
-before revealing Overview. The browser address, breadcrumbs, tabs and app
-contents are illustrative rather than working browser or wallet controls.
+The lower example has four 18-second turns, forming a 72-second cycle:
 
-The clock uses a monotonic RAF timestamp. It caps a single elapsed-time
-increment at 100ms and updates the DOM no more frequently than once per 50ms,
-approximately 20 paints per second. This limits repeated text and scroll writes
-without slowing the 48-second timeline. There is no separate playback-speed
-selector. Animated text and scrolling share the same clock.
+1. Calculate an indicative subtotal from saved Base sell-out records while
+   separating missing quotes and shared liquidity.
+2. Follow up on the difference between SIGNET's spot valuation and the saved
+   independent full-position exit estimates.
+3. Research current Blast-to-Ethereum availability and withdrawal steps.
+4. Preserve the requested Blast gas reserve and prepare a sourced plan and CSV.
 
-Only a running root advances or receives periodic DOM updates. A root stops
-while it is offscreen, manually paused, showing its transcript, or subject to
-reduced motion. A hidden document stops both roots. The shared RAF is cancelled
-when neither root can run. On resumption, the timestamp baseline resets so time
-spent paused is not added to the conversation. The other visible simulation
-can continue while one root is stopped.
+Every completed turn remains in the scroll container. The next question follows
+it, rather than replacing the conversation. There is no repeated generic
+"Shared local records" result card. Each turn has its own calculation, source
+comparison or file result. A readable transcript includes the external sources.
 
-## Controls and readable content
+The adjacent browser pane follows the conversation through Base network,
+SIGNET details, Blast network and Blast ETH details. It mirrors the installed
+app's hierarchy, palette and controls: wallet sidebar, connection control,
+Overview/All tokens/Activity tabs, summary, token table and wallet positions.
+The sidebar becomes the compact dark header at narrow container widths. This
+is an authored reconstruction with example data, not a recording or working app.
+Links to the actual installed 0.2.1 screenshots remain below it.
 
-JavaScript reveals the chapter and Play/Pause buttons. Pause freezes the current
-step and text; Play resumes it. Selecting a chapter shows its completed state
-and pauses. Playing after a chapter selection restarts that chapter so its
-typing and reveals can be followed from the beginning.
+## Numerical and research boundaries
 
-The hero's three chapter buttons are Install, Add wallets and Ask. Ask begins
-with Read holdings and remains the active chapter through the remaining wallet
-questions. The workspace has one chapter button for each of its four steps.
-Buttons use native keyboard interaction, descriptive labels and `aria-current`
-for the active chapter. The separate Understand/Investigate/Create tabs support
-Left/Right arrows, Home and End; those tabs do not control the simulation clock.
+The lower fixture uses 650 SIGNET in Daily and 325 in Savings. At $0.061 each,
+the combined saved spot value is $59.475, displayed as $59.48. Independent
+full-position estimates are $37.80 and $18.65: an indicative sum of $56.45,
+$3.03 (about 5.1%) below the rounded spot value. Base ETH ($6,804) and USDC
+($4,400) have no saved sell-out quote in this fixture and are not included in
+the estimate subtotal. Known Base spot value, including SIGNET, is $11,263.48.
 
-The animated surfaces are `aria-hidden`. They contain no live region or working
-input, so typing does not repeatedly announce partial answers. Each root also
-contains a native `details` transcript with its complete authored questions and
-answers. Opening it pauses that root; closing it allows playback to resume if
-the other playback conditions permit. Keep the transcript and animated example
-copy consistent when editing content. These are separate HTML representations,
-not a dynamically cloned transcript.
+The two SIGNET estimates may consume the same pool. The conversation explicitly
+states that their arithmetic sum is not a combined executable quote. The app
+continues to show estimates by wallet, consistent with `viewer/details.py`.
+Gas is excluded. Missing estimates are never displayed as zero. No spot value
+is relabeled as sale proceeds.
 
-With `prefers-reduced-motion: reduce`, each root shows a completed static final
-step. Its playback button reads Static and is disabled. Chapter selection still
-provides static completed examples. Preference changes update the playback state.
-The CSS preference also disables smooth document scrolling.
+The Blast example holds 0.035 ETH. The user explicitly asks to reserve 0.003 ETH
+for source gas, leaving 0.032 ETH to quote. This is an illustrative user choice,
+not an estimated gas requirement or a live transfer recommendation.
 
-Without JavaScript, playback controls stay hidden. The hero's final report
-example and the workspace's initial Overview example remain visible as full
-HTML, and both transcripts can be opened with native summary controls. Scenario
-descriptions also remain present. Copy buttons and scripted tab selection
-require JavaScript.
+Bridge research checked on 2026-10-25 uses [Blast's bridge](https://blast.io/en/bridge),
+[official withdrawal instructions](https://docs.blast.io/withdrawals/withdraw-to-ethereum)
+and [Across's chain-support documentation](https://exclusive.docs.across.to/chains-and-contracts).
+The example catches Blast's wind-down and Across's Blast deprecation. The
+official exit indicates approximately one day plus proving and claiming steps.
+It does not claim that a third-party route is fastest without a current,
+exact-amount quote. Availability, fees and arrival estimates must be checked
+again for a real transfer.
 
-## Responsive panes and typography
+## Shared playback and accessible fallbacks
 
-The hero and workspace are independent animation viewports. In addition, the
-workspace has separate agent-chat and dashboard-content scroll containers.
-The chat scrolls toward its latest revealed content. Dashboard content starts
-at the top of each step and scrolls toward its bottom after seven seconds.
-Neither pane scrolls the page or the other simulation. Changing steps resets
-that root's content scroll positions.
+One requestAnimationFrame manager drives both roots with independent elapsed
+time. Frame deltas are capped at 100ms and DOM paints occur at most every 50ms.
+A root stops while offscreen, manually paused, or showing its transcript. A
+hidden document stops both roots. The shared RAF is cancelled when neither can
+run, and resumption resets the timestamp baseline.
 
-The workspace places the agent pane beside the browser pane on wide screens,
-then stacks them at its responsive breakpoint. Its sidebar and secondary chrome
-adapt at smaller widths. The page uses wrapping, pane dimensions and normal
-document scrolling instead of shrinking a desktop capture. Supporting text,
-including tool code and dashboard rows, uses explicit CSS font sizes. Check
-rendered text, clipping and controls at narrow widths rather than inferring
-readability from a source image's pixel dimensions.
+Animated surfaces are aria-hidden and contain no working inputs or live
+announcements. Their separate transcripts remain accessible. Reduced motion
+shows completed static chapters and disables Play/Pause. Without JavaScript,
+the hero transcript is open, the first lower scene remains visible, and all
+lower conversation text and sources can be read in its transcript. Scenario
+copy also remains available without scripted tab selection.
 
-The page uses a small system-sans type scale: 17/26px body, 21/30px desktop
-intro, 19/28px mobile intro and 13/19px routine captions. Section titles use
-48/52px, 40/44px and 32/36px across the main breakpoints. The two-column hero
-uses 64/68px with restrained -0.015em tracking, adapting to its available width.
-Dense illustrative app and conversation text uses explicit component sizes.
-The hierarchy and rhythm reference [Apple's typography guidance](https://developer.apple.com/design/human-interface-guidelines/typography)
-and [the iPhone page](https://www.apple.com/iphone/).
-The site uses installed system fonts; it does not download or bundle Apple's
-proprietary webfonts or claim identical rendering across operating systems.
+Native keyboard chapter and playback controls are provided. Scenario tabs have
+Left/Right/Home/End navigation. Both install copy actions retain status messages.
+The chat and app content scroll independently. Chat follows the newly revealed
+content; app views reset at a new turn and move toward lower content after
+11 seconds. At narrow widths the agent pane and browser pane stack, without
+shrinking text or a desktop capture.
+
+## Token artwork and typography
+
+Every token row and token-specific result uses the existing contract-identified
+local artwork. ETH, USDC, SIGNET, USDB, BLAST, CASHCAT and APE sources and hashes
+are recorded in `site/assets/token-artwork-sources.json`. Letter, dollar-sign
+and diamond substitutes are not used. The existing ETH image is the established
+ETH/WETH artwork documented in that provenance file.
+
+The surrounding page retains the system font hierarchy, restrained tracking
+and consistent line heights. The compatibility strip simply explains that a
+local Kira installation combines wallet tools with an agent's own abilities.
+Local tool access and runtime requirements are explained in the setup section.
 
 ## Agent marks
 
@@ -128,67 +126,31 @@ make an external request. The marks identify hosts or models and do not imply
 partnership or endorsement. Adjacent copy explains the requirement for a
 terminal-capable host, including custom local tools for a Grok-powered agent.
 
-## Local preview and acceptance contract
+## Local verification
 
-Run these commands from the repository root. Use separate available loopback
-ports where previews need to coexist:
+Run separate loopback previews from the repository root:
 
 ```sh
-python3 scripts/showcase-preview.py --port 8807
-python3 scripts/showcase-preview.py --port 8808 --qa-frames
-python3 scripts/showcase-preview.py --port 8809 --reduced-motion
+python3 scripts/showcase-preview.py --port 8807 --qa-frames
+python3 scripts/showcase-preview.py --port 8808 --reduced-motion
 python3 scripts/showcase-preview.py --port 8810 --no-js
 ```
 
-The server binds to `127.0.0.1`, serves `site/`, applies the headers from
-`site/vercel.json`, and adds `Cache-Control: no-store`. It never loads wallet
-records. Its mutually exclusive QA modes are:
+The preview applies production security headers and no-store caching. It never
+loads wallet records. A normal URL uses the real clock. QA-only `?frame=0..71`
+freezes the shared clock for geometry snapshots; it is not a production feature
+and cannot prove real autoplay or duration. The reduced-motion option overrides
+the product JavaScript's exact matchMedia query only, without OS changes. The
+no-JavaScript option removes demo.js from the served HTML.
 
-- `--frame 44.5`: inject an external same-origin QA clock and freeze a simulated
-  frame between 0 and 47 seconds.
-- `--qa-frames`: enable loopback URLs such as
-  `http://127.0.0.1:8808/?frame=44.5` to select frozen frames without restarting
-  the preview. The frame parameter is ignored in ordinary preview mode and is
-  not a production animation feature.
-- `--reduced-motion`: replace JavaScript's exact reduced-motion `matchMedia`
-  response in this preview. It does not change the OS preference or emulate
-  every CSS media feature.
-- `--no-js`: remove the site's `/demo.js` script tag to exercise the authored
-  fallback. This is not a browser-wide script blocker.
+Check desktop, mobile and breakpoint boundaries, completed and early states,
+page and internal horizontal overflow, control clipping, pane bounds, local
+artwork loading and native text sizes. Confirm accumulated turn counts and
+matching app views. Check real 48/72-second loops separately, pause/restart,
+transcripts, offscreen behavior, keyboard controls, copy actions and fallbacks.
+Do not claim a hidden-document browser pass unless that state was observed.
+Run the repository gate and privacy checks before deployment.
 
-The frozen clock queues the single RAF manager and advances it in 1/60-second
-increments during `DOMContentLoaded`. Use it for geometry and content snapshots.
-It does not establish real autoplay, elapsed duration, visibility handling,
-controls or loop behavior. Keep future RAF work inside the shared manager so
-the one-callback QA clock remains representative.
-
-For frozen geometry, inspect every step's full results and early typing/tool
-states at desktop and narrow widths, including 320px, 390px and responsive
-breakpoint boundaries. Verify the actual viewport dimensions for each capture.
-Require no horizontal page overflow, no overlapping labels or values, readable
-native text, reachable chapter and playback controls, and independent scrolling
-that keeps result content available. Confirm local assets load under production
-CSP and no video or canvas is introduced.
-
-Use the ordinary preview's real clock for the full 48-second cycles. Check
-ordered typing and reveals, all six hero and four workspace steps, looping,
-manual Pause/Play, chapter completion and restart, transcript pause/resume,
-offscreen pause/resume, hidden-document behavior and responsive state retention.
-Check both roots independently, including one paused while the other runs.
-Exercise keyboard access, reduced-motion static chapters and no-JavaScript
-transcripts in their dedicated previews. Check installation copy controls and
-the separate scenario tabs. Syntax checks include `node --check site/demo.js`
-and Python compilation of the preview helper.
-
-This document defines implementation and acceptance procedures. It does not
-claim a new validation pass or independent review. The current request is for a
-new preview; production deployment is not authorized by this document.
-
-## Historical reference
-
-Commit `09e0c0a` replaced encoded showcase movies with native HTML after small
-text remained blurred even with 3x rendering. Commit `6daf3d7` retained that
-engine while clarifying the external-agent boundary. The current simulations
-reuse the native-text approach with new content and controls. Older MP4 exports
-and scenario manifests are historical artifacts, not the current page's content
-source or acceptance evidence.
+This document describes the implementation and checks; actual pass evidence is
+recorded separately. Deployment authority comes from the operator's current
+request, not from this document. Independent review was not selected.

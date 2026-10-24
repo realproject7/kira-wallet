@@ -16,13 +16,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8807)
     modes = parser.add_mutually_exclusive_group()
-    modes.add_argument('--frame', type=float, help='Freeze a QA preview at 0–47 seconds.')
+    modes.add_argument('--frame', type=float, help='Freeze a QA preview at 0–71 seconds.')
     modes.add_argument('--reduced-motion', action='store_true')
     modes.add_argument('--no-js', action='store_true')
-    modes.add_argument('--qa-frames', action='store_true', help='Allow loopback-only ?frame=0..47 snapshots.')
+    modes.add_argument('--qa-frames', action='store_true', help='Allow loopback-only ?frame=0..71 snapshots.')
     args = parser.parse_args()
-    if args.frame is not None and not 0 <= args.frame <= 47:
-        parser.error('--frame must be between 0 and 47 seconds')
+    if args.frame is not None and not 0 <= args.frame <= 71:
+        parser.error('--frame must be between 0 and 71 seconds')
     override = ''
     if args.frame is not None:
         override = '''
@@ -52,8 +52,8 @@ window.matchMedia = query => query === '(prefers-reduced-motion: reduce)'
         if not args.qa_frames or not values:
             return None
         frame = float(values[0])
-        if not 0 <= frame <= 47:
-            raise ValueError('frame must be between 0 and 47 seconds')
+        if not 0 <= frame <= 71:
+            raise ValueError('frame must be between 0 and 71 seconds')
         return frame
 
     def frame_clock(frame):
