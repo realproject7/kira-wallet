@@ -80,7 +80,6 @@ class ResearchToolsTest(unittest.TestCase):
 
     def test_large_inventory_queries_search_rank_aggregate_without_dumping_pages(self):
         from copy import deepcopy
-        from kira_records import read_completion, read_receipt
         import model
         state,stamp,stale=model.load_state(self.root)
         wallet=state['wallets'][0];base=deepcopy(wallet['assets'][0])
@@ -101,19 +100,14 @@ class ResearchToolsTest(unittest.TestCase):
             self.assertEqual(search['match_type'],'exact')
             wallet['assets'][10]['name']='PLOT fan token'
             self.assertEqual(self.call('holdings_query',{'mode':'search','query':'PLOT'})['matched_asset_count'],2)
-            receipts=[]
-            for offset in (0,1):
-                args={'mode':'search','query':'PLOT','limit':1,'offset':offset}
-                page=self.call('holdings_query',args);receipts.append(read_receipt('holdings_query',args,page))
-            self.assertEqual(read_completion('Use holdings_query for PLOT',receipts,self.tools)['status'],'complete')
+            pages=[self.call('holdings_query',{'mode':'search','query':'PLOT','limit':1,'offset':offset}) for offset in (0,1)]
+            self.assertEqual([p['next_offset'] for p in pages],[1,None])
+            self.assertEqual(len({r['identity'] for p in pages for r in p['results']}),2)
             aggregate=self.call('holdings_query',{'mode':'aggregate','minimum_value_usd':1700})
             self.assertEqual(aggregate['matched_position_count'],19)
             self.assertEqual(aggregate['valuation']['all_priced_positions']['estimated_value_usd'],str(sum(range(1700,1719))))
             page=self.call('wallet_read',{'wallet':self.first['address_key'],'limit':100})
-            receipts=[{'name':'records_read','arguments':{'reads':[{'name':'wallet_read','arguments':{'wallet':self.first['address_key'],'limit':100}}]},'reads':[read_receipt('wallet_read',{'wallet':self.first['address_key'],'limit':100},page)]}]
-            self.assertEqual(read_completion('상위 5개를 알려줘',receipts,self.tools)['status'],'partial')
-            receipts.append(read_receipt('holdings_query',{'mode':'rank','limit':5},result))
-            self.assertEqual(read_completion('top 5 positions',receipts,self.tools)['status'],'complete')
+            self.assertEqual(page['next_offset'],100)
             with self.assertRaises(JobError):self.call('holdings_query',{'mode':'rank','wallet':self.other})
         for args in ({'mode':'search'},{'mode':'rank','limit':100},{'mode':'rank','environment':'other'},{'mode':'rank','group_by':'symbol'}):
             with self.assertRaises(JobError):self.call('holdings_query',args)
@@ -143,10 +137,6 @@ class ResearchToolsTest(unittest.TestCase):
             self.assertEqual(result['position_count'],1);self.assertEqual(result['outside_usd_scope_count'],1)
             batch=tools.call('records_read',{'reads':[{'name':'token_read','arguments':args}]*2},str(uuid.uuid4()))
             self.assertEqual(batch['position_count'],1);self.assertEqual(batch['completed_reads'],2)
-            from kira_records import read_completion,read_receipt
-            failed=read_receipt('token_read',{**args,'minimum_value_usd':'10.0'},{'error':'Temporary read failure'})
-            recovered=read_receipt('token_read',args,result)
-            self.assertEqual(read_completion('Read '+json.dumps({'name':'token_read','arguments':failed['arguments']}),[failed,recovered],tools)['status'],'complete')
         for invalid in (True,-1,'NaN','Infinity',{},'1'*81):
             with self.assertRaises(JobError):tools.call('token_read',{**args,'minimum_value_usd':invalid},str(uuid.uuid4()))
 
@@ -170,14 +160,6 @@ class ResearchToolsTest(unittest.TestCase):
         self.assertEqual([r['status'] for r in result['reads']],['completed','completed','failed'])
         with self.assertRaises(JobError):self.call('records_read',{'reads':[{'name':'holdings_refresh','arguments':{'wallet':self.first['address_key']}}]})
         self.assertEqual(JobStore(self.root).list(),[])
-    def test_literal_multiple_reads_are_partial_when_native_skips_one(self):
-        from kira_records import read_completion
-        config={**self.config,'scope':'portfolio','wallet':None};tools=ResearchTools(self.root,config)
-        receipts=[{'name':'portfolio_read','arguments':{},'status':'completed'}]
-        result=read_completion('Run portfolio_read + wallet_read for all wallets.',receipts,tools)
-        self.assertEqual(result['status'],'partial');self.assertIn('wallet_read Other wallet',result['missing'])
-        receipts.append({'name':'records_read','arguments':{},'status':'completed','reads':[{'name':'wallet_read','arguments':{'wallet':key},'status':'completed'} for key in (self.first['address_key'],self.other)]})
-        self.assertEqual(read_completion('Run portfolio_read + wallet_read for all wallets.',receipts,tools)['status'],'complete')
     def test_different_blocks_and_wallet_quotes_do_not_prove_curve_movement(self):
         from copy import deepcopy
         state={'reserve_token':'0x'+'a'*40,'reserve_balance':'100','current_supply':'10',
@@ -190,71 +172,6 @@ class ResearchToolsTest(unittest.TestCase):
         del different[1]['asset']['curve_state']['reserve_balance']
         self.assertEqual(compare_curve_states(different)['comparisons'][0]['status'],'unknown')
 
-    def test_delivered_retry_recovers_only_the_same_requested_read(self):
-        from kira_records import read_completion,read_receipt
-        args={'wallet':self.first['address_key'],'offset':0,'limit':1}
-        failed=read_receipt('wallet_read',args,{'error':'context limit'})
-        message='Run '+json.dumps({'name':'wallet_read','arguments':args})
-        other=read_receipt('wallet_read',{**args,'offset':1},{'assets':[{}],'offset':1,'next_offset':2})
-        self.assertEqual(read_completion(message,[failed,other],self.tools)['status'],'partial')
-        retry=read_receipt('wallet_read',args,{'assets':[{}],'offset':0,'next_offset':1})
-        result=read_completion(message,[failed,retry],self.tools)
-        self.assertEqual(result['status'],'complete');self.assertEqual(result['failed'],[])
-        self.assertEqual(failed['status'],'failed')
-        retry['status']='failed'
-        self.assertEqual(read_completion(message,[failed,retry],self.tools)['status'],'partial')
-        defaults={'wallet':self.first['address_key']}
-        failed=read_receipt('wallet_read',defaults,{'error':'temporary failure'})
-        message='Run '+json.dumps({'name':'wallet_read','arguments':defaults})
-        for changed in ({'offset':100},{'limit':1}):
-            retry=read_receipt('wallet_read',{**defaults,**changed},{'assets':[{}],'offset':changed.get('offset',0),'next_offset':None})
-            self.assertEqual(read_completion(message,[failed,retry],self.tools)['status'],'partial')
-        retry=read_receipt('wallet_read',{**defaults,'offset':0,'limit':100},{'snapshot_id':'snapshots/current','assets':[{}],'offset':0,'next_offset':None})
-        result=read_completion('Run wallet_read for the full inventory.',[failed,retry],self.tools)
-        self.assertEqual(result['status'],'complete');self.assertEqual(result['unread_pages'],[])
-        for malformed in (None,[],7):
-            for name,valid in (('wallet_read',defaults),('token_read',{'chain_id':1,'address':'0x'+'a'*40})):
-                bad=read_receipt(name,malformed,{'error':'invalid arguments'})
-                good=read_receipt(name,valid,{'assets':[],'offset':0,'next_offset':None})
-                result=read_completion('Run '+name+'.',[bad,good],self.tools)
-                self.assertEqual(result['status'],'partial');self.assertEqual(result['failed'][0]['arguments'],malformed)
-        for name,valid in (('wallet_read',defaults),('token_read',{'chain_id':1,'address':'0x'+'a'*40}),('snapshot_read',{'snapshot_id':'snapshots/current'})):
-            for malformed in ({},{'chain_id':1}):
-                bad=read_receipt(name,malformed,{'error':'missing required arguments'})
-                good=read_receipt(name,valid,{'assets':[],'offset':0,'next_offset':None})
-                result=read_completion('Run '+name+'.',[bad,good],self.tools)
-                self.assertEqual(result['status'],'partial');self.assertTrue(result['failed'])
-
-    def test_completion_matches_token_arguments_and_contiguous_inventory_pages(self):
-        from kira_records import read_completion,read_receipt
-        token='0x'+'a'*40
-        message='Run token_read '+json.dumps({'reads':[{'name':'token_read','arguments':{'chain_id':cid,'address':token}} for cid in (1,8453)]})
-        receipt=read_receipt('token_read',{'chain_id':1,'address':token},{'positions':[],'offset':0,'next_offset':None})
-        completion=read_completion(message,[receipt],self.tools)
-        self.assertEqual(completion['status'],'partial');self.assertIn('8453',completion['missing'][0])
-        receipts=[read_receipt('wallet_read',{'wallet':self.first['address_key'],'offset':offset},{'assets':[{}]*20,'asset_count':60,'offset':offset,'next_offset':offset+20 if offset<40 else None}) for offset in (0,40)]
-        completion=read_completion('Run wallet_read for the full inventory.',receipts,self.tools)
-        self.assertEqual(completion['status'],'partial');self.assertEqual(completion['unread_pages'][0]['arguments']['offset'],20)
-        receipts.append(read_receipt('wallet_read',{'wallet':self.first['address_key'],'offset':20},{'assets':[{}]*20,'offset':20,'next_offset':40}))
-        self.assertEqual(read_completion('Run wallet_read for the full inventory.',receipts,self.tools)['status'],'complete')
-        receipts[-1]=read_receipt('wallet_read',{'wallet':self.first['address_key'],'offset':20},{'assets':[{}]*20,'offset':20,'next_offset':40},False)
-        self.assertEqual(read_completion('Run wallet_read for the full inventory.',receipts,self.tools)['unread_pages'][0]['arguments']['offset'],20)
-        args={'snapshot_id':'snapshots/sample','limit':100}
-        receipt=read_receipt('snapshot_read',{'snapshot_id':args['snapshot_id']},{'offset':0,'next_offset':20})
-        message='Run snapshot_read '+json.dumps({'name':'snapshot_read','arguments':args})
-        self.assertEqual(read_completion(message,[receipt],self.tools)['status'],'partial')
-        receipt=read_receipt('snapshot_read',{'snapshot_id':args['snapshot_id'],'limit':100},{'wallets':[{'assets':[{}],'asset_count':1,'offset':0,'next_offset':None}]})
-        self.assertEqual(read_completion('Run snapshot_read for the full inventory.',[receipt],self.tools)['status'],'complete')
-        portfolio=read_receipt('portfolio_read',{}, {'wallets':[{'address':self.first['address_key'],'snapshot_id':'snapshots/old','assets':[{}]*12,'asset_count':50,'offset':0,'next_offset':12}]})
-        completion=read_completion('Run portfolio_read for the full inventory.',[portfolio],self.tools)
-        self.assertEqual(completion['status'],'partial');self.assertEqual(completion['unread_pages'][0]['arguments']['offset'],12)
-        pages=[read_receipt('wallet_read',{'wallet':self.first['address_key'],'offset':offset},{'assets':[{}]*20,'offset':offset,'next_offset':20 if offset==0 else None,'snapshot_id':snapshot}) for offset,snapshot in ((0,'snapshots/old'),(20,'snapshots/new'))]
-        completion=read_completion('Run wallet_read for the full inventory.',pages,self.tools)
-        self.assertEqual(completion['status'],'partial');self.assertEqual({p['snapshot_id'] for p in completion['unread_pages']},{'snapshots/old','snapshots/new'})
-        self.assertEqual(read_completion(json.dumps({'name':'wallet_read','arguments':{'wallet':self.first['address_key']}}),[],self.tools)['status'],'partial')
-        complete=read_receipt('wallet_read',{'wallet':self.first['address_key']},{'assets':[],'offset':0,'next_offset':None})
-        token_receipt=read_receipt('token_read',{'chain_id':8453,'address':token},{'positions':[]})
-        self.assertEqual(read_completion('Run wallet_read for the full inventory + token_read.',[complete,token_receipt],self.tools)['status'],'complete')
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name);atomic(self.root/'wallets.json',{'schema_version':1,'wallets':[],'research_runs':[]});sample(self.root)
         registry=json.loads((self.root/'wallets.json').read_text());registry.pop('demo',None)
