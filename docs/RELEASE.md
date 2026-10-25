@@ -23,13 +23,28 @@ additional response fields. Observation values, provider availability, coverage,
 prices and UI layout are not fixed by this commitment. Internal Python modules,
 cache files and browser-only endpoints are not a supported integration API.
 
-Launch validation uses the published package, real providers, an isolated
-research workspace and a separate OWS vault. It covers preserved upgrade data,
-price-only refresh and immutable history, browser-wallet connection,
-human-submitted OWS creation, and a sell-analysis job followed to its terminal
-state. Human account grants and passphrases stay outside the agent. No signature,
-trade, funding or key export is part of acceptance. Record unfinished checks as
-unfinished; a saved progress snapshot alone is not completion.
+Live acceptance completed on the published 0.2.3 research engine, which is
+byte-identical to this candidate. It verified preserved upgrade data, price-only
+refresh and immutable history, browser-wallet connection, human-submitted OWS
+creation, disconnect/reconnect and restart persistence. Optional sell analysis
+reached its natural terminal state with all review targets checked and no
+pending market work. Holdings and prior price evidence stayed unchanged.
+Provider coverage gaps and unavailable quotes remain explicit unknowns.
+
+The changed OWS registration flow passed isolated regressions for no automatic
+research, explicit manual refresh, retries, interrupted writes, earlier-version
+job recovery and preserved cancelled jobs. Browser checks with a synthetic
+public descriptor verified the empty account, zero activity jobs and desktop
+and mobile layouts. The OWS key-creation bridge is unchanged from the human
+acceptance. Human grants and passphrases stayed outside the agent; acceptance
+included no signing, trades, funding or key export.
+
+The final source passed 265 engine tests, 70 viewer tests, all JavaScript
+suites, clean package installation and lifecycle checks. The locked dependency
+audit reported zero known vulnerabilities. Tracked-source privacy checks found
+no private content; strict history findings are the previously recorded public
+identity metadata and verified normal CLI merge metadata under the policy below.
+The operator publishes the exact archive frozen from the landed source.
 
 Installation guidance is version-independent so it does not claim that a
 published package is still a candidate. Review not selected for this release
