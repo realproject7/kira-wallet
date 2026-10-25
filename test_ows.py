@@ -6,7 +6,7 @@ import unittest
 import uuid
 from unittest.mock import patch
 from kira_ows import OwsStore
-from kira_jobs import JobError, atomic
+from kira_jobs import JobError, JobStore, atomic
 
 class OwsTest(unittest.TestCase):
     def setUp(self):
@@ -39,6 +39,66 @@ class OwsTest(unittest.TestCase):
         self.assertEqual(self.created,1)
         for file in self.root.rglob('*.json'):
             text=file.read_text();self.assertNotIn(request['passphrase'],text);self.assertNotIn('must-never-project',text)
+    def test_worker_launch_failure_recovers_the_same_admitted_job(self):
+        request=self.request()
+        with patch('kira_jobs.JobStore.launch',side_effect=OSError('synthetic launch failure')):
+            with self.assertRaises(OSError):self.store.submit(request,create=True)
+        jobs=JobStore(self.root).list();self.assertEqual(len(jobs),1)
+        self.assertEqual(jobs[0]['state'],'queued')
+        with patch('kira_jobs.JobStore.launch') as launch:
+            recovered=self.store.submit(request,create=True)
+            launch.assert_called_once()
+        self.assertEqual(recovered['job_id'],jobs[0]['job_id']);self.assertEqual(self.created,1)
+        self.assertEqual(len(JobStore(self.root).list()),1)
+        self.assertEqual(len(json.loads((self.root/'wallets.json').read_text())['wallets']),1)
+
+    def test_crash_after_admission_before_job_id_is_saved_recovers_job(self):
+        request=self.request();submit=JobStore.submit
+        def interrupted(store,envelope):
+            submit(store,envelope)
+            raise OSError('synthetic crash after admission')
+        with patch('kira_jobs.JobStore.submit',interrupted):
+            with self.assertRaises(OSError):self.store.submit(request,create=True)
+        jobs=JobStore(self.root).list()
+        with patch('kira_jobs.JobStore.launch') as launch:
+            recovered=self.store.submit(request,create=True);launch.assert_called_once()
+        self.assertEqual(recovered['job_id'],jobs[0]['job_id']);self.assertEqual(self.created,1)
+        self.assertEqual(len(JobStore(self.root).list()),1)
+
+    def test_final_receipt_failure_reconnects_without_duplicate_registration(self):
+        request=self.request()
+        def fail_receipt(path,value):
+            if value and isinstance(value,dict) and value.get('phase')=='connected':
+                raise OSError('synthetic receipt failure')
+            atomic(path,value)
+        with patch('kira_ows.atomic',side_effect=fail_receipt):
+            with self.assertRaises(OSError):self.store.submit(request,create=True)
+        original=JobStore(self.root).list()[0]
+        recovered=self.store.submit(request,create=True)
+        self.assertEqual(recovered['job_id'],original['job_id']);self.assertEqual(self.created,1)
+        self.assertEqual(len(JobStore(self.root).list()),1)
+
+    def test_retry_does_not_restart_a_cancelled_registration(self):
+        request=self.request();first=self.store.submit(request,create=True)
+        file=self.root/'jobs'/(first['job_id']+'.json')
+        job=json.loads(file.read_text());job['state']='cancelled';atomic(file,job)
+        with patch('kira_jobs.JobStore.launch') as launch:
+            recovered=self.store.submit(request,create=True);launch.assert_not_called()
+        self.assertEqual(recovered['job_id'],first['job_id'])
+        self.assertEqual(JobStore(self.root).get(first['job_id'])['state'],'cancelled')
+
+    def test_legacy_receipt_recovers_an_admitted_registration_after_upgrade(self):
+        request=self.request()
+        with patch('kira_jobs.JobStore.launch',side_effect=OSError('synthetic old-version launch failure')):
+            with self.assertRaises(OSError):self.store.submit(request,create=True)
+        file=self.root/'.kira-ows-requests'/(request['idempotency_key']+'.json')
+        receipt=json.loads(file.read_text());receipt.pop('registration_requested');atomic(file,receipt)
+        original=JobStore(self.root).list()[0]
+        with patch('kira_jobs.JobStore.launch') as launch:
+            recovered=self.store.submit(request,create=True);launch.assert_called_once()
+        self.assertEqual(recovered['job_id'],original['job_id']);self.assertEqual(self.created,1)
+        self.assertEqual(len(JobStore(self.root).list()),1)
+
     def test_unknown_outcome_recovers_same_created_wallet(self):
         self.fail=True;request=self.request()
         with self.assertRaises(JobError):self.store.submit(request,create=True)

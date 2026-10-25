@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import threading
 import uuid
-from kira_jobs import JobError, JobStore, atomic, fields, identifier
+from kira_jobs import JobError, JobStore, atomic, digest, fields, identifier
 
 class OwsStore:
     def __init__(self, root, vault=None, runner=None):
@@ -104,8 +104,14 @@ class OwsStore:
             address=wallet['accounts'][0]['address'];store=JobStore(self.root)
             registered=next((w for w in json.loads((self.root/'wallets.json').read_text())['wallets'] if w['address_key']==address.lower()),None)
             job=None
-            if not registered:
-                job=store.submit({'schema_version':1,'operation':'wallet.add','input':{'address':address,'tag':tag},'idempotency_key':str(uuid.uuid5(uuid.UUID(key),'ows-register'))})
+            registration_key=str(uuid.uuid5(uuid.UUID(key),'ows-register'))
+            # Pre-intent receipts from older versions may already own a queued job.
+            if not registered or receipt.get('registration_requested') or any(j['key_hash']==digest(registration_key) for j in store.list()):
+                # Record intent before admission: submit can register the wallet
+                # before this process has saved its job ID or started a worker.
+                if not receipt.get('registration_requested'):
+                    receipt['registration_requested']=True;atomic(path,receipt)
+                job=store.submit({'schema_version':1,'operation':'wallet.add','input':{'address':address,'tag':tag},'idempotency_key':registration_key})
                 if job['state']=='queued':store.launch()
             connection={'source':'ows','wallet_id':wallet['id'],'name':wallet['name'],'address':address,'tag':(registered.get('tags') or [tag])[0] if registered else tag}
             atomic(self.session,connection);self.session.chmod(0o600)
