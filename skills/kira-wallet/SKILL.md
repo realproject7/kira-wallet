@@ -118,7 +118,10 @@ when requested; resume interrupted jobs explicitly. `jobs deepen` adds
 optional sell-route analysis from saved holdings without rediscovering tokens.
 
 Use `call job_list` with optional `state`, `wallet`, `offset` and `limit` for
-paged job discovery. `kira jobs run` starts queued work, not interrupted jobs.
+paged job discovery. `state` is `all` (default), a group (`active`,
+`succeeded`, `attention`, `cancelled`) or an exact state (`queued`, `running`,
+`partial`, `interrupted`, `failed`). `succeeded` includes partial results.
+`kira jobs run` starts queued work, not interrupted jobs.
 
 ## Shared tools and earlier archives
 

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import time
 import uuid
-from kira_jobs import JobStore, JobError, atomic, fields
+from kira_jobs import JobStore, JobError, atomic, fields, STATE_FILTERS
 from kira_state import StateCache, page, page_bounds
 from kira_research_tools import ResearchTools, CATALOG
 
@@ -21,8 +21,12 @@ for row in CATALOG:
         properties[name]={**schema,'description':description}
     if row['name'] in ('portfolio_read','job_list','snapshots_list'):
         properties.update(offset=INTEGER,limit={'type':'integer','minimum':1,'maximum':100})
-    if row['name']=='job_list':properties.update(state=STRING,wallet=STRING)
-    READ_TOOLS.append({'name':row['name'],'description':row['description'],
+    summary=row['description']
+    if row['name']=='job_list':
+        summary='Read a newest-first page of durable jobs. Optionally filter by state or registered wallet.'
+        properties.update(state={'type':'string','enum':list(STATE_FILTERS),'description':'Default all. Groups: active (queued, running), succeeded (succeeded, partial), attention (interrupted, failed). The other values match one exact state.'},
+                          wallet={**STRING,'description':'registered address or exact name'})
+    READ_TOOLS.append({'name':row['name'],'description':summary,
         'inputSchema':{'type':'object','properties':properties,'required':list(row['arguments']),'additionalProperties':False},
         'annotations':{'readOnlyHint':True,'destructiveHint':False,'idempotentHint':True,'openWorldHint':False}})
 
@@ -63,6 +67,8 @@ def validate(arguments,schema):
         field=schema['properties'][name];types=field['type'] if isinstance(field['type'],list) else [field['type']]
         if not any((type(value) in kinds[k] if isinstance(kinds[k],tuple) else type(value) is kinds[k]) for k in types):
             raise JobError('invalid_input','Invalid argument type: '+name)
+        if 'enum' in field and value not in field['enum']:
+            raise JobError('invalid_input','Choose '+name+' from: '+', '.join(map(str,field['enum']))+'.')
         if isinstance(value,str) and (len(value)>field.get('maxLength',500) or len(value)<field.get('minLength',0)):
             raise JobError('invalid_input','Use a bounded identifier: '+name)
         if type(value) in (int,float) and (value<field.get('minimum',value) or value>field.get('maximum',value)):

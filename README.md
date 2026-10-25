@@ -15,7 +15,7 @@ web app to manage wallets, inspect token markets and follow research. Your
 existing AI agent can use the same records and actions through the Kira CLI or
 optional MCP connection, then open the web app beside your conversation.
 
-**This branch prepares 0.2.1.** Kira now supplies wallet tools and a full-window
+**This branch prepares 0.2.2.** Kira now supplies wallet tools and a full-window
 management app. Your agent host manages its own conversations, models, files and
 approvals. Kira does not launch a model CLI or require a model login.
 

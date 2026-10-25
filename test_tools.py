@@ -7,9 +7,12 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import re
+import typing
 from unittest.mock import patch
 from kira_cli import initialize, sample
-from kira_jobs import JobError
+from kira_jobs import JobError, State
+from kira_service import validate
 from kira_tools import ReadTools, TOOLS, serve
 
 class ReadToolsTest(unittest.TestCase):
@@ -59,3 +62,34 @@ class ReadToolsTest(unittest.TestCase):
     def test_uninitialized_and_invalid_json(self):
         output=io.StringIO();serve(self.root,io.StringIO('not json\n'+json.dumps({'jsonrpc':'2.0','id':1,'method':'tools/list'})+'\n'),output)
         rows=[json.loads(s) for s in output.getvalue().splitlines()];self.assertEqual(rows[0]['error']['code'],-32700);self.assertEqual(rows[1]['error']['code'],-32602)
+    def test_job_list_filters_every_state_an_agent_can_read(self):
+        jobs=self.tools.application.jobs;created={}
+        for state in typing.get_args(State):
+            job=jobs.submit({'schema_version':1,'operation':'wallet.setTags','input':{'wallet':'Demo wallet','tags':['Name '+state]},'idempotency_key':'state-filter-'+state})
+            job['state']=state;jobs.save(job);created[job['job_id']]=state
+        advertised=next(t for t in TOOLS if t['name']=='job_list')['inputSchema']['properties']['state']['enum']
+        def states(value):
+            result=self.tools.call('job_list',{'state':value,'limit':100})
+            self.assertEqual(result['total'],len(result['jobs']))
+            return sorted(created[job['job_id']] for job in result['jobs'])
+        for state in typing.get_args(State):
+            self.assertIn(state,advertised)
+            self.assertIn(state,states(state))
+        self.assertEqual(states('running'),['running'])
+        self.assertEqual(states('active'),['queued','running'])
+        self.assertEqual(states('succeeded'),['partial','succeeded'])
+        self.assertEqual(states('attention'),['failed','interrupted'])
+        self.assertEqual(states('all'),sorted(typing.get_args(State)))
+        self.assertEqual(self.tools.call('job_list',{'wallet':'Demo wallet'})['total'],len(created))
+        with self.assertRaises(JobError) as error:self.tools.call('job_list',{'state':'done'})
+        self.assertTrue(all(value in str(error.exception) for value in advertised))
+    def test_documented_call_examples_match_published_schemas(self):
+        schemas={t['name']:t['inputSchema'] for t in TOOLS}
+        from kira_service import WRITE_TOOLS
+        schemas.update({t['name']:t['inputSchema'] for t in WRITE_TOOLS})
+        examples=[]
+        for path in ('README.md','docs/CLI.md','docs/AGENT_TOOLS.md','skills/kira-wallet/SKILL.md'):
+            examples+=re.findall(r"kira call (\w+) --arguments '([^']*)'",Path(path).read_text())
+        self.assertIn('job_list',{name for name,_ in examples})
+        for name,arguments in examples:
+            with self.subTest(name=name,arguments=arguments):validate(json.loads(arguments),schemas[name])

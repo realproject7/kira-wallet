@@ -62,6 +62,16 @@ class StartTest(unittest.TestCase):
         self.assertEqual(start.args, (self.root, 8787, True))
         self.assertEqual(browser.args, ('http://127.0.0.1:8787/?setup=1',))
 
+    def test_global_options_work_after_the_subcommand(self):
+        other=self.root/'other'
+        for arguments in (['skill','--data-dir',str(other)],['info','--json','--data-dir='+str(other)],['--json','info','--data-dir',str(other)]):
+            output=io.StringIO()
+            with self.subTest(arguments=arguments),patch.object(sys,'argv',['kira',*arguments]),contextlib.redirect_stdout(output):
+                self.assertEqual(kira_cli.main(),0)
+            if 'info' in arguments:self.assertEqual(json.loads(output.getvalue())['data_dir'],str(other))
+            else:self.assertIn('kira',output.getvalue().lower())
+        self.assertTrue((other/'wallets.json').exists());self.assertFalse((self.root/'wallets.json').exists())
+
     def test_conflicting_modes_are_rejected(self):
         with patch.object(sys, 'argv', ['kira', 'start', '--read-only', '--controls']), \
                 contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:

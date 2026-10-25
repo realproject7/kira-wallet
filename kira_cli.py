@@ -226,8 +226,11 @@ def main():
     custom=rpcsub.add_parser('set');custom.add_argument('--chain',type=int,required=True);custom.add_argument('--url-env',required=True);custom.add_argument('--priority',choices=['public_first','custom_first']);fallback=custom.add_mutually_exclusive_group();fallback.add_argument('--public-fallback',action='store_true',default=None);fallback.add_argument('--custom-only',dest='public_fallback',action='store_false')
     discovery=sub.add_parser('discovery');discovery.add_argument('provider',choices=['none','alchemy']);discovery.add_argument('--key-env',default='ALCHEMY_API_KEY');discovery.add_argument('--explorers',action='store_true')
     argv=sys.argv[1:]
-    # A global machine-output switch works before or after a subcommand.
+    # Global switches work before or after a subcommand.
     if '--json' in argv:argv=['--json']+[a for a in argv if a!='--json']
+    for index,item in enumerate(argv):
+        if item=='--data-dir' and index+1<len(argv):argv=argv[index:index+2]+argv[:index]+argv[index+2:];break
+        if item.startswith('--data-dir='):argv=[item]+argv[:index]+argv[index+1:];break
     args=parser.parse_args(argv);root=Path(args.data_dir).expanduser().resolve();os.environ['KIRA_DATA_DIR']=str(root)
     if sys.version_info<(3,11):raise ValueError('Python 3.11 or newer is required.')
     if os.name!='posix':raise ValueError('This development build requires a POSIX host. macOS is verified.')

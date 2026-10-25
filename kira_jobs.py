@@ -35,6 +35,10 @@ def signal_process_group(pgid, sig):
 State = Literal['queued', 'running', 'interrupted', 'succeeded', 'partial', 'failed', 'cancelled']
 Operation = Literal['wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv']
 TERMINAL = {'succeeded', 'partial', 'failed', 'cancelled', 'interrupted'}
+# Web history uses the groups. Agents may also filter by an exact state they read on a job.
+STATE_FILTERS = {'all': None, 'active': {'queued','running'}, 'succeeded': {'succeeded','partial'},
+                 'attention': {'interrupted','failed'}, 'cancelled': {'cancelled'},
+                 **{state: {state} for state in ('queued','running','partial','interrupted','failed')}}
 ADDRESS = re.compile(r'0x[0-9a-fA-F]{40}')
 
 class Request(TypedDict):
@@ -238,12 +242,10 @@ class JobStore:
     def page(self, offset=0, limit=50, state='all', wallet=None):
         from kira_state import page_bounds
         page_bounds(offset, limit)
-        groups = {'all': None, 'active': {'queued','running'}, 'succeeded': {'succeeded','partial'},
-                  'attention': {'interrupted','failed'}, 'cancelled': {'cancelled'}}
-        if state not in groups:raise JobError('invalid_state','Choose a supported job state filter.')
+        if state not in STATE_FILTERS:raise JobError('invalid_state','Choose a job state filter: '+', '.join(STATE_FILTERS)+'.')
         selected = self.wallet(wallet)['address_key'] if wallet else None
         with self.locked():
-            rows = [r for r in self.summaries() if (groups[state] is None or r['state'] in groups[state])
+            rows = [r for r in self.summaries() if (STATE_FILTERS[state] is None or r['state'] in STATE_FILTERS[state])
                     and (selected is None or (r['input'].get('wallet') or r['input'].get('address','')).lower() == selected)]
             rows.sort(key=lambda r: r['created_at'], reverse=True)
             jobs = [self.get(r['job_id']) for r in rows[offset:offset+limit]]

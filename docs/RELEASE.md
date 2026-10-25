@@ -1,6 +1,20 @@
 # Release preparation
 
-## Prepared release: 0.2.1
+## Prepared release: 0.2.2
+
+Fixes two agent contract findings from the published 0.2.1 fresh-agent test.
+`job_list` now publishes its accepted `state` values in the tool schema and
+accepts each exact job state, such as `running`, as well as the existing
+groups. Invalid values return the accepted list. Documented `kira call`
+examples are checked against the published schemas. Global `--data-dir` now
+works before or after a subcommand, like `--json`. Wallet records, research,
+financial projections and the web app are unchanged.
+
+Preserve the published 0.2.1 archive and every earlier archive. Freeze 0.2.2
+from the accepted clean commit with `scripts/prepare-release.py`, dry-run that
+exact archive and leave registry publication to the operator. Review not selected.
+
+## Published 0.2.1
 
 Includes the external-agent architecture described in the preserved 0.2.0
 candidate below and four approved UI refinements. Short desktop windows can
@@ -9,16 +23,10 @@ one line, a single wallet card fills its available grid width, and token detail
 captions and addresses use larger, darker text. Wallet records, research,
 financial projections, CLI and MCP behavior are unchanged.
 
-Preserve the already frozen 0.2.0 archive and manifest. This 0.2.1 candidate is
-the next publication target; an unpublished earlier candidate is not overwritten.
-Before freezing, run the full repository suite, clean package installation,
-source and history privacy checks, responsive browser acceptance including short
-windows and multiple wallets, and exact source/archive/installed-member checks.
-Freeze from the accepted clean commit, dry-run the exact archive and leave
-registry publication to the operator. Review not selected.
-
-The separate real-device acceptance, fresh public website screenshots and site
-content update remain a follow-up after installation of the new version.
+The operator published 0.2.1. Its archive SHA-256 is
+`aed02bc57c0fec8eec8b8fe8539ddcc45592d7876f04b86045e1d136b51804e0`; the
+installed package and all 93 members matched it. The real-device acceptance
+and website update that followed installation are complete.
 
 ## Preserved candidate: 0.2.0
 
@@ -135,7 +143,7 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep published GitHub tags, release assets and npm versions through 0.1.20
+Keep published GitHub tags, release assets and npm versions through 0.2.1
 immutable. Do not rebuild them from later documentation commits. Future package
 changes need a new version. Release preparation does not publish a GitHub
 release, promote the website or publish to npm.
@@ -151,12 +159,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.2.1.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-0.2.2.tgz`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.2.1.tgz --access public
+npm publish ./dist/kira-wallet-0.2.2.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.

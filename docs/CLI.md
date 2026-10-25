@@ -1,9 +1,9 @@
 # CLI and provider configuration
 
-Kira 0.2.1 is a local wallet engine, CLI and web interface. Any capable agent
+Kira 0.2.2 is a local wallet engine, CLI and web interface. Any capable agent
 can use the CLI; MCP is optional. Your agent host supplies its own model,
 conversation, general tools and approvals. Kira does not start a model process.
-This branch prepares 0.2.1. Registry publication remains an operator action.
+This branch prepares 0.2.2. Registry publication remains an operator action.
 
 ## Install and choose a workspace
 
@@ -175,9 +175,15 @@ kira call holdings_query --arguments '{"mode":"search","query":"ETH"}' --json
 kira call wallet_read --arguments '{"wallet":"Daily wallet","offset":0,"limit":100}' --json
 kira call token_read --arguments '{"chain_id":8453,"address":"native"}' --json
 kira call snapshots_list --arguments '{"wallet":"Daily wallet","limit":20}' --json
-kira call job_list --arguments '{"state":"running","offset":0,"limit":20}' --json
+kira call job_list --arguments '{"state":"active","offset":0,"limit":20}' --json
 kira ui context --json
 ```
+
+`job_list` accepts `state` groups `all` (default), `active` (queued or
+running), `succeeded` (succeeded or partial), `attention` (interrupted or
+failed) and `cancelled`, or one exact state: `queued`, `running`, `partial`,
+`interrupted` or `failed`. Add `wallet` to limit results to one registered
+wallet.
 
 Follow returned `next_offset` values when complete pages are needed. Use
 `holdings_query` for server-computed ranking, counts and aggregates across the
