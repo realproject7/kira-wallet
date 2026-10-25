@@ -128,6 +128,7 @@ class NativeMarketTests(unittest.TestCase):
         self.assertEqual(market['native_usd']['ETH']['usd'],2)
         self.assertEqual(market['reserve_price_status'],'partial')
         self.assertEqual(overlay['job_result_status'],'completed_with_coverage_gaps')
+        self.assertIn('reserve_pricing_partial',overlay['job_result_gaps'])
 
     def test_curve_helper_timeout_keeps_previous_quotes_and_new_native_prices(self):
         import subprocess
@@ -140,6 +141,7 @@ class NativeMarketTests(unittest.TestCase):
         self.assertEqual(market['retained_price_records'],1)
         self.assertEqual(market['tokens'][0]['observed_at'],old['tokens'][0]['observed_at'])
         self.assertEqual(overlay['job_result_status'],'completed_with_coverage_gaps')
+        self.assertEqual(overlay['job_result_gaps'],['earlier_prices_retained','curve_reads_incomplete'])
 
     def test_partial_reserve_graph_still_invalidates_a_newly_unfunded_curve(self):
         from wallet import MarketPause
@@ -163,7 +165,7 @@ class NativeMarketTests(unittest.TestCase):
         self.assertEqual(set(market['native_usd']),{'ETH','APE','BNB'})
         self.assertEqual(market['native_usd']['APE']['asset_id'],'apecoin')
         self.assertEqual(images.kwargs['native_images']['apecoin']['image_url'],rows[0]['image'])
-        self.assertEqual(overlay['job_result_status'],'completed')
+        self.assertEqual(overlay['job_result_status'],'completed');self.assertEqual(overlay['job_result_gaps'],[])
 
     def test_existing_dex_eth_source_takes_priority(self):
         dex=[{'chainId':'base','baseToken':{'address':'0x4200000000000000000000000000000000000006'},

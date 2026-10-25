@@ -452,8 +452,9 @@ class JobsTest(JobFixtures, unittest.TestCase):
         self.assertEqual(saved['tokens'][0]['source_url'],value['tokens'][0]['source_url']);self.assertNotIn('secret-key',json.dumps(saved))
     def test_price_receipt_before_projection_recovered(self):
         job=self.store.submit(self.request('prices.refresh'));job['state']='running';self.store.save(job)
-        value={'observed_at':'2026-10-03T01:00:00Z','tokens':[],'snapshot_id':'snapshots/prior','job_result_status':'completed_with_coverage_gaps'}
+        value={'observed_at':'2026-10-03T01:00:00Z','tokens':[],'snapshot_id':'snapshots/prior','job_result_status':'completed_with_coverage_gaps','job_result_gaps':['native_price_missing']}
         atomic(self.root/job['checkpoint']/'prices.json',value);self.store.recover()
+        recovered=self.store.get(job['job_id']);self.assertEqual(recovered['state'],'partial');self.assertEqual(recovered['result']['gaps'],['native_price_missing'])
         self.assertEqual(self.store.get(job['job_id'])['state'],'partial');self.assertEqual(json.loads((self.root/'snapshots/prior/market-prices.json').read_text()),value)
     def test_failed_engine_preserves_prior_result(self):
         job=self.store.submit(self.request())

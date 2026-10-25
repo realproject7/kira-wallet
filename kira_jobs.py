@@ -581,7 +581,8 @@ class JobStore:
             previous = read(projection) if projection.exists() else {}
             value = read(overlay)
             if (previous.get('observed_at') or '') <= value['observed_at']: atomic(projection, value)
-            return {'snapshot_id': item['snapshot_id'], 'overlay': item['overlay'], 'status': item['status']}
+            return {'snapshot_id': item['snapshot_id'], 'overlay': item['overlay'], 'status': item['status'],
+                    **({'gaps': value['job_result_gaps']} if isinstance(value.get('job_result_gaps'), list) else {})}
         manifest = folder / 'run.json'
         if not manifest.exists() or not (folder / 'results.json').exists(): return None
         result = read(folder / 'results.json')

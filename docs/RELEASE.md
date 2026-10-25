@@ -17,7 +17,13 @@ replaced. Native rows in `wallet_read` keep `address: null`, like
 `holdings_query`. `snapshots_list` rows carry `phase`, so progress saved during
 a running lookup is distinct from finished lookups. The skill now explains
 `kira add`, import side effects, per-operation progress, price refresh
-history, float position values and `head_status`. Wallet records, research,
+history, float position values and `head_status`.
+
+A second, read-only Claude Code check of the fixed candidate led to three
+more changes. A partial price job now names its reasons in `result.gaps`.
+`kira --help` shows the `kira` program name and a line for every command.
+The skill corrects `head_status`, notes the native `address: null`, the
+100-event job window and older settings receipts. Wallet records, research,
 financial projections and the web app are unchanged.
 
 Preserve the published 0.2.1 archive and every earlier archive. Freeze 0.2.2

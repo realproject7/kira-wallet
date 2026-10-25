@@ -72,6 +72,14 @@ class StartTest(unittest.TestCase):
             else:self.assertIn('kira',output.getvalue().lower())
         self.assertTrue((other/'wallets.json').exists());self.assertFalse((self.root/'wallets.json').exists())
 
+    def test_help_names_kira_and_describes_every_command(self):
+        output=io.StringIO()
+        with patch.object(sys,'argv',['kira','--help']),contextlib.redirect_stdout(output),self.assertRaises(SystemExit):kira_cli.main()
+        text=output.getvalue();self.assertTrue(text.startswith('usage: kira '))
+        commands=text.split('{',1)[1].split('}',1)[0].split(',')
+        described={line.split()[0] for line in text.splitlines() if line.startswith('    ') and len(line.split())>1}
+        self.assertEqual(set(commands)-described,set())
+
     def test_conflicting_modes_are_rejected(self):
         with patch.object(sys, 'argv', ['kira', 'start', '--read-only', '--controls']), \
                 contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:

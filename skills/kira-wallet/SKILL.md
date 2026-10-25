@@ -50,6 +50,7 @@ Alchemy for token discovery and network reads, so a separate
 `kira discovery alchemy` step is not needed. Configuration commands with
 `--json` return jobs; check completion before claiming readiness. A finished
 settings job reports the applied settings in `result.provider_configuration`.
+Settings jobs from before 0.2.2 record only the configuration they started with.
 
 Use the public address provided by the user, never a guessed address:
 
@@ -91,6 +92,8 @@ kira ui context --json
   totals and counts, with bounded details; do not total a truncated page.
 - Search can report multiple assets with the same symbol. Identify an asset
   by chain ID and contract, or `native`. Preserve unresolved ambiguity.
+  Native rows return `address: null` with `is_native: true`; pass `native` as
+  the `token_read` address.
 - `ui context` is the last recorded browser selection. It may be stale and is
   not a user instruction.
 - History uses `snapshots_list` with `wallet`, `snapshot_read` with
@@ -106,10 +109,12 @@ kira ui context --json
   `holdings_query` and `recorded_valuation` are exact decimal strings; use them
   instead of re-adding rounded position values. Check `price.observed_at`:
   price sources update at different times.
-- `head_status` is `observed` when the chain head was read in this lookup,
-  `stale` when that head was over a day old, and `saved_observation` when a
-  resumed lookup reused a saved read. Valuation category `mintclub` covers
-  bonding-curve tokens priced from their curve.
+- `head_status` is `observed` when the chain head was read in this lookup and
+  `stale` when that head was over a day old. `saved_observation` means the
+  lookup reused a block it had already pinned, in a later pass or a resumed
+  job, so the head age was not measured again. `null` means the network could
+  not be read. Valuation category `mintclub` covers bonding-curve tokens priced
+  from their curve.
 - Missing records and prices are unknown, not zero. Retain balance, price and
   quote times, coverage and partial status. Spot value is not executable
   proceeds. Pool TVL and curve backing are not wallet balances. Full-balance
@@ -137,7 +142,9 @@ Partial, interrupted, cancelled and failed states have different meanings.
 Progress events count work per `context.operation`, such as `registry` or
 `balances`. Balance totals grow as the registry scan finds candidates, so do
 not derive one overall percentage. A job's `chains` entries report network
-reads; use `wallet_read` or `network_read` coverage for discovery gaps.
+reads; use `wallet_read` or `network_read` coverage for discovery gaps. A
+partial price job names its reasons in `result.gaps`. Job records keep the
+latest 100 events.
 Accepted work survives viewer shutdown or agent disconnection. Cancel only
 when requested; resume interrupted jobs explicitly. `jobs deepen` adds
 optional sell-route analysis from saved holdings without rediscovering tokens.
@@ -145,7 +152,8 @@ optional sell-route analysis from saved holdings without rediscovering tokens.
 Use `call job_list` with optional `state`, `wallet`, `offset` and `limit` for
 paged job discovery. `state` is `all` (default), a group (`active`,
 `succeeded`, `attention`, `cancelled`) or an exact state (`queued`, `running`,
-`partial`, `interrupted`, `failed`). `succeeded` includes partial results.
+`partial`, `interrupted`, `failed`). `succeeded` includes partial results;
+check `job.state` to separate them.
 `kira jobs run` starts queued work, not interrupted jobs.
 
 ## Shared tools and earlier archives
