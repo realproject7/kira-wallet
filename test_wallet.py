@@ -320,6 +320,23 @@ class WalletPipelineTests(unittest.TestCase):
                 wallet.source_check([{'chain_id':8453,'mintclub_bond_address':'0xc5a076cad94176c2996B32d8466Be1cE757FAa27'}],self.folder)
             self.assertEqual(error.exception.code,'network_scope_changed')
 
+    def test_cached_discovery_emits_final_progress_without_one_durable_event_per_asset(self):
+        tokens=[{'chain_id':8453,'network':'Base','token_address':'0x'+format(i+100,'040x'),'token_type':'ERC20',
+                 'wallet_balance':'1','wallet_balance_raw':'1','symbol':'TEST','mintclub':None,'dex_pools':[]} for i in range(1000)]
+        wallet.atomic(self.folder/'onchain-summary.json',{'chains':[{'chain_id':8453,'tokens':tokens,
+            'native_balance':'0','observed_at':'2026-10-25T00:00:00Z','rpc_status':'available','registry_scan':{'complete':True}}]})
+        def node(command,input_path,output_path):
+            wallet.atomic(output_path,{'tokens':wallet.read(input_path)['tokens'],'market_pending':False})
+        with patch.object(wallet.time,'monotonic',return_value=100),patch.object(wallet,'run_node',side_effect=node),\
+             patch.object(wallet,'dex_fetch',return_value={'response':[],'observed_at':None}),patch.object(wallet,'event') as events,\
+             patch.object(wallet,'refresh_metadata',side_effect=lambda snapshot,market,*args,**kwargs:market),patch.object(wallet,'report'),\
+             patch('native_assets.market_metadata',return_value={'prices':{},'images':{},'evidence':None}):
+            result=wallet.finish({'address':self.address,'tags':['Fixture']},self.folder,[{**self.network,'name':'Base'}],
+                [{'chain_id':8453,'complete':True,'source':None,'pages':[],'native':[]}])
+        progress=[call.kwargs for call in events.call_args_list if call.kwargs.get('operation')=='market_discovery']
+        self.assertEqual(len(progress),1);self.assertEqual(progress[0]['checked'],1000);self.assertEqual(progress[0]['total'],1000)
+        self.assertEqual(len(result['tokens']),1000);self.assertFalse(result['pipeline']['market_pending'])
+
     def test_outside_dex_scope_reserve_preserves_unknown_observation(self):
         token={'chain_id':54176,'token_address':'0x'+'3'*40,'token_type':'ERC20'}
         with patch.object(wallet,'fetch') as fetch:

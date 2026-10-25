@@ -722,9 +722,13 @@ def finish(wallet, folder, networks, discovered, *, holdings_source=None):
     event('dex_discovery', tokens=len(tokens))
     discovery_deadline=min(deadline-25,time.monotonic()+30)
     with ThreadPoolExecutor(max_workers=5) as executor:
-        responses=[]
+        responses=[];progress_at=time.monotonic()
         for response in executor.map(lambda t:dex_fetch(t,folder,discovery_deadline,attempt_limit=2),tokens):
-            responses.append(response);event('onchain_progress',operation='market_discovery',checked=len(responses),total=len(tokens))
+            responses.append(response)
+            # Cached responses can arrive thousands at a time. Each event is a
+            # durable job write, so report elapsed work and the final count.
+            if len(responses)==len(tokens) or time.monotonic()-progress_at>=1:
+                event('onchain_progress',operation='market_discovery',checked=len(responses),total=len(tokens));progress_at=time.monotonic()
     for t,r in zip(tokens,responses):
         if isinstance(r['response'],list):
             t['dex_pools']=[pool_row(p,r.get('observed_at')) for p in r['response'] if p.get('chainId')==DEX.get(t['chain_id']) and

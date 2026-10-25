@@ -1,10 +1,22 @@
 # Release preparation
 
-## Release candidate: 1.0.0
+## Release candidate: 1.0.1
 
-The operator selected 1.0.0 on 2026-10-25. Version 0.2.3 remains the published
-package while live acceptance and the final 1.0.0 archive are prepared. This
-candidate keeps the research engine and saved-data formats from 0.2.3.
+Fixes excessive local work during sell-analysis continuation. Completed asset
+reviews survive the early burn pass without reopening their route frontiers.
+Local frontier writes are coalesced; new provider facts and exit checkpoints
+still reach durable storage. Progress reports retain current counts and final
+counts without saving one job update per cached asset.
+
+The fix preserves the research scope, quote checks, RPC pacing, public command
+contracts and saved-data formats. Regression coverage includes large frontiers,
+completed-review replay, provider-fact durability and time-budget exits.
+Review not selected. Registry publication remains an operator action.
+
+## Published 1.0.0
+
+The operator selected and published 1.0.0 on 2026-10-25. This release keeps the
+research engine and saved-data formats from 0.2.3.
 
 New OWS wallets are registered and linked without starting asset research.
 Their holdings remain unchecked until an explicit holdings refresh. Linking an

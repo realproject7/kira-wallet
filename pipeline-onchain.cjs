@@ -728,7 +728,11 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
   const tokenKey=t=>t.token_address.toLowerCase()+':'+t.token_type;
   if(n.environment!=='mainnet')return {tokens,market_pending:false};
   let cache=fs.existsSync(file)?JSON.parse(fs.readFileSync(file)):null;
-  const save=()=>{if(cache)write(file,cache);};
+  // Local frontier steps can be replayed. Coalesce those writes, while every
+  // newly acquired provider fact and every exit still gets a durable checkpoint.
+  let savedAt=0,dirty=false;
+  const flush=()=>{if(cache&&dirty){write(file,cache);savedAt=Date.now();dirty=false;}};
+  const save=(immediate=false)=>{dirty=true;if(immediate||Date.now()-savedAt>=250)flush();};
   const restoreReviewed=token=>{
     const key=tokenKey(token),state=cache?.nodes?.[key];
     if(!representative||cache?.asset_reviews?.[key]?.done!==true||cache.schema_version!==1||cache.wallet!==input.wallet.toLowerCase()||cache.chain_id!==n.chain_id
@@ -754,7 +758,8 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
       const query={...args,blockNumber:block},key=queryKey(args);
       if(cache.requests[key]!==undefined)return cacheDecode(cache.requests[key]);
       if(deferred.has(key))throw deferred.get(key);
-      const value=await boundedMarket(client.readContract(query),assetDeadline);cache.requests[key]=cacheEncode(value);save();return value;
+      flush();
+      const value=await boundedMarket(client.readContract(query),assetDeadline);cache.requests[key]=cacheEncode(value);save(true);return value;
     };
     // Warm exact per-query facts with small Multicalls. Rich curve metadata is
     // unnecessary; a healthy member set needs a few paced RPCs instead of one
@@ -764,11 +769,12 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
       const pending=[...new Map(plans.map(p=>[queryKey(p),p])).entries()].filter(([key])=>cache.requests[key]===undefined);
       for(let start=0;start<pending.length;start+=32){
         if(Date.now()>=deadline)throw new MarketBudget();
-        const group=pending.slice(start,start+32),rows=await boundedMarket(calls(client,group.map(([,p])=>p),block),deadline);
+        const group=pending.slice(start,start+32);flush();
+        const rows=await boundedMarket(calls(client,group.map(([,p])=>p),block),deadline);
         rows.forEach((r,i)=>{
           if(r.status==='success')cache.requests[group[i][0]]=cacheEncode(r.result);
           else {const failure=rpcFailure(r.error);if(failure.transportFailure||failure.schedulingFailure)deferred.set(group[i][0],r.error);}
-        });save();
+        });save(true);
       }
     };
     const members=tokens.filter(t=>t.mintclub_membership_status==='verified'&&t.balance_block_hash===snapshot.hash
@@ -807,7 +813,7 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
         return quotes;
       }
       const key=address.toLowerCase();
-      if(!cache.asset_pools[key]){cache.asset_pools[key]=await routePools(input.market_chain_names?.[n.chain_id],address,assetDeadline);save();}
+      if(!cache.asset_pools[key]){flush();cache.asset_pools[key]=await routePools(input.market_chain_names?.[n.chain_id],address,assetDeadline);save(true);}
       const catalog=cache.asset_pools[key];
       if(catalog.unknown)quotes.push({status:'unknown',reason:catalog.unknown});
       const shadow={chain_id:n.chain_id,token_address:address,token_type:'ERC20',wallet_balance_raw:amount,
@@ -822,19 +828,25 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
     const attemptsKey=rootOnly?'root_attempts':'route_attempts';
     cache[attemptsKey]=cache[attemptsKey]||{};
     if(typeof cache[attemptsKey]!=='object'||Array.isArray(cache[attemptsKey])||Object.values(cache[attemptsKey]).some(n=>!Number.isSafeInteger(n)||n<0))throw new Error('Invalid route attempt checkpoint.');
-    const progress=()=>{
-      if(!representative||rootOnly)return;
+    let progressAt=0,previousProgress=null;
+    const progress=(force=false)=>{
+      if(!force&&Date.now()-progressAt<1000)return;
+      const routes=tokens.filter(t=>{const s=cache.nodes[tokenKey(t)];return s?.pending.length===0&&!s.root_retry_pending;}).length;
       const checked=tokens.filter(t=>cache.asset_reviews[tokenKey(t)]?.done&&!t.market_pending).length;
       const quoted=tokens.filter(t=>cache.asset_reviews[tokenKey(t)]?.done&&!t.market_pending&&representativeQuote(t,cache.nodes[tokenKey(t)]?.routes)).length;
-      console.log(JSON.stringify({stage:'onchain_progress',operation:'asset_review',chain_id:n.chain_id,checked,total:tokens.length,quoted,unknown:checked-quoted}));
+      const signature=JSON.stringify([routes,checked,quoted]);
+      if(signature===previousProgress)return;
+      emitProgress(n,'cashout_routes',routes,tokens.length);
+      if(representative&&!rootOnly)console.log(JSON.stringify({stage:'onchain_progress',operation:'asset_review',chain_id:n.chain_id,checked,total:tokens.length,quoted,unknown:checked-quoted}));
+      previousProgress=signature;progressAt=Date.now();
     };
-    progress();
+    progress(true);
     // Unvisited assets receive a turn before retry holes. Attempts are durable
     // scheduling facts, not successful evidence or a completion percentage.
     for(const token of [...tokens].sort((a,b)=>(cache[attemptsKey][tokenKey(a)]||0)-(cache[attemptsKey][tokenKey(b)]||0)||Number(!!b.mintclub?.funded)-Number(!!a.mintclub?.funded)||Number(b.mintclub_membership_status==='verified')-Number(a.mintclub_membership_status==='verified'))){
       const key=token.token_address.toLowerCase()+':'+token.token_type;
       const review=cache.asset_reviews[key]||{done:false,failures:0};cache.asset_reviews[key]=review;
-      if(representative&&!rootOnly&&review.done){
+      if(representative&&review.done){
         if(!restoreReviewed(token))throw new Error('Saved representative holding changed.');
         progress();continue;
       }
@@ -860,9 +872,9 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
         review.done=true;token.asset_review={scope:'representative_v1',status:representativeQuote(token)?'quoted':'unknown'};save();
       }
       if(state.pending.length||state.root_retry_pending){token.cashout_pending=true;retryPending=true;}else delete token.cashout_pending;
-      emitProgress(n,'cashout_routes',tokens.filter(t=>{const s=cache.nodes[tokenKey(t)];return s?.pending.length===0&&!s.root_retry_pending;}).length,tokens.length);
       progress();
     }
+    progress(true);
     return {tokens,market_pending:retryPending};
   }catch(error){
     const pending=error.code==='market_budget';
@@ -872,7 +884,7 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
       if(pending&&(!state||state.pending.length||state.root_retry_pending))token.cashout_pending=true;
       if(!pending){token.liquidation_unknown_routes.push('Liquidation path reads unavailable or checkpoint mismatch.');if(representative)token.asset_review={scope:'representative_v1',status:'unknown'};}}
     if(pending)save();return {tokens,market_pending:pending};
-  }
+  }finally{flush();}
 }
 async function scanNetworks(input,output,baseline=false,{maxBatches=4,maxRounds=Infinity,scan=scanChain}={}) {
   const results=new Map(),lastProgress=new Map(),stalls=new Map();

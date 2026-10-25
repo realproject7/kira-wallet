@@ -9,6 +9,55 @@ const WETH='0x4200000000000000000000000000000000000006';
 const token=(n,chain=8453)=>({chain_id:chain,token_address:address(n),token_type:'ERC20',wallet_balance_raw:'1000000000000000000',balance_block_number:'7',balance_block_hash:HASH,dex_pools:[]});
 const leg=(input,output)=>({status:'quoted',kind:'mintclub_burn',input_address:input,input_amount_raw:'1000000000000000000',holding_amount_raw:'1000000000000000000',output_address:output,output_amount_raw:'1000000000000000000',output_amount:'1',output_decimals:18,block_number:'7',block_hash:HASH,observed_at:'2026-10-15T00:00:00Z',route_fees_included:true,price_impact_included:true,gas_included:false,funded:true,reserve_balance_raw:'2000000000000000000'});
 
+test('large local review frontiers batch durable writes and progress without losing completion',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-frontier-'));
+ const original={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock},write=fs.writeFileSync,log=console.log,now=Date.now;
+ let writes=0;const events=[];
+ try{
+  const clock=now();Date.now=()=>clock;
+  fs.writeFileSync=(...args)=>{writes++;return write(...args);};console.log=line=>events.push(JSON.parse(line));
+  h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:7n,hash:HASH});h.client=()=>({getChainId:async()=>8453});
+  const network={chain_id:8453,environment:'mainnet',mintclub_bond_address:address(2)};
+  const input={wallet:WALLET,market_scope:'representative_v1',tokens:Array.from({length:1000},(_,i)=>token(i+100))};
+  const result=await liquidationChain(network,input,path.join(root,'out.json'));
+  assert.equal(result.market_pending,false);assert(result.tokens.every(t=>t.asset_review?.status==='unknown'));
+  const saved=JSON.parse(fs.readFileSync(path.join(root,'cashout-checkpoint-8453.json')));
+  assert.equal(Object.values(saved.asset_reviews).filter(r=>r.done).length,1000);
+  assert.equal(Object.keys(saved.nodes).length,1000);assert(Object.values(saved.route_attempts).every(n=>n===1));
+  assert(writes<=3,`Expected bounded checkpoint writes, received ${writes}`);
+  const reviews=events.filter(e=>e.operation==='asset_review');assert.equal(reviews.length,2);
+  assert.equal(reviews.at(-1).checked,1000);assert.equal(reviews.at(-1).unknown,1000);
+  writes=0;events.length=0;
+  const replay=await liquidationChain(network,{...input,cashout_root_only:true,tokens:input.tokens.map(t=>({...t,asset_review:undefined}))},path.join(root,'out.json'));
+  assert(replay.tokens.every(t=>t.asset_review?.status==='unknown'));
+  const resumed=JSON.parse(fs.readFileSync(path.join(root,'cashout-checkpoint-8453.json')));
+  assert.deepEqual(resumed.nodes,saved.nodes);assert.deepEqual(resumed.asset_reviews,saved.asset_reviews);
+  assert.deepEqual(resumed.route_attempts,saved.route_attempts);assert.equal(Object.keys(resumed.root_attempts||{}).length,0);
+  assert(writes<=1);assert(events.length<=1);
+ }finally{Object.assign(h,original);fs.writeFileSync=write;console.log=log;Date.now=now;fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('new provider facts reach disk before the next request and budget exits flush the frontier',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-frontier-budget-'));
+ const original={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock},now=Date.now;
+ try{
+  let clock=now();Date.now=()=>clock;const deadline=clock+1000;
+  const network={chain_id:8453,environment:'mainnet',mintclub_bond_address:address(2)},held=token(10);
+  held.mintclub_membership_status='verified';const file=path.join(root,'cashout-checkpoint-8453.json');let calls=0;
+  h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:7n,hash:HASH});
+  h.client=()=>({getChainId:async()=>8453,multicall:async({contracts})=>{
+   calls++;const saved=JSON.parse(fs.readFileSync(file));
+   if(calls===2)assert.equal(Object.keys(saved.requests).length,1);
+   if(calls===3){assert.equal(Object.keys(saved.requests).length,2);clock=deadline;}
+   return contracts.map(q=>({status:'success',result:q.functionName==='tokenBond'?[0n,0n,0n,0n,WETH,10n**20n]:18}));
+  }});
+  const result=await liquidationChain(network,{wallet:WALLET,market_scope:'representative_v1',tokens:[held]},path.join(root,'out.json'),deadline);
+  assert.equal(result.market_pending,true);assert.equal(held.cashout_pending,true);
+  const saved=JSON.parse(fs.readFileSync(file));assert.equal(Object.keys(saved.requests).length,2);
+  assert(!saved.asset_reviews[held.token_address+':ERC20']?.done);
+ }finally{Object.assign(h,original);Date.now=now;fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('one representative terminal route ends saved alternative work without extra reads',async()=>{
  const t=token(10);t.dex_pools=[{cashout_quote:leg(t.token_address,WETH)},{cashout_quote:leg(t.token_address,address(11))}];
  const s=await expandRoutes(t,async()=>{throw Error('Alternative route must not be read');},{representative:true});
