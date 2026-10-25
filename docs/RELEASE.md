@@ -1,10 +1,34 @@
 # Release preparation
 
-## Release candidate: 1.0.0
+## Release candidate: 1.0.1
 
-The operator selected 1.0.0 on 2026-10-25. Version 0.2.3 remains the published
-package while live acceptance and the final 1.0.0 archive are prepared. This
-candidate keeps the research engine and saved-data formats from 0.2.3.
+Fixes excessive local work during sell-analysis continuation. Completed asset
+reviews survive the early burn pass without reopening their route frontiers.
+Local frontier writes are coalesced; new provider facts and exit checkpoints
+still reach durable storage. Progress reports retain current counts and final
+counts without saving one job update per cached asset.
+
+The fix preserves the research scope, quote checks, RPC pacing, public command
+contracts and saved-data formats. Regression coverage includes large frontiers,
+completed-review replay, provider-fact durability and time-budget exits.
+The full suite passed 266 engine tests, 70 viewer tests and all JavaScript
+checks. An installed candidate resumed an interrupted real-data checkpoint in
+47.7 seconds, finished in one pass with no pending work, and preserved balances,
+existing route quotes and all prior snapshots. This measures cached continuation,
+not a new wallet scan. Completed Base root replay with mocked RPC fell from
+13.1 seconds and 545 checkpoint writes to 0.04 seconds and one write.
+
+Both published 1.0.0 and candidate 1.0.1 passed app stop/start checks with
+unchanged saved records, price history and jobs. Candidate MCP historical reads
+matched CLI output. The isolated install matched every archive member; the
+dependency audit found zero known vulnerabilities. No research starts on reads
+or restart. Private live-test evidence stays outside the public repository.
+Review not selected. Registry publication remains an operator action.
+
+## Published 1.0.0
+
+The operator selected and published 1.0.0 on 2026-10-25. This release keeps the
+research engine and saved-data formats from 0.2.3.
 
 New OWS wallets are registered and linked without starting asset research.
 Their holdings remain unchecked until an explicit holdings refresh. Linking an
