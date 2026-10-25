@@ -9,6 +9,52 @@ from curve_pricing import resolve
 
 
 class CurvePricingTests(unittest.TestCase):
+    def test_index_prices_validate_exact_identity_and_bound_batches(self):
+        from curve_pricing import index_prices
+        identities=[(8453,'0x'+format(i+1,'040x')) for i in range(26)]
+        def fetch(url,body,**kwargs):
+            self.assertLessEqual(len(body['addresses']),25)
+            valid=[{**row,'prices':[{'currency':'usd','value':'2','lastUpdatedAt':'2026-10-25T01:00:00Z'}]} for row in body['addresses']]
+            return {'data':[None,{'network':[],'address':identities[0][1]},
+                {'network':'eth-mainnet','address':identities[0][1],'prices':[{'currency':'usd','value':'999'}]},*valid]}
+        with tempfile.TemporaryDirectory() as directory,patch('research.secrets',return_value={'ALCHEMY_CUSTOM_APY_KEY':'synthetic-key'}),patch('wallet.fetch',side_effect=fetch) as provider:
+            result=index_prices(identities,Path(directory))
+            self.assertEqual(provider.call_count,2);self.assertEqual(result['status'],'checked')
+            self.assertEqual(len(result['tokens']),26)
+            self.assertTrue(all(p['chain_id']==8453 and p['usd']==2 and p['observed_at']=='2026-10-25T01:00:00Z' for p in result['tokens']))
+            self.assertEqual(index_prices(identities,Path(directory)),result)
+            self.assertEqual(provider.call_count,2)
+
+    def test_index_provider_failure_and_invalid_values_remain_unknown(self):
+        from curve_pricing import index_prices
+        address='0x'+'1'*40
+        for response in ([],{'transport_error':{'status':429}},{'data':[{'network':'base-mainnet','address':address,
+            'prices':[{'currency':'usd','value':v} for v in ('NaN','Infinity','-1','invalid',True)]}]}):
+            with self.subTest(response=response),tempfile.TemporaryDirectory() as directory,patch('research.secrets',return_value={'ALCHEMY_CUSTOM_APY_KEY':'synthetic-key'}),patch('wallet.fetch',return_value=response):
+                self.assertEqual(index_prices([(8453,address)],Path(directory)),{'tokens':[],'status':'partial'})
+
+    def test_reserve_enrichment_preserves_dex_prices_and_explicit_rejections(self):
+        from curve_pricing import enrich
+        address='0x'+'1'*40
+        for price in ({'usd':2,'basis':'DEX market','quality':'estimated'},
+                      {'usd':None,'basis':'Insufficient market liquidity','quality':'unreliable'}):
+            with self.subTest(price=price),tempfile.TemporaryDirectory() as directory:
+                folder=Path(directory)
+                (folder/'reserve-graph.json').write_text(json.dumps({'tokens':[{'chain_id':8453,'address':address,'is_curve':False}]}))
+                row={'chain_id':8453,'address':address,**price}
+                with patch('wallet.run_node'),patch('curve_pricing.index_prices',return_value={'tokens':[],'status':'checked'}) as index,patch('wallet.dex_fetch',side_effect=AssertionError('Already checked')):
+                    result=enrich({'wallet_address':'0x'+'2'*40,'tokens':[]},{'tokens':[row]},folder)
+                self.assertEqual(index.call_args.args[0],[])
+                self.assertEqual(result['tokens'],[row])
+
+    def test_retained_reserve_does_not_acquire_a_fresh_curve_timestamp(self):
+        graph=[self.curve('child','reserve')]
+        parent={'chain_id':8453,'address':'reserve','usd':2,'basis':'Market index','quality':'estimated',
+                'observed_at':'2026-10-01T00:00:00Z','retained_from_previous':True}
+        child=next(p for p in resolve(graph,[parent]) if p['address']=='child')
+        self.assertEqual(child['usd'],1);self.assertTrue(child['retained_from_previous'])
+        self.assertEqual(child['observed_at'],parent['observed_at'])
+
     def test_bounded_reserve_engine_publishes_before_parent_termination(self):
         import curve_pricing
         import wallet

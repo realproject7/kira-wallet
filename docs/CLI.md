@@ -1,9 +1,9 @@
 # CLI and provider configuration
 
-Kira 0.2.2 is a local wallet engine, CLI and web interface. Any capable agent
+Kira is a local wallet engine, CLI and web interface. Any capable agent
 can use the CLI; MCP is optional. Your agent host supplies its own model,
 conversation, general tools and approvals. Kira does not start a model process.
-Version 0.2.2 is published on npm.
+Version 0.2.2 is published on npm. This source prepares 0.2.3.
 
 ## Install and choose a workspace
 
@@ -179,9 +179,17 @@ kira call holdings_query --arguments '{"mode":"search","query":"ETH"}' --json
 kira call wallet_read --arguments '{"wallet":"Daily wallet","offset":0,"limit":100}' --json
 kira call token_read --arguments '{"chain_id":8453,"address":"native"}' --json
 kira call snapshots_list --arguments '{"wallet":"Daily wallet","limit":20}' --json
+kira call snapshots_list --arguments '{"wallet":"Daily wallet","kind":"prices","limit":20}' --json
 kira call job_list --arguments '{"state":"active","offset":0,"limit":20}' --json
 kira ui context --json
 ```
+
+`snapshots_list` defaults to holdings analyses. Use `kind: "prices"` for saved
+price observations or `kind: "all"` for both. Pass the returned IDs to
+`snapshot_read` or `snapshots_compare`. Price observations reproduce their saved
+overlay and keep the linked holdings unchanged, even after another refresh.
+Comparisons include price/value changes and native positions; a price change
+is not a token transfer. No provider request is made by these reads.
 
 `job_list` accepts `state` groups `all` (default), `active` (queued or
 running), `succeeded` (succeeded or partial), `attention` (interrupted or

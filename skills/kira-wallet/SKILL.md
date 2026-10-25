@@ -103,8 +103,11 @@ kira ui context --json
   compare `holdings` rows to see change between lookups.
 - A price refresh updates the prices shown for the latest snapshot, including
   through `snapshot_read`. `snapshot_price_references` keep the native prices
-  recorded by the holdings lookup. Earlier price observations remain local job
-  evidence but are not listed by the history tools.
+  recorded by the holdings lookup. To read immutable price history instead,
+  call `snapshots_list` with `kind: "prices"` or `"all"`, then use the returned
+  IDs with `snapshot_read` or `snapshots_compare`. These observations pair their
+  saved prices with the linked holdings and include native positions in price
+  comparisons. Default `kind: "holdings"` preserves the existing holdings list.
 - Per-position `price.usd` and `value_usd` are JSON numbers. Totals from
   `holdings_query` and `recorded_valuation` are exact decimal strings; use them
   instead of re-adding rounded position values. Check `price.observed_at`:

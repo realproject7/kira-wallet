@@ -490,8 +490,21 @@ class JobStore:
         path = (self.root / snapshot_id).resolve()
         if not path.is_relative_to((self.root / 'snapshots').resolve()) or '..' in Path(snapshot_id).parts:
             raise JobError('invalid_snapshot', 'Snapshot ID is outside saved evidence.')
-        if not (path / 'results.json').is_file(): raise JobError('not_found', 'Snapshot was not found.')
-        result = read(path / 'results.json')
+        if (path / 'results.json').is_file():result = read(path / 'results.json')
+        elif (path / 'prices.json').is_file():
+            overlay=read(path/'prices.json')
+            source=overlay.get('snapshot_id')
+            if not isinstance(source,str) or not source.startswith('snapshots/') or '..' in Path(source).parts:
+                raise JobError('invalid_snapshot','Invalid holdings source for this price observation.')
+            holdings=(self.root/source/'results.json').resolve()
+            if not holdings.is_relative_to((self.root/'snapshots').resolve()) or not holdings.is_file():
+                raise JobError('invalid_snapshot','Price observations require a saved holdings source.')
+            result=read(holdings)
+            if overlay.get('wallet_address','').lower()!=result.get('wallet_address','').lower():
+                raise JobError('wallet_mismatch','Price observation and holdings must belong to the same wallet.')
+            result={**result,'price_observation':{'snapshot_id':snapshot_id,'holdings_snapshot':source,'observed_at':overlay.get('observed_at')},
+                    'price_overlay':{k:overlay[k] for k in ('observed_at','wallet_address','tokens','native_usd','markets','sell_quotes') if k in overlay}}
+        else:raise JobError('not_found', 'Snapshot was not found.')
         # Public readers receive financial facts, never arbitrary raw provider files.
         from kira_config import redact
         def safe(value, key=''):
@@ -510,8 +523,22 @@ class JobStore:
         from decimal import Decimal, InvalidOperation, localcontext
         old, new = self.snapshot(before), self.snapshot(after)
         if old['wallet_address'].lower() != new['wallet_address'].lower():raise JobError('wallet_mismatch','Choose snapshots from the same wallet.')
+        price_comparison=bool(old.get('price_observation') or new.get('price_observation'))
+        valuations=[]
+        if price_comparison:
+            sys.path.insert(0,str(ASSETS/'viewer'))
+            from model import project_wallet
+            entry=self.wallet(old['wallet_address'])
+            for identity,snapshot in ((before,old),(after,new)):
+                source=(snapshot.get('price_observation') or {}).get('holdings_snapshot',identity)
+                projected=project_wallet({**entry,'latest_snapshot':{'directory':source}},snapshot,self.root,market=snapshot.get('price_overlay'))
+                valuations.append({a['id']:a for a in projected['assets']})
         def positions(snapshot):
-            return {(t['chain_id'],t['token_address'].lower(),t.get('token_id')):t for t in snapshot.get('tokens',[])}
+            rows={(t['chain_id'],t['token_address'].lower(),t.get('token_id')):t for t in snapshot.get('tokens',[])}
+            if price_comparison:
+                rows.update({(c['chain_id'],'native',None):{'symbol':c.get('native_symbol'),'wallet_balance':c.get('native_balance')}
+                             for c in snapshot.get('coverage',[])})
+            return rows
         left,right=positions(old),positions(new);changes=[]
         for identity in sorted(left.keys() | right.keys(),key=str):
             a,b=left.get(identity),right.get(identity);delta=None
@@ -530,6 +557,13 @@ class JobStore:
                 'presence':'both' if a and b else 'new_record' if b else 'absent_record',
                 'price_references_changed':(a or {}).get('indexer_price_references')!=(b or {}).get('indexer_price_references'),
                 'valuation_method_changed':bool((a or {}).get('mintclub'))!=bool((b or {}).get('mintclub'))})
+            if price_comparison:
+                first,last=(values.get(str(identity[0])+':'+identity[1],{}) for values in valuations)
+                def price(asset):
+                    return {k:asset['price'].get(k) for k in ('usd','basis','quality','observed_at')} if asset.get('price') else None
+                changes[-1].update(before_price=price(first),after_price=price(last),
+                                   before_value_usd=first.get('value_usd'),after_value_usd=last.get('value_usd'),
+                                   price_references_changed=price(first)!=price(last))
         def counts(rows):
             return {'position_count':len(rows),
                 'new_record_count':sum(r['presence']=='new_record' for r in rows),
@@ -539,26 +573,36 @@ class JobStore:
                 'unchanged_observation_count':sum(r['balance_comparison']=='unchanged_observations' for r in rows),
                 'different_observation_count':sum(r['balance_comparison']=='different_observations' for r in rows),
                 'unknown_comparison_count':sum(r['balance_comparison']=='unknown' for r in rows)}
-        summary={'scope':'full_recorded_non_native_token_comparison_before_pagination',
+        summary={'scope':'full_recorded_price_comparison_before_pagination' if price_comparison else 'full_recorded_non_native_token_comparison_before_pagination',
             'totals':counts(changes),
             'chains':[{'chain_id':cid,**counts([r for r in changes if r['chain_id']==cid])}
                 for cid in sorted({r['chain_id'] for r in changes})]}
         return {'schema_version':1,'before':before,'after':after,'wallet':new['wallet_address'],
-            'coverage_changed':old.get('coverage')!=new.get('coverage'),'price_references_changed':old.get('price_references')!=new.get('price_references'),
-            'comparison_summary':summary,'positions':changes,'note':'Absent records are unknown, not zero. Missing prior or later observations cannot establish or rule out receipts, disposals or transfers. Broader discovery can explain visibility, but activity and its cause remain unknown without transfer history. Even equal observed balances do not exclude intervening activity. Price overlays have separate observations and are not balance changes. Coverage changes compare full evidence, including observation times and blocks; this alone does not prove the set of checked networks changed. Positions compare direct token records. Read both snapshots to compare native balances.'}
+            'coverage_changed':old.get('coverage')!=new.get('coverage'),'price_references_changed':old.get('price_references')!=new.get('price_references') or price_comparison and any(r['price_references_changed'] for r in changes),
+            'comparison_summary':summary,'positions':changes,'note':'Absent records are unknown, not zero. Missing prior or later observations cannot establish or rule out receipts, disposals or transfers. Broader discovery can explain visibility, but activity and its cause remain unknown without transfer history. Even equal observed balances do not exclude intervening activity. Price overlays have separate observations and are not balance changes. Coverage changes compare full evidence, including observation times and blocks; this alone does not prove the set of checked networks changed. ' + ('Positions include native assets and the selected recorded price observations.' if price_comparison else 'Positions compare direct token records. Read both snapshots to compare native balances.')}
 
-    def snapshots(self, wallet):
+    def snapshots(self, wallet, kind='holdings'):
+        if kind not in ('holdings','prices','all'):raise JobError('invalid_snapshot_kind','Choose holdings, prices or all.')
         key = self.wallet(wallet)['address_key']
         paths = {w['latest_snapshot']['directory'] for w in read(self.root / 'wallets.json')['wallets'] if w['address_key'] == key and w.get('latest_snapshot')}
         for run in read(self.root / 'wallets.json').get('research_runs', []):
             if run['address_key'] == key: paths.add(run['snapshot'])
         rows = []
-        for path in paths:
+        for path in paths if kind!='prices' else []:
             # phase "initial" marks progress published while a holdings lookup was still running.
             snapshot = self.snapshot(path)
             rows.append({'snapshot_id': path, 'compiled_at': snapshot.get('compiled_at'), 'status': snapshot.get('status'),
                          'phase': (snapshot.get('pipeline') or {}).get('phase')})
-        return sorted(rows, key=lambda r: r['compiled_at'] or '')
+        if kind!='holdings':
+            evidence=set((self.root/'snapshots/jobs').glob('*/prices.json'))
+            for path in paths:evidence.update((self.root/path/'price-evidence').glob('*/prices.json'))
+            for file in evidence:
+                if not file.resolve().is_relative_to((self.root/'snapshots').resolve()):continue
+                overlay=read(file)
+                if overlay.get('wallet_address','').lower()!=key or overlay.get('snapshot_id') not in paths:continue
+                rows.append({'snapshot_id':str(file.parent.relative_to(self.root)),'compiled_at':overlay.get('observed_at'),
+                             'status':overlay.get('job_result_status'),'phase':'prices','holdings_snapshot':overlay['snapshot_id']})
+        return sorted(rows, key=lambda r: (r['compiled_at'] or '',r['snapshot_id']))
 
     def publication(self, job):
         if job['operation'].startswith('settings.') or job['operation']=='wallet.setTags':

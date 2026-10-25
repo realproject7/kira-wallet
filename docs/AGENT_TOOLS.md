@@ -94,6 +94,10 @@ global skill directory. Follow that host's configuration and approval flow.
   `holdings_query` for full-inventory counts, aggregates and rankings instead
   of asking the model to total a truncated page. Query results are bounded to
   25 per page; wallet and historical holdings pages allow up to 100.
+- For price history, call `snapshots_list` with `kind: "prices"` (or `"all"`),
+  then use its IDs with `snapshot_read` and `snapshots_compare`. The default
+  remains holdings history. Each price observation uses its saved overlay and
+  linked holdings; later refreshes cannot replace those selected prices.
 - Report same-symbol ambiguity. Exact identities are chain ID plus contract,
   or `native` for a chain's native asset. Missing records are unknown, not zero.
 - `kira jobs wait ID --timeout 30 --json` waits up to the requested limit

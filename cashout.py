@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation, localcontext
 import json
 from pathlib import Path
 import re
+from market_records import checked_price
 
 CRITERIA = {'version': 2, 'minimum_quoted_usd': '1', 'mintclub_redemption_included': True,
             'gas_included': False, 'execution_verified': False,
@@ -36,6 +37,7 @@ def output_price(chain_id, address, market):
     rows = [p for p in market.get('tokens', []) if p.get('chain_id') == chain_id
             and isinstance(p.get('address'), str) and p['address'].lower() == address.lower()]
     for row in rows:
+        row = checked_price(row)
         price = decimal(row.get('usd'))
         if (price is not None and price > 0 and row.get('quality') == 'estimated'
                 and row.get('basis') in ('DEX market', 'Market index')

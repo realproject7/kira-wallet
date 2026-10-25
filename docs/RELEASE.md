@@ -1,5 +1,22 @@
 # Release preparation
 
+## Candidate 0.2.3
+
+Research and price refresh share the Alchemy index fallback and DEX liquidity
+checks. Insufficient or extremely one-sided DEX liquidity stays unpriced;
+provider gaps retain usable prior observations with their original timestamps.
+Cash-out classification uses the same DEX price validation as wallet valuation.
+The symbol-based MEMBER pool override is removed, and a failed curve network
+no longer discards observations from other networks.
+
+History tools accept `snapshots_list` with `kind: "prices"` or `"all"`.
+`snapshot_read` and `snapshots_compare` accept those immutable observation IDs,
+with linked holdings, native positions, independent timestamps and unknowns.
+Price-only refresh also saves evidence when run directly from Python.
+
+This is unmerged source preparation, not a published or frozen archive.
+Release publication and website deployment remain operator actions.
+
 ## Published 0.2.2
 
 Fixes two agent contract findings from the published 0.2.1 fresh-agent test.
