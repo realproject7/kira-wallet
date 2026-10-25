@@ -15,7 +15,7 @@ web app to manage wallets, inspect token markets and follow research. Your
 existing AI agent can use the same records and actions through the Kira CLI or
 optional MCP connection, then open the web app beside your conversation.
 
-**Kira 0.2.2 is published on npm; this branch prepares 0.2.3.** Kira supplies wallet tools and a full-window
+Kira supplies wallet tools and a full-window
 management app. Your agent host manages its own conversations, models, files and
 approvals. Kira does not launch a model CLI or require a model login.
 
@@ -28,9 +28,6 @@ background processes require POSIX. Install Kira and open the local app:
 npm install -g kira-wallet
 kira setup
 ```
-
-When installing a prepared release before publication, use its verified archive
-instead of assuming the npm default already contains this branch.
 
 1. **Connect Alchemy.** Follow the [setup guide](docs/ALCHEMY_SETUP.md). Run
    `kira connect alchemy` in your terminal and enter the app key at the hidden

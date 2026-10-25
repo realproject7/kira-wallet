@@ -1,5 +1,55 @@
 # Release preparation
 
+## Release candidate: 1.0.0
+
+The operator selected 1.0.0 on 2026-10-25. Version 0.2.3 remains the published
+package while live acceptance and the final 1.0.0 archive are prepared. This
+candidate keeps the research engine and saved-data formats from 0.2.3.
+
+New OWS wallets are registered and linked without starting asset research.
+Their holdings remain unchecked until an explicit holdings refresh. Linking an
+existing unregistered wallet still starts initial research, and retries recover
+older registration jobs without duplicating or restarting cancelled work.
+The empty wallet screen explains the manual lookup instead of suggesting
+that automatic research is pending. Post-creation navigation waits for saved
+wallet state, and a failed descriptor reload keeps the same recovery request.
+
+The 1.x compatibility commitment covers documented CLI commands and
+options, the shared CLI/MCP tool names and documented request/response fields,
+and access to existing wallets, jobs and saved observations. Incompatible
+changes to these interfaces require a new major version. Compatible additions
+use a minor version; compatible fixes use a patch version. Clients must tolerate
+additional response fields. Observation values, provider availability, coverage,
+prices and UI layout are not fixed by this commitment. Internal Python modules,
+cache files and browser-only endpoints are not a supported integration API.
+
+Live acceptance completed on the published 0.2.3 research engine, which is
+byte-identical to this candidate. It verified preserved upgrade data, price-only
+refresh and immutable history, browser-wallet connection, human-submitted OWS
+creation, disconnect/reconnect and restart persistence. Optional sell analysis
+reached its natural terminal state with all review targets checked and no
+pending market work. Holdings and prior price evidence stayed unchanged.
+Provider coverage gaps and unavailable quotes remain explicit unknowns.
+
+The changed OWS registration flow passed isolated regressions for no automatic
+research, explicit manual refresh, retries, interrupted writes, earlier-version
+job recovery and preserved cancelled jobs. Browser checks with a synthetic
+public descriptor verified the empty account, zero activity jobs and desktop
+and mobile layouts. The OWS key-creation bridge is unchanged from the human
+acceptance. Human grants and passphrases stayed outside the agent; acceptance
+included no signing, trades, funding or key export.
+
+The final source passed 265 engine tests, 70 viewer tests, all JavaScript
+suites, clean package installation and lifecycle checks. The locked dependency
+audit reported zero known vulnerabilities. Tracked-source privacy checks found
+no private content; strict history findings are the previously recorded public
+identity metadata and verified normal CLI merge metadata under the policy below.
+The operator publishes the exact archive frozen from the landed source.
+
+Installation guidance is version-independent so it does not claim that a
+published package is still a candidate. Review not selected for this release
+preparation; existing audit evidence is retained.
+
 ## Published 0.2.3
 
 Research and price refresh share the Alchemy index fallback and DEX liquidity

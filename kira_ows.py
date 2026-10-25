@@ -106,7 +106,17 @@ class OwsStore:
             job=None
             registration_key=str(uuid.uuid5(uuid.UUID(key),'ows-register'))
             # Pre-intent receipts from older versions may already own a queued job.
-            if not registered or receipt.get('registration_requested') or any(j['key_hash']==digest(registration_key) for j in store.list()):
+            pending_registration=receipt.get('registration_requested') or any(j['key_hash']==digest(registration_key) for j in store.list())
+            if create and not pending_registration:
+                address=store.normalize('wallet.add',{'address':address,'tag':tag})['address']
+                from wallet import register, registry_locked
+                with registry_locked(self.root):
+                    registry=json.loads((self.root/'wallets.json').read_text())
+                    registered=next((w for w in registry['wallets'] if w['address_key']==address.lower()),None)
+                    if registered is None:
+                        registered=register(registry,address,tag)
+                        atomic(self.root/'wallets.json',registry)
+            elif not registered or pending_registration:
                 # Record intent before admission: submit can register the wallet
                 # before this process has saved its job ID or started a worker.
                 if not receipt.get('registration_requested'):

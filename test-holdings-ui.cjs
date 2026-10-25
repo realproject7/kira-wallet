@@ -72,6 +72,14 @@ assert.equal(saved.size,0,'View filters stay temporary.');assert.equal(node('vis
 assert.equal(node('holdings-filter-note').hidden,true);assert.equal(node('empty').hidden,true);
 assert.match(node('asset-groups').innerHTML,/ETH/);assert.match(node('asset-groups').innerHTML,/APE/);assert.match(node('asset-groups').innerHTML,/BNB/);
 console.log('Unknown wallet value and explicit filter recovery preserve all recorded holdings.');
+const savedAssets=wallet.assets,savedAnalysis=wallet.analysed_at;
+wallet.assets=[];wallet.analysed_at=null;context.minimum=0;context.renderWallet();
+assert.equal(node('total-value').textContent,'—');
+assert.equal(node('sync-label').textContent,'Not checked');
+assert.equal(node('valuation-note').textContent,'No holdings lookup saved yet.');
+assert.match(node('empty-p').textContent,/Use Refresh holdings/);
+wallet.assets=savedAssets;wallet.analysed_at=savedAnalysis;
+
 context.unitPrice=n=>'$'+n;context.quantity=String;context.tokenHref=String;context.coinIcon=()=>'';
 context.shortAddress=s=>s.slice(0,6)+'…'+s.slice(-4);
 vm.runInContext(source.slice(source.indexOf('function venueMark('),source.indexOf('function accountCard(')),context);

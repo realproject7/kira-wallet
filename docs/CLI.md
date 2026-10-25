@@ -3,7 +3,6 @@
 Kira is a local wallet engine, CLI and web interface. Any capable agent
 can use the CLI; MCP is optional. Your agent host supplies its own model,
 conversation, general tools and approvals. Kira does not start a model process.
-Version 0.2.2 is published on npm. This source prepares 0.2.3.
 
 ## Install and choose a workspace
 
@@ -14,15 +13,13 @@ kira info --json
 kira skill
 ```
 
-Before this version is published, install the prepared package archive to try these
-commands. The default registry install may still provide an earlier version.
 Node.js 22+, Python 3.11+ and a POSIX host are required; macOS is verified.
 The package includes the engine, browser assets and declared dependencies.
 It excludes wallet records, credentials, conversations and logs.
 
 The supported CLI uses `~/.local/share/kira-wallet`, independently of the
 current directory or agent session. `KIRA_DATA_DIR` selects another workspace;
-the equivalent global `--data-dir` must precede the command:
+the equivalent `--data-dir` option also works before or after the command:
 
 ```sh
 kira --data-dir /absolute/private/workspace info --json
@@ -245,6 +242,9 @@ Its optional SDK is `@open-wallet-standard/core` 1.4.3; the vault defaults to
 passphrase in the local interface. Kira does not return private keys or seed
 phrases. Recovery keeps the original passphrase and interrupted requests retain
 their identity to prevent duplicate creation. Use OWS owner tools for backup
-and recovery. Agents must leave passphrase entry to the human. OWS absence
+and recovery. A newly created wallet is registered and linked without starting
+asset research. Use **Refresh holdings** when you want to check its assets.
+Linking an existing, unregistered OWS wallet still starts its initial research.
+Agents must leave passphrase entry to the human. OWS absence
 does not block ordinary public-address onboarding. Kira exposes no signing,
 trading, key export or account deletion.
