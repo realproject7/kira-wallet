@@ -3,7 +3,7 @@
 Kira 0.2.2 is a local wallet engine, CLI and web interface. Any capable agent
 can use the CLI; MCP is optional. Your agent host supplies its own model,
 conversation, general tools and approvals. Kira does not start a model process.
-This branch prepares 0.2.2. Registry publication remains an operator action.
+Version 0.2.2 is published on npm.
 
 ## Install and choose a workspace
 

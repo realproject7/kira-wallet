@@ -1,6 +1,6 @@
 # Release preparation
 
-## Prepared release: 0.2.2
+## Published 0.2.2
 
 Fixes two agent contract findings from the published 0.2.1 fresh-agent test.
 `job_list` now publishes its accepted `state` values in the tool schema and
@@ -26,9 +26,11 @@ The skill corrects `head_status`, notes the native `address: null`, the
 100-event job window and older settings receipts. Wallet records, research,
 financial projections and the web app are unchanged.
 
-Preserve the published 0.2.1 archive and every earlier archive. Freeze 0.2.2
-from the accepted clean commit with `scripts/prepare-release.py`, dry-run that
-exact archive and leave registry publication to the operator. Review not selected.
+The operator published 0.2.2 on 2026-10-25. It was frozen from the landed
+merge commit `4c15c69a7e7031a1f52e57d971927abe82fe85f8`. The registry archive is
+byte-identical to the frozen one, SHA-256
+`5d954fc1cb9e679d8f33c94f71721052315e589e4550540e8f5bda10e1ab5089`, and a fresh
+registry install matched all 93 members. Review not selected.
 
 ## Published 0.2.1
 
@@ -159,7 +161,7 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep published GitHub tags, release assets and npm versions through 0.2.1
+Keep published GitHub tags, release assets and npm versions through 0.2.2
 immutable. Do not rebuild them from later documentation commits. Future package
 changes need a new version. Release preparation does not publish a GitHub
 release, promote the website or publish to npm.
@@ -175,12 +177,12 @@ python3 scripts/prepare-release.py
 ```
 
 `prepare-release.py` scans the package boundary and creates
-`dist/kira-wallet-0.2.2.tgz`. The ignored `dist/release.json` records its source
+`dist/kira-wallet-VERSION.tgz` for the version in `package.json`. The ignored `dist/release.json` records its source
 commit, SHA-256 and member count. It never publishes. After reviewing that
 manifest, the operator's final command from the project root is:
 
 ```sh
-npm publish ./dist/kira-wallet-0.2.2.tgz --access public
+npm publish ./dist/kira-wallet-VERSION.tgz --access public
 ```
 
 Use the operator's npm account and complete authentication or OTP personally.
