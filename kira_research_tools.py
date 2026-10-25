@@ -11,7 +11,7 @@ CATALOG = [
     {'name':'wallet_read','arguments':{'wallet':'registered address or exact name'},'optional_arguments':{'offset':'nonnegative integer, default 0','limit':'integer 1 to 100, default 100'},'description':'Read a compact holdings page of one approved wallet. Follow next_offset until null for the complete recorded inventory. Use token_read for curve, market and exit details.'},
     {'name':'holdings_query','arguments':{'mode':'search, rank or aggregate'},'optional_arguments':{'query':'Token symbol, name, exact contract or native. Required for search. Use one query per token.','wallet':'Optional registered wallet name or address; omit for every approved wallet.','chain_id':'Optional positive chain ID','environment':'mainnet (default), testnet or all','group_by':'asset (default: sum priced positions by chain and contract) or position','minimum_value_usd':'Optional nonnegative USD minimum per position; unknowns excluded and counted.','offset':'nonnegative integer, default 0','limit':'integer 1 to 25, default 10'},'description':'Search names, rank top N or aggregate the ENTIRE approved saved inventory on the host. No inventory pagination or jobs needed. Returns exact counts, values, ambiguity and bounded detailed matches. Use search for symbol-only questions, rank for top-N questions and aggregate for counts or sums.'},
     {'name':'token_read','arguments':{'chain_id':'positive integer','address':'contract address or native'},'optional_arguments':{'minimum_value_usd':'Nonnegative USD number or decimal string. Filter by recorded mainnet value; unknowns stay separate.'},'description':'Read this asset across ALL approved wallets in one request, including saved native observations. Use the optional minimum for value-threshold questions and the exact returned position_count. No wallet inventory pagination is needed.'},
-    {'name':'snapshots_list','arguments':{'wallet':'registered address or exact name'},'description':'List past saved analyses for an approved wallet.'},
+    {'name':'snapshots_list','arguments':{'wallet':'registered address or exact name'},'optional_arguments':{'kind':'holdings (default), prices or all'},'description':'List saved holdings analyses or immutable price observations for an approved wallet.'},
     {'name':'snapshot_read','arguments':{'snapshot_id':'saved snapshot ID'},'optional_arguments':{'offset':'nonnegative integer, default 0','limit':'integer 1 to 100, default 20'},'description':'Read a compact page of historical evidence for an approved wallet.'},
     {'name':'snapshots_compare','arguments':{'before':'saved snapshot ID','after':'saved snapshot ID'},'optional_arguments':{'offset':'nonnegative integer, default 0','limit':'integer 1 to 100, default 20'},'description':'Compare a page of recorded positions of the same approved wallet.'},
     {'name':'job_list','arguments':{},'description':'Read research jobs only for approved wallets.'},
@@ -62,21 +62,22 @@ class ResearchTools:
 
     def snapshot(self, identity, approved, offset=0, limit=20):
         # Only published historical analyses listed for this scope may be read.
-        visible={row['snapshot_id'] for key in approved for row in self.store.snapshots(key)}
+        visible={row['snapshot_id'] for key in approved for row in self.store.snapshots(key,kind='all')}
         if identity not in visible:raise JobError('snapshot_scope','This analysis is outside the current conversation scope.')
         result=self.store.snapshot(identity)
         if result.get('wallet_address','').lower() not in approved:raise JobError('snapshot_scope','This analysis does not belong to the approved wallet.')
         from kira_records import wallet_facts, compact_wallet_facts, recorded_valuation
         from model import project_wallet
         entry=self.store.wallet(result['wallet_address'])
-        entry={**entry,'latest_snapshot':{'directory':identity}}
-        wallet=project_wallet(entry,result,self.root);count=len(wallet['assets'])
+        observation=result.get('price_observation')
+        entry={**entry,'latest_snapshot':{'directory':observation['holdings_snapshot'] if observation else identity}}
+        wallet=project_wallet(entry,result,self.root,market=result.get('price_overlay'));count=len(wallet['assets'])
         wallet['recorded_valuation']=recorded_valuation(wallet['assets'])
         wallet['assets']=wallet['assets'][offset:offset+limit]
         rows=compact_wallet_facts(wallet_facts([wallet],pool_budget=0))
         rows[0].update(asset_count=count,assets_omitted=count-len(wallet['assets']),offset=offset,
                        next_offset=offset+len(wallet['assets']) if offset+len(wallet['assets'])<count else None)
-        return {'snapshot_id':identity,'wallets':rows,'note':'Historical recorded evidence. Prices and balances retain their observation times; curve backing is not executable cash. Follow next_offset for more holdings.'}
+        return {'snapshot_id':identity,**({'price_observation':observation} if observation else {}),'wallets':rows,'note':'Historical recorded evidence. Prices and balances retain their observation times; curve backing is not executable cash. Follow next_offset for more holdings.'}
 
     def job(self, job, approved):
         if job['operation'] not in ('wallet.add','wallet.refresh','prices.refresh'):
@@ -159,7 +160,7 @@ class ResearchTools:
             return {'identity':identity,'positions':positions,'position_count':len(positions),'unfiltered_position_count':total,
                     'unpriced_position_count':unpriced,'outside_usd_scope_count':outside,'curve_comparison':compare_curve_states(positions),
                     'note':'An absent record is unknown, not a verified zero holding.'}
-        if name=='snapshots_list':return self.store.snapshots(self.wallet(arguments['wallet'],approved))
+        if name=='snapshots_list':return self.store.snapshots(self.wallet(arguments['wallet'],approved),arguments.get('kind','holdings'))
         if name=='snapshot_read':return self.snapshot(arguments['snapshot_id'],approved,arguments.get('offset',0),arguments.get('limit',20))
         if name=='snapshots_compare':
             self.snapshot(arguments['before'],approved);self.snapshot(arguments['after'],approved)

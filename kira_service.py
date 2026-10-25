@@ -18,6 +18,7 @@ for row in CATALOG:
         schema={'type':'integer','minimum':1 if name in ('chain_id','limit') else 0} if name in ('chain_id','offset','limit') else dict(STRING)
         if name=='minimum_value_usd':schema={'type':['string','number']}
         if name=='limit':schema['maximum']=25 if row['name']=='holdings_query' else 100
+        if row['name']=='snapshots_list' and name=='kind':schema['enum']=['holdings','prices','all']
         properties[name]={**schema,'description':description}
     if row['name'] in ('portfolio_read','job_list','snapshots_list'):
         properties.update(offset=INTEGER,limit={'type':'integer','minimum':1,'maximum':100})
@@ -128,7 +129,7 @@ class Application:
             return {'schema_version':1,'dashboard':state['dashboard'],**page(rows,offset,limit,key='wallets'),
                     'data_revision':self.views.revision,'note':'Saved summaries only. Use wallet_read for holdings pages and holdings_query for search, ranking and aggregates.'}
         if name=='snapshots_list':
-            return page(self.jobs.snapshots(arguments['wallet']),arguments.get('offset',0),arguments.get('limit',100),key='snapshots')
+            return page(self.jobs.snapshots(arguments['wallet'],arguments.get('kind','holdings')),arguments.get('offset',0),arguments.get('limit',100),key='snapshots')
         return self.records.call(name,arguments,str(uuid.uuid4()))
 
     def select(self,value):

@@ -5,7 +5,6 @@ from decimal import Decimal, InvalidOperation, localcontext
 from pathlib import Path
 import hashlib
 import json
-import math
 import os
 import re
 from token_images import image_for, read_catalog, safe_image
@@ -13,7 +12,7 @@ from chain_images import chain_image
 from native_assets import native_identity
 from details import project_details
 from sell_quotes import classify_with_cache as cashout_classification
-from market_records import canonical_token, canonical_source, merge_pools, market_url
+from market_records import canonical_token, canonical_source, merge_pools, market_url, number, checked_price, MIN_PRICE_LIQUIDITY_USD
 
 ROOT = Path(os.environ.get('KIRA_DATA_DIR',Path(__file__).resolve().parents[1])).expanduser().resolve()
 EXPLORERS = {1:'https://etherscan.io',8453:'https://basescan.org',81457:'https://blastscan.io',
@@ -26,12 +25,6 @@ EXPLORERS = {1:'https://etherscan.io',8453:'https://basescan.org',81457:'https:/
     157:'https://puppyscan.shib.io',43113:'https://testnet.snowtrace.io'}
 
 def read(path): return json.loads(path.read_text())
-def number(value):
-    try:
-        n = float(Decimal(str(value)))
-        return n if math.isfinite(n) and n >= 0 else None
-    except (InvalidOperation, TypeError, ValueError, OverflowError): return None
-
 def safe_routes(routes):
     result=[]
     if not isinstance(routes,list):return result
@@ -114,23 +107,6 @@ def sell_out_estimate(quote, eligibility, reserve_price):
     return {**quote, 'value_usd': value, 'valuation': 'reserve_reference',
             'output_price': price if usable else None, 'execution_verified': False}
 
-MIN_PRICE_LIQUIDITY_USD=1000
-
-def checked_price(price, pools=()):
-    """A spot quote needs a meaningful observed market, including saved quotes."""
-    if not price or price.get('basis')!='DEX market':return price
-    liquidity=number(price.get('liquidity_usd'))
-    if liquidity is None:
-        pool=next((p for p in pools if p.get('source_url')==price.get('source')),None)
-        liquidity=number((pool.get('reported_liquidity') or {}).get('usd')) if pool else None
-        base=number((pool.get('reported_liquidity') or {}).get('base')) if pool else None
-        usd=number(price.get('usd'))
-        if liquidity and base is not None and usd is not None and base*usd/liquidity>0.98:
-            return {**price,'usd':None,'quality':'unreliable','basis':'Insufficient market liquidity','liquidity_usd':liquidity}
-    if liquidity is None or liquidity<MIN_PRICE_LIQUIDITY_USD:
-        return {**price,'usd':None,'quality':'unreliable','basis':'Insufficient market liquidity','liquidity_usd':liquidity}
-    return {**price,'liquidity_usd':liquidity}
-
 def dex_price(token, observed):
     """Use the selected source observation, never a later publication clock.
 
@@ -161,13 +137,13 @@ def dex_price(token, observed):
             return {'usd':price,'basis':'Market index','source':'https://www.alchemy.com','observed_at':p.get('lastUpdatedAt'),'quality':'estimated'}
     return None
 
-def project_wallet(entry, snapshot, root=ROOT, images=None):
+def project_wallet(entry, snapshot, root=ROOT, images=None, *, market=None):
     images=read_catalog(root) if images is None else images
     latest=entry.get('latest_snapshot') or {}
     snapshot_dir=within(root,latest.get('directory','snapshots'))
     all_networks=snapshot.get('pipeline',{}).get('phase') in ('holdings','sell') or snapshot.get('pipeline',{}).get('holdings_scope')=='all_configured'
     market_path=snapshot_dir/'market-prices.json'
-    market=read(market_path) if market_path.exists() else {}
+    market=(read(market_path) if market_path.exists() else {}) if market is None else market
     prices={(p.get('chain_id',8453),p['address'].lower()):p for p in market.get('tokens',[])}
     recorded_markets={p['id']:p.get('pools',[]) for p in market.get('markets',[])}
     legacy_pools={}

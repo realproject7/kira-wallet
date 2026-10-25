@@ -68,7 +68,7 @@ def candidates(snapshot, market):
             if len(pair) != 2 or address not in pair:
                 continue
             price = output_price(token['chain_id'], next(iter(pair - {address})), market)
-            if not price or price['basis'] == 'DEX market' and (decimal(price.get('liquidity_usd')) or 0) < 1000:
+            if not price:
                 continue
             pools.append(pool)
         if not pools:

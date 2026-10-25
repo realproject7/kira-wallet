@@ -63,7 +63,7 @@ class NativeMarketTests(unittest.TestCase):
             self.assertEqual(market_metadata(coverage)['prices'], {})
         fetch.assert_not_called()
 
-    def run_price_job(self, rows, *, dex=None, previous=None, images_error=None, tokens=None, rpc_tokens=None, enrich_error=None, node_error=None, partial_graph=None):
+    def run_price_job(self, rows, *, dex=None, previous=None, images_error=None, tokens=None, rpc_tokens=None, enrich_error=None, node_error=None, partial_graph=None, indexed=None):
         import research
         sys.path.insert(0, str(Path(__file__).parent/'viewer'))
         with tempfile.TemporaryDirectory() as temporary:
@@ -85,6 +85,7 @@ class NativeMarketTests(unittest.TestCase):
                  patch.object(research,'ROOT',root),patch.object(research,'fetch',side_effect=fetch),\
                  patch('subprocess.run',side_effect=node_error,return_value=SimpleNamespace(returncode=0,stdout=json.dumps({'tokens':rpc_tokens or [],'errors':[]}))),\
                  patch('curve_pricing.enrich',side_effect=enrich_prices) as enrich,\
+                 patch('curve_pricing.index_prices',return_value=indexed or {'tokens':[],'status':'checked'}),\
                  patch('token_images.refresh_catalog',return_value={},side_effect=images_error) as images,\
                  patch.object(sys,'argv',['refresh_prices.py','--wallet','Fixture']),\
                  patch.dict(os.environ,{'KIRA_JOB_SNAPSHOT':'snapshots/job-fixture','KIRA_ANALYSIS_FD':'123456'}),\
@@ -96,6 +97,22 @@ class NativeMarketTests(unittest.TestCase):
             if enrich.called:self.assertEqual(enrich.call_args.args[2],root/'snapshots/job-fixture')
             return (json.loads(market.read_text()) if market.exists() else None,
                     json.loads(overlay.read_text()) if overlay.exists() else None,images.call_args,error)
+
+    def test_refresh_uses_index_price_without_inventing_dex_liquidity(self):
+        token={'chain_id':8453,'token_address':'0x'+'2'*40,'token_type':'ERC20','dex_pools':[]}
+        price={'chain_id':8453,'address':token['token_address'],'usd':2,'basis':'Market index',
+               'quality':'estimated','source':'https://www.alchemy.com','observed_at':'2026-10-25T01:00:00Z'}
+        market,overlay,_,error=self.run_price_job(self.fresh_rows(),tokens=[token],indexed={'tokens':[price],'status':'checked'})
+        self.assertIsNone(error);self.assertEqual(market['tokens'],[price])
+        self.assertEqual(overlay['tokens'],[price]);self.assertEqual(overlay['job_result_status'],'completed')
+
+    def test_index_gap_preserves_dated_previous_price_and_reports_partial(self):
+        price={'chain_id':8453,'address':'0x'+'2'*40,'usd':2,'basis':'Market index','quality':'estimated',
+               'observed_at':'2026-10-01T00:00:00Z','source':'https://www.alchemy.com'}
+        market,overlay,_,error=self.run_price_job(self.fresh_rows(),previous={'tokens':[price]},indexed={'tokens':[],'status':'partial'})
+        self.assertIsNone(error);self.assertEqual(market['tokens'][0]['observed_at'],price['observed_at'])
+        self.assertTrue(market['tokens'][0]['retained_from_previous'])
+        self.assertIn('index_price_missing',overlay['job_result_gaps'])
 
     def fresh_rows(self):
         return [self.row(asset,symbol,last_updated=datetime.now(timezone.utc).isoformat())
@@ -203,7 +220,7 @@ class NativeMarketTests(unittest.TestCase):
         market,overlay,_,error=self.run_price_job(self.fresh_rows()[:1],previous=old,tokens=[token],rpc_tokens=[rpc])
         self.assertIsNone(error)
         preserved=next(p for p in market['tokens'] if p['address']==token['token_address'])
-        self.assertEqual(preserved,{**old_price,'retained_from_previous':True})
+        self.assertEqual(preserved,{**old_price,'retained_from_previous':True,'latest_price_status':'unavailable'})
         self.assertEqual(market['native_usd']['ETH'],old['native_usd']['ETH'])
         self.assertEqual(market['markets'],old['markets'])
         self.assertEqual(overlay['job_result_status'],'completed_with_coverage_gaps')

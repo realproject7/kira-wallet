@@ -1,5 +1,7 @@
 """Market identity and public routes. Pool existence never establishes a price."""
+from decimal import Decimal, InvalidOperation
 import json
+import math
 from pathlib import Path
 import re
 from urllib.parse import quote, urlsplit
@@ -8,6 +10,29 @@ NETWORKS={n['chain_id']:n['network'] for n in json.loads((Path(__file__).parent/
 
 UNISWAP_CHAINS={1:'ethereum',10:'optimism',56:'bnb',137:'polygon',8453:'base',42161:'arbitrum',43114:'avalanche',81457:'blast',130:'unichain',7777777:'zora',4663:'robinhood'}
 
+
+def number(value):
+    try:
+        n = float(Decimal(str(value)))
+        return n if math.isfinite(n) and n >= 0 else None
+    except (InvalidOperation, TypeError, ValueError, OverflowError): return None
+
+MIN_PRICE_LIQUIDITY_USD=1000
+
+def checked_price(price, pools=()):
+    """A spot quote needs a meaningful observed market, including saved quotes."""
+    if not price or price.get('basis')!='DEX market':return price
+    liquidity=number(price.get('liquidity_usd'))
+    if liquidity is None:
+        pool=next((p for p in pools if p.get('source_url')==price.get('source')),None)
+        liquidity=number((pool.get('reported_liquidity') or {}).get('usd')) if pool else None
+        base=number((pool.get('reported_liquidity') or {}).get('base')) if pool else None
+        usd=number(price.get('usd'))
+        if liquidity and base is not None and usd is not None and base*usd/liquidity>0.98:
+            return {**price,'usd':None,'quality':'unreliable','basis':'Insufficient market liquidity','liquidity_usd':liquidity}
+    if liquidity is None or liquidity<MIN_PRICE_LIQUIDITY_USD:
+        return {**price,'usd':None,'quality':'unreliable','basis':'Insufficient market liquidity','liquidity_usd':liquidity}
+    return {**price,'liquidity_usd':liquidity}
 
 def market_url(chain_id, pool):
     """Choose a known venue route without changing the recorded data source."""

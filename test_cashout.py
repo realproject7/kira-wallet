@@ -28,7 +28,18 @@ class CashoutTests(unittest.TestCase):
                     'balance_block_number':'7','balance_block_hash':HASH,'wallet_balance':'100',
                     'dex_pools':[{'cashout_quote':self.quote}]}
         self.market={'tokens':[{'chain_id':8453,'address':OUTPUT,'usd':'1','quality':'estimated',
-                              'basis':'DEX market','source':'https://example.com/price','observed_at':'2026-10-13T06:00:00Z'}]}
+                              'basis':'DEX market','liquidity_usd':1000,'source':'https://example.com/price','observed_at':'2026-10-13T06:00:00Z'}]}
+
+    def test_output_price_uses_the_same_liquidity_floor_as_portfolio_values(self):
+        from market_records import checked_price
+        for liquidity in (None, 0.02, 999, 1000):
+            with self.subTest(liquidity=liquidity):
+                row=self.market['tokens'][0];row['liquidity_usd']=liquidity
+                result=classify(self.token,self.market)
+                self.assertEqual(bool(result['quotes']),checked_price(row)['usd'] is not None)
+                self.assertEqual(result['status'],'quoted_at_least_1_usd' if liquidity==1000 else 'unknown')
+        self.market['tokens'][0].update(basis='Market index',liquidity_usd=None)
+        self.assertEqual(classify(self.token,self.market)['status'],'quoted_at_least_1_usd')
 
     def test_exact_threshold_is_inclusive_and_rounding_never_promotes_dust(self):
         result=classify(self.token,self.market)

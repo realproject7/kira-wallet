@@ -11,12 +11,12 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import research as h
 from model import dex_price, within, number
-from curve_pricing import enrich, resolve
+from curve_pricing import enrich, resolve, index_prices
 from native_assets import market_metadata
 from market_records import collected_markets, canonical_token
 from chain_lifecycle import retired
 from token_images import refresh_catalog
-DEX_CHAINS={1:'ethereum',8453:'base',10:'optimism',42161:'arbitrum',137:'polygon',56:'bsc',43114:'avalanche',81457:'blast',130:'unichain',7777777:'zora',33139:'apechain',177:'hashkey',8217:'kaia',7560:'cyber',109:'shibarium',4663:'robinhood'}
+from wallet import DEX as DEX_CHAINS, retain_price_evidence
 
 parser=argparse.ArgumentParser();parser.add_argument('--wallet',help='Registered wallet address or tag. Omit to refresh all registered snapshots.')
 args=parser.parse_args()
@@ -59,10 +59,10 @@ for w in selected:
   chain=DEX_CHAINS.get(chain_id)
   if chain:requests.append('https://api.dexscreener.com/token-pairs/v1/'+chain+'/'+address)
  def get(url):return {'source':url,'observed_at':h.now(),'response':h.fetch(url)}
- fetched=list(ThreadPoolExecutor(max_workers=5).map(get,requests))
+ with ThreadPoolExecutor(max_workers=5) as executor:fetched=list(executor.map(get,requests))
  pairs=[]
  for r in fetched:
-  response=r['response'];pairs.extend(response if isinstance(response,list) else response.get('pairs') or [])
+  response=r['response'];pairs.extend(response if isinstance(response,list) else (response.get('pairs') or []) if isinstance(response,dict) else [])
  prices=[]
  for t in snapshot['tokens']:
   candidates=[p for p in pairs if p['chainId']==DEX_CHAINS.get(t['chain_id']) and p['baseToken']['address'].lower()==t['token_address'].lower()]
@@ -76,6 +76,12 @@ for w in selected:
    shadow={'token_address':address,'dex_pools':[{'reported_price_usd':p.get('priceUsd'),'paired_tokens':[p['baseToken'],p['quoteToken']],'reported_liquidity':p.get('liquidity'),'source_url':p['url']} for p in options]}
    p=dex_price(shadow,h.now())
    if p:prices.append({'chain_id':chain_id,'address':address,**p,'reserve_symbol':symbol})
+ priced={(p['chain_id'],p['address'].lower()) for p in prices}
+ mainnets={c['chain_id'] for c in snapshot.get('coverage',[]) if c.get('environment')=='mainnet'}
+ indexed=index_prices([(t['chain_id'],t['token_address']) for t in snapshot['tokens']
+                       if t['chain_id'] in mainnets and t.get('token_type','ERC20')=='ERC20' and not t.get('mintclub')
+                       and (t['chain_id'],t['token_address'].lower()) not in priced],evidence_folder)
+ prices.extend(indexed['tokens'])
  curve_input=evidence_folder/'curve-refresh-input.json';h.save(curve_input,snapshot)
  try:node=subprocess.run(['node',str(Path(__file__).with_name('refresh-curve-prices.cjs')),str(curve_input)],capture_output=True,text=True,timeout=180)
  except subprocess.TimeoutExpired:rpc={'tokens':[],'errors':[{'code':'curve_budget','message':'Fresh curve checks reached their bound. Previous usable quotes are retained.'}]}
@@ -142,38 +148,33 @@ for w in selected:
     output['tokens']=list(partial.values())
  # Preserve historical quotes on a provider gap, after fresh reserve derivation.
  # Fresh unfunded/unreliable evidence must invalidate an old estimate.
- published={(p['chain_id'],p['address'].lower()):p for p in output['tokens']}
- retained=0
- for p in previous_market.get('tokens',[]):
-  key=(p['chain_id'],p['address'].lower());current=published.get(key)
-  if number(p.get('usd')) is None or p.get('quality') in ('unfunded','unreliable'):continue
-  if current and (number(current.get('usd')) is not None or current.get('quality') in ('unfunded','unreliable')):continue
-  published[key]={**p,'retained_from_previous':True};retained+=1
- output['tokens']=list(published.values());output['retained_price_records']=retained
+ output=retain_price_evidence(output,previous_market)
+ retained=sum(bool(p.get('retained_from_previous')) for p in output['tokens'])
+ output['retained_price_records']=retained
  if retained:output['note']+=f' {retained} token price references retain their earlier observation times because fresh USD was unavailable.'
  from sell_quotes import enrich as enrich_sell_quotes
  output=enrich_sell_quotes(snapshot,output,evidence_folder/'sell-quotes',previous=previous_market)
  try:refresh_catalog([snapshot],h.ROOT,native_images=native_market['images'],market_metadata=fetched)
  except (OSError,ValueError):output['image_refresh_status']='unavailable'
- if os.environ.get('KIRA_JOB_SNAPSHOT'):
-  from kira_jobs import atomic
-  job_folder=(h.ROOT/os.environ['KIRA_JOB_SNAPSHOT']).resolve()
-  if not job_folder.is_relative_to((h.ROOT/'snapshots').resolve()):raise ValueError('Job path must be within snapshots/.')
-  overlay=job_folder/'prices.json'
-  output['snapshot_id']=w['latest_snapshot']['directory']
-  missing_native=any(c.get('environment')=='mainnet' and float(c.get('native_balance') or 0)>0 and c.get('native_symbol')+'_USD' not in fresh_native for c in snapshot.get('coverage',[]))
-  # Name each gap so a partial price job explains itself.
-  output['job_result_gaps']=[name for name,found in (
-      ('market_discovery_partial',output.get('market_discovery_status')=='partial'),
-      ('native_price_missing',missing_native),
-      ('earlier_prices_retained',bool(retained)),
-      ('reserve_pricing_partial',output.get('reserve_price_status')=='partial' or bool((output.get('reserve_price_graph') or {}).get('errors'))),
-      ('curve_reads_incomplete',bool(rpc.get('errors')) or any('error' in p for p in rpc['tokens'])),
-      ('provider_request_failed',any(isinstance(r['response'],dict) and 'transport_error' in r['response'] for r in fetched))) if found]
-  output['job_result_status']='completed_with_coverage_gaps' if output['job_result_gaps'] else 'completed'
-  atomic(overlay,output)
-  atomic(job_folder/'price-publication.json',{'schema_version':1,'snapshot_id':w['latest_snapshot']['directory'],
-      'overlay':str(overlay.relative_to(h.ROOT)),'projection':str(destination.relative_to(h.ROOT)),
-      'status':output['job_result_status']})
+ from kira_jobs import atomic
+ job_folder=evidence_folder.resolve()
+ if not job_folder.is_relative_to((h.ROOT/'snapshots').resolve()):raise ValueError('Job path must be within snapshots/.')
+ overlay=job_folder/'prices.json'
+ output['snapshot_id']=w['latest_snapshot']['directory']
+ missing_native=any(c.get('environment')=='mainnet' and float(c.get('native_balance') or 0)>0 and c.get('native_symbol')+'_USD' not in fresh_native for c in snapshot.get('coverage',[]))
+ # Name each gap so a partial price job explains itself.
+ output['job_result_gaps']=[name for name,found in (
+     ('market_discovery_partial',output.get('market_discovery_status')=='partial'),
+     ('native_price_missing',missing_native),
+     ('earlier_prices_retained',bool(retained)),
+     ('index_price_missing',indexed['status']=='partial'),
+     ('reserve_pricing_partial',output.get('reserve_price_status')=='partial' or bool((output.get('reserve_price_graph') or {}).get('errors'))),
+     ('curve_reads_incomplete',bool(rpc.get('errors')) or any('error' in p for p in rpc['tokens'])),
+     ('provider_request_failed',any(isinstance(r['response'],dict) and 'transport_error' in r['response'] for r in fetched))) if found]
+ output['job_result_status']='completed_with_coverage_gaps' if output['job_result_gaps'] else 'completed'
+ atomic(overlay,output)
+ if os.environ.get('KIRA_JOB_SNAPSHOT'):atomic(job_folder/'price-publication.json',{'schema_version':1,'snapshot_id':w['latest_snapshot']['directory'],
+     'overlay':str(overlay.relative_to(h.ROOT)),'projection':str(destination.relative_to(h.ROOT)),
+     'status':output['job_result_status']})
  temporary.write_text(json.dumps(output,indent=2)+'\n');os.replace(temporary,destination)
  print(json.dumps({'wallet':w['address'],'tag':w['tags'],'price_records':len(output['tokens']),'observed_at':output['observed_at'],'errors':sum(isinstance(r['response'],dict) and 'transport_error' in r['response'] for r in fetched)}))

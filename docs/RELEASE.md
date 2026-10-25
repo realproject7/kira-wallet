@@ -1,5 +1,35 @@
 # Release preparation
 
+## Candidate 0.2.3
+
+Research and price refresh share the Alchemy index fallback and DEX liquidity
+checks. Insufficient or extremely one-sided DEX liquidity stays unpriced;
+provider gaps retain usable prior observations with their original timestamps.
+Cash-out classification uses the same DEX price validation as wallet valuation.
+The symbol-based MEMBER pool override is removed, and a failed curve network
+no longer discards observations from other networks.
+
+History tools accept `snapshots_list` with `kind: "prices"` or `"all"`.
+`snapshot_read` and `snapshots_compare` accept those immutable observation IDs,
+with linked holdings, native positions, independent timestamps and unknowns.
+Price-only refresh also saves evidence when run directly from Python.
+
+OWS registration retries recover the same admitted job after interrupted
+worker launch or receipt storage, including requests saved by 0.2.2. Previously
+registered wallets keep their names, and cancelled jobs remain cancelled.
+Unused embedded-agent completion parsing is removed. The website setup link
+points to the currently published 0.2.2 guide until the next site update.
+
+One independent review of the four audit PRs found a legacy OWS receipt recovery
+gap, corrected with an upgrade regression. Final verification covers the full
+suite, isolated installation, exact archive members, CLI/MCP price history and
+source/history privacy checks. Synthetic checks do not claim live provider or
+Gemini/Grok account acceptance.
+
+Freeze the final archive from the validated, landed source and dry-run that
+exact archive. Release publication and website deployment remain operator
+actions. Preparation does not establish registry publication.
+
 ## Published 0.2.2
 
 Fixes two agent contract findings from the published 0.2.1 fresh-agent test.

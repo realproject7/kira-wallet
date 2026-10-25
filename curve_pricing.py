@@ -3,9 +3,39 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import math
 from pathlib import Path
-import subprocess
 import sys
 import research as h
+
+
+def index_prices(identities, folder, deadline=None):
+    """Read bounded Alchemy batches by exact chain/contract, retaining source time."""
+    from wallet import ALCHEMY, atomic, fetch
+    sys.path.insert(0,str(h.ASSETS/'viewer'))
+    from model import dex_price
+    import hashlib
+    import re
+    wanted=sorted({(cid,address.lower()) for cid,address in identities
+                   if cid in ALCHEMY and isinstance(address,str) and re.fullmatch(r'0x[0-9a-fA-F]{40}',address)})
+    key=h.secrets().get('ALCHEMY_CUSTOM_APY_KEY') if wanted else None
+    prices={}
+    for start in range(0,len(wanted) if key else 0,25):
+        batch=wanted[start:start+25]
+        requests=[{'network':ALCHEMY[cid],'address':address} for cid,address in batch]
+        file=Path(folder)/('reserve-price-cache-'+hashlib.sha256(json.dumps(requests,sort_keys=True).encode()).hexdigest()+'.json')
+        record=json.loads(file.read_text()) if file.exists() else None
+        if record is None:
+            response=fetch('https://api.g.alchemy.com/prices/v1/'+key+'/tokens/by-address',{'addresses':requests},deadline=deadline)
+            record={'observed_at':h.now(),'source':'Alchemy token prices by address','request':requests,'response':response}
+            if isinstance(response,dict) and isinstance(response.get('data'),list):atomic(file,record)
+        response=record.get('response')
+        expected={(ALCHEMY[cid],address):(cid,address) for cid,address in batch}
+        for row in response.get('data',[]) if isinstance(response,dict) and isinstance(response.get('data'),list) else []:
+            if not isinstance(row,dict) or row.get('error') or not isinstance(row.get('network'),str) or not isinstance(row.get('address'),str):continue
+            identity=expected.get((row['network'],row['address'].lower()))
+            if identity is None or not isinstance(row.get('prices'),list):continue
+            price=dex_price({'token_address':identity[1],'indexer_price_references':[p for p in row['prices'] if isinstance(p,dict)]},None)
+            if price:prices[identity]={'chain_id':identity[0],'address':identity[1],**price}
+    return {'tokens':list(prices.values()),'status':'partial' if len(prices)<len(wanted) else 'checked'}
 
 
 def resolve(graph, prices):
@@ -47,6 +77,8 @@ def resolve(graph, prices):
                 'source':node['source'],'observed_at':node['observed_at'],'block_number':node['block_number'],
                 'curve_price_in_reserve':node['price_in_reserve'],'curve_reserve':node['curve_reserve'],'reserve_symbol':node['reserve_symbol'],
                 'price_path':[node['address']]+parent.get('price_path',[node['reserve_token']])}
+        if parent.get('retained_from_previous'):
+            record.update(retained_from_previous=True,latest_price_status='unavailable',observed_at=parent.get('observed_at'))
         cache[key]=record
         return record
     for key in nodes:visit(key,set())
@@ -69,31 +101,11 @@ def enrich(snapshot,market,folder,deadline=None):
     if recorded.get('market_pending'):raise MarketPause('Reserve checks reached the market time budget. Resume saved checks in Activity.')
     ordinary=[r for r in graph if r.get('address') and r.get('is_curve') is False and r['chain_id'] in ALCHEMY]
     prices=list(market.get('tokens',[]))
-    rejected={(p['chain_id'],p['address'].lower()) for p in prices if p.get('quality')=='unreliable'}
-    ordinary=[r for r in ordinary if (r['chain_id'],r['address'].lower()) not in rejected]
-    # Only reserve assets are requested. Identify prices by network and contract, never symbol.
-    requests=[{'network':ALCHEMY[r['chain_id']],'address':r['address']} for r in ordinary]
-    inverse={value:key for key,value in ALCHEMY.items()}
-    responses=[]
-    key=h.secrets().get('ALCHEMY_CUSTOM_APY_KEY')
-    for i in range(0,len(requests) if key else 0,25):
-        import hashlib
-        batch=requests[i:i+25];identity=hashlib.sha256(json.dumps(batch,sort_keys=True).encode()).hexdigest()
-        file=folder/('reserve-price-cache-'+identity+'.json')
-        record=json.loads(file.read_text()) if file.exists() else None
-        if not record:
-            response=fetch('https://api.g.alchemy.com/prices/v1/'+h.secrets()['ALCHEMY_CUSTOM_APY_KEY']+'/tokens/by-address',{'addresses':batch},deadline=deadline)
-            record={'observed_at':h.now(),'source':'Alchemy token prices by address','request':batch,'response':response}
-            if isinstance(response,dict) and isinstance(response.get('data'),list):atomic(file,record)
-        response=record['response'];responses.append(record)
-        for record in response.get('data') or []:
-            p=next((p for p in record.get('prices',[]) if p.get('currency')=='usd' and p.get('value') is not None),None)
-            if p and not record.get('error'):
-                value=float(p['value'])
-                if math.isfinite(value) and value>0:
-                    prices.append({'chain_id':inverse[record['network']],'address':record['address'],'usd':value,'basis':'Market index','quality':'estimated',
-                                   'observed_at':p.get('lastUpdatedAt'),'source':'https://www.alchemy.com/docs/data/prices-api/prices-api-endpoints/prices-api-endpoints/get-token-prices-by-address'})
-    atomic(folder/'reserve-market-prices.json',responses)
+    settled={(p['chain_id'],p['address'].lower()) for p in prices
+             if p.get('usd') is not None or p.get('quality') in ('unfunded','unreliable')}
+    ordinary=[r for r in ordinary if (r['chain_id'],r['address'].lower()) not in settled]
+    indexed=index_prices([(r['chain_id'],r['address']) for r in ordinary],folder,deadline)
+    prices.extend(indexed['tokens'])
     def get(row):
         chain=DEX.get(row['chain_id'])
         if not chain:return None
