@@ -156,7 +156,7 @@ function renderHome(){
   $('wallet-cards').innerHTML=state.wallets.map(w=>{
     const count=w.mainnet_asset_count??w.assets.filter(a=>a.environment==='mainnet').length,unpriced=w.mainnet_unpriced_count??w.unpriced_count;
     const value=w.analysed_at?w.known_value_usd:null;
-    return `<button class="wallet-card" data-wallet="${escapeHTML(w.key)}" aria-label="Open ${escapeHTML(w.name)} holdings"><span class="wallet-card-heading"><span class="card-wallet-icon">${walletGlyph}</span><span class="wallet-card-identity"><strong>${escapeHTML(w.name)}</strong><span>${escapeHTML(shortAddress(w.address))}</span></span><span class="card-arrow" aria-hidden="true">${arrowGlyph}</span></span><span class="wallet-card-value">${money(value)}</span><span class="wallet-card-meta"><span>${w.analysed_at?count+(count===1?' position · ':' positions · ')+unpriced+' unpriced':'Awaiting analysis'}</span><span>${value!=null?share(value,s.known_value_usd)+' of priced value':''}</span></span>${progress(value,s.known_value_usd,w.name+' share of priced value')}</button>`;
+    return `<button class="wallet-card" data-wallet="${escapeHTML(w.key)}" aria-label="Open ${escapeHTML(w.name)} holdings"><span class="wallet-card-heading"><span class="card-wallet-icon">${walletGlyph}</span><span class="wallet-card-identity"><strong>${escapeHTML(w.name)}</strong><span>${escapeHTML(shortAddress(w.address))}</span></span><span class="card-arrow" aria-hidden="true">${arrowGlyph}</span></span><span class="wallet-card-value">${money(value)}</span><span class="wallet-card-meta"><span>${w.analysed_at?count+(count===1?' position · ':' positions · ')+unpriced+' unpriced':'Not checked'}</span><span>${value!=null?share(value,s.known_value_usd)+' of priced value':''}</span></span>${progress(value,s.known_value_usd,w.name+' share of priced value')}</button>`;
   }).join('');
   $('network-allocation').innerHTML=s.networks.map(c=>`<a class="network-row" href="${networkHref(c.id)}" aria-label="Open ${escapeHTML(c.name)} network overview"><div class="network-row-heading"><span class="network-label">${chainIcon(c.name)}${escapeHTML(c.name)}<span class="detail-arrow" aria-hidden="true">${arrowGlyph}</span></span><span class="network-value">${money(c.value_usd)}</span></div><div class="network-row-meta"><span>${c.position_count} ${c.position_count===1?'position':'positions'}${c.value_usd==null?' · Unpriced':''}</span><span>${share(c.value_usd,s.known_value_usd)}</span></div>${progress(c.value_usd,s.known_value_usd,c.name+' share of priced value')}</a>`).join('')||'<p class="panel-empty">Networks appear after analysis.</p>';
   if(typeof renderHomeTokens==='function')renderHomeTokens();
@@ -170,14 +170,14 @@ function renderWallet(){
   $('report-link').hidden=!w.report_url;if(w.report_url)$('report-link').href=safeURL(w.report_url);
   $('total-value').textContent=w.analysed_at?money(w.known_value_usd):'—';
   const partial=w.chains.some(c=>c.environment==='mainnet'&&KiraView.coverageGap(c));
-  $('valuation-note').textContent=w.analysed_at?(partial?'Partial portfolio · ':'')+(w.known_value_usd==null?((w.asset_count??w.assets.length)?'Value is unknown because prices are unavailable.':'No positive holdings recorded · unchecked networks remain unknown.'):'Market and curve spot estimates · excludes unpriced assets'):'Analysis will appear here when it is ready.';
+  $('valuation-note').textContent=w.analysed_at?(partial?'Partial portfolio · ':'')+(w.known_value_usd==null?((w.asset_count??w.assets.length)?'Value is unknown because prices are unavailable.':'No positive holdings recorded · unchecked networks remain unknown.'):'Market and curve spot estimates · excludes unpriced assets'):'No holdings lookup saved yet.';
   $('asset-count').textContent=w.asset_count??w.assets.length;$('unpriced-count').textContent=w.unpriced_count+' unpriced';
   const mainnets=w.chains.filter(c=>c.environment==='mainnet'&&c.lifecycle?.status!=='retired');
   $('chain-count').textContent=mainnets.filter(c=>c.assets>0).length;
   const coverage=mainnets.filter(c=>c.complete).length;
   $('coverage-note').textContent='Token discovery: '+coverage+' of '+mainnets.length+' mainnets checked';
   $('coverage-note').title='Token discovery and on-chain balance checks are separate. See network coverage details for failures.';
-  $('sync-label').textContent=w.analysed_at?'Analysis '+stamp(w.analysed_at):'Awaiting analysis';
+  $('sync-label').textContent=w.analysed_at?'Analysis '+stamp(w.analysed_at):'Not checked';
   $('price-time').textContent=w.prices_at?'Prices '+stamp(w.prices_at):'';
   const chainOptions=w.chains.filter(c=>c.assets>0||KiraView.coverageGap(c));
   if(selectedChain!=='all'&&!chainOptions.some(c=>String(c.id)===selectedChain))selectedChain='all';
@@ -311,7 +311,7 @@ function renderHoldings(){
     const c=w.chains.find(c=>String(c.id)===selectedChain);
     $('empty').querySelector('h3').textContent=c&&!c.complete?'Research is incomplete on '+c.name:'No assets in this view';
     $('empty').querySelector('p').textContent=c&&!c.complete?'This chain has not been fully checked. Missing data does not mean a zero balance.':'Choose another chain or lower the minimum value.';
-  }else{$('empty').querySelector('h3').textContent=w.analysed_at&&!(w.asset_count??w.assets.length)?'No holdings recorded':'No assets in this view';$('empty').querySelector('p').textContent=w.analysed_at?(!(w.asset_count??w.assets.length)?'No positive balances were found in the checked networks. Refresh holdings to check again.':'Choose another chain or lower the minimum value.'):'Analysis will appear here when it is ready.';}
+  }else{$('empty').querySelector('h3').textContent=w.analysed_at&&!(w.asset_count??w.assets.length)?'No holdings recorded':'No assets in this view';$('empty').querySelector('p').textContent=w.analysed_at?(!(w.asset_count??w.assets.length)?'No positive balances were found in the checked networks. Refresh holdings to check again.':'Choose another chain or lower the minimum value.'):'Your wallet is saved. Use Refresh holdings to check its assets.';}
   bindImages();
 }
 function timeRange(range){return range?.from?stamp(range.from)+(range.to!==range.from?' – '+stamp(range.to):''):'Not recorded';}

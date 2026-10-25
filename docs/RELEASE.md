@@ -1,12 +1,20 @@
 # Release preparation
 
-## Stable release preparation
+## Release candidate: 1.0.0
 
-The recommended stable release is 1.0.0. The operator must confirm the major
-version before it is applied. Version 0.2.3 remains the published package while
-live acceptance and the final release archive are prepared.
+The operator selected 1.0.0 on 2026-10-25. Version 0.2.3 remains the published
+package while live acceptance and the final 1.0.0 archive are prepared. This
+candidate keeps the research engine and saved-data formats from 0.2.3.
 
-The proposed 1.x compatibility commitment covers documented CLI commands and
+New OWS wallets are registered and linked without starting asset research.
+Their holdings remain unchecked until an explicit holdings refresh. Linking an
+existing unregistered wallet still starts initial research, and retries recover
+older registration jobs without duplicating or restarting cancelled work.
+The empty wallet screen explains the manual lookup instead of suggesting
+that automatic research is pending. Post-creation navigation waits for saved
+wallet state, and a failed descriptor reload keeps the same recovery request.
+
+The 1.x compatibility commitment covers documented CLI commands and
 options, the shared CLI/MCP tool names and documented request/response fields,
 and access to existing wallets, jobs and saved observations. Incompatible
 changes to these interfaces require a new major version. Compatible additions

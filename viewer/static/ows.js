@@ -81,8 +81,10 @@ async function submitOws(create, event) {
   try {
     const result = await localAPI(create ? '/api/ows/create' : '/api/ows/connect', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(request), signal: AbortSignal.timeout(75000)});
     delete request.passphrase;
-    owsRequest = null; saveOwsRequest(); owsSelected = null; await loadOws();
-    $('ows-dialog').close(); navigate(result.job_id ? '#/activity' : '#/wallet/'+result.connection.address.toLowerCase());
+    await loadOws(); owsRequest = null; saveOwsRequest(); owsSelected = null;
+    if (!result.job_id) await poll();
+    const address = result.connection.address.toLowerCase();
+    $('ows-dialog').close(); navigate(result.job_id ? '#/activity' : state?.wallets?.some(wallet => wallet.key === address) ? '#/wallet/'+address : '#/home');
     toast(result.note);
   } catch (error) { delete request.passphrase; $('ows-error').textContent = error.message; }
   finally { owsBusy = false; renderOws(); }

@@ -242,6 +242,9 @@ Its optional SDK is `@open-wallet-standard/core` 1.4.3; the vault defaults to
 passphrase in the local interface. Kira does not return private keys or seed
 phrases. Recovery keeps the original passphrase and interrupted requests retain
 their identity to prevent duplicate creation. Use OWS owner tools for backup
-and recovery. Agents must leave passphrase entry to the human. OWS absence
+and recovery. A newly created wallet is registered and linked without starting
+asset research. Use **Refresh holdings** when you want to check its assets.
+Linking an existing, unregistered OWS wallet still starts its initial research.
+Agents must leave passphrase entry to the human. OWS absence
 does not block ordinary public-address onboarding. Kira exposes no signing,
 trading, key export or account deletion.
