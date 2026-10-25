@@ -104,7 +104,11 @@ class OwsStore:
             address=wallet['accounts'][0]['address'];store=JobStore(self.root)
             registered=next((w for w in json.loads((self.root/'wallets.json').read_text())['wallets'] if w['address_key']==address.lower()),None)
             job=None
-            if not registered:
+            if not registered or receipt.get('registration_requested'):
+                # Record intent before admission: submit can register the wallet
+                # before this process has saved its job ID or started a worker.
+                if not receipt.get('registration_requested'):
+                    receipt['registration_requested']=True;atomic(path,receipt)
                 job=store.submit({'schema_version':1,'operation':'wallet.add','input':{'address':address,'tag':tag},'idempotency_key':str(uuid.uuid5(uuid.UUID(key),'ows-register'))})
                 if job['state']=='queued':store.launch()
             connection={'source':'ows','wallet_id':wallet['id'],'name':wallet['name'],'address':address,'tag':(registered.get('tags') or [tag])[0] if registered else tag}
