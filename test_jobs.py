@@ -485,7 +485,11 @@ class JobsTest(JobFixtures, unittest.TestCase):
         atomic(self.root/'.kira.local.json',config)
         with patch.dict(os.environ,{'TEST_INDEXER_KEY':'synthetic-secret'}):
             job=self.store.submit(self.request('settings.provider',{'provider':'alchemy','key_env':'TEST_INDEXER_KEY'}));self.store.worker()
-        self.assertEqual(self.store.get(job['job_id'])['state'],'succeeded')
+        finished=self.store.get(job['job_id']);self.assertEqual(finished['state'],'succeeded')
+        # The receipt shows the settings the job applied, not the ones it replaced.
+        self.assertNotIn('provider_configuration',finished)
+        self.assertEqual(finished['result']['provider_configuration']['discovery_provider'],'alchemy')
+        self.assertEqual(finished['result']['provider_configuration']['endpoint_refs']['1'],'TEST_INDEXER_KEY')
         saved=json.loads((self.root/'.kira.local.json').read_text())
         self.assertFalse(saved['rpc']['allow_public_fallback']);self.assertTrue(saved['discovery']['explorers'])
         self.assertEqual(saved['rpc']['chains']['8453'],{'url_env':'CUSTOM_BASE'})

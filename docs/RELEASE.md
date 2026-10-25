@@ -7,7 +7,17 @@ Fixes two agent contract findings from the published 0.2.1 fresh-agent test.
 accepts each exact job state, such as `running`, as well as the existing
 groups. Invalid values return the accepted list. Documented `kira call`
 examples are checked against the published schemas. Global `--data-dir` now
-works before or after a subcommand, like `--json`. Wallet records, research,
+works before or after a subcommand, like `--json`.
+
+A fresh Claude Code test of this candidate found four more contract gaps, now
+fixed. `research_connection.status` is `ready` only when Alchemy is connected
+and `connection_required` before that, instead of always `configured`. A
+finished settings job reports the settings it applied, not the ones it
+replaced. Native rows in `wallet_read` keep `address: null`, like
+`holdings_query`. `snapshots_list` rows carry `phase`, so progress saved during
+a running lookup is distinct from finished lookups. The skill now explains
+`kira add`, import side effects, per-operation progress, price refresh
+history, float position values and `head_status`. Wallet records, research,
 financial projections and the web app are unchanged.
 
 Preserve the published 0.2.1 archive and every earlier archive. Freeze 0.2.2

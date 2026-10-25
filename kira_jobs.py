@@ -137,6 +137,11 @@ def fields(value, required):
     if not isinstance(value, dict) or set(value) != set(required):
         raise JobError('invalid_input', 'Unexpected or missing operation fields.')
 
+def provider_summary(config):
+    """Settings facts and environment names only, never values."""
+    return {'rpc_mode':config['rpc']['mode'],'discovery_provider':config['discovery']['provider'],
+            'public_fallback':config['rpc']['allow_public_fallback'],'endpoint_refs':{cid:row['url_env'] for cid,row in config['rpc']['chains'].items()}}
+
 def identifier(value):
     if not isinstance(value, str): raise JobError('invalid_id', 'Expected a job ID.')
     try:
@@ -547,7 +552,13 @@ class JobStore:
         paths = {w['latest_snapshot']['directory'] for w in read(self.root / 'wallets.json')['wallets'] if w['address_key'] == key and w.get('latest_snapshot')}
         for run in read(self.root / 'wallets.json').get('research_runs', []):
             if run['address_key'] == key: paths.add(run['snapshot'])
-        return sorted([{'snapshot_id': p, 'compiled_at': self.snapshot(p).get('compiled_at'), 'status': self.snapshot(p).get('status')} for p in paths],key=lambda r:r['compiled_at'] or '')
+        rows = []
+        for path in paths:
+            # phase "initial" marks progress published while a holdings lookup was still running.
+            snapshot = self.snapshot(path)
+            rows.append({'snapshot_id': path, 'compiled_at': snapshot.get('compiled_at'), 'status': snapshot.get('status'),
+                         'phase': (snapshot.get('pipeline') or {}).get('phase')})
+        return sorted(rows, key=lambda r: r['compiled_at'] or '')
 
     def publication(self, job):
         if job['operation'].startswith('settings.') or job['operation']=='wallet.setTags':
@@ -712,7 +723,8 @@ class JobStore:
                 if job['input']['provider']=='alchemy' and not secret_values(config).get(job['input']['key_env']):
                     raise JobError('connection_key_missing','Kira cannot find the local Alchemy key. Follow the connection guide, then retry. Existing settings are unchanged.')
             atomic(config_path(),config)
-            result={'status':'completed','setting':job['operation']};atomic(self.jobs/'results'/(job['job_id']+'.json'),result);return result
+            result={'status':'completed','setting':job['operation'],'provider_configuration':provider_summary(config)}
+            atomic(self.jobs/'results'/(job['job_id']+'.json'),result);return result
         self.require_connection()
         env = {**os.environ, 'KIRA_DATA_DIR': str(self.root), 'KIRA_JOB_ID': job['job_id'], 'KIRA_JOB_SNAPSHOT': job['checkpoint'], 'KIRA_ANALYSIS_FD': str(writer.fileno()), 'PYTHONUNBUFFERED': '1', 'KIRA_RESEARCH_GENERATION':job.get('parent_job_id',job['job_id'])}
         command=self.engine_command(job)
@@ -817,10 +829,10 @@ class JobStore:
                         if entry.get('research_generation') not in (None,job.get('parent_job_id')):
                             job.update(state='cancelled',stage='stopped',errors=[{'code':'superseded','message':'Newer holdings research replaced this detailed run. Earlier evidence is preserved.'}]);self.save(job);writer.close();continue
                     if job:
-                        from kira_config import load_config
-                        config=load_config()
-                        job['provider_configuration']={'rpc_mode':config['rpc']['mode'],'discovery_provider':config['discovery']['provider'],
-                            'public_fallback':config['rpc']['allow_public_fallback'],'endpoint_refs':{cid:row['url_env'] for cid,row in config['rpc']['chains'].items()}}
+                        # Research records the settings it ran with. Settings jobs report their result instead.
+                        if not job['operation'].startswith('settings.'):
+                            from kira_config import load_config
+                            job['provider_configuration']=provider_summary(load_config())
                         job.update(state='running', stage='starting', started_at=now(), attempt=job['attempt'] + 1, errors=[]); self.save(job)
                 if not job:
                     time.sleep(.5)

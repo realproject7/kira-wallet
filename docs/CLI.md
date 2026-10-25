@@ -35,7 +35,9 @@ use the supported CLI for a consistent data root.
 
 `--json` is accepted anywhere in the command. `info` returns the version,
 data directory, capabilities, connection readiness, saved-data revision, job
-status, UI availability and packaged skill path. Use `--help` for syntax.
+status, UI availability and packaged skill path. Its `research_connection.status`
+is `ready` when Alchemy is connected and `connection_required` before that.
+`--data-dir` also works before or after the subcommand. Use `--help` for syntax.
 
 ## Open the local app
 
@@ -90,7 +92,8 @@ reject the import and preserve the configuration.
 RPC, discovery and import commands apply synchronously when idle. If research
 owns the writer, they return a queued receipt; `--json` always returns a queued
 receipt without waiting. Inspect the resulting job before reporting the
-configuration applied. Safe configuration output contains references, not values.
+configuration applied; its `result.provider_configuration` lists the applied
+modes and reference names. Safe configuration output contains references, not values.
 
 New configurations allow verified public RPC fallback. `--custom-only`
 disables fallback; `--public-fallback` restores it. Existing opt-outs persist.
@@ -122,7 +125,8 @@ kira prices 'Daily wallet' --idempotency-key prices-daily-001 --json
 ```
 
 The first tag is the display name. Exact names and registered addresses select
-wallets. Reuse an idempotency key only when retrying the same intended request.
+wallets. `add` runs the first full holdings lookup itself; use `refresh` for
+later updates. Reuse an idempotency key only when retrying the same intended request.
 
 `add`, `refresh` and `prices` persist a durable job before doing research.
 `--json` or `--enqueue` returns its receipt immediately and starts a separate

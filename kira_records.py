@@ -209,7 +209,7 @@ def projection(root, config, *, token_id=None, limit=12, offset=0, wallet_key=No
 def compact_wallet_facts(rows):
     asset_fields=('id','chain_id','address','display_identity','symbol','name','environment','balance','is_native','value_usd','historical_value_usd','balance_observed_at','price','pools','pools_recorded','pools_omitted','exit_quote_recorded','archived')
     return [{**row,'assets':[{key:asset[key] for key in asset_fields if key in asset and
-                           (asset[key] is not None or key in ('value_usd','price'))}
+                           (asset[key] is not None or key in ('address','value_usd','price'))}
                           for asset in row['assets']]} for row in rows]
 
 def recorded_valuation(assets):

@@ -12,8 +12,9 @@ and MCP operations.
 
 ## Start with the existing workspace
 
-1. Run `kira --version`, then `kira info --json` and inspect readiness and
-   `data_dir`. The commands below require 0.2.0 or later. If installation is
+1. Run `kira --version`, then `kira info --json` and inspect `data_dir` and
+   `research_connection.status`: `ready` means Alchemy is connected;
+   `connection_required` means new research cannot start yet. The commands below require 0.2.0 or later. If installation is
    part of the request, use `npm install -g kira-wallet` or the supplied
    prepared package archive. Requirements are Node.js 22+, Python 3.11+ and
    POSIX; macOS is verified.
@@ -44,8 +45,11 @@ kira config show --json
 
 An existing private environment file can be referenced with
 `kira config import-env --file /absolute/private/rpc.env --key-env ALCHEMY_API_KEY --json`.
-Use the human-supplied path and name. This does not copy keys. Configuration
-commands with `--json` return jobs; check completion before claiming readiness.
+Use the human-supplied path and name. This does not copy keys. It also selects
+Alchemy for token discovery and network reads, so a separate
+`kira discovery alchemy` step is not needed. Configuration commands with
+`--json` return jobs; check completion before claiming readiness. A finished
+settings job reports the applied settings in `result.provider_configuration`.
 
 Use the public address provided by the user, never a guessed address:
 
@@ -55,6 +59,9 @@ kira wallets tags 'Daily wallet' --tag 'Daily wallet' --tag 'Savings' --idempote
 kira refresh 'Daily wallet' --idempotency-key refresh-daily-001 --json
 kira prices 'Daily wallet' --idempotency-key prices-daily-001 --json
 ```
+
+`kira add` registers the wallet and runs its first full holdings lookup. Use
+`refresh` later for an update, not right after `add`.
 
 Replace placeholders and choose a unique idempotency key per intended action.
 Reuse the same key for retries of that action. The first tag is the display
@@ -89,6 +96,20 @@ kira ui context --json
 - History uses `snapshots_list` with `wallet`, `snapshot_read` with
   `snapshot_id`, and `snapshots_compare` with `before` and `after` IDs. Obtain
   IDs from the saved snapshot list. Historical holdings also use paged reads.
+  Rows with `phase` `initial` are progress saved while a lookup was running;
+  compare `holdings` rows to see change between lookups.
+- A price refresh updates the prices shown for the latest snapshot, including
+  through `snapshot_read`. `snapshot_price_references` keep the native prices
+  recorded by the holdings lookup. Earlier price observations remain local job
+  evidence but are not listed by the history tools.
+- Per-position `price.usd` and `value_usd` are JSON numbers. Totals from
+  `holdings_query` and `recorded_valuation` are exact decimal strings; use them
+  instead of re-adding rounded position values. Check `price.observed_at`:
+  price sources update at different times.
+- `head_status` is `observed` when the chain head was read in this lookup,
+  `stale` when that head was over a day old, and `saved_observation` when a
+  resumed lookup reused a saved read. Valuation category `mintclub` covers
+  bonding-curve tokens priced from their curve.
 - Missing records and prices are unknown, not zero. Retain balance, price and
   quote times, coverage and partial status. Spot value is not executable
   proceeds. Pool TVL and curve backing are not wallet balances. Full-balance
@@ -113,6 +134,10 @@ Use the real receipt ID. Waits are bounded to 120 seconds; use short waits and
 keep the user informed. `completed` only means the job left queued/running.
 Inspect `job.state`, result, errors and coverage before reporting success.
 Partial, interrupted, cancelled and failed states have different meanings.
+Progress events count work per `context.operation`, such as `registry` or
+`balances`. Balance totals grow as the registry scan finds candidates, so do
+not derive one overall percentage. A job's `chains` entries report network
+reads; use `wallet_read` or `network_read` coverage for discovery gaps.
 Accepted work survives viewer shutdown or agent disconnection. Cancel only
 when requested; resume interrupted jobs explicitly. `jobs deepen` adds
 optional sell-route analysis from saved holdings without rediscovering tokens.

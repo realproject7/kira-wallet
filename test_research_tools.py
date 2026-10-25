@@ -345,6 +345,29 @@ class ResearchToolsTest(unittest.TestCase):
             detail=self.call('token_read',{'chain_id':8453,'address':'0x'+format(99,'040x')})
             self.assertEqual(len(detail['positions'][0]['asset']['pools']),12)
             self.assertEqual(detail['positions'][0]['asset']['pools_omitted'],0)
+    def test_native_rows_keep_a_null_address_in_every_read(self):
+        from copy import deepcopy
+        import sys
+        sys.path.insert(0,str(Path(__file__).resolve().parent/'viewer'))
+        import model
+        state,stamp,stale=model.load_state(self.root)
+        wallet=state['wallets'][0]
+        wallet['assets']=[{**deepcopy(wallet['assets'][0]),'id':'8453:native','chain_id':8453,'address':None,'is_native':True,
+                           'environment':'mainnet','balance':'1','value_usd':2000,'symbol':'ETH'}]
+        with patch('model.load_state',return_value=(state,stamp,stale)):
+            listed=self.call('wallet_read',{'wallet':self.first['address_key']})['assets'][0]
+            ranked=self.call('holdings_query',{'mode':'rank','limit':1})['results'][0]['positions'][0]['asset']
+        self.assertIn('address',listed);self.assertIsNone(listed['address']);self.assertIsNone(ranked['address'])
+    def test_snapshot_list_separates_progress_publications_from_finished_lookups(self):
+        store=JobStore(self.root);registry=json.loads((self.root/'wallets.json').read_text())
+        final=self.first['latest_snapshot']['directory'];progress=final+'/holdings-initial-0001'
+        source=json.loads((self.root/final/'results.json').read_text())
+        atomic(self.root/progress/'results.json',{**source,'compiled_at':'2026-01-01T00:00:00Z','pipeline':{'version':2,'phase':'initial'}})
+        atomic(self.root/final/'results.json',{**source,'pipeline':{'version':2,'phase':'holdings'}})
+        registry.setdefault('research_runs',[]).append({'address_key':self.first['address_key'],'snapshot':progress});atomic(self.root/'wallets.json',registry)
+        rows={row['snapshot_id']:row['phase'] for row in self.call('snapshots_list',{'wallet':self.first['address_key']})}
+        self.assertEqual(rows,{progress:'initial',final:'holdings'})
+        self.assertEqual(rows,{row['snapshot_id']:row['phase'] for row in store.snapshots(self.first['address_key'])})
     def test_duplicate_refresh_reuses_job_and_foreign_jobs_are_hidden(self):
         with patch.object(JobStore,'launch'):
             first=self.call('holdings_refresh',{'wallet':self.first['address_key']})
