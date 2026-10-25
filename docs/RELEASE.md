@@ -11,6 +11,18 @@ counts without saving one job update per cached asset.
 The fix preserves the research scope, quote checks, RPC pacing, public command
 contracts and saved-data formats. Regression coverage includes large frontiers,
 completed-review replay, provider-fact durability and time-budget exits.
+The full suite passed 266 engine tests, 70 viewer tests and all JavaScript
+checks. An installed candidate resumed an interrupted real-data checkpoint in
+47.7 seconds, finished in one pass with no pending work, and preserved balances,
+existing route quotes and all prior snapshots. This measures cached continuation,
+not a new wallet scan. Completed Base root replay with mocked RPC fell from
+13.1 seconds and 545 checkpoint writes to 0.04 seconds and one write.
+
+Both published 1.0.0 and candidate 1.0.1 passed app stop/start checks with
+unchanged saved records, price history and jobs. Candidate MCP historical reads
+matched CLI output. The isolated install matched every archive member; the
+dependency audit found zero known vulnerabilities. No research starts on reads
+or restart. Private live-test evidence stays outside the public repository.
 Review not selected. Registry publication remains an operator action.
 
 ## Published 1.0.0
