@@ -1,5 +1,32 @@
 # Release preparation
 
+## Stable release preparation
+
+The recommended stable release is 1.0.0. The operator must confirm the major
+version before it is applied. Version 0.2.3 remains the published package while
+live acceptance and the final release archive are prepared.
+
+The proposed 1.x compatibility commitment covers documented CLI commands and
+options, the shared CLI/MCP tool names and documented request/response fields,
+and access to existing wallets, jobs and saved observations. Incompatible
+changes to these interfaces require a new major version. Compatible additions
+use a minor version; compatible fixes use a patch version. Clients must tolerate
+additional response fields. Observation values, provider availability, coverage,
+prices and UI layout are not fixed by this commitment. Internal Python modules,
+cache files and browser-only endpoints are not a supported integration API.
+
+Launch validation uses the published package, real providers, an isolated
+research workspace and a separate OWS vault. It covers preserved upgrade data,
+price-only refresh and immutable history, browser-wallet connection,
+human-submitted OWS creation, and a sell-analysis job followed to its terminal
+state. Human account grants and passphrases stay outside the agent. No signature,
+trade, funding or key export is part of acceptance. Record unfinished checks as
+unfinished; a saved progress snapshot alone is not completion.
+
+Installation guidance is version-independent so it does not claim that a
+published package is still a candidate. Review not selected for this release
+preparation; existing audit evidence is retained.
+
 ## Published 0.2.3
 
 Research and price refresh share the Alchemy index fallback and DEX liquidity

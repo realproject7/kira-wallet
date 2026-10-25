@@ -1,6 +1,6 @@
 # Kira tools for your agent
 
-Kira 0.2.0 provides one local application contract to the CLI, optional stdio
+Kira provides one local application contract to the CLI, optional stdio
 MCP adapter and human web controls. It supplies wallet logic and saved facts.
 The host agent owns its model, conversation, general tools and approval flow.
 No model process is launched by Kira.
