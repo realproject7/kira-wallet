@@ -89,14 +89,29 @@ class NativeMarketTests(unittest.TestCase):
                  patch('token_images.refresh_catalog',return_value={},side_effect=images_error) as images,\
                  patch.object(sys,'argv',['refresh_prices.py','--wallet','Fixture']),\
                  patch.dict(os.environ,{'KIRA_JOB_SNAPSHOT':'snapshots/job-fixture','KIRA_ANALYSIS_FD':'123456'}),\
-                 patch('os.fdopen',side_effect=lambda fd,*args,**kwargs:lock if fd==123456 else real_fdopen(fd,*args,**kwargs)),contextlib.redirect_stdout(io.StringIO()):
+                 patch('os.fdopen',side_effect=lambda fd,*args,**kwargs:lock if fd==123456 else real_fdopen(fd,*args,**kwargs)),contextlib.redirect_stdout(io.StringIO()) as output:
                 try:runpy.run_path(str(Path(__file__).parent/'viewer/refresh_prices.py'))
                 except SystemExit as failure:error=str(failure)
+            self.price_events=[json.loads(line) for line in output.getvalue().splitlines() if line.startswith('{')]
             market=folder/'market-prices.json';overlay=root/'snapshots/job-fixture/prices.json'
             self.assertEqual((folder/'results.json').read_text(),original)
             if enrich.called:self.assertEqual(enrich.call_args.args[2],root/'snapshots/job-fixture')
             return (json.loads(market.read_text()) if market.exists() else None,
                     json.loads(overlay.read_text()) if overlay.exists() else None,images.call_args,error)
+
+    def test_price_refresh_reports_real_phases_and_completed_request_counts(self):
+        _,_,_,error=self.run_price_job(self.fresh_rows())
+        self.assertIsNone(error)
+        events=[e for e in self.price_events if e.get('stage')=='price_refresh']
+        phases=[e['phase'] for e in events]
+        self.assertEqual(phases[0],'native');self.assertEqual(phases[-1],'saving')
+        for phase in ('markets','index','curves','discovery','quotes','artwork'):
+            self.assertIn(phase,phases)
+        requests=[e for e in events if e['phase']=='markets']
+        self.assertEqual(requests[0]['checked'],0)
+        self.assertEqual(requests[-1]['checked'],requests[-1]['total'])
+        self.assertEqual([e['checked'] for e in requests],sorted(e['checked'] for e in requests))
+        self.assertNotIn('https:',json.dumps(events))
 
     def test_refresh_uses_index_price_without_inventing_dex_liquidity(self):
         token={'chain_id':8453,'token_address':'0x'+'2'*40,'token_type':'ERC20','dex_pools':[]}

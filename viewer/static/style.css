@@ -637,6 +637,8 @@ button:disabled {opacity:.55;cursor:default}
 .research-dialog .checkbox-label {display:flex;gap:10px;align-items:center;font-weight:400}
 .checkbox-label input {width:17px;height:17px;margin:0}
 .history-dialog {width:min(720px,calc(100% - 32px))}
+.history-options {display:flex;align-items:center;gap:8px;margin:12px 0;font-size:13px}
+.history-options input {width:auto;margin:0}
 .history-row {display:grid;gap:7px;padding:15px 0;border-top:1px solid #E2DCE8;font-size:12px}
 .history-row small {word-break:break-all;color:#81778D}
 .comparison-result {margin-top:24px}

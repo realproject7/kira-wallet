@@ -669,8 +669,9 @@ class JobStore:
                 self.save(job)
 
     def event(self, job_id, event):
-        allowed = {'registered', 'discovery', 'chain', 'onchain_progress', 'first_evidence', 'dex_discovery', 'market_paused', 'research_paused', 'token_images', 'published', 'failed'}
+        allowed = {'registered', 'discovery', 'chain', 'onchain_progress', 'price_refresh', 'first_evidence', 'dex_discovery', 'market_paused', 'research_paused', 'token_images', 'published', 'failed'}
         if event.get('stage') not in allowed: return
+        if event['stage']=='price_refresh' and event.get('phase') not in ('native','markets','index','curves','discovery','reserves','quotes','artwork','saving'):return
         if event.get('operation')=='asset_review':
             if type(event.get('chain_id')) is not int or event['chain_id']<=0 or any(type(event.get(k)) is not int or event[k]<0 for k in ('total','checked','quoted','unknown')) or event['checked']>event['total'] or event['quoted']+event['unknown']!=event['checked']:return
         if event.get('operation')=='asset_inventory':
@@ -685,6 +686,10 @@ class JobStore:
                     'endpoint_index':event.get('endpoint_index') if type(event.get('endpoint_index')) is int else None,
                     'status':event.get('status') if event.get('status') in ('complete','partial','unavailable') else 'unknown'}
             job['events'].append({'stage': event['stage'], 'observed_at': now(), 'counts': counts})
+            if event['stage']=='price_refresh':
+                job['events'][-1]['context']={'phase':event['phase'],'attempt':job['attempt']}
+                if event['phase']=='markets':job['events'][-1]['context']['operation']='price_requests'
+                job['progress_observed_at']=job['events'][-1]['observed_at']
             if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets','reserves','history','market_discovery','factory_queries','pool_checks','cashout_routes','mintclub_membership','asset_review','asset_inventory'):
                 context={'operation':event['operation'],'chain_id':counts.get('chain_id'),'attempt':job['attempt']}
                 if event['operation']=='asset_inventory':

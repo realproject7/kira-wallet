@@ -65,7 +65,7 @@ test('network, token, catalog and home load only their focused records and bound
   h.run("selectedView='token';selectedToken='1:native'");await h.run('loadRoute()');assert.equal(h.requests.at(-1).path,'/api/token?chain_id=1&address=native');
   h.run("selectedView='tokens'");await h.run('loadRoute()');
   assert.deepEqual(Object.fromEntries(new URL(h.requests.at(-1).path,'http://localhost').searchParams),{offset:'100',limit:'50',chain_id:'1',query:'saved token',minimum_value_usd:'5',sort:'wallets',pricing:'unpriced',include_testnets:'1'});
-  h.run("selectedView='home'");await h.run('loadRoute()');assert.equal(h.requests.at(-1).path,'/api/holdings?offset=0&limit=5&sort=value');
+  h.run("selectedView='home'");await h.run('loadRoute()');assert.equal(h.requests.at(-1).path,'/api/holdings?offset=0&limit=5&sort=value&include_testnets=0');
   assert(h.requests.every(request=>!request.path.startsWith('/api/state')));
 });
 test('a late wallet response cannot replace the newly selected token',async()=>{

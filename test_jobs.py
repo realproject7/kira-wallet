@@ -40,6 +40,19 @@ class JobFixtures:
         atomic(self.root/job['checkpoint']/'run.json',{'wallet_address':ADDRESS,**({'completed_at':'now'} if completed_manifest else {'status':'running'})})
         registry=json.loads((self.root/'wallets.json').read_text());registry['wallets'][0]['latest_snapshot']={'directory':job['checkpoint']};atomic(self.root/'wallets.json',registry)
 class JobsTest(JobFixtures, unittest.TestCase):
+    def test_price_phase_events_keep_only_safe_context_and_real_counts(self):
+        job=self.running()
+        self.store.event(job['job_id'],{'stage':'price_refresh','phase':'markets','checked':2,'total':5,'url':'https://provider.test/PRIVATE-KEY'})
+        saved=self.store.get(job['job_id']);event=saved['events'][-1]
+        self.assertEqual(saved['stage'],'price_refresh')
+        self.assertEqual(event['counts'],{'checked':2,'total':5})
+        self.assertEqual(event['context'],{'phase':'markets','attempt':1,'operation':'price_requests'})
+        self.assertEqual(saved['progress_observed_at'],event['observed_at'])
+        self.assertNotIn('PRIVATE-KEY',json.dumps(saved))
+        self.store.event(job['job_id'],{'stage':'price_refresh','phase':'https://provider.test/PRIVATE-KEY'})
+        self.assertEqual(self.store.get(job['job_id'])['events'],saved['events'])
+
+
     def test_engine_failures_expose_safe_causes_and_preserve_old_evidence(self):
         job=self.running();job.update(state='failed',errors=[{'code':'engine_failed','message':'Old generic message'}]);self.store.save(job)
         original=(self.store.jobs/(job['job_id']+'.json')).read_bytes()
