@@ -87,6 +87,18 @@ class OwsTest(unittest.TestCase):
         self.assertEqual(recovered['job_id'],first['job_id'])
         self.assertEqual(JobStore(self.root).get(first['job_id'])['state'],'cancelled')
 
+    def test_legacy_receipt_recovers_an_admitted_registration_after_upgrade(self):
+        request=self.request()
+        with patch('kira_jobs.JobStore.launch',side_effect=OSError('synthetic old-version launch failure')):
+            with self.assertRaises(OSError):self.store.submit(request,create=True)
+        file=self.root/'.kira-ows-requests'/(request['idempotency_key']+'.json')
+        receipt=json.loads(file.read_text());receipt.pop('registration_requested');atomic(file,receipt)
+        original=JobStore(self.root).list()[0]
+        with patch('kira_jobs.JobStore.launch') as launch:
+            recovered=self.store.submit(request,create=True);launch.assert_called_once()
+        self.assertEqual(recovered['job_id'],original['job_id']);self.assertEqual(self.created,1)
+        self.assertEqual(len(JobStore(self.root).list()),1)
+
     def test_unknown_outcome_recovers_same_created_wallet(self):
         self.fail=True;request=self.request()
         with self.assertRaises(JobError):self.store.submit(request,create=True)
