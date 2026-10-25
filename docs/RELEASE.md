@@ -1,6 +1,6 @@
 # Release preparation
 
-## Candidate 0.2.3
+## Published 0.2.3
 
 Research and price refresh share the Alchemy index fallback and DEX liquidity
 checks. Insufficient or extremely one-sided DEX liquidity stays unpriced;
@@ -18,7 +18,7 @@ OWS registration retries recover the same admitted job after interrupted
 worker launch or receipt storage, including requests saved by 0.2.2. Previously
 registered wallets keep their names, and cancelled jobs remain cancelled.
 Unused embedded-agent completion parsing is removed. The website setup link
-points to the currently published 0.2.2 guide until the next site update.
+remains pinned to the 0.2.2 guide until the next site update.
 
 One independent review of the four audit PRs found a legacy OWS receipt recovery
 gap, corrected with an upgrade regression. Final verification covers the full
@@ -26,9 +26,18 @@ suite, isolated installation, exact archive members, CLI/MCP price history and
 source/history privacy checks. Synthetic checks do not claim live provider or
 Gemini/Grok account acceptance.
 
-Freeze the final archive from the validated, landed source and dry-run that
-exact archive. Release publication and website deployment remain operator
-actions. Preparation does not establish registry publication.
+The operator published 0.2.3 on 2026-10-25, and the npm `latest` tag resolves
+to this version. Its archive was frozen from the landed merge commit
+`7fcdb5eb13f4b4009e86b9880a4130a50721d233`. The registry archive is byte-identical
+to the frozen one, SHA-256
+`fa9b935e6ec410cb098c5caac11693d70da2da763b710093ced71872b2e15a73`.
+The registry SHA-1 and SHA-512 integrity values also match. A fresh isolated
+registry installation matched all 93 members with no extra package files.
+Installed CLI and MCP price-history checks and local app startup and shutdown
+passed with synthetic data, unchanged saved evidence and no research jobs.
+The personal installation and workspace were not changed. Website deployment
+remains a separate operator action. Review not selected for this
+publication-record update.
 
 ## Published 0.2.2
 
@@ -191,7 +200,7 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep published GitHub tags, release assets and npm versions through 0.2.2
+Keep published GitHub tags, release assets and npm versions through 0.2.3
 immutable. Do not rebuild them from later documentation commits. Future package
 changes need a new version. Release preparation does not publish a GitHub
 release, promote the website or publish to npm.
