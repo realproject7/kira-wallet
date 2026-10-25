@@ -82,9 +82,10 @@ def public_status(root=None):
     rpc=cfg['rpc'];discovery=cfg['discovery']
     public=rpc['mode']=='public' or rpc['allow_public_fallback']
     import_command=f"kira config import-env --file PATH --key-env {discovery['key_env']}"
-    return {'status':'configured','rpc_mode':rpc['mode'],'read_order':('custom_first' if discovery['provider']=='alchemy' else rpc.get('priority','public_first')) if public else 'custom_only',
+    ready=discovery['provider']=='alchemy' and available
+    return {'status':'ready' if ready else 'connection_required','rpc_mode':rpc['mode'],'read_order':('custom_first' if discovery['provider']=='alchemy' else rpc.get('priority','public_first')) if public else 'custom_only',
             'custom_chain_count':len(rpc['chains']) if rpc['mode']=='custom' else 0,
-            'discovery_provider':discovery['provider'],'discovery_key_available':discovery['provider']=='alchemy' and available,
+            'discovery_provider':discovery['provider'],'discovery_key_available':ready,
             'key_env':discovery['key_env'],'public_discovery':False,'required_provider':'alchemy',
             'import_command':import_command,
             'guide':'Open Workspace settings > Alchemy. Run kira connect alchemy in a terminal and enter the app key at its hidden prompt. Return to Kira to check the connection, then refresh holdings. Actual results establish network access. Never enter or request a key in chat or the browser.',

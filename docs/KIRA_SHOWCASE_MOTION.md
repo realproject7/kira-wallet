@@ -1,109 +1,156 @@
-# Native HTML showcase animation, 2026-10-05
+# Native HTML workflow simulations
 
-The showcase now renders the conversation as browser text, HTML and CSS.
-Encoded video cannot preserve small text at every responsive size. Native
-layout removes that compression and scaling step without adding a video or
-React runtime. The three examples still play automatically in one conversation.
+The site illustrates a general agent using Kira's wallet tools alongside its own
+analysis, web research and file tools. Both animations use native HTML text and
+CSS at actual size. No video, canvas or transform-scaled app frame is used.
+Balances, prices and sell-out records are fictional examples. These animations
+do not run an agent, request provider data, create files or transfer funds.
 
-## Behavior
+## Hero restored from the earlier native version
 
-A 48-second loop gives each example 16 seconds. The question types into the
-composer, Kira researches, the answer types, and result rows appear in order.
-Earlier messages stay above as the conversation scrolls. The composer stays
-at the bottom of the frame. There are no scenario tabs, Pause button, Demo
-badge or click-to-pause behavior.
+The hero restores the visual sequence from commit `6daf3d7`: Kira's welcome
+illustration, a typed question in the composer, the research illustration, an
+answer and sequential token cards. Three 16-second chapters form a 48-second
+cycle: overlooked token values, Blast holdings, then saved observation changes.
+Completed turns remain above the current one until the full cycle restarts.
 
-The animated copy has no interactive targets and is hidden from assistive
-technology. The original complete HTML transcript is the single content
-source. Screen readers can read it without repeated live announcements.
-Reduced motion or JavaScript being unavailable exposes the readable transcript
-with its source links. A focused fallback link is never hidden on recovery.
+The authored transcript in `site/index.html` is the source for the animated
+clones. Links in the clones become inert text. The original transcript retains
+its links and is available through a native details element. Without JavaScript
+it is open and readable. Chapter selection shows a completed chapter; Play
+restarts that chapter. Pause freezes text, reveals and scrolling.
 
-The animation pauses while offscreen or while the document is hidden. It
-resumes at the same elapsed time. Responsive resizing reflows the same HTML
-without choosing a new media source or restarting the conversation. CSS uses
-native font sizes and actual scrolling, with no scaled canvas or video texture.
-Only small opacity reveals and research dots use CSS animation.
+## One connected agent/browser conversation
 
-## Layout
+The lower example has four 18-second turns, forming a 72-second cycle:
 
-| Viewport | Maximum frame width | Conversation height | Result panel height |
-| --- | --- | --- | --- |
-| Above 700px | 520px | 570px | 392–394px |
-| 421–700px | 440px | 520px | 392–394px |
-| Up to 420px | 360px | 520px | 392–394px |
+1. Calculate an indicative subtotal from saved Base sell-out records while
+   separating missing quotes and shared liquidity.
+2. Follow up on the difference between SIGNET's spot valuation and the saved
+   independent full-position exit estimates.
+3. Research current Blast-to-Ethereum availability and withdrawal steps.
+4. Preserve the requested Blast gas reserve and prepare a sourced plan and CSV.
 
-The available result viewport is 450px on desktop and 402px on mobile.
-Token names and values use 14px text. Balances use 12px, market references
-11px, and subordinate labels 10px. All three rows and the subtotal fit above
-the composer even at a 320px page width. Normal page scrolling handles short
-screens rather than shrinking the text to fit the screen height.
+Every completed turn remains in the scroll container. The next question follows
+it, rather than replacing the conversation. There is no repeated generic
+"Shared local records" result card. Each turn has its own calculation, source
+comparison or file result. A readable transcript includes the external sources.
 
-`site/index.html` owns the example contents. `site/demo.js` clones that
-transcript into a pointer-free animated stream and schedules its phases.
-`site/site.css` owns both responsive layouts and the readable fallback.
-The older renderer and MP4 exports remain available as offline exports;
-the public page no longer loads or plays them. Their scenario manifest is
-historical export provenance, not the animation's content source.
+The adjacent browser pane follows the conversation through Base network,
+SIGNET details, Blast network and Blast ETH details. It mirrors the installed
+app's hierarchy, palette and controls: wallet sidebar, connection control,
+Overview/All tokens/Activity tabs, summary, token table and wallet positions.
+The sidebar becomes the compact dark header at narrow container widths. This
+is an authored reconstruction with example data, not a recording or working app.
+Links to the actual installed 0.2.1 screenshots remain below it.
 
-## Verification
+## Numerical and research boundaries
 
-`python3 scripts/showcase-preview.py --port 8807 --frame 44.5` serves the
-public site with production security headers and freezes the QA clock at the
-last example's complete results. This is a test fixture, not the live page.
-The `--reduced-motion` and `--no-js` modes exercise the readable fallback
-without changing the operator's OS settings or accessing a wallet.
+The lower fixture uses 650 SIGNET in Daily and 325 in Savings. At $0.061 each,
+the combined saved spot value is $59.475, displayed as $59.48. Independent
+full-position estimates are $37.80 and $18.65: an indicative sum of $56.45,
+$3.03 (about 5.1%) below the rounded spot value. Base ETH ($6,804) and USDC
+($4,400) have no saved sell-out quote in this fixture and are not included in
+the estimate subtotal. Known Base spot value, including SIGNET, is $11,263.48.
 
-Actual Chrome geometry checks covered 320, 390, 494, 700, 701 and 1440px.
-All three result panels fit the viewport, with zero horizontal page overflow.
-The last subtotal has at least 6px of space before the viewport edge. The
-production CSP permits the animation; the page contains no video or canvas.
-The reduced-motion preview stops playback and preserves keyboard access to
-market links. The JavaScript-free preview renders the full transcript.
+The two SIGNET estimates may consume the same pool. The conversation explicitly
+states that their arithmetic sum is not a combined executable quote. The app
+continues to show estimates by wallet, consistent with `viewer/details.py`.
+Gas is excluded. Missing estimates are never displayed as zero. No spot value
+is relabeled as sale proceeds.
 
-Live autoplay, click behavior, continuous scrolling and looping were checked
-separately from the frozen geometry fixture. Syntax, local asset references,
-ARIA IDs, diff formatting and the public-file privacy guard were also checked.
-This follow-up has implementer verification. The preceding independent review
-covered the older movie implementation and is not a review of this rewrite.
-No operator wallet, model provider or key vault was used for site QA.
+The Blast example holds 0.035 ETH. The user explicitly asks to reserve 0.003 ETH
+for source gas, leaving 0.032 ETH to quote. This is an illustrative user choice,
+not an estimated gas requirement or a live transfer recommendation.
 
-## SIGNET pricing
+Bridge research checked on 2026-10-25 uses [Blast's bridge](https://blast.io/en/bridge),
+[official withdrawal instructions](https://docs.blast.io/withdrawals/withdraw-to-ethereum)
+and [Across's chain-support documentation](https://exclusive.docs.across.to/chains-and-contracts).
+The example catches Blast's wind-down and Across's Blast deprecation. The
+official exit indicates approximately one day plus proving and claiming steps.
+It does not claim that a third-party route is fastest without a current,
+exact-amount quote. Availability, fees and arrival estimates must be checked
+again for a real transfer.
 
-SIGNET on Base is the Mint Club token
-`0xDF2B673Ec06d210C8A8Be89441F8de60B5C679c9`, backed by HUNT. The
-[official token page](https://mint.club/token/base/SIGNET), checked on 2026-10-05,
-showed a curve price of 0.613 HUNT and an approximately $0.061 USD reference.
-The animation shows a fictional balance of 650 SIGNET, $0.0610 per token and
-$39.65 spot value, alongside its HUNT curve price. The first subtotal is $272.65.
-These rounded references do not claim an executable burn output or a live price
-feed. The curve relationship and source are recorded in the scenario manifest.
+## Shared playback and accessible fallbacks
 
-## README captures
+One requestAnimationFrame manager drives both roots with independent elapsed
+time. Frame deltas are capped at 100ms and DOM paints occur at most every 50ms.
+A root stops while offscreen, manually paused, or showing its transcript. A
+hidden document stops both roots. The shared RAF is cancelled when neither can
+run, and resumption resets the timestamp baseline.
 
-The two screenshots now use separate conversations relevant to each main view.
-Overview explains the $14,253.50 portfolio, network allocation and missing
-coverage. USDC Markets explains the 4,400 USDC balance, its two wallets and four
-recorded pools, with two initially visible. Pool liquidity remains separate
-from wallet value and executable proceeds.
+Animated surfaces are aria-hidden and contain no working inputs or live
+announcements. Their separate transcripts remain accessible. Reduced motion
+shows completed static chapters and disables Play/Pause. Without JavaScript,
+the hero transcript is open, the first lower scene remains visible, and all
+lower conversation text and sources can be read in its transcript. Scenario
+copy also remains available without scripted tab selection.
 
-`python3 scripts/readme-preview.py --port 8806` reproduces a disposable local
-capture workspace with fictional public wallet identities and handwritten
-answers. The unchanged production viewer and snapshot projection render the
-images. The fixture cannot queue research, invoke a model CLI or create keys.
-No operator portfolio or chat is read. Chrome captures are 1728×1120; their
-provenance and hashes are in `docs/screenshots/kira-readme-sources.json`.
-README uses repository-relative image paths so each branch shows its own
-screenshots. These captures demonstrate the UI, not live model accuracy.
+Native keyboard chapter and playback controls are provided. Scenario tabs have
+Left/Right/Home/End navigation. Both install copy actions retain status messages.
+The chat and app content scroll independently. Chat follows the newly revealed
+content; app views reset at a new turn and move toward lower content after
+11 seconds. At narrow widths the agent pane and browser pane stack, without
+shrinking text or a desktop capture.
 
-Design evidence for balance and price separation:
-[Coinbase and Gemini portfolio screens](https://www.lazyweb.com/agentic-search/9bde7e00-d871-4aee-ac36-77aeffd6df08).
+## Token artwork and typography
 
-## Publication boundaries
+Every token row and token-specific result uses the existing contract-identified
+local artwork. ETH, USDC, SIGNET, USDB, BLAST, CASHCAT and APE sources and hashes
+are recorded in `site/assets/token-artwork-sources.json`. Letter, dollar-sign
+and diamond substitutes are not used. The existing ETH image is the established
+ETH/WETH artwork documented in that provenance file.
 
-PR 19 is merged. This animation and the distinct README screenshots remain
-in PR 20 until authorized merge. The operator explicitly authorized immediate
-showcase publication without another approval question. The HTML animation
-itself needs no npm release. The separately requested CLI startup change has
-its own package release boundary. Published npm 0.1.2 bytes and its tag remain
-immutable, and registry publication remains operator-only.
+The surrounding page retains the system font hierarchy, restrained tracking
+and consistent line heights. The compatibility strip simply explains that a
+local Kira installation combines wallet tools with an agent's own abilities.
+Local tool access and runtime requirements are explained in the setup section.
+
+## Agent marks
+
+The compatibility strip serves four local SVG assets from
+`site/assets/agents/`. All four use the same mark box and name treatment:
+
+| Label | Asset | Official source |
+| --- | --- | --- |
+| Codex | `openai.svg`, OpenAI Blossom | [Pinned OpenAI Cookbook asset](https://github.com/openai/openai-cookbook/blob/8495326b6f1b7cec94e7f5e393a4045e328a268e/examples/agents_sdk/deployment_manager/frontend/src/openai-logomark.svg) and [OpenAI brand guidance](https://openai.com/brand/) |
+| Claude Code | `claude.svg`, Claude Spark in Clay | [Anthropic media kit](https://www.anthropic.com/press-kit) and [trademark guidance](https://www.anthropic.com/legal/trademark-guidelines) |
+| Gemini CLI | `gemini.svg`, Gemini sparkle aurora | [Official product asset](https://www.gstatic.com/lamda/images/gemini_sparkle_aurora_33f86dc0c0257da337c63.svg) referenced by [Gemini](https://gemini.google.com/) |
+| Grok | `grok.svg`, Grok Logomark Dark | [Official logo archive](https://data.x.ai/logos/SpaceXAI_Grok_Assets.zip) and [xAI brand guidance](https://x.ai/legal/brand-guidelines) |
+
+The Codex label uses the OpenAI symbol rather than claiming a separate Codex
+mark. Preserve supplied proportions and colors. The Gemini vendor SVG contains
+a self-contained embedded gradient image; this does not rasterize page text or
+make an external request. The marks identify hosts or models and do not imply
+partnership or endorsement. Adjacent copy explains the requirement for a
+terminal-capable host, including custom local tools for a Grok-powered agent.
+
+## Local verification
+
+Run separate loopback previews from the repository root:
+
+```sh
+python3 scripts/showcase-preview.py --port 8807 --qa-frames
+python3 scripts/showcase-preview.py --port 8808 --reduced-motion
+python3 scripts/showcase-preview.py --port 8810 --no-js
+```
+
+The preview applies production security headers and no-store caching. It never
+loads wallet records. A normal URL uses the real clock. QA-only `?frame=0..71`
+freezes the shared clock for geometry snapshots; it is not a production feature
+and cannot prove real autoplay or duration. The reduced-motion option overrides
+the product JavaScript's exact matchMedia query only, without OS changes. The
+no-JavaScript option removes demo.js from the served HTML.
+
+Check desktop, mobile and breakpoint boundaries, completed and early states,
+page and internal horizontal overflow, control clipping, pane bounds, local
+artwork loading and native text sizes. Confirm accumulated turn counts and
+matching app views. Check real 48/72-second loops separately, pause/restart,
+transcripts, offscreen behavior, keyboard controls, copy actions and fallbacks.
+Do not claim a hidden-document browser pass unless that state was observed.
+Run the repository gate and privacy checks before deployment.
+
+This document describes the implementation and checks; actual pass evidence is
+recorded separately. Deployment authority comes from the operator's current
+request, not from this document. Independent review was not selected.

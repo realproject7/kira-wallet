@@ -162,7 +162,15 @@ for w in selected:
   overlay=job_folder/'prices.json'
   output['snapshot_id']=w['latest_snapshot']['directory']
   missing_native=any(c.get('environment')=='mainnet' and float(c.get('native_balance') or 0)>0 and c.get('native_symbol')+'_USD' not in fresh_native for c in snapshot.get('coverage',[]))
-  output['job_result_status']='completed_with_coverage_gaps' if output.get('market_discovery_status')=='partial' or missing_native or retained or output.get('reserve_price_status')=='partial' or (output.get('reserve_price_graph') or {}).get('errors') or rpc.get('errors') or any('error' in p for p in rpc['tokens']) or any(isinstance(r['response'],dict) and 'transport_error' in r['response'] for r in fetched) else 'completed'
+  # Name each gap so a partial price job explains itself.
+  output['job_result_gaps']=[name for name,found in (
+      ('market_discovery_partial',output.get('market_discovery_status')=='partial'),
+      ('native_price_missing',missing_native),
+      ('earlier_prices_retained',bool(retained)),
+      ('reserve_pricing_partial',output.get('reserve_price_status')=='partial' or bool((output.get('reserve_price_graph') or {}).get('errors'))),
+      ('curve_reads_incomplete',bool(rpc.get('errors')) or any('error' in p for p in rpc['tokens'])),
+      ('provider_request_failed',any(isinstance(r['response'],dict) and 'transport_error' in r['response'] for r in fetched))) if found]
+  output['job_result_status']='completed_with_coverage_gaps' if output['job_result_gaps'] else 'completed'
   atomic(overlay,output)
   atomic(job_folder/'price-publication.json',{'schema_version':1,'snapshot_id':w['latest_snapshot']['directory'],
       'overlay':str(overlay.relative_to(h.ROOT)),'projection':str(destination.relative_to(h.ROOT)),

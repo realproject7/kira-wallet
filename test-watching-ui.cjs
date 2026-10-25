@@ -180,20 +180,17 @@ test('a lost submission receipt stays uncertain instead of claiming the write di
   assert.match(h.element('provider-status').textContent,/Could not confirm/);
   assert.doesNotMatch(h.element('provider-status').textContent,/not saved/);
 });
-test('Workspace settings reads saved model choices even before initial chat status arrives',async()=>{
-  const h=harness();h.run("globalThis.agentState=null;localAPI=async path=>path==='/api/agent'?{config:{provider:'claude',model:'sonnet',scope:'none',retain_history:false,wallet_tools:true}}:{rpc:{mode:'public'},discovery:{provider:'none'}}");
+test('Workspace settings reads only data connections without an embedded model probe',async()=>{
+  const h=harness();h.run("const settingsCalls=[];localAPI=async path=>{settingsCalls.push(path);return {rpc:{mode:'public'},discovery:{provider:'alchemy'}};}");
   await h.run('openWorkspaceSettings()');
-  assert.match(h.element('workspace-model-summary').textContent,/Claude · sonnet/);
-  assert.match(h.element('workspace-model-summary').textContent,/History off · Research off/);
+  assert.match(h.element('workspace-data-summary').textContent,/Alchemy selected/);
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(settingsCalls)')),['/api/settings']);
 });
 test('an older dismissed Workspace lookup cannot replace the latest saved summary',async()=>{
-  const h=harness();h.run("globalThis.lookupNumber=0;globalThis.pendingLookup=[];localAPI=path=>new Promise(resolve=>pendingLookup.push({path,resolve}));");
-  const old=h.run('openWorkspaceSettings()');h.element('workspace-settings-dialog').close();
-  const current=h.run('openWorkspaceSettings()');
-  h.run("pendingLookup[2].resolve({config:{provider:'claude',model:'new-model',scope:'none',retain_history:false,wallet_tools:false}});pendingLookup[3].resolve({rpc:{mode:'custom'},discovery:{provider:'alchemy'}})");
-  await current;
-  h.run("pendingLookup[0].resolve({config:{provider:'codex',model:'old-model',scope:'portfolio',retain_history:true,wallet_tools:true}});pendingLookup[1].resolve({rpc:{mode:'public'},discovery:{provider:'none'}})");
-  await old;
-  assert.match(h.element('workspace-model-summary').textContent,/Claude · new-model/);
+  const h=harness();h.run("const pendingLookup=[];localAPI=path=>new Promise(resolve=>pendingLookup.push({path,resolve}));");
+  const first=h.run('openWorkspaceSettings()');h.element('workspace-settings-dialog').open=false;
+  const second=h.run('openWorkspaceSettings()');
+  h.run("pendingLookup[1].resolve({rpc:{mode:'custom'},discovery:{provider:'alchemy'}})");await second;
+  h.run("pendingLookup[0].resolve({rpc:{mode:'public'},discovery:{provider:'none'}})");await first;
   assert.match(h.element('workspace-data-summary').textContent,/Alchemy selected/);
 });

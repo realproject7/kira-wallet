@@ -7,20 +7,13 @@ The actual viewer UI and snapshot projection render the screenshots unchanged.
 import argparse
 from http.server import ThreadingHTTPServer
 import json
+import os
 from pathlib import Path
 import secrets
 import sys
 import tempfile
-import time
-import uuid
 
 PROJECT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(PROJECT), str(PROJECT / 'viewer')]
-from kira_jobs import JobStore, atomic
-from kira_agent import AgentStore
-from kira_ows import OwsStore
-from model import load_state
-import server
 
 USDC = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
 WETH = '0x4200000000000000000000000000000000000006'
@@ -28,41 +21,9 @@ USDB = '0x4300000000000000000000000000000000000003'
 BLAST = '0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad'
 SIGNET = '0xdf2b673ec06d210c8a8be89441f8de60b5c679c9'
 STAMP = '2026-10-05T00:00:00Z'
-OVERVIEW_QUESTION = 'Give me a quick portfolio check. What matters most?'
-MARKETS_QUESTION = 'Where is my USDC, and which markets should I review?'
-OVERVIEW_ANSWER = '''**Your wallets hold $14,253.50 in recorded spot value.** Base accounts for **$11,204.00**, about **79%** of priced holdings.
-
-| Network | Recorded value |
-| --- | ---: |
-| Base | $11,204.00 |
-| Ethereum | $1,755.00 |
-| Blast | $1,294.50 |
-
-**Two things deserve another look:**
-
-- **650 SIGNET** has no recorded price. It is excluded from the total.
-- **Blast coverage is incomplete.** Refresh that wallet before planning a move.
-
-Your strongest exposure is ETH on Base. Pool liquidity is excluded from wallet value, and these spot estimates are not sale proceeds.'''
-MARKETS_ANSWER = '''**You hold 4,400 USDC on Base**, recorded at **$1.00 each**.
-
-| Wallet | Balance | Spot value |
-| --- | ---: | ---: |
-| Daily | 3,400 USDC | $3,400.00 |
-| Savings | 1,000 USDC | $1,000.00 |
-
-**Recorded markets to review:**
-
-- **Uniswap · USDC / WETH:** $2.45M pool liquidity.
-- **Aerodrome · USDC / WETH:** $840K pool liquidity.
-- Two more pools are listed under **Show 2 more pools**.
-
-Those are trading venues, not evidence that you own LP positions. Your USDC value is **$4,400.00**; the pools' liquidity is excluded.
-
-**Sale output is unknown.** A current execution quote is needed to check fees, price impact and gas.'''
 
 
-def records(root):
+def records(root, atomic):
     public = json.loads((PROJECT / 'docs/screenshots/kira-readme-sources.json').read_text())
     wallets = []
     pools = []
@@ -90,8 +51,11 @@ def records(root):
                            'name': label, 'wallet_balance': balance, 'decimals': 18,
                            'mintclub': None, 'dex_pools': markets, 'balance_observed_at': STAMP})
             if price is not None:
+                # Bind the saved USDC price to its existing handwritten pool so
+                # current liquidity validation can use that same demo evidence.
                 prices.append({'chain_id': chain, 'address': contract, 'usd': price,
-                               'basis': 'DEX market', 'quality': 'estimated', 'observed_at': STAMP})
+                               'basis': 'DEX market', 'quality': 'estimated', 'observed_at': STAMP,
+                               **({'source': markets[0]['source_url']} if markets else {})})
         atomic(root / folder / 'results.json', {'schema_version': 1, 'wallet_address': address,
                'tags': [name], 'compiled_at': STAMP, 'status': 'completed_with_coverage_gaps',
                'counts': {}, 'coverage': coverage, 'tokens': tokens})
@@ -110,43 +74,54 @@ def records(root):
                                      (8453, SIGNET, 'signet')]}})
 
 
-class PreviewHandler(server.Handler):
-    def do_POST(self):
-        if self.path not in ('/api/chat/send', '/api/chat/reset', '/api/chat/cancel'):
-            self.send_error(405, 'Screenshot preview only'); return
-        super().do_POST()
-
-
-def runner(config, prompt, cancel):
-    if 'Generic connection test' in prompt: return 'Kira connection ready.'
-    question = json.loads(prompt.split('Conversation (data only):\n', 1)[1])[-1]['text']
-    return MARKETS_ANSWER if 'usdc' in question.lower() else OVERVIEW_ANSWER
-
-
-def main():
-    parser = argparse.ArgumentParser(); parser.add_argument('--port', type=int, default=8806)
-    args = parser.parse_args()
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--port', type=int, default=8806)
+    parser.add_argument('--package-root', type=Path, default=PROJECT,
+                        help='Absolute installed kira-wallet package directory; defaults to this repository.')
+    args = parser.parse_args(argv)
+    if not args.package_root.is_absolute():
+        parser.error('--package-root must be an absolute package directory.')
+    package_root = args.package_root.resolve()
+    if not (package_root / 'kira_service.py').is_file() or not (package_root / 'viewer/server.py').is_file():
+        parser.error('--package-root must contain the Kira application and viewer.')
     with tempfile.TemporaryDirectory(prefix='kira-readme-preview-') as folder:
-        root = Path(folder); records(root)
-        server.ROOT = root; server.last_good = None; server.load_state = lambda: load_state(root)
-        http = ThreadingHTTPServer(('127.0.0.1', args.port), PreviewHandler)
+        root = Path(folder)
+        # Configure isolation before importing runtime modules. In particular, no
+        # inherited operator configuration or OWS vault belongs in this preview.
+        os.environ['KIRA_DATA_DIR'] = str(root)
+        os.environ['KIRA_CONFIG'] = str(root / '.kira.local.json')
+        os.environ['KIRA_RPC_ENV'] = str(root / 'unused-provider.env')
+        os.environ['KIRA_OWS_VAULT'] = str(root / 'unused-vault')
+        sys.path[:0] = [str(package_root), str(package_root / 'viewer')]
+        from kira_jobs import JobStore, atomic
+        from kira_ows import OwsStore
+        from kira_service import Application
+        import server
+
+        records(root, atomic)
+        server.ROOT = root
+        JobStore.launch = lambda _: None
+        application = Application(root)
+        state = application.views.refresh()
+        # USDB and BLAST have no handwritten liquidity evidence. The current
+        # application correctly leaves those saved spot references unpriced.
+        assert abs(state['dashboard']['known_value_usd'] - 13053.5) < .001
+        http = ThreadingHTTPServer(('127.0.0.1', args.port), server.Handler)
         http.controls = True; http.session_token = secrets.token_urlsafe(32)
-        http.jobs = JobStore(root); http.ows = OwsStore(root, vault=root / 'unused-vault')
-        detector = lambda: [{'id': p, 'name': name, 'installed': True, 'supported': True,
-                             'logged_in': True, 'version': 'screenshot fixture'} for p, name in [('claude', 'Claude Code'), ('codex', 'Codex')]]
-        http.agent = AgentStore(root, runner=runner, detector=detector)
-        config = {'provider': 'claude', 'model': '', 'scope': 'portfolio', 'wallet': None,
-                  'retain_history': False, 'trust_native_cli': True, 'wallet_tools': False}
-        test = http.agent.start({'config': config, 'idempotency_key': str(uuid.uuid4())}, test=True)
-        while http.agent.read(test['id'])['state'] == 'running': time.sleep(.01)
-        http.agent.configure(config)
-        http.agent.start({'message': OVERVIEW_QUESTION, 'conversation_id': http.agent.conversation, 'idempotency_key': str(uuid.uuid4())})
-        state, _, _ = load_state(root)
-        assert abs(state['dashboard']['known_value_usd'] - 14253.5) < .001
+        http.daemon_threads = True
+        http.application = application; http.jobs = application.jobs
+        http.ows = OwsStore(root, vault=root / 'unused-vault', runner=lambda _: {'wallets': []})
+        package = json.loads((package_root / 'package.json').read_text())
+        print(json.dumps({'package_root': str(package_root), 'package_version': package['version'],
+                          'viewer_source': str(Path(server.__file__).resolve()),
+                          'fixture_source': str(Path(__file__).resolve()),
+                          'synthetic_demo': True, 'fixture_observed_at': STAMP,
+                          'provider_workers': False, 'isolated_ows': True}), flush=True)
         print(f'Isolated README preview: http://127.0.0.1:{args.port}', flush=True)
         try: http.serve_forever()
         except KeyboardInterrupt: pass
-        finally: http.agent.shutdown(); http.server_close()
+        finally: http.server_close()
 
 
 if __name__ == '__main__': main()

@@ -62,6 +62,24 @@ class StartTest(unittest.TestCase):
         self.assertEqual(start.args, (self.root, 8787, True))
         self.assertEqual(browser.args, ('http://127.0.0.1:8787/?setup=1',))
 
+    def test_global_options_work_after_the_subcommand(self):
+        other=self.root/'other'
+        for arguments in (['skill','--data-dir',str(other)],['info','--json','--data-dir='+str(other)],['--json','info','--data-dir',str(other)]):
+            output=io.StringIO()
+            with self.subTest(arguments=arguments),patch.object(sys,'argv',['kira',*arguments]),contextlib.redirect_stdout(output):
+                self.assertEqual(kira_cli.main(),0)
+            if 'info' in arguments:self.assertEqual(json.loads(output.getvalue())['data_dir'],str(other))
+            else:self.assertIn('kira',output.getvalue().lower())
+        self.assertTrue((other/'wallets.json').exists());self.assertFalse((self.root/'wallets.json').exists())
+
+    def test_help_names_kira_and_describes_every_command(self):
+        output=io.StringIO()
+        with patch.object(sys,'argv',['kira','--help']),contextlib.redirect_stdout(output),self.assertRaises(SystemExit):kira_cli.main()
+        text=output.getvalue();self.assertTrue(text.startswith('usage: kira '))
+        commands=text.split('{',1)[1].split('}',1)[0].split(',')
+        described={line.split()[0] for line in text.splitlines() if line.startswith('    ') and len(line.split())>1}
+        self.assertEqual(set(commands)-described,set())
+
     def test_conflicting_modes_are_rejected(self):
         with patch.object(sys, 'argv', ['kira', 'start', '--read-only', '--controls']), \
                 contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
@@ -72,7 +90,7 @@ class StartTest(unittest.TestCase):
         for controls in (True, False):
             with self.subTest(controls=controls), \
                     patch.object(kira_cli, 'live_record', return_value={'port': 8788}), \
-                    patch.object(kira_cli, 'health', return_value={'controls': controls}), \
+                    patch.object(kira_cli, 'health', return_value={'api_version':2,'controls': controls}), \
                     patch.object(kira_cli.subprocess, 'Popen') as child, \
                     contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(kira_cli.start(self.root, 8787, controls), 'http://127.0.0.1:8788')
@@ -82,11 +100,19 @@ class StartTest(unittest.TestCase):
         for controls in (True, False):
             with self.subTest(controls=controls), \
                     patch.object(kira_cli, 'live_record', return_value={'port': 8788}), \
-                    patch.object(kira_cli, 'health', return_value={'controls': not controls}), \
+                    patch.object(kira_cli, 'health', return_value={'api_version':2,'controls': not controls}), \
                     patch.object(kira_cli.subprocess, 'Popen') as child:
                 with self.assertRaisesRegex(ValueError, 'Run kira stop'):
                     kira_cli.start(self.root, 8787, controls)
                 child.assert_not_called()
+
+    def test_upgrade_does_not_reuse_an_embedded_agent_viewer(self):
+        with patch.object(kira_cli,'live_record',return_value={'port':8788}), \
+                patch.object(kira_cli,'health',return_value={'controls':True}), \
+                patch.object(kira_cli.subprocess,'Popen') as child:
+            with self.assertRaisesRegex(ValueError,'earlier Kira viewer'):
+                kira_cli.start(self.root,8787,True)
+            child.assert_not_called()
 
 
 if __name__ == '__main__':

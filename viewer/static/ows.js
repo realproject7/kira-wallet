@@ -62,7 +62,7 @@ $('wallet-copy-link').addEventListener('click', async () => {
 });
 $('ows-disconnect').addEventListener('click', async () => {
   if (owsBusy) return;
-  try { await agentPost('/api/ows/disconnect', {}); owsState.connection = null; owsSelected = null; renderWatching(); renderOws(); }
+  try { await localAPI('/api/ows/disconnect',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); owsState.connection = null; owsSelected = null; renderWatching(); renderOws(); }
   catch (error) { $('ows-error').textContent = error.message; }
 });
 async function submitOws(create, event) {

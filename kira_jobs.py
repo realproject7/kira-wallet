@@ -35,6 +35,10 @@ def signal_process_group(pgid, sig):
 State = Literal['queued', 'running', 'interrupted', 'succeeded', 'partial', 'failed', 'cancelled']
 Operation = Literal['wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv']
 TERMINAL = {'succeeded', 'partial', 'failed', 'cancelled', 'interrupted'}
+# Web history uses the groups. Agents may also filter by an exact state they read on a job.
+STATE_FILTERS = {'all': None, 'active': {'queued','running'}, 'succeeded': {'succeeded','partial'},
+                 'attention': {'interrupted','failed'}, 'cancelled': {'cancelled'},
+                 **{state: {state} for state in ('queued','running','partial','interrupted','failed')}}
 ADDRESS = re.compile(r'0x[0-9a-fA-F]{40}')
 
 class Request(TypedDict):
@@ -133,6 +137,11 @@ def fields(value, required):
     if not isinstance(value, dict) or set(value) != set(required):
         raise JobError('invalid_input', 'Unexpected or missing operation fields.')
 
+def provider_summary(config):
+    """Settings facts and environment names only, never values."""
+    return {'rpc_mode':config['rpc']['mode'],'discovery_provider':config['discovery']['provider'],
+            'public_fallback':config['rpc']['allow_public_fallback'],'endpoint_refs':{cid:row['url_env'] for cid,row in config['rpc']['chains'].items()}}
+
 def identifier(value):
     if not isinstance(value, str): raise JobError('invalid_id', 'Expected a job ID.')
     try:
@@ -145,6 +154,7 @@ class JobStore:
         self.root = Path(root).resolve()
         self.jobs = self.root / 'jobs'
         self.jobs.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self._summary_cache = {}
 
     @contextmanager
     def locked(self):
@@ -164,6 +174,7 @@ class JobStore:
         names={'wallet.add':['address','tag'],'wallet.refresh':['wallet'],'prices.refresh':['wallet'],'wallet.setTags':['wallet','tags'],
             'settings.rpc':['mode','chains','allow_public_fallback'],'settings.discovery':['provider','key_env'],'settings.provider':['provider','key_env'],'settings.importEnv':['import_id','key_env']}[job['operation']]
         if job['operation']=='settings.rpc' and 'priority' in job['input']:names=names+['priority']
+        if job['operation']=='settings.discovery' and 'explorers' in job['input']:names=names+['explorers']
         fields(job['input'],names)
         if 'analysis_phase' in job and job['analysis_phase'] not in ('baseline','enrichment'):raise JobError('invalid_envelope','Invalid analysis phase.')
         if 'scan_policy' in job and job['scan_policy'] not in ('optional_depth_v1','alchemy_inventory_v1'):raise JobError('invalid_envelope','Invalid scan policy.')
@@ -217,6 +228,44 @@ class JobStore:
         with self.locked():
             return sorted((self.get(p.stem) for p in self.jobs.glob('*.json')), key=lambda j: j['created_at'], reverse=True)
 
+    def summaries(self):
+        """Read changed envelopes once; do not reread historical events on idle polls."""
+        rows = []
+        existing = set()
+        for path in self.jobs.glob('*.json'):
+            stat = path.stat(); version = (stat.st_mtime_ns, stat.st_size, stat.st_ino)
+            existing.add(path.stem)
+            cached = self._summary_cache.get(path.stem)
+            if cached is None or cached[0] != version:
+                job = self.get(path.stem)
+                row = {k: job.get(k) for k in ('job_id','operation','state','stage','created_at','updated_at','input','analysis_phase','parent_job_id','continuation_id')}
+                self._summary_cache[path.stem] = version, row
+            rows.append(self._summary_cache[path.stem][1])
+        for key in set(self._summary_cache) - existing:del self._summary_cache[key]
+        return rows
+
+    def page(self, offset=0, limit=50, state='all', wallet=None):
+        from kira_state import page_bounds
+        page_bounds(offset, limit)
+        if state not in STATE_FILTERS:raise JobError('invalid_state','Choose a job state filter: '+', '.join(STATE_FILTERS)+'.')
+        selected = self.wallet(wallet)['address_key'] if wallet else None
+        with self.locked():
+            rows = [r for r in self.summaries() if (STATE_FILTERS[state] is None or r['state'] in STATE_FILTERS[state])
+                    and (selected is None or (r['input'].get('wallet') or r['input'].get('address','')).lower() == selected)]
+            rows.sort(key=lambda r: r['created_at'], reverse=True)
+            jobs = [self.get(r['job_id']) for r in rows[offset:offset+limit]]
+        end = offset + len(jobs)
+        return {'jobs': jobs, 'offset': offset, 'total': len(rows), 'next_offset': end if end < len(rows) else None}
+
+    def status(self):
+        with self.locked():
+            rows = self.summaries()
+            active = sorted((r for r in rows if r['state'] in ('queued','running')), key=lambda r:r['created_at'])
+            revision = digest([(r['job_id'],r['updated_at'],r['state'],r['stage']) for r in sorted(rows,key=lambda r:r['job_id'])])
+            return {'jobs_revision': revision, 'active_job_count': len(active),
+                    'active_jobs': [{**{k:r[k] for k in ('job_id','operation','state','stage')},
+                                     'input':{k:str(v)[:80] for k,v in r['input'].items() if k in ('wallet','address','tag')}} for r in active[:5]]}
+
     def save(self, job):
         job['sequence'] += 1; job['updated_at'] = now()
         atomic(self.jobs / (job['job_id'] + '.json'), job)
@@ -264,7 +313,8 @@ class JobStore:
             if value['mode']=='custom' and not chains:raise JobError('invalid_settings','Custom RPC requires at least one endpoint reference.')
             return {'mode':value['mode'],'chains':chains,'allow_public_fallback':value['allow_public_fallback'],**({'priority':value['priority']} if 'priority' in value else {})}
         if operation == 'settings.discovery':
-            fields(value,['provider','key_env'])
+            fields(value,['provider','key_env']+(['explorers'] if isinstance(value,dict) and 'explorers' in value else []))
+            if 'explorers' in value and type(value['explorers']) is not bool:raise JobError('invalid_settings','Choose whether to use explorer discovery.')
             if value['provider'] not in ('none','alchemy') or not valid_env_reference(value['key_env'],max_length=100):raise JobError('invalid_settings','Use a supported indexer and environment variable reference.')
             return value.copy()
         if operation == 'wallet.add':
@@ -502,7 +552,13 @@ class JobStore:
         paths = {w['latest_snapshot']['directory'] for w in read(self.root / 'wallets.json')['wallets'] if w['address_key'] == key and w.get('latest_snapshot')}
         for run in read(self.root / 'wallets.json').get('research_runs', []):
             if run['address_key'] == key: paths.add(run['snapshot'])
-        return sorted([{'snapshot_id': p, 'compiled_at': self.snapshot(p).get('compiled_at'), 'status': self.snapshot(p).get('status')} for p in paths],key=lambda r:r['compiled_at'] or '')
+        rows = []
+        for path in paths:
+            # phase "initial" marks progress published while a holdings lookup was still running.
+            snapshot = self.snapshot(path)
+            rows.append({'snapshot_id': path, 'compiled_at': snapshot.get('compiled_at'), 'status': snapshot.get('status'),
+                         'phase': (snapshot.get('pipeline') or {}).get('phase')})
+        return sorted(rows, key=lambda r: r['compiled_at'] or '')
 
     def publication(self, job):
         if job['operation'].startswith('settings.') or job['operation']=='wallet.setTags':
@@ -525,7 +581,8 @@ class JobStore:
             previous = read(projection) if projection.exists() else {}
             value = read(overlay)
             if (previous.get('observed_at') or '') <= value['observed_at']: atomic(projection, value)
-            return {'snapshot_id': item['snapshot_id'], 'overlay': item['overlay'], 'status': item['status']}
+            return {'snapshot_id': item['snapshot_id'], 'overlay': item['overlay'], 'status': item['status'],
+                    **({'gaps': value['job_result_gaps']} if isinstance(value.get('job_result_gaps'), list) else {})}
         manifest = folder / 'run.json'
         if not manifest.exists() or not (folder / 'results.json').exists(): return None
         result = read(folder / 'results.json')
@@ -667,7 +724,8 @@ class JobStore:
                 if job['input']['provider']=='alchemy' and not secret_values(config).get(job['input']['key_env']):
                     raise JobError('connection_key_missing','Kira cannot find the local Alchemy key. Follow the connection guide, then retry. Existing settings are unchanged.')
             atomic(config_path(),config)
-            result={'status':'completed','setting':job['operation']};atomic(self.jobs/'results'/(job['job_id']+'.json'),result);return result
+            result={'status':'completed','setting':job['operation'],'provider_configuration':provider_summary(config)}
+            atomic(self.jobs/'results'/(job['job_id']+'.json'),result);return result
         self.require_connection()
         env = {**os.environ, 'KIRA_DATA_DIR': str(self.root), 'KIRA_JOB_ID': job['job_id'], 'KIRA_JOB_SNAPSHOT': job['checkpoint'], 'KIRA_ANALYSIS_FD': str(writer.fileno()), 'PYTHONUNBUFFERED': '1', 'KIRA_RESEARCH_GENERATION':job.get('parent_job_id',job['job_id'])}
         command=self.engine_command(job)
@@ -772,10 +830,10 @@ class JobStore:
                         if entry.get('research_generation') not in (None,job.get('parent_job_id')):
                             job.update(state='cancelled',stage='stopped',errors=[{'code':'superseded','message':'Newer holdings research replaced this detailed run. Earlier evidence is preserved.'}]);self.save(job);writer.close();continue
                     if job:
-                        from kira_config import load_config
-                        config=load_config()
-                        job['provider_configuration']={'rpc_mode':config['rpc']['mode'],'discovery_provider':config['discovery']['provider'],
-                            'public_fallback':config['rpc']['allow_public_fallback'],'endpoint_refs':{cid:row['url_env'] for cid,row in config['rpc']['chains'].items()}}
+                        # Research records the settings it ran with. Settings jobs report their result instead.
+                        if not job['operation'].startswith('settings.'):
+                            from kira_config import load_config
+                            job['provider_configuration']=provider_summary(load_config())
                         job.update(state='running', stage='starting', started_at=now(), attempt=job['attempt'] + 1, errors=[]); self.save(job)
                 if not job:
                     time.sleep(.5)

@@ -31,7 +31,7 @@ class ConfigurationTests(unittest.TestCase):
             cfg=config.default_config();cfg['discovery'].update(provider='alchemy',key_env=key_env)
             self.save(cfg)
             status=config.public_status()
-            self.assertFalse(status['discovery_key_available'])
+            self.assertFalse(status['discovery_key_available']);self.assertEqual(status['status'],'connection_required')
             self.assertIn('kira connect alchemy',status['guide'])
             self.assertIn('--key-env '+key_env,status['import_command'])
             secret_file=self.root/'fixture.env';secret_file.write_text(key_env+'=synthetic-guide-fixture\n')
@@ -41,7 +41,7 @@ class ConfigurationTests(unittest.TestCase):
                 self.assertEqual(kira_cli.main(),0)
             actual=config.public_status()
             self.assertEqual(actual['key_env'],key_env)
-            self.assertTrue(actual['discovery_key_available'])
+            self.assertTrue(actual['discovery_key_available']);self.assertEqual(actual['status'],'ready')
             self.assertNotIn('synthetic-guide-fixture',json.dumps(actual))
             self.assertNotIn(str(secret_file),json.dumps(actual))
 

@@ -5,6 +5,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import re
+from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / 'site'
@@ -15,12 +16,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8807)
     modes = parser.add_mutually_exclusive_group()
-    modes.add_argument('--frame', type=float, help='Freeze a QA preview at 0–47 seconds.')
+    modes.add_argument('--frame', type=float, help='Freeze a QA preview at 0–71 seconds.')
     modes.add_argument('--reduced-motion', action='store_true')
     modes.add_argument('--no-js', action='store_true')
+    modes.add_argument('--qa-frames', action='store_true', help='Allow loopback-only ?frame=0..71 snapshots.')
     args = parser.parse_args()
-    if args.frame is not None and not 0 <= args.frame <= 47:
-        parser.error('--frame must be between 0 and 47 seconds')
+    if args.frame is not None and not 0 <= args.frame <= 71:
+        parser.error('--frame must be between 0 and 71 seconds')
     override = ''
     if args.frame is not None:
         override = '''
@@ -45,6 +47,34 @@ window.matchMedia = query => query === '(prefers-reduced-motion: reduce)'
   ? {matches: true, addEventListener() {}} : originalMatchMedia(query);
 '''
 
+    def qa_frame(query):
+        values = parse_qs(query).get('frame', [])
+        if not args.qa_frames or not values:
+            return None
+        frame = float(values[0])
+        if not 0 <= frame <= 71:
+            raise ValueError('frame must be between 0 and 71 seconds')
+        return frame
+
+    def frame_clock(frame):
+        # One global RAF manager drives both simulations, even during this
+        # deterministic geometry-only preview. Playback is tested separately.
+        return '''
+let queued = null;
+window.requestAnimationFrame = callback => { queued = callback; return 1; };
+window.cancelAnimationFrame = () => { queued = null; };
+document.addEventListener('DOMContentLoaded', () => {
+  let now = performance.now();
+  for (let i = 0; i < FRAME_COUNT; i++) {
+    const callback = queued;
+    if (!callback) break;
+    queued = null;
+    now += 1000 / 60;
+    callback(now);
+  }
+});
+'''.replace('FRAME_COUNT', str(round(frame * 60)))
+
     class Handler(SimpleHTTPRequestHandler):
         def end_headers(self):
             for header in HEADERS:
@@ -60,13 +90,22 @@ window.matchMedia = query => query === '(prefers-reduced-motion: reduce)'
             self.wfile.write(data)
 
         def do_GET(self):
-            path = self.path.split('?', 1)[0]
+            parsed = urlsplit(self.path)
+            path = parsed.path
+            try:
+                frame = qa_frame(parsed.query)
+            except (ValueError, OverflowError):
+                self.send_error(400, 'Invalid QA frame')
+                return
             if path == '/__preview-clock.js':
-                self.respond(override.encode(), 'text/javascript; charset=utf-8')
+                clock = frame_clock(frame) if frame is not None else override
+                self.respond(clock.encode(), 'text/javascript; charset=utf-8')
             elif path in ('/', '/index.html'):
                 page = (SITE / 'index.html').read_text()
                 if args.no_js:
                     page = re.sub(r'\s*<script[^>]*src="/demo.js[^>]*></script>', '', page)
+                elif frame is not None:
+                    page = page.replace('<head>', f'<head>\n<script src="/__preview-clock.js?frame={frame}"></script>')
                 elif override:
                     page = page.replace('<head>', '<head>\n<script src="/__preview-clock.js"></script>')
                 self.respond(page.encode(), 'text/html; charset=utf-8')

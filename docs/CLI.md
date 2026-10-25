@@ -1,120 +1,105 @@
 # CLI and provider configuration
 
-The package carries the Python engine, browser assets and declared viem
-dependency. It needs no Python packages and no sibling project. The package
-file list excludes wallets, snapshots, conversations, caches, logs and private settings.
-Install Kira from npm, then run `kira setup`:
+Kira 0.2.2 is a local wallet engine, CLI and web interface. Any capable agent
+can use the CLI; MCP is optional. Your agent host supplies its own model,
+conversation, general tools and approvals. Kira does not start a model process.
+This branch prepares 0.2.2. Registry publication remains an operator action.
+
+## Install and choose a workspace
 
 ```sh
 npm install -g kira-wallet
-kira setup
+kira --version
+kira info --json
+kira skill
 ```
 
-The operator published npm version 0.1.6. Version 0.1.7 is a preparation candidate. GitHub v0.1.3 remains
-a draft; the previous archive and checksum are available from the
-[0.1.2 GitHub release](https://github.com/realproject7/kira-wallet/releases/tag/v0.1.2).
-Registry publication remains an operator action. The code and original character assets use the MIT license.
+Before this version is published, install the prepared package archive to try these
+commands. The default registry install may still provide an earlier version.
+Node.js 22+, Python 3.11+ and a POSIX host are required; macOS is verified.
+The package includes the engine, browser assets and declared dependencies.
+It excludes wallet records, credentials, conversations and logs.
 
-## Lifecycle
+The supported CLI uses `~/.local/share/kira-wallet`, independently of the
+current directory or agent session. `KIRA_DATA_DIR` selects another workspace;
+the equivalent global `--data-dir` must precede the command:
 
-Connect Alchemy once with `kira connect alchemy`. The operator enters the app
-key at a hidden terminal prompt. New wallet and price research requires this
-connection; saved portfolios remain readable without it.
+```sh
+kira --data-dir /absolute/private/workspace info --json
+```
 
-Wallet registration and holdings refresh check every configured network and all
-returned candidates, including the reachable Mint Club registry. There is no
-128-candidate cap. Saved balances appear as checks finish; price and artwork
-lookup is independent of optional sell analysis.
+Keep this directory stable across sessions. `kira init` initializes it without
+overwriting existing records. `KIRA_PYTHON` selects the Python executable.
+Historical direct Python scripts retain their separate workspace defaults;
+use the supported CLI for a consistent data root.
 
-Choose **Analyze sell routes** only for sale or redemption estimates. Internally,
-`kira jobs deepen HOLDINGS_JOB_ID` admits one child using that wallet’s immutable
-holdings source. It does not discover tokens or reread balances. Use `kira jobs
-cancel JOB_ID` to pause and `kira jobs resume JOB_ID` to continue. A newer holdings
-lookup supersedes earlier analysis. Old limited scans require a holdings refresh
-before the new sell-analysis action. Slices remain bounded, with no overall
-completion deadline or exhaustive-market guarantee.
+`--json` is accepted anywhere in the command. `info` returns the version,
+data directory, capabilities, connection readiness, saved-data revision, job
+status, UI availability and packaged skill path. Its `research_connection.status`
+is `ready` when Alchemy is connected and `connection_required` before that.
+`--data-dir` also works before or after the subcommand. Use `--help` for syntax.
 
-Use `kira setup` for your first setup. For everyday use, `kira start` starts
-the local app with browser controls and opens it in your browser. The default
-port is 8787. Use `--port` to choose another port, or `--no-open` to print the
-URL without opening a browser. `kira status` identifies the managed instance.
-`kira stop` checks its live instance ID and OS process identity before stopping it.
+## Open the local app
 
-`kira init` prepares an empty private data directory. `kira start --read-only`
-starts a loopback-only viewer without wallet or research actions.
-Another portfolio never silently reuses that server.
+```sh
+kira setup --no-open
+kira start --no-open
+kira status
+kira stop
+```
 
-`kira setup` starts the loopback viewer with local controls and opens its setup
-screen. Use `--no-open` to print its URL instead. If a read-only viewer is already
-running, stop it explicitly before setup or a normal start. Changing between
-read-only and control modes requires an explicit stop and restart. Starting
-an already-running app in the same mode reuses its URL. The old `--controls`
-option remains accepted for existing scripts but is no longer needed.
+`setup` returns a `setup_url`; `start` returns a local URL. The agent host can
+open it in its own browser or panel. Omit `--no-open` to use the default browser.
+The default port is 8787; `--port` selects another. The loopback web app offers
+wallet management, recorded analysis and explicit research controls. It has no
+embedded agent chat or model-account setup.
 
-These startup defaults apply from published 0.1.3. In the older 0.1.2 package, use
-`kira setup` or `kira start --controls` for the full app.
+`start --read-only` disables browser mutations. Changing modes requires an
+explicit stop and restart. Starting the same workspace and mode reuses the
+existing URL; a different workspace never silently reuses that server.
+The old `--controls` option remains accepted but is unnecessary.
+`stop` verifies the managed server identity. It does not cancel research jobs.
+All saved-data queries and job commands work with the web app stopped.
 
-The 0.1.2 GitHub release starts with a wallet checklist. Add a public EVM
-address or use the browser wallet picker. Registration starts one explicit
-research job; follow it in Activity and read the saved portfolio report.
-No signature, seed phrase or private key is needed.
+## Connect providers
 
-Published 0.1.4 explains limited discovery before wallet registration and beside
-holdings. Missing coverage keeps the portfolio estimate partial. Existing snapshots require a holdings refresh after connecting
-an indexer; a price refresh does not discover missing tokens.
+Alchemy is required for new wallet and price research. Saved results remain
+readable without it. A human can connect it in **Workspace settings → Alchemy**
+or enter the key at the hidden local terminal prompt:
 
-Alchemy is required for new research. Open **Workspace settings → Alchemy** and
-follow the [setup guide](ALCHEMY_SETUP.md). Alchemy reads run first; verified
-public RPC remains an allowed fallback. Existing custom-only preferences are
-preserved. Missing networks and token prices remain explicit in saved results.
+```sh
+kira connect alchemy
+```
 
-Connecting Codex or Claude is optional. Use Connect your AI when ready, verify
-a generic response and explicitly choose context permissions. Assistant answers
-render a safe Markdown subset; raw HTML, images and links remain inert text.
-The wallet-first setup is included in published npm 0.1.3. The historical
-0.1.0 package uses the earlier account-first setup.
+See [Alchemy setup](ALCHEMY_SETUP.md). Keep credentials out of agent messages
+and command arguments. An agent can configure references to environment names
+that the human has already prepared:
 
-## Your model account
+```sh
+kira rpc set --chain 8453 --url-env KIRA_BASE_RPC
+kira discovery alchemy --key-env ALCHEMY_API_KEY --explorers
+kira config show
+kira config import-env --file /absolute/private/rpc.env --key-env ALCHEMY_API_KEY
+```
 
-Install and sign in to the official Codex CLI or Claude Code CLI first. Kira
-detects the installed binary and native subscription login without copying its
-authentication. Verified adapter versions are Codex 0.158.x and Claude Code
-2.1.259 through 2.1.x. Other versions are blocked until their restrictions are
-verified. This is a native CLI connection, with no Kira account, API-key proxy or
-hosted portfolio backend.
+The environment file path above is a placeholder. Import references the file;
+it does not copy keys or contact providers. It configures Alchemy RPC and
+portfolio discovery while preserving custom chain overrides and explicit
+fallback preferences. Environment values override the referenced file.
+Reference names are case-sensitive. Missing or unreadable selected credentials
+reject the import and preserve the configuration.
 
-Setup leaves the wallet checklist visible. Choose **Connect AI** or **Connect a
-model** to open the Account / Permissions / Ready modal. Choose Codex or Claude,
-then Use default model or a readable model choice. Codex choices come from
-bounded native metadata; Claude offers Sonnet, Opus and Haiku aliases. A catalog
-is not proof of account access.
-Advanced accepts a custom identifier and preserves saved identifiers absent
-from the catalog. Workspace settings reopens the same selector and permissions. Choose no automatic wallet context, one registered wallet,
-or the whole recorded portfolio. A generic response check sends no wallet data
-and must pass before these settings are saved.
+RPC, discovery and import commands apply synchronously when idle. If research
+owns the writer, they return a queued receipt; `--json` always returns a queued
+receipt without waiting. Inspect the resulting job before reporting the
+configuration applied; its `result.provider_configuration` lists the applied
+modes and reference names. Safe configuration output contains references, not values.
 
-Your entered message and approved context go through the CLI to its model
-service. Context includes recorded balances, wallet names and addresses, chain
-and contract identities, timestamps, unknown prices and coverage. Credentials,
-RPC endpoints, raw provider errors and local paths are excluded. Changing the
-provider, model, context or selected wallet creates a new conversation.
-
-New setup in 0.1.5 recommends saving history and preselects it. Existing saved
-true and false choices are restored exactly. Saving lets you reopen chats after
-restart; it does not expand model memory or wallet access. The choice and
-research permission remain editable in Workspace settings. Kira-local history uses private `conversations/` files. With history
-off, conversations and drafts stay in memory. A new server process starts a fresh
-conversation; saved files remain available locally and are not automatically
-replayed. Native CLI, administrator policy and provider data policies remain a
-separate trust boundary. With wallet research enabled, Kira can read saved analyses, compare history and queue holdings or price updates. Jobs appear in Activity and continue independently of chat. Signing and trading stay outside the agent.
-See [the conversation contract](ONBOARDING_CHAT_CONTRACT.md).
-
-Global `--data-dir` precedes the command. `KIRA_DATA_DIR` provides the same
-override. `KIRA_PYTHON` selects Python. Direct historical scripts keep their
-workspace default. The supported CLI uses the user data directory. Installed
-assets and writable runtime files use separate roots.
-
-## Public RPC
+New configurations allow verified public RPC fallback. `--custom-only`
+disables fallback; `--public-fallback` restores it. Existing opt-outs persist.
+`--priority public_first` or `--priority custom_first` selects ordering for a
+custom RPC. Plain HTTP is accepted only for loopback endpoints. Public RPC
+alone does not establish complete ERC20 discovery.
 
 ```sh
 kira rpc public
@@ -122,121 +107,136 @@ kira doctor
 kira doctor --live --chains 1,8453,81457 --budget 30
 ```
 
-No credential file is required. Live doctor performs bounded identity, block,
-deployed bond bytecode, Multicall3 bytecode and historical bytecode probes.
-It reports endpoint indexes. These samples do not guarantee broad archive
-history, multicall execution or wallet coverage. Exit code 2 means at least one
-sampled chain is unavailable or limited. Failed endpoints stop after their
-first failure; at most three are tried per chain. There are no hidden retries.
-The budget limits JSON-RPC method calls in that invocation. Full analysis has
-no global request cap yet.
+`doctor` is local by default. `--live` explicitly makes bounded provider probes
+for chain identity, blocks and known bytecode. The budget counts JSON-RPC
+method calls. Exit code 2 means a sampled chain is unavailable or limited;
+a successful sample does not prove complete archive or wallet coverage.
 
-## Custom RPC and discovery
+## Add, name and refresh wallets
 
-Set an endpoint in your shell or private environment file. Keep the value out
-of command arguments. Configuration stores references only.
+Replace the address placeholder with the public EVM address supplied by the user.
 
 ```sh
-export KIRA_BASE_RPC='<your HTTPS endpoint>'
-kira rpc set --chain 8453 --url-env KIRA_BASE_RPC
-export ALCHEMY_API_KEY='<your key>'
-kira discovery alchemy --key-env ALCHEMY_API_KEY --explorers
-kira config show
+kira add '<public-evm-address>' --tag 'Daily wallet' --idempotency-key add-daily-001 --json
+kira wallets --json
+kira wallets tags 'Daily wallet' --tag 'Daily wallet' --tag 'Savings' --idempotency-key tags-daily-001 --json
+kira refresh 'Daily wallet' --idempotency-key refresh-daily-001 --json
+kira prices 'Daily wallet' --idempotency-key prices-daily-001 --json
 ```
 
-Public fallback is automatic for new configurations. A missing or failing custom endpoint uses verified public endpoints, including failures after the initial connection. Reads keep the selected block. `--custom-only` explicitly disables fallback; an existing opt-out is preserved. `--public-fallback` restores it. Plain HTTP is accepted only for loopback endpoints. Public RPC does not provide complete ERC20 discovery.
+The first tag is the display name. Exact names and registered addresses select
+wallets. `add` runs the first full holdings lookup itself; use `refresh` for
+later updates. Reuse an idempotency key only when retrying the same intended request.
 
-Discovery is independent. Without an indexer, native and reachable Mint Club
-reads still run and general discovery stays incomplete. Configuring an RPC
-does not prove ERC20 discovery completeness.
+`add`, `refresh` and `prices` persist a durable job before doing research.
+`--json` or `--enqueue` returns its receipt immediately and starts a separate
+worker. Without either option, these commands wait and print the initial and
+final job records. A receipt confirms admission, not successful research.
 
-## Explicit compatibility import
+Holdings refresh checks configured networks and returned token candidates,
+including the reachable Mint Club registry. There is no 128-candidate cap.
+A price refresh updates saved holdings without discovering new tokens or
+replacing recorded balances. Reads and page navigation never trigger either
+operation. Manual refresh is the normal workflow; no real-time polling of
+providers is required.
+
+## Inspect and control jobs
 
 ```sh
-kira config import-env --file /absolute/private/rpc.env --key-env ALCHEMY_API_KEY
+kira jobs list --json
+kira jobs read JOB_ID --json
+kira jobs wait JOB_ID --timeout 30 --json
+kira jobs cancel JOB_ID --json
+kira jobs resume JOB_ID --idempotency-key resume-daily-001 --json
+kira jobs deepen HOLDINGS_JOB_ID --idempotency-key sell-daily-001 --json
+kira jobs run --json
 ```
 
-The import references the file instead of copying keys. It configures Alchemy
-RPC and portfolio discovery together, preserving existing custom chain overrides
-and explicit fallback preferences. New configurations allow public fallback.
-Environment overrides the file. An unreadable file or unavailable selected key
-rejects the import and preserves existing settings, whether applied immediately
-or queued in Activity. Malformed configuration fails with safe errors.
-The import does not contact providers. Private settings are never served.
-Reference names are case-sensitive. Lowercase and mixed-case names work in
-both immediate and queued imports; Kira does not convert them to uppercase.
+Replace job IDs with values from real receipts. `wait` accepts 0–120 seconds.
+Its `completed` flag means the job left queued/running state; inspect
+`job.state`, result, errors and coverage. Failed, cancelled and interrupted
+jobs are not successful. Partial results preserve unresolved checks.
 
-Analysis output contains wallet addresses and tags. Keep runtime directories
-outside repositories or ignored. Never publish operator holdings as demos.
-The demo command uses synthetic addresses and sample prices only.
+`jobs deepen` runs optional sell-route analysis from an immutable saved
+holdings source. It does not rediscover tokens or reread balances. A newer
+holdings lookup supersedes earlier analysis. Older limited scans need a new
+holdings refresh before this action. Work runs in bounded slices without an
+overall completion deadline or exhaustive-market guarantee.
 
-## Durable research and local controls
+Interrupted jobs require explicit resume. `jobs run` starts queued work and
+reconciles crash receipts, without replaying interrupted jobs. Failed or
+cancelled jobs retain last good results and unpublished evidence. Price jobs
+preserve immutable overlays before updating the current projection.
+The legacy `--resume SNAPSHOT_DIRECTORY` on `add` or `refresh` is only for
+unpublished snapshots; use job IDs for durable work.
 
-Normal `kira add`, `kira refresh` and `kira prices` now save a version 1 job
-before running the existing engine. Use `--idempotency-key <stable-key>` to
-retry a submission without duplicating work. Add `--enqueue` to return after
-queuing the job and start a separate worker. `--resume <snapshot-directory>`
-remains the legacy unpublished-snapshot interface. New durable jobs resume by
-job ID:
+## Query saved facts
 
 ```sh
-kira jobs list
-kira jobs read <job-id>
-kira jobs cancel <job-id>
-kira jobs resume <job-id> --idempotency-key <stable-resume-key>
-kira jobs run
+kira call portfolio_read --arguments '{"offset":0,"limit":20}' --json
+kira call holdings_query --arguments '{"mode":"rank","limit":10}' --json
+kira call holdings_query --arguments '{"mode":"search","query":"ETH"}' --json
+kira call wallet_read --arguments '{"wallet":"Daily wallet","offset":0,"limit":100}' --json
+kira call token_read --arguments '{"chain_id":8453,"address":"native"}' --json
+kira call snapshots_list --arguments '{"wallet":"Daily wallet","limit":20}' --json
+kira call job_list --arguments '{"state":"active","offset":0,"limit":20}' --json
+kira ui context --json
 ```
 
-An interrupted job needs an explicit resume. Published partial results retain
-coverage gaps and require a new refresh to investigate again. Failed and
-cancelled jobs retain their last good result and unpublished evidence.
-`jobs run` starts queued work and reconciles crash receipts; it does not replay
-interrupted jobs. Price jobs retain immutable overlays before updating the
-viewer projection. A viewer stop does not cancel research jobs.
+`job_list` accepts `state` groups `all` (default), `active` (queued or
+running), `succeeded` (succeeded or partial), `attention` (interrupted or
+failed) and `cancelled`, or one exact state: `queued`, `running`, `partial`,
+`interrupted` or `failed`. Add `wallet` to limit results to one registered
+wallet.
 
-Start with `kira start` to use protected browser actions. Use `--read-only`
-for a viewer without those actions. Stop an existing instance before switching
-modes. Actions need the local session and same origin.
-The supported URL uses 127.0.0.1. Browser controls offer wallet registration,
-exact names, holdings/price refresh, cancel/resume, saved analysis comparison,
-RPC references and discovery references. The synthetic demo cannot start
-provider research. Enter endpoint credential references in Connections;
-secrets and URLs remain outside the browser.
+Follow returned `next_offset` values when complete pages are needed. Use
+`holdings_query` for server-computed ranking, counts and aggregates across the
+full inventory. Same-symbol tokens may differ by chain and contract; retain
+that ambiguity until an exact asset is selected. `ui context` is the last
+recorded browser selection, not a new user instruction.
 
-Use `kira --data-dir <private-portfolio> tools` for the read-only stdio adapter.
-See [the tool guide](AGENT_TOOLS.md) and [job contract](JOB_CONTRACT.md).
-Connected chat uses the native CLI account and approved context from setup.
-The published package and original Kira assets are MIT licensed.
+`call TOOL --arguments JSON` exposes the complete shared read and mutation
+catalogue. Mutation calls require `idempotency_key`. `kira tools` starts the
+read-only stdio MCP adapter; `kira tools --allow-writes` explicitly exposes
+mutations too. See [the tool contract](AGENT_TOOLS.md) and `kira skill`.
 
-## Browser and local OWS wallets
+Keep unknown balances and prices distinct from zero. Preserve observation
+timestamps and coverage. Spot value, pool TVL, curve backing and gas-excluded
+sale estimates have different meanings. Equal recorded balances do not prove
+that no transfers occurred between observations.
 
-Use **Connect wallet** to choose an EIP-6963 browser wallet such as MetaMask.
-The app shows the provider and public accounts, lets you review the account
-before registering it, and provides **Disconnect from Kira**. Disconnecting does
-not remove recorded wallets or revoke extension permissions. Without a browser
-wallet, the chooser explains how to open this same local URL in a compatible
-browser. A phone cannot reach another computer's loopback URL.
+## Read earlier conversation archives
+
+Upgrading preserves wallet records, settings, snapshots, jobs and historical
+conversation/output files. Kira no longer resumes embedded model sessions.
+Archives are local evidence and are not automatically sent to an agent.
+
+```sh
+kira archive list --json
+kira archive read CONVERSATION_ID --json
+kira archive workspaces --json
+kira archive files WORKSPACE_ID --json
+kira archive export WORKSPACE_ID --path report.csv --output ./recovered-report.csv --json
+```
+
+Use IDs and relative file paths returned by the preceding commands. Workspace
+listing also finds generated files from sessions whose chat history was off.
+Reads are bounded. Export accepts a regular file of at most 20 MB, rejects
+symlinks and writes a new destination without overwriting an existing file.
+
+## Browser wallets and optional local OWS
+
+**Connect wallet** discovers EIP-6963 browser wallets and lets the human select
+a public account. Disconnecting from Kira does not remove saved wallets or
+revoke extension permissions. An embedded browser without an extension can
+open the same local URL in a compatible browser on that computer.
 
 **Local OWS wallet** lists public EVM descriptors from Open Wallet Standard.
-The optional pinned SDK is `@open-wallet-standard/core` 1.4.3. The vault defaults
-to `~/.ows`; `KIRA_OWS_VAULT` selects another local vault. Creating a new wallet
-requires a human-entered encryption passphrase and uses OWS's encrypted local
-storage. Kira never returns the mnemonic or private key. Back up and recover
-with OWS owner tools. Existing keys and tags are preserved.
-
-A private owner receipt serializes creation across apps using the same vault.
-Retrying an interrupted creation recovers its request identity instead of
-creating a second wallet. The browser keeps only the public request identity
-in session storage. It clears password fields immediately. Recovery keeps the
-original encryption passphrase. No signing, key export or account deletion
-endpoint is exposed. OWS absence does not block ordinary address or browser
-wallet onboarding.
-
-## Provider reads and coverage
-
-Alchemy token discovery uses your key directly. Configured Alchemy RPC reads
-run before public fallback. The browser exposes one Alchemy connection rather
-than free and expanded modes. Existing low-level RPC references remain available
-through the CLI. See [Alchemy setup](ALCHEMY_SETUP.md). `FREE_RPC.md` retains the
-historical free-discovery implementation and its evidence; it is not the current
-onboarding policy.
+Its optional SDK is `@open-wallet-standard/core` 1.4.3; the vault defaults to
+`~/.ows`, with `KIRA_OWS_VAULT` as an override. Creation requires a human-entered
+passphrase in the local interface. Kira does not return private keys or seed
+phrases. Recovery keeps the original passphrase and interrupted requests retain
+their identity to prevent duplicate creation. Use OWS owner tools for backup
+and recovery. Agents must leave passphrase entry to the human. OWS absence
+does not block ordinary public-address onboarding. Kira exposes no signing,
+trading, key export or account deletion.
