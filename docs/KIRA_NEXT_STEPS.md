@@ -1,31 +1,52 @@
 # Kira release status
 
-Updated: 2026-10-04. The operator authorized source completion, merges, native CLI
-onboarding, a private read-only wallet acceptance run and Vercel domain setup.
-Registry publication remains operator-only. This document records state, not new
-authority.
+Updated: 2026-10-28. Kira 1.0.2 is published and its scoped implementation and
+installed-package acceptance are complete. This page records current status;
+earlier plans and reports preserve historical evidence, not active release gates.
 
-| Outcome | State | Remaining action |
-| --- | --- | --- |
-| Workspace redesign, PR #2 | Independently reviewed, fixed and merged. | None for source. |
-| Watching connection, PR #3 | Independently reviewed, fixed and merged. | Native extension approval/locking/account-change acceptance remains a device check. |
-| Native model onboarding and chat | Codex and Claude Code adapters implemented. Both generic live response checks passed with native subscription accounts. Permissions and Kira-local retention are explicit. | Two independent reviews and package verification passed. |
-| Private live wallet research | Private read-only acceptance passed with recorded coverage gaps. Same-address aliases and duplicate-request reuse were verified. | No private identifiers or portfolio evidence published. |
-| Public installation site | Static introduction deployed on Vercel. HTTPS apex connected through the operator's browser. www permanently redirects to apex. | Deploy the final reviewed installation links. |
-| npm release | Public 0.1.0 package and preparation script are ready. No registry publication performed. | Final operator publication of the verified tarball. |
+## Completed release scope
 
-The public release baseline is `origin/codex/kira-release`. It preserves the exact
-independently reviewed workspace and Watching source. GitHub's earlier server
-merge metadata used an account default author address. A clean branch/default
-recovery preserves source content without a force push. Historical PR merge
-records may remain; this is not a claim of erasure. Future GitHub merges explicitly
-set the public noreply author, and release checks validate author and committer.
+| Outcome | State and evidence |
+| --- | --- |
+| Local research and wallet management | Holdings and price refresh, saved analyses and comparisons, durable jobs, progress, pause/resume and human browser controls are delivered. Reads do not start research. |
+| External agent access | CLI and optional MCP share the local application service. The agent host owns conversations, models and approvals. Embedded model runtimes were removed in 0.2.1. |
+| Watching and OWS wallets | Public-address connections and human-submitted OWS creation are delivered. New OWS wallets wait for an explicit holdings refresh. Kira has no signing or trading tools. |
+| Continuation performance | Published 1.0.1 fixes repeated completed-review work and excessive local checkpoint writes. Real continuation and restart acceptance passed. |
+| 1.0.2 corrections | Home uses mainnet asset scope, saved analyses favor final records, and price refresh exposes actual phases and completed request counts. |
+| npm publication and installation | The operator published 1.0.2 on October 27. Registry hashes and all 93 installed members match the frozen archive. Clean reinstall, desktop/mobile, history preservation, restart and CLI/MCP checks passed. |
+| Repository integration | [PR #56](https://github.com/realproject7/kira-wallet/pull/56) merged into `codex/kira-release` on October 28. The landed tree matches the tested 1.0.2 source. |
+| Public website | [kirawallet.app](https://kirawallet.app) presents the external-agent workflow. Its setup guide follows the maintained release branch. The site hosts no wallet or model API. |
 
-The public website contains no portfolio or model API. Personal research stays in
-a loopback viewer. RPC/indexer reads use configured providers. Chat text and the
-selected context go through the native CLI to its model service. No wallet
-context is the initial default. Model permissions do not authorize signing,
-trading, publication or automatic research.
+The [release notes](RELEASE.md#published-102) retain source identity, checksums
+and acceptance details. Published archives remain immutable. Later documentation
+or website changes do not rebuild 1.0.2 or require another npm publication.
+Review not selected for the 1.0.2 implementation and this release closeout.
 
-See [the conversation contract](ONBOARDING_CHAT_CONTRACT.md),
-[CLI setup](CLI.md), and [release preparation](RELEASE.md).
+## Remaining verification and optional work
+
+| Item | Current boundary |
+| --- | --- |
+| Gemini and Grok host acceptance | No pass is recorded. The last attempts on October 25 were blocked by account eligibility or signed-out access. Retry after the operator makes a usable host available. Codex and Claude acceptance does not establish other-host compatibility. |
+| Additional operating systems | macOS is verified. Research and background processes require POSIX. Linux and Windows acceptance is not established. |
+| Full-route net recovery | [Issue #11](https://github.com/realproject7/kira-wallet/issues/11) remains optional research. Supported amount-specific quotes already exist; full settlement conversion, gas, nested exits and shared-liquidity portfolio aggregation are not a completed net-recovery capability. |
+| Imported wallets and execution | Deferred to post-MVP under the [wallet capability decision](WALLET_CAPABILITIES.md#post-mvp-decision-imported-wallets-and-execution-2026-10-19). Automatic signing, transfers and trading are not implemented. |
+| External pilot and a separate product video | Proposed in earlier plans; completed pilot results and an accepted product-video deliverable are not recorded. The website's fictional HTML demonstration is already delivered. |
+
+These items are not unfinished 1.0.2 fixes. Schedule a concrete follow-up before
+expanding the product or claiming additional compatibility. Provider gaps remain
+explicit unknowns; a terminal partial research result is not an active job or a
+reason to retry automatically.
+
+## Current setup and architecture
+
+Use the [README](../README.md), [CLI guide](CLI.md),
+[agent tool contract](AGENT_TOOLS.md) and [Alchemy setup](ALCHEMY_SETUP.md).
+Alchemy is required for new holdings and price research. Saved records remain
+readable without provider access. The local app stays on loopback; wallet
+records and provider references remain in the user's private workspace.
+
+The [original product proposal](KIRA_PRODUCT_SPEC.md),
+[implementation plan](KIRA_IMPLEMENTATION_PLAN.md) and
+[overnight plan](KIRA_OVERNIGHT_PLAN.md) are historical documents. Their embedded
+chat milestones, early publication gates and old domain do not describe the
+current product or authorize new work.

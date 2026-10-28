@@ -1,5 +1,11 @@
 # Kira Wallet implementation plan
 
+> Historical plan from October 2026. The milestones and gates below describe
+> earlier development, not the current backlog. Kira 1.0.2 is published and
+> accepted. From 0.2.1, external agent sessions replace embedded model runtimes;
+> Alchemy is required for new research. Use [release status](KIRA_NEXT_STEPS.md)
+> for remaining work and the [README](../README.md) for the current product.
+
 This plan turns the existing research viewer into the local Kira Wallet application defined in [the product specification](KIRA_PRODUCT_SPEC.md). Deliver the requested viewer improvements first, then build portable configuration, Kira's identity and character, the redesigned workspace and optional agent management. Later milestones describe planned work, not completed features.
 
 The [overnight execution plan](KIRA_OVERNIGHT_PLAN.md) defines a bounded first run, ordered priorities, completion evidence and execution conditions. The operator authorized the overnight run on 2026-10-03, then approved the adult webtoon character and the live read-only viewer redesign. The portable development build, approved base portrait, working viewer theme and isolated concept studio are delivered locally. Publication is not authorized.

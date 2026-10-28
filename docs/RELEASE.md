@@ -1,6 +1,10 @@
-# Release preparation
+# Releases and preparation
 
-## Release candidate: 1.0.2
+Current release: **1.0.2**. For implementation status and optional follow-ups,
+see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
+scope of their original release; they are not a current task list.
+
+## Published 1.0.2
 
 Home uses the same mainnet asset scope as the default All tokens view. Saved
 analyses show final records newest first, with an explicit option to include
@@ -23,7 +27,26 @@ were preserved; restart and CLI/MCP reads agreed without starting new research.
 The dependency audit reported zero known vulnerabilities. Private test evidence
 stays outside the public repository.
 
-Review not selected. Registry publication remains an operator action.
+The operator published 1.0.2 on October 27, 2026. The registry archive matches
+the frozen source `400e53b966bf58a9125ae079f5e05bf10a584fc9`, including SHA-256
+`03992ae9c51af6b00f2b80f48d26fdeb940879de80015f7fc297a45cf5a0aed2`
+and registry SHA-1/SHA-512 integrity. Removing the previous global installation
+and installing the registry package matched all 93 archive members.
+
+Published-package acceptance passed on desktop and mobile. The three fixes,
+saved-analysis comparison, existing OWS descriptors, restart and historical
+CLI/MCP reads were verified. A real price refresh completed in one attempt in
+166.8 seconds, counted all 106 market requests and reported explicit provider
+gaps without runtime errors. Existing holdings, immutable price observations,
+wallet settings and prior jobs were preserved. No active jobs remained at the
+end of acceptance. A terminal partial result records missing provider evidence;
+it does not require an automatic retry.
+
+[PR #56](https://github.com/realproject7/kira-wallet/pull/56) merged on
+October 28, 2026 at `fcdb7da4e0cf9303d10635960419bbc379e436d2`.
+The landed tree matches the tested source and frozen package. Subsequent
+documentation and website changes do not replace or rebuild the published
+archive. Review not selected. Registry publication remains an operator action.
 
 ## Published 1.0.1
 
@@ -299,7 +322,7 @@ The earlier unpublished 0.1.2 candidate is preserved in the ignored
 `dist/preserved-0.1.2-bad8f02/` directory. Use the current `dist/release.json`
 and its matching archive for publication; do not mix manifests from candidates.
 
-Keep published GitHub tags, release assets and npm versions through 0.2.3
+Keep all published GitHub tags, release assets and npm versions, including 1.0.2,
 immutable. Do not rebuild them from later documentation commits. Future package
 changes need a new version. Release preparation does not publish a GitHub
 release, promote the website or publish to npm.
