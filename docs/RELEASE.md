@@ -1,6 +1,31 @@
 # Release preparation
 
-## Release candidate: 1.0.1
+## Release candidate: 1.0.2
+
+Home uses the same mainnet asset scope as the default All tokens view. Saved
+analyses show final records newest first, with an explicit option to include
+intermediate checkpoints. A first lookup still shows its latest progress save
+when no final analysis exists. All evidence remains available to CLI and MCP.
+
+Price refresh reports actual native, market, index, curve, reserve and sale
+quote phases before provider work starts. Completed market requests update at
+most once per second, plus the final count, without waiting behind the first
+slow request. Request concurrency, result ordering and price selection stay
+unchanged. No credentials or provider URLs enter public progress events.
+
+Validation passed 268 engine tests, 70 viewer tests, all JavaScript suites and
+clean package installation and lifecycle checks. Desktop and mobile browser
+checks used an installed candidate with a copied existing workspace. Final
+analyses, optional intermediate records and comparison controls worked. A real
+price refresh completed in 109 seconds in one attempt, with explicit provider
+gaps and all 106 market requests counted. Existing holdings and price history
+were preserved; restart and CLI/MCP reads agreed without starting new research.
+The dependency audit reported zero known vulnerabilities. Private test evidence
+stays outside the public repository.
+
+Review not selected. Registry publication remains an operator action.
+
+## Published 1.0.1
 
 Fixes excessive local work during sell-analysis continuation. Completed asset
 reviews survive the early burn pass without reopening their route frontiers.

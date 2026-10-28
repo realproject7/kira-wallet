@@ -178,3 +178,13 @@ test('sell-analysis failure is visible with its own retry while holdings stay co
  h.context.jobsConnected=false;h.run('renderWalletScan()');assert.match(h.el('wallet-analysis').innerHTML,/disabled/);
  h.run('localSession={controls:false};renderWalletScan()');assert.equal(h.el('wallet-analysis').hidden,false);assert.doesNotMatch(h.el('wallet-analysis').innerHTML,/data-job-action/);
 });
+
+test('price refresh names the current provider phase and completed requests',()=>{
+ const h=harness();
+ h.context.priceJob={...basic,analysis_phase:undefined,operation:'prices.refresh',state:'running',stage:'price_refresh',events:[{stage:'price_refresh',observed_at:new Date().toISOString(),counts:{checked:3,total:8},context:{phase:'markets',operation:'price_requests',attempt:1}}]};
+ assert.equal(h.run('jobStage(priceJob)'),'Checking market prices');
+ assert.equal(KiraView.jobProgress(h.context.priceJob).count,'3 / 8 price source requests');
+ h.context.priceJob.events[0].context={phase:'curves',attempt:1};h.context.priceJob.events[0].counts={};
+ assert.equal(h.run('jobStage(priceJob)'),'Checking curve prices');
+ assert.equal(KiraView.jobProgress(h.context.priceJob).count,'');
+});

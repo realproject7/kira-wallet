@@ -58,7 +58,7 @@
       freshness: !connected ? 'Connection lost. Last recorded state shown.' : quiet ? 'Awaiting a new stage update. Still marked running.' : '',
     };
   }
-  const progressUnits={balances:'balances',registry:'registry entries',metadata:'metadata reads',curves:'curve reads',reserves:'reserve records',mintclub_membership:'membership checks',
+  const progressUnits={price_requests:'price source requests',balances:'balances',registry:'registry entries',metadata:'metadata reads',curves:'curve reads',reserves:'reserve records',mintclub_membership:'membership checks',
     history:'history pages',market_discovery:'token market lookups',factory_queries:'factory queries',pool_checks:'pool checks',cashout_routes:'held assets',asset_review:'assets reviewed'};
   function assetProgress(job) {
     const rows=Object.values(job.asset_progress||{}).filter(p=>p&&typeof p==='object'&&['total','checked','quoted','unknown'].every(k=>Number.isSafeInteger(p[k])&&p[k]>=0)&&p.checked<=p.total&&p.quoted+p.unknown===p.checked);

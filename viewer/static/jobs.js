@@ -10,6 +10,7 @@ let observedResearchStates=new Map();
 const jobLabels={'wallet.add':'Wallet research','wallet.refresh':'Holdings refresh','prices.refresh':'Price refresh','wallet.setTags':'Wallet names','settings.rpc':'RPC settings','settings.discovery':'Token discovery','settings.provider':'Data provider connection','settings.importEnv':'Local connection setup'};
 const stageLabels={queued:'Waiting to start',starting:'Opening saved evidence',registered:'Wallet registered',discovery:'Token discovery',chain:'Checking on-chain holdings',onchain_progress:'Reading on-chain records',first_evidence:'First results available',dex_discovery:'Checking markets',token_images:'Preparing token artwork',published:'Evidence saved',failed:'Research stopped',stopped:'Research stopped',interrupted:'Ready for recovery'};
 function researchStage(event) {
+  if(event.stage==='price_refresh')return ({native:'Checking native asset prices',markets:'Checking market prices',index:'Checking indexed prices',curves:'Checking curve prices',discovery:'Finding additional markets',reserves:'Checking reserve prices',quotes:'Checking sale estimates',artwork:'Updating token artwork',saving:'Saving price observations'})[event.context?.phase]||'Refreshing prices';
   if(event.stage==='market_paused')return 'Balances saved · market checks continue';
   if(event.stage==='research_paused')return 'Partial results saved · research continues';
   const label=stageLabels[event.stage]||event.stage;
@@ -416,7 +417,22 @@ formAction($('provider-form'),$('settings-error'),async()=>{
   if(connectionReadiness?.discovery_key_available&&$('discovery-key').value===connectionConfig?.discovery.key_env){$('settings-dialog').close();return;}
   await saveConnectionSetting('settings.provider',{provider:'alchemy',key_env:$('discovery-key').value.trim()});
 });
-$('view-history').addEventListener('click',async()=>{try{const rows=await localAPI('/api/snapshots?wallet='+encodeURIComponent(selectedWallet));$('history-list').innerHTML=rows.map(row=>`<article class="history-row"><strong>${stamp(row.compiled_at)}</strong><span>${escapeHTML(row.status==='completed'?'Saved':'Saved with coverage gaps')}</span><small>${escapeHTML(row.snapshot_id)}</small></article>`).join('')||'<p>No analysis has been published yet.</p>';$('compare-form').hidden=rows.length<2;for(const id of ['compare-before','compare-after'])$(id).innerHTML=rows.map(row=>`<option value="${escapeHTML(row.snapshot_id)}">${stamp(row.compiled_at)} · ${escapeHTML(row.snapshot_id.split('/').at(-1))}</option>`).join('');$('compare-after').selectedIndex=Math.max(0,rows.length-1);$('comparison-result').textContent='';$('history-error').textContent='';$('history-dialog').showModal();}catch(error){toast(error.message);}});
+let historyRows=[];
+function renderHistory(){
+  const intermediate=historyRows.filter(row=>row.phase==='initial');
+  let rows=$('history-intermediate').checked?historyRows:historyRows.filter(row=>row.phase!=='initial');
+  // A first lookup may only have progress evidence so far. Keep its latest save visible.
+  if(!rows.length&&intermediate.length)rows=intermediate.slice(-1);
+  $('history-options').hidden=!intermediate.length;
+  const label=row=>row.phase==='initial'?'In progress':row.phase==='sell'?'Sell analysis':row.phase==='holdings'?'Holdings':'Saved analysis';
+  $('history-list').innerHTML=[...rows].reverse().map(row=>`<article class="history-row"><strong>${stamp(row.compiled_at)}</strong><span>${escapeHTML(label(row))} · ${escapeHTML(row.status==='completed'?'Saved':'Saved with coverage gaps')}</span></article>`).join('')||'<p>No analysis has been published yet.</p>';
+  $('compare-form').hidden=rows.length<2;
+  for(const id of ['compare-before','compare-after'])$(id).innerHTML=rows.map(row=>`<option value="${escapeHTML(row.snapshot_id)}">${stamp(row.compiled_at)} · ${escapeHTML(label(row))}</option>`).join('');
+  $('compare-before').selectedIndex=Math.max(0,rows.length-2);$('compare-after').selectedIndex=Math.max(0,rows.length-1);
+  $('comparison-result').textContent='';$('history-error').textContent='';
+}
+$('history-intermediate').addEventListener('change',renderHistory);
+$('view-history').addEventListener('click',async()=>{try{historyRows=await localAPI('/api/snapshots?wallet='+encodeURIComponent(selectedWallet));$('history-intermediate').checked=false;renderHistory();$('history-dialog').showModal();}catch(error){toast(error.message);}});
 formAction($('compare-form'),$('history-error'),async()=>{const comparison=await localAPI('/api/compare?before='+encodeURIComponent($('compare-before').value)+'&after='+encodeURIComponent($('compare-after').value));$('comparison-result').innerHTML=`<p>${escapeHTML(comparison.note)}</p><p>Coverage observations ${comparison.coverage_changed?'changed':'unchanged'} · native price references ${comparison.price_references_changed?'changed':'unchanged'}</p><div class="table-wrap"><table><thead><tr><th>Token / chain</th><th>Earlier balance</th><th>Later balance</th><th>Change</th></tr></thead><tbody>${comparison.positions.map(p=>`<tr><td>${escapeHTML(p.symbol||shortAddress(p.address))} · ${p.chain_id}<small>${escapeHTML(p.presence.replaceAll('_',' '))}${p.price_references_changed?' · price references changed':''}${p.valuation_method_changed?' · method changed':''}</small></td><td>${escapeHTML(p.before_balance??'Unknown')}</td><td>${escapeHTML(p.after_balance??'Unknown')}</td><td>${escapeHTML(p.balance_delta??'Unknown')}</td></tr>`).join('')}</tbody></table></div>`;});
 window.addEventListener('hashchange',()=>{activityEpoch++;walletJobsEpoch++;activityData=null;walletJobs=[];mergeJobs();refreshControlState();renderJobs();});
 document.addEventListener('visibilitychange',()=>{clearTimeout(workspaceTimer);if(!document.hidden)pollWorkspace();});

@@ -49,7 +49,7 @@ async function loadRoute(force=false){
   if(!state?.paged)return;
   const view=selectedView,revision=state.data_revision,epoch=++routeEpoch;
   let requests=[];
-  if(view==='home')requests=[queryPath('/api/holdings',{offset:0,limit:5,sort:'value'})];
+  if(view==='home')requests=[queryPath('/api/holdings',{offset:0,limit:5,sort:'value',include_testnets:0})];
   else if(view==='wallet')requests=[queryPath('/api/wallet',{wallet:selectedWallet,offset:walletOffset,limit:100,chain_id:selectedChain,minimum_value_usd:minimum})];
   else if(view==='token'){const [chain_id,address]=selectedToken.split(':');requests=[queryPath('/api/token',{chain_id,address})];}
   else if(view==='network')requests=[queryPath('/api/network',{chain_id:selectedNetwork}),queryPath('/api/holdings',{chain_id:selectedNetwork,offset:networkOffset,limit:100,query:tokenSearch,minimum_value_usd:minimum,include_testnets:1})];

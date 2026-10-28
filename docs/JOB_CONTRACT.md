@@ -168,6 +168,13 @@ candidate failures, deferred candidates and pending RPC reads are separate facts
 These flags do not prove exhaustive holdings. First results can be read while
 background work remains active.
 
+Price refresh also emits `price_refresh` events. Their allowlisted
+`context.phase` names the current step; market-source requests include real
+`checked` and `total` counts with `context.operation: price_requests`.
+A completed request can contain a provider gap, so this is request progress,
+not a count of successfully priced assets or an overall completion percentage.
+Intermediate market updates are limited to once per second, with a final count.
+
 ## Responsive research in 0.1.8
 
 Queued initial reports, prices.refresh and settings operations can preempt

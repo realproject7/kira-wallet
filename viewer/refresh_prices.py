@@ -1,12 +1,13 @@
 """Refresh price references and bounded direct-sale quotes for registered snapshots."""
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import argparse
 import fcntl
 import json
 import os
 import subprocess
 import sys
+import time
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import research as h
@@ -16,7 +17,24 @@ from native_assets import market_metadata
 from market_records import collected_markets, canonical_token
 from chain_lifecycle import retired
 from token_images import refresh_catalog
-from wallet import DEX as DEX_CHAINS, retain_price_evidence
+from wallet import DEX as DEX_CHAINS, retain_price_evidence, event
+
+def price_stage(phase, **counts):
+ event('price_refresh',phase=phase,**counts)
+
+def fetch_market_prices(requests):
+ # Report completed requests without waiting behind a slow first response.
+ # Keep input order for the existing price-selection policy.
+ price_stage('markets',checked=0,total=len(requests))
+ fetched=[None]*len(requests);last_progress=time.monotonic()
+ def get(url):return {'source':url,'observed_at':h.now(),'response':h.fetch(url)}
+ with ThreadPoolExecutor(max_workers=5) as executor:
+  futures={executor.submit(get,url):index for index,url in enumerate(requests)}
+  for checked,future in enumerate(as_completed(futures),1):
+   fetched[futures[future]]=future.result()
+   if checked==len(requests) or time.monotonic()-last_progress>=1:
+    price_stage('markets',checked=checked,total=len(requests));last_progress=time.monotonic()
+ return fetched
 
 parser=argparse.ArgumentParser();parser.add_argument('--wallet',help='Registered wallet address or tag. Omit to refresh all registered snapshots.')
 args=parser.parse_args()
@@ -33,6 +51,7 @@ for w in selected:
  folder=within(h.ROOT,w['latest_snapshot']['directory']);path=within(h.ROOT,w['latest_snapshot']['result']);snapshot=json.loads(path.read_text())
  snapshot={**snapshot,'tokens':[canonical_token(t) for t in snapshot['tokens'] if not retired(t['chain_id'])],
            'coverage':[c for c in snapshot.get('coverage',[]) if not retired(c['chain_id'])]}
+ price_stage('native')
  native_market=market_metadata(snapshot.get('coverage',[]))
  import uuid
  evidence_folder=folder/'price-evidence'/uuid.uuid4().hex
@@ -58,8 +77,7 @@ for w in selected:
  for (chain_id,address),symbol in reserves.items():
   chain=DEX_CHAINS.get(chain_id)
   if chain:requests.append('https://api.dexscreener.com/token-pairs/v1/'+chain+'/'+address)
- def get(url):return {'source':url,'observed_at':h.now(),'response':h.fetch(url)}
- with ThreadPoolExecutor(max_workers=5) as executor:fetched=list(executor.map(get,requests))
+ fetched=fetch_market_prices(requests)
  pairs=[]
  for r in fetched:
   response=r['response'];pairs.extend(response if isinstance(response,list) else (response.get('pairs') or []) if isinstance(response,dict) else [])
@@ -78,11 +96,13 @@ for w in selected:
    if p:prices.append({'chain_id':chain_id,'address':address,**p,'reserve_symbol':symbol})
  priced={(p['chain_id'],p['address'].lower()) for p in prices}
  mainnets={c['chain_id'] for c in snapshot.get('coverage',[]) if c.get('environment')=='mainnet'}
+ price_stage('index')
  indexed=index_prices([(t['chain_id'],t['token_address']) for t in snapshot['tokens']
                        if t['chain_id'] in mainnets and t.get('token_type','ERC20')=='ERC20' and not t.get('mintclub')
                        and (t['chain_id'],t['token_address'].lower()) not in priced],evidence_folder)
  prices.extend(indexed['tokens'])
  curve_input=evidence_folder/'curve-refresh-input.json';h.save(curve_input,snapshot)
+ price_stage('curves')
  try:node=subprocess.run(['node',str(Path(__file__).with_name('refresh-curve-prices.cjs')),str(curve_input)],capture_output=True,text=True,timeout=180)
  except subprocess.TimeoutExpired:rpc={'tokens':[],'errors':[{'code':'curve_budget','message':'Fresh curve checks reached their bound. Previous usable quotes are retained.'}]}
  else:
@@ -118,6 +138,7 @@ for w in selected:
          'note':'Prices and bounded sale estimates. Portfolio balances and research coverage remain at their recorded analysis time.'}
  from market_discovery import discover
  from market_records import merge_pools
+ price_stage('discovery')
  supplemental=discover(snapshot,evidence_folder)
  merged={row['id']:row for row in output['markets']}
  for row in supplemental['markets']:
@@ -137,6 +158,7 @@ for w in selected:
  missing=[t for t in snapshot['tokens'] if t.get('mintclub') and resolved.get((t['chain_id'],t['token_address'].lower()),{}).get('usd') is None
           and resolved.get((t['chain_id'],t['token_address'].lower()),{}).get('quality') not in ('unfunded','unreliable')]
  if missing:
+  price_stage('reserves')
   from wallet import MarketPause
   try:output=enrich({**snapshot,'tokens':missing},output,evidence_folder)
   except MarketPause:
@@ -153,7 +175,9 @@ for w in selected:
  output['retained_price_records']=retained
  if retained:output['note']+=f' {retained} token price references retain their earlier observation times because fresh USD was unavailable.'
  from sell_quotes import enrich as enrich_sell_quotes
+ price_stage('quotes')
  output=enrich_sell_quotes(snapshot,output,evidence_folder/'sell-quotes',previous=previous_market)
+ price_stage('artwork')
  try:refresh_catalog([snapshot],h.ROOT,native_images=native_market['images'],market_metadata=fetched)
  except (OSError,ValueError):output['image_refresh_status']='unavailable'
  from kira_jobs import atomic
@@ -172,6 +196,7 @@ for w in selected:
      ('curve_reads_incomplete',bool(rpc.get('errors')) or any('error' in p for p in rpc['tokens'])),
      ('provider_request_failed',any(isinstance(r['response'],dict) and 'transport_error' in r['response'] for r in fetched))) if found]
  output['job_result_status']='completed_with_coverage_gaps' if output['job_result_gaps'] else 'completed'
+ price_stage('saving')
  atomic(overlay,output)
  if os.environ.get('KIRA_JOB_SNAPSHOT'):atomic(job_folder/'price-publication.json',{'schema_version':1,'snapshot_id':w['latest_snapshot']['directory'],
      'overlay':str(overlay.relative_to(h.ROOT)),'projection':str(destination.relative_to(h.ROOT)),
