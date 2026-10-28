@@ -1,5 +1,9 @@
 # Kira Wallet overnight execution plan
 
+> Historical execution plan for October 3, 2026. Its time budgets and permission
+> boundaries applied to that run. The current published release is 1.0.2; see
+> [release status](KIRA_NEXT_STEPS.md) for completed work and optional follow-ups.
+
 Status: completed locally on 2026-10-03. The operator requested autonomous execution and later approved the adult webtoon character and live read-only redesign. The development foundation, identity, live theme, concept studio and agent contract research are delivered. Publication remains outside this run. See `KIRA_BUILD_REPORT.md` for evidence and limits.
 
 ## Target for one overnight run

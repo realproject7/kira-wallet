@@ -1,5 +1,13 @@
 # Kira Wallet product specification
 
+> Historical product proposal from October 2026. The remaining text preserves
+> the original design context. Kira 1.0.2 is published; the current product uses
+> external agent sessions, requires Alchemy for new research and has a public
+> website at [kirawallet.app](https://kirawallet.app). Embedded chat, optional
+> indexer setup and the proposed domain below are superseded. See the
+> [README](../README.md), [agent tools](AGENT_TOOLS.md) and
+> [release status](KIRA_NEXT_STEPS.md) for supported behavior and remaining work.
+
 Kira Wallet will be an open-source application for researching holdings across registered wallets. Users will manage wallets through a local web interface with buttons and an optional Kira assistant. The CLI will install and launch the application and expose the same analysis tools to external agents. The public website at kirawallet.xyz is a proposed home for a sample demo, documentation and installation instructions.
 
 This specification defines the next product version. The current viewer has been extended with chain artwork and token and network overviews. The local CLI, provider settings, adult webtoon base character and read-only Kira redesign are implemented in the development build. Browser write actions, persisted jobs and connected agent chat remain planned work. The first product release covers research and watch-only wallet records.
