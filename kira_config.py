@@ -57,7 +57,11 @@ def load_config(path=None):
     try:cfg=json.loads(path.read_text())
     except (OSError,ValueError):raise ValueError('Kira configuration is unreadable or malformed.') from None
     if not isinstance(cfg,dict) or cfg.get('schema_version')!=1:raise ValueError('Unsupported Kira configuration version.')
-    if set(cfg)-{'schema_version','rpc','discovery','secret_env_file'}:raise ValueError('Unknown Kira configuration fields.')
+    if set(cfg)-{'schema_version','rpc','discovery','secret_env_file','integrations'}:raise ValueError('Unknown Kira configuration fields.')
+    integrations=cfg.get('integrations',{})
+    if (not isinstance(integrations,dict) or set(integrations)-{'h402'}
+            or any(not isinstance(row,dict) or set(row)!={'enabled'} or type(row['enabled']) is not bool for row in integrations.values())):
+        raise ValueError('Invalid integration preferences.')
     rpc=cfg.get('rpc'); discovery=cfg.get('discovery')
     if not isinstance(rpc,dict) or rpc.get('mode') not in ('public','custom') or type(rpc.get('allow_public_fallback')) is not bool or not isinstance(rpc.get('chains'),dict):
         raise ValueError('Invalid RPC configuration.')

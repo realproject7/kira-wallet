@@ -14,6 +14,7 @@
     "bin/kira.cjs",
     "kira_cli.py",
     "kira_config.py",
+    "kira_integrations.py",
     "kira_jobs.py",
     "kira_tools.py",
     "research.py",
@@ -44,6 +45,7 @@
     "viewer/static/favicon.svg",
     "viewer/static/index.html",
     "viewer/static/jobs.js",
+    "viewer/static/integrations.js",
     "viewer/static/kira-logo.png",
     "viewer/static/ows-logo.svg",
     "viewer/static/ows.js",
@@ -104,7 +106,7 @@
     "skills/kira-wallet"
   ],
   "scripts": {
-    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node test-onchain-continuation.cjs && node test-asset-review.cjs && node test-cashout-quotes.cjs && node test-cashout-routes.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node test-scan-ux.cjs && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js && node test-watching.cjs && node test-watching-ui.cjs && node --check viewer/static/watching.js && node --check viewer/static/watching-model.js && node --check viewer/static/report.js && node test-report-ui.cjs && node test-holdings-ui.cjs && node test-settings-ui.cjs && node test-rpc-fallback.cjs && node test-ows.cjs && node test-ows-ui.cjs && node --check viewer/static/ows.js && node --check viewer/static/selects.js && node --check site/demo.js && node test-rpc-pool.cjs && node test-zero-verification.cjs && node test-market-discovery.cjs && node test-sell-quotes.cjs && node test-external-ui.cjs && node test-refresh-curve-prices.cjs"
+    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node test-onchain-continuation.cjs && node test-asset-review.cjs && node test-cashout-quotes.cjs && node test-cashout-routes.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node test-scan-ux.cjs && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js && node test-watching.cjs && node test-watching-ui.cjs && node --check viewer/static/watching.js && node --check viewer/static/watching-model.js && node --check viewer/static/report.js && node test-report-ui.cjs && node test-holdings-ui.cjs && node test-settings-ui.cjs && node test-integrations-ui.cjs && node --check viewer/static/integrations.js && node test-rpc-fallback.cjs && node test-ows.cjs && node test-ows-ui.cjs && node --check viewer/static/ows.js && node --check viewer/static/selects.js && node --check site/demo.js && node test-rpc-pool.cjs && node test-zero-verification.cjs && node test-market-discovery.cjs && node test-sell-quotes.cjs && node test-external-ui.cjs && node test-refresh-curve-prices.cjs"
   },
   "dependencies": {
     "viem": "2.57.2"

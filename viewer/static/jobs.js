@@ -7,7 +7,7 @@ const pendingActions=new Set();
 const scanBusyJobs=new Set();
 let scanAnnouncement='';
 let observedResearchStates=new Map();
-const jobLabels={'wallet.add':'Wallet research','wallet.refresh':'Holdings refresh','prices.refresh':'Price refresh','wallet.setTags':'Wallet names','settings.rpc':'RPC settings','settings.discovery':'Token discovery','settings.provider':'Data provider connection','settings.importEnv':'Local connection setup'};
+const jobLabels={'wallet.add':'Wallet research','wallet.refresh':'Holdings refresh','prices.refresh':'Price refresh','wallet.setTags':'Wallet names','settings.rpc':'RPC settings','settings.discovery':'Token discovery','settings.provider':'Data provider connection','settings.importEnv':'Local connection setup','settings.h402':'h402 preference'};
 const stageLabels={queued:'Waiting to start',starting:'Opening saved evidence',registered:'Wallet registered',discovery:'Token discovery',chain:'Checking on-chain holdings',onchain_progress:'Reading on-chain records',first_evidence:'First results available',dex_discovery:'Checking markets',token_images:'Preparing token artwork',published:'Evidence saved',failed:'Research stopped',stopped:'Research stopped',interrupted:'Ready for recovery'};
 function researchStage(event) {
   if(event.stage==='price_refresh')return ({native:'Checking native asset prices',markets:'Checking market prices',index:'Checking indexed prices',curves:'Checking curve prices',discovery:'Finding additional markets',reserves:'Checking reserve prices',quotes:'Checking sale estimates',artwork:'Updating token artwork',saving:'Saving price observations'})[event.context?.phase]||'Refreshing prices';
@@ -315,7 +315,7 @@ async function openWorkspaceSettings(){
   if(!$('workspace-settings-dialog').open)$('workspace-settings-dialog').showModal();
   rpcLoaded=false;$('rpc-fields').disabled=true;$('rpc-error').textContent='';$('rpc-status').textContent='';$('rpc-activity').hidden=true;
   $('workspace-data-summary').textContent='Checking the saved connection…';
-  try{const config=await localAPI('/api/settings');if(revision===workspaceSettingsRevision&&$('workspace-settings-dialog').open){$('workspace-data-summary').textContent=connectionSummary(config);loadRpcSettings(config);}}
+  try{const request=localAPI('/api/settings');if(typeof loadH402Settings==='function')loadH402Settings(false,request);const config=await request;if(revision===workspaceSettingsRevision&&$('workspace-settings-dialog').open){$('workspace-data-summary').textContent=connectionSummary(config);loadRpcSettings(config);}}
   catch{if(revision===workspaceSettingsRevision)$('workspace-data-summary').textContent='Could not check the data connection. Reopen to retry.';}
 }
 $('rpc-add').addEventListener('click',()=>{

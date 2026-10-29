@@ -57,6 +57,20 @@ class JobsHTTPTest(unittest.TestCase):
         self.assertEqual(self.request('/api/jobs',method='GET')[0],200)
         self.assertEqual(self.request('/api/jobs',headers={'X-Kira-Session':''},method='GET')[0],403)
 
+    def test_h402_preference_uses_existing_local_operation_boundary(self):
+        body=json.dumps({'schema_version':1,'operation':'settings.h402','input':{'enabled':True},'idempotency_key':'h402-http-fixture'}).encode()
+        for headers in ({'X-Kira-Session':''},{'Origin':'https://foreign.test'}):
+            self.assertEqual(self.request(body=body,headers=headers)[0],403)
+        self.assertEqual(self.http.jobs.list(),[])
+        code,receipt=self.request(body=body)
+        self.assertEqual(code,202);self.assertEqual(receipt['input'],{'enabled':True})
+        self.assertEqual(self.request(body=body)[1]['job_id'],receipt['job_id'])
+        self.assertEqual(self.request(body=body.replace(b'true',b'"yes"'))[0],400)
+        with urllib.request.urlopen(self.url+'/integrations.js') as response:
+            self.assertEqual(response.status,200);self.assertIn(b'saveH402Preference',response.read())
+        self.http.controls=False
+        self.assertEqual(self.request(body=body)[0],501)
+
     def test_embedded_agent_endpoints_are_removed(self):
         for path in ('/api/agent','/api/agent/models','/api/chat','/api/chat/history','/agent.js','/chat-workspace.js'):
             self.assertEqual(self.request(path,method='GET')[0],404)
