@@ -18,9 +18,10 @@ function renderSetupPath() {
   if($('setup-path').hidden)return;
   $('setup-path').innerHTML='<div class="section-heading"><h1>Your wallets, in one place.</h1></div><p>Connect Alchemy once, then add your public wallet. AI is optional.</p><ol class="setup-checklist">'+
     '<li><span class="setup-check">'+(connected?'✓':'1')+'</span><div><strong>Connect Alchemy</strong><p>'+(connected?'Connected on this computer.':!setupReadiness?(setupUnavailable?'Could not check the connection. Retrying…':'Checking the connection…'):'Alchemy supplies the token list across networks. Your API key stays on this computer.')+'</p></div><button class="'+(connected?'quiet':'primary')+'-button" id="setup-discovery" type="button">'+(connected?'Connected':'Connect Alchemy')+'</button></li>'+
-    '<li><span class="setup-check">'+(wallet?'✓':'2')+'</span><div><strong>Add your wallet</strong><p>Use a public EVM address. No signature or seed phrase.</p></div><button class="quiet-button" id="setup-wallet" type="button" '+(!connected?'disabled':'')+'>'+ (wallet?'Add another':'Add wallet')+'</button></li></ol><p class="form-note">Your agent can use the same saved research through the Kira CLI.</p>';
+    '<li><span class="setup-check">'+(wallet?'✓':'2')+'</span><div><strong>Add your wallet</strong><p>Use a public EVM address. No signature or seed phrase.</p></div><button class="quiet-button" id="setup-wallet" type="button" '+(!connected?'disabled':'')+'>'+ (wallet?'Add another':'Add wallet')+'</button></li></ol><p class="form-note">Your agent can use the same saved research through the Kira CLI.</p><button id="setup-extra-tools" class="quiet-button" type="button">Optional: add h402 tools</button>';
   $('setup-wallet').addEventListener('click',openAdd);
   $('setup-discovery').addEventListener('click',()=>openDataConnections());
+  $('setup-extra-tools').addEventListener('click',openWorkspaceSettings);
 }
 async function loadSetupReadiness(){
   if(setupLoading||!localSession?.controls)return false;setupLoading=true;

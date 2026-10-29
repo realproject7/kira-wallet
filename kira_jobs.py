@@ -33,7 +33,7 @@ def signal_process_group(pgid, sig):
         if status.returncode or not valid or any(int(row[0])==pgid and not row[1].startswith('Z') for row in rows):raise
 
 State = Literal['queued', 'running', 'interrupted', 'succeeded', 'partial', 'failed', 'cancelled']
-Operation = Literal['wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv']
+Operation = Literal['wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv','settings.h402']
 TERMINAL = {'succeeded', 'partial', 'failed', 'cancelled', 'interrupted'}
 # Web history uses the groups. Agents may also filter by an exact state they read on a job.
 STATE_FILTERS = {'all': None, 'active': {'queued','running'}, 'succeeded': {'succeeded','partial'},
@@ -169,13 +169,14 @@ class JobStore:
         if not isinstance(job,dict) or type(job.get('schema_version')) is not int or job.get('schema_version') != 1: raise JobError('unsupported_version', 'Unsupported persisted job version.')
         required={'schema_version','job_id','operation','input','state','attempt','sequence','result','previous_result','key_hash','request_hash','created_at','updated_at','cancel_requested','checkpoint','stage','events','errors','chains'}
         optional={'raw_hash','control_receipts','control_raw','provider_configuration','started_at','analysis_phase','parent_job_id','continuation_id','continuation','scan_policy','progress_observed_at','asset_progress'}
-        if required-set(job) or set(job)-required-optional or job['job_id']!=job_id or job['checkpoint']!='snapshots/jobs/'+job_id or not isinstance(job['operation'],str) or job['operation'] not in {'wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv'} or not isinstance(job['state'],str) or job['state'] not in TERMINAL|{'queued','running'} or any(type(job[k]) is not int or job[k]<0 for k in ('attempt','sequence')) or type(job['cancel_requested']) is not bool or not isinstance(job['input'],dict) or any(not isinstance(job[k],list) for k in ('events','errors')) or not isinstance(job['chains'],dict):
+        if required-set(job) or set(job)-required-optional or job['job_id']!=job_id or job['checkpoint']!='snapshots/jobs/'+job_id or not isinstance(job['operation'],str) or job['operation'] not in {'wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv','settings.h402'} or not isinstance(job['state'],str) or job['state'] not in TERMINAL|{'queued','running'} or any(type(job[k]) is not int or job[k]<0 for k in ('attempt','sequence')) or type(job['cancel_requested']) is not bool or not isinstance(job['input'],dict) or any(not isinstance(job[k],list) for k in ('events','errors')) or not isinstance(job['chains'],dict):
             raise JobError('invalid_envelope','Persisted job validation failed. Preserve the file for recovery.')
         names={'wallet.add':['address','tag'],'wallet.refresh':['wallet'],'prices.refresh':['wallet'],'wallet.setTags':['wallet','tags'],
-            'settings.rpc':['mode','chains','allow_public_fallback'],'settings.discovery':['provider','key_env'],'settings.provider':['provider','key_env'],'settings.importEnv':['import_id','key_env']}[job['operation']]
+            'settings.rpc':['mode','chains','allow_public_fallback'],'settings.discovery':['provider','key_env'],'settings.provider':['provider','key_env'],'settings.importEnv':['import_id','key_env'],'settings.h402':['enabled']}[job['operation']]
         if job['operation']=='settings.rpc' and 'priority' in job['input']:names=names+['priority']
         if job['operation']=='settings.discovery' and 'explorers' in job['input']:names=names+['explorers']
         fields(job['input'],names)
+        if job['operation']=='settings.h402' and type(job['input']['enabled']) is not bool:raise JobError('invalid_envelope','Invalid h402 preference.')
         if 'analysis_phase' in job and job['analysis_phase'] not in ('baseline','enrichment'):raise JobError('invalid_envelope','Invalid analysis phase.')
         if 'scan_policy' in job and job['scan_policy'] not in ('optional_depth_v1','alchemy_inventory_v1'):raise JobError('invalid_envelope','Invalid scan policy.')
         if 'asset_progress' in job:
@@ -285,6 +286,10 @@ class JobStore:
     def normalize(self, operation, value):
         if operation in {'wallet.add','wallet.refresh','prices.refresh','job.deepen'}:
             self.require_connection()
+        if operation == 'settings.h402':
+            fields(value,['enabled'])
+            if type(value['enabled']) is not bool:raise JobError('invalid_settings','Choose whether to enable h402 tools.')
+            return value.copy()
         if operation == 'settings.importEnv':
             fields(value,['import_id','key_env'])
             identifier(value['import_id'])
@@ -767,6 +772,7 @@ class JobStore:
                     if row['url_env']==previous.get('url_env') and previous.get('alchemy_network'):row['alchemy_network']=previous['alchemy_network']
                 config['rpc']=updated
             elif job['operation']=='settings.discovery':config['discovery']={**config['discovery'],**job['input']}
+            elif job['operation']=='settings.h402':config['integrations']={**config.get('integrations',{}),'h402':dict(job['input'])}
             else:
                 from kira_config import provider_config,secret_values
                 config=provider_config(config,**job['input'])
@@ -774,6 +780,7 @@ class JobStore:
                     raise JobError('connection_key_missing','Kira cannot find the local Alchemy key. Follow the connection guide, then retry. Existing settings are unchanged.')
             atomic(config_path(),config)
             result={'status':'completed','setting':job['operation'],'provider_configuration':provider_summary(config)}
+            if job['operation']=='settings.h402':result['integration']={'name':'h402',**job['input']}
             atomic(self.jobs/'results'/(job['job_id']+'.json'),result);return result
         self.require_connection()
         env = {**os.environ, 'KIRA_DATA_DIR': str(self.root), 'KIRA_JOB_ID': job['job_id'], 'KIRA_JOB_SNAPSHOT': job['checkpoint'], 'KIRA_ANALYSIS_FD': str(writer.fileno()), 'PYTHONUNBUFFERED': '1', 'KIRA_RESEARCH_GENERATION':job.get('parent_job_id',job['job_id'])}

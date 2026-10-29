@@ -120,6 +120,11 @@ defines the typed mutation request variants. `settings.rpc` and `settings.discov
 are also durable operations; they accept environment references only and share
 the portfolio writer lock. `wallet.setTags` records exact tag changes.
 
+`settings.h402` accepts only a boolean `enabled` preference and uses the same
+writer lock and durable receipts. It preserves provider settings and snapshots.
+Its result records the applied preference under `integration`; it does not
+install software, check a provider, configure payments or invoke h402.
+
 Chain events retain actual endpoint ordinal, configured reference identity,
 status and pinned block as a decimal string. Completed cached chain stages emit
 the same saved block on resume. Recorded stage details stay available in the

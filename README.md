@@ -19,7 +19,8 @@ Kira supplies wallet tools and a full-window
 management app. Your agent host manages its own conversations, models, files and
 approvals. Kira does not launch a model CLI or require a model login.
 
-Current release: **1.0.2**. [Release notes](docs/RELEASE.md) ·
+Published npm release: **1.0.2**. This source prepares **1.1.0**.
+[Release notes](docs/RELEASE.md) ·
 [Implementation status and follow-ups](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_NEXT_STEPS.md).
 
 ## Get started
@@ -75,6 +76,20 @@ Useful questions include:
 - “Show my top five recorded holdings across all wallets.”
 - “Compare these saved analyses and explain what remains unknown.”
 - “Refresh this wallet, then show the completed result in the web app.”
+- “Compare ways to put the USDC in my Daily wallet to work.”
+- “Keep my Savings wallet's ETH exposure and compare lending with an LP.”
+
+For broader analysis, your agent combines Kira's saved facts with its own search,
+browser, API and code tools. Kira's direct holdings do not establish complete
+DeFi positions, debts or investable capital. The agent checks missing evidence
+and keeps external research and calculated scenarios separate from recorded
+balances.
+
+The 1.1.0 candidate adds `kira describe --json` for tool schemas and optional
+h402 discovery in onboarding and Workspace settings. h402 supplies extra tools
+when your agent needs them. It is installed separately and disabled by default;
+Kira only records the preference and checks local CLI availability. Payment
+setup and limits stay in h402. [Tool discovery and h402](docs/CLI.md#discover-tools-and-optional-h402-capabilities).
 
 Names and symbols can match different assets. Kira identifies tokens by chain
 and contract, retains unknown prices, and separates recorded spot value from

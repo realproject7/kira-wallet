@@ -204,6 +204,10 @@ def main():
     tools=sub.add_parser('tools',help='Serve Kira tools over MCP stdio.');tools.add_argument('--allow-writes',action='store_true')
     call=sub.add_parser('call',help='Run one Kira tool with JSON arguments.');call.add_argument('tool');call.add_argument('--arguments',default='{}')
     sub.add_parser('skill',help='Print the agent instructions.')
+    describe=sub.add_parser('describe',help='List tool schemas or describe one tool without starting research.');describe.add_argument('tool',nargs='?')
+    integrations=sub.add_parser('integrations',help='Check optional h402 tools or save the workspace preference.');integrations.add_argument('integration',nargs='?',choices=['h402'])
+    choice=integrations.add_mutually_exclusive_group();choice.add_argument('--enable',action='store_true');choice.add_argument('--disable',action='store_true')
+    integrations.add_argument('--idempotency-key')
     ui=sub.add_parser('ui',help="Read the app's last recorded selection.");ui.add_argument('action',choices=['context'])
     archive=sub.add_parser('archive',help='Read earlier conversations and generated files.');archive.add_argument('action',choices=['list','read','workspaces','files','export']);archive.add_argument('conversation',nargs='?');archive.add_argument('--path');archive.add_argument('--output')
     connection=sub.add_parser('connect',help='Enter an Alchemy key at a hidden local prompt.');connection.add_argument('provider',choices=['alchemy'])
@@ -234,6 +238,14 @@ def main():
     args=parser.parse_args(argv);root=Path(args.data_dir).expanduser().resolve();os.environ['KIRA_DATA_DIR']=str(root)
     if sys.version_info<(3,11):raise ValueError('Python 3.11 or newer is required.')
     if os.name!='posix':raise ValueError('This development build requires a POSIX host. macOS is verified.')
+    if args.command=='describe':
+        from kira_service import describe_tools
+        try:result=describe_tools(args.tool)
+        except ValueError as error:
+            if args.json:print(json.dumps({'error':{'code':getattr(error,'code','invalid_request'),'message':str(error)}}))
+            else:print(str(error),file=sys.stderr)
+            return 1
+        print(json.dumps(result,allow_nan=False));return 0
     if args.command=='tools':
         from kira_tools import serve
         initialize(root)
@@ -274,6 +286,14 @@ def main():
             except ValueError:raise ValueError('Expected JSON tool arguments.') from None
             print(json.dumps(app.call(args.tool,value,allow_write=True),allow_nan=False))
         elif args.command=='skill':print((ASSETS/'skills/kira-wallet/SKILL.md').read_text())
+        elif args.command=='integrations':
+            if args.enable or args.disable:
+                if args.integration!='h402':raise ValueError('Choose h402 when enabling or disabling an integration.')
+                result=app.call('settings_h402',{'enabled':args.enable,'idempotency_key':args.idempotency_key or str(uuid.uuid4())},allow_write=True)
+            else:
+                from kira_integrations import h402_status
+                result={'h402':h402_status(load_config())}
+            print(json.dumps(result,allow_nan=False))
         elif args.command=='ui':print(json.dumps(app.call('ui_context')))
         elif args.command=='archive':
             from kira_archive import conversations,conversation_read,workspace_list,artifacts,read_artifact

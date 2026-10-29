@@ -434,6 +434,14 @@ main { width: 100%; margin: 0; }
 .wallet-analysis { margin-top: 24px; padding: 20px; border: 1px solid #e0d5ed; border-radius: 14px; background: #fff; }
 .analysis-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 22px; }
 .analysis-copy { min-width: 0; }
+#h402-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+#h402-fields .checkbox-row { display: flex; flex-direction: row; align-items: center; gap: 10px; }
+#h402-enabled { width: auto; margin: 0; }
+.integration-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+#h402-install { margin-top: 14px; }
+#h402-install summary { cursor: pointer; }
+#h402-prompt { box-sizing: border-box; width: 100%; resize: vertical; margin: 8px 0; }
+#h402-install code { overflow-wrap: anywhere; }
 .analysis-title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
 .analysis-title-row h2 { font-size: 17px; line-height: 1.4; letter-spacing: -.025em; font-weight: 600; }
 .analysis-optional { font-size: 10px; color: #7b688e; background: #f3eef8; border-radius: 5px; padding: 3px 6px; white-space: nowrap; }

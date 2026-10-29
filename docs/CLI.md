@@ -1,5 +1,38 @@
 # CLI and provider configuration
 
+## Discover tools and optional h402 capabilities
+
+```sh
+kira describe --json
+kira describe wallet_read --json
+kira integrations --json
+kira integrations h402 --enable --json --idempotency-key h402-enable-once
+kira jobs read JOB_ID --json
+kira integrations h402 --disable --json --idempotency-key h402-disable-once
+```
+
+`describe` returns the installed CLI/MCP schemas without creating a workspace
+or starting research. `info` includes the recorded-data scope and optional
+integration status. These additions require the 1.1.0 candidate or later;
+older installed releases should use their own `skill` and help output.
+
+h402 is disabled by default. Enabling or disabling it saves a preference through
+the shared job queue; inspect the returned job before claiming success. This
+neither installs nor uninstalls software and never edits h402's configuration.
+Install separately with `npm install -g @h402/cli` when requested. The onboarding
+checklist and Workspace settings offer installation guidance for your agent.
+
+Discovery reports `disabled`, `not_installed`, `available`, or `unavailable`,
+plus CLI version when verified. It checks PATH and, only when enabled, runs
+`h402 --version` with a two-second timeout. It never queries a catalog, inspects
+a signing wallet, or makes a paid call. `available` is local CLI availability,
+not verified provider or payment readiness. A running viewer may need restarting
+after installation if its inherited PATH does not include the new executable.
+
+Use the returned official `skill_url` to learn h402's own discovery and invocation
+contract. Enabling the preference does not authorize payments. The host agent
+uses existing user permissions and h402 limits for any paid work.
+
 Kira is a local wallet engine, CLI and web interface. Any capable agent
 can use the CLI; MCP is optional. Your agent host supplies its own model,
 conversation, general tools and approvals. Kira does not start a model process.

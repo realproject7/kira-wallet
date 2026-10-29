@@ -5,6 +5,20 @@ MCP adapter and human web controls. It supplies wallet logic and saved facts.
 The host agent owns its model, conversation, general tools and approval flow.
 No model process is launched by Kira.
 
+Use `kira describe --json` for the full installed catalogue and
+`kira describe TOOL --json` for a single tool's exact schema. These commands
+reuse the MCP descriptors without starting a server, initializing a workspace,
+or querying a provider. CLI calls support all listed tools; MCP still defaults
+to read tools. Unknown tool names return a nonzero exit and a structured error
+with `--json`.
+
+`kira info --json` and `workspace_status` report `data_scope`: saved direct EVM
+holdings are not a complete DeFi position inventory or net-worth statement.
+The host agent can use the registered addresses and exact asset identities with
+its own browser, APIs and code tools to investigate lending, LPs, perps and
+prediction markets. External findings and calculated scenarios must remain
+distinct from saved wallet observations.
+
 ## CLI first
 
 Read `kira skill` for the packaged workflow. `kira info --json` reports the
@@ -50,6 +64,7 @@ same view is still open.
 | `holdings_refresh`, `prices_refresh` | Explicit provider research |
 | `job_cancel`, `job_resume`, `job_deepen` | Control an identified job |
 | `settings_rpc`, `settings_discovery`, `settings_provider` | Configure references through the shared job queue |
+| `settings_h402` | Save optional h402 discovery preference; does not install or call h402 |
 
 Read schemas and write schemas are defined in `kira_service.py`. The MCP
 `tools/list` response exposes the active JSON Schemas. Required fields reject

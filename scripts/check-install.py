@@ -1,4 +1,6 @@
-"""Pack and install into a fresh private directory, with no operator settings."""
+"""Install a packed archive in isolation without operator settings or wallet keys."""
+import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,31 +15,50 @@ import urllib.request
 ROOT=Path(__file__).resolve().parents[1]
 
 def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--archive',type=Path,help='Install this frozen archive instead of packing the working tree.')
+    args=parser.parse_args()
+    frozen=args.archive.resolve() if args.archive else None
     with tempfile.TemporaryDirectory(prefix='kira-install-check-') as directory:
         temp=Path(directory);env={k:v for k,v in os.environ.items() if not k.startswith(('KIRA_','ALCHEMY_'))}
+        env['KIRA_OWS_VAULT']=str(temp/'empty-ows')
+        env['npm_config_cache']=str(temp/'npm-cache')
         def run(command,expected=0,input=None):
             result=subprocess.run(command,cwd=temp,env=env,input=input,capture_output=True,text=True,timeout=90)
             if result.returncode!=expected:raise AssertionError(f'Command {command[0]} returned {result.returncode}, expected {expected}.')
             return result.stdout
-        pack=json.loads(run(['npm','pack',str(ROOT),'--ignore-scripts','--json']))[0]
-        package=temp/pack['filename']
+        if frozen:
+            package=frozen
+        else:
+            pack=json.loads(run(['npm','pack',str(ROOT),'--ignore-scripts','--json']))[0]
+            package=temp/pack['filename']
+        members={}
         with tarfile.open(package) as archive:
             names=archive.getnames()
             assert not any('/snapshots/' in n or '/cache/' in n or '/jobs/' in n or n.endswith(('wallets.json','session.json','.env','.kira.local.json')) for n in names)
             for member in archive.getmembers():
+                if member.isfile():members[member.name.removeprefix('package/')]=hashlib.sha256(archive.extractfile(member).read()).hexdigest()
                 if member.isfile() and member.name.endswith(('.py','.cjs','.md','.json','.js','.html','.css')):
                     body=archive.extractfile(member).read()
                     assert str(Path.home()).encode() not in body, member.name
-        run(['npm','install','--global','--ignore-scripts','--prefix',str(temp/'installation'),str(package)])
+        run(['npm','install','--global','--ignore-scripts','--no-audit','--no-fund','--prefix',str(temp/'installation'),str(package)])
+        installed=temp/'installation/lib/node_modules/kira-wallet'
+        actual={str(path.relative_to(installed)):hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in installed.rglob('*') if path.is_file() and 'node_modules' not in path.relative_to(installed).parts}
+        assert actual==members,'Installed package members differ from the archive.'
         cli=str(temp/'installation/bin/kira');data=str(temp/'portfolio')
+        assert run([cli,'--version']).strip()==json.loads((installed/'package.json').read_text())['version']
+        catalog=json.loads(run([cli,'--data-dir',data,'describe','--json']))
+        assert any(tool['name']=='settings_h402' for tool in catalog['tools'])
+        assert not Path(data).exists(),'Tool discovery created a workspace.'
         info=json.loads(run([cli,'--data-dir',data,'info','--json']))
         assert info['capabilities']['headless'] and not info['capabilities']['model_runtime']
+        assert info['integrations']['h402']['enabled'] is False
         assert 'SKILL.md' in run([cli,'--data-dir',data,'skill']) or 'Kira' in run([cli,'--data-dir',data,'skill'])
         doctor=json.loads(run([cli,'--data-dir',data,'doctor']))
         assert doctor['public_fallback'] is True and doctor['rpc_mode']=='public' and doctor['discovery']=='none' and not doctor['discovery_key_available']
-        installed=temp/'installation/lib/node_modules/kira-wallet'
-        ows=json.loads(run(['node',str(installed/'ows_bridge.cjs')],input=json.dumps({'action':'create','vault':str(temp/'disposable-ows'),'name':'Install-check-wallet','passphrase':'synthetic-disposable-check'})))
-        assert ows['wallet']['accounts'] and not ows['recovered'] and 'mnemonic' not in ows['wallet']
+        ows=json.loads(run(['node',str(installed/'ows_bridge.cjs')],input=json.dumps({'action':'list','vault':env['KIRA_OWS_VAULT']})))
+        assert ows=={'wallets':[]}
         with socket.socket() as reserve:reserve.bind(('127.0.0.1',0));port=reserve.getsockname()[1]
         try:
             run([cli,'--data-dir',data,'demo','--port',str(port)])
@@ -58,7 +79,7 @@ def main():
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/kira-logo.png') as response:assert response.headers['Content-Type']=='image/png'
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/ows-logo.svg') as response:
                 assert response.headers['Content-Type']=='image/svg+xml' and b'<svg' in response.read()
-            for asset in ['explorers/etherscan.png','venues/mintclub.png','venues/uniswap.svg','venues/aerodrome.svg','selects.js','ows.js','watching.js','watching-model.js','workspace.js','workspace-model.js','workspace.css']:
+            for asset in ['explorers/etherscan.png','venues/mintclub.png','venues/uniswap.svg','venues/aerodrome.svg','selects.js','ows.js','watching.js','watching-model.js','workspace.js','workspace-model.js','workspace.css','integrations.js']:
                 with urllib.request.urlopen(f'http://127.0.0.1:{port}/'+asset) as response:assert response.status==200 and len(response.read())>100
             transcript='\n'.join(json.dumps(item) for item in [
                 {'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-06-18'}},
@@ -91,6 +112,6 @@ def main():
             run([cli,'--data-dir',data,'stop']);assert json.loads(run([cli,'--data-dir',data,'status']))['status']=='stopped'
         finally:
             subprocess.run([cli,'--data-dir',data,'stop'],cwd=temp,env=env,capture_output=True,timeout=10)
-        print(f'Clean package installation and lifecycle passed; {len(names)} archive members; synthetic data only.')
+        print(f'Clean package installation and lifecycle passed; {len(members)} exact archive members; synthetic data only; no wallet keys created.')
 
 if __name__=='__main__':main()

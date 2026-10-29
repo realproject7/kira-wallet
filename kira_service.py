@@ -44,6 +44,7 @@ READ_TOOLS += [tool('network_read','Read saved network allocation and coverage.'
                tool('settings_read','Read configuration references without credential values.'),
                tool('ui_context','Read the wallet, token or network selected in the local web app.')]
 MUTATIONS={
+    'settings_h402':('settings.h402',{'enabled':{'type':'boolean'}}),
     'wallet_add':('wallet.add',{'address':STRING,'tag':STRING}),
     'wallet_tags':('wallet.setTags',{'wallet':STRING,'tags':{'type':'array','items':STRING,'minItems':1,'maxItems':20}}),
     'holdings_refresh':('wallet.refresh',{'wallet':STRING}),
@@ -58,6 +59,24 @@ MUTATIONS={
 WRITE_TOOLS=[tool(name,'Submit '+operation+' as a durable local job. Returns a receipt, not a completed result.',
     {**props,'idempotency_key':{'type':'string','minLength':8,'maxLength':200}},required=[k for k in props if k not in ('priority','explorers')]+['idempotency_key'],write=True)
     for name,(operation,props) in MUTATIONS.items()]
+
+DATA_SCOPE = {
+    'inventory': 'Recorded direct holdings on configured EVM networks; coverage may be partial.',
+    'includes': ['native_balances', 'discovered_token_balances', 'price_references', 'saved_history'],
+    'not_established': ['complete_defi_positions', 'liabilities', 'perp_positions', 'prediction_market_positions', 'deployable_capital', 'complete_net_worth'],
+    'freshness': 'Read balance, price and quote timestamps and coverage in each result. Missing is unknown, not zero.',
+    'analysis': 'The host agent supplies external research, code execution and interpretation. Saved reads never refresh providers.'
+}
+
+
+def describe_tools(name=None):
+    """Expose the exact CLI/MCP contract without initializing a workspace."""
+    tools=READ_TOOLS+WRITE_TOOLS
+    if name is not None:
+        selected=next((row for row in tools if row['name']==name),None)
+        if selected is None:raise JobError('unsupported_tool','Unknown tool. Run kira describe --json for available tools.')
+        return selected
+    return {'schema_version':1,'tools':tools,'note':'CLI calls support reads and writes. MCP exposes reads by default; writes require --allow-writes.'}
 
 
 def validate(arguments,schema):
@@ -83,10 +102,12 @@ class Application:
 
     def settings(self):
         from kira_config import load_config
+        from kira_integrations import h402_status
         config=load_config()
         networks=json.loads((Path(__file__).resolve().parent/'sources/rpc-candidates.json').read_text())
         return {**{k:config[k] for k in ('schema_version','rpc','discovery')},
-                'rpc_networks':[{'chain_id':n['chain_id'],'name':n.get('name',str(n['chain_id']))} for n in networks]}
+                'rpc_networks':[{'chain_id':n['chain_id'],'name':n.get('name',str(n['chain_id']))} for n in networks],
+                'integrations':{'h402':h402_status(config)}}
 
     def status(self):
         return {'schema_version':1,'data_revision':self.views.data_revision(),**self.jobs.status()}
@@ -112,8 +133,11 @@ class Application:
             args=dict(arguments);key=args.pop('idempotency_key')
             return self.submit({'schema_version':1,'operation':MUTATIONS[name][0],'input':args,'idempotency_key':key})
         if name=='workspace_status':
-            from kira_config import public_status
+            from kira_config import public_status,load_config
+            from kira_integrations import h402_status
             return {**self.status(),'research_connection':public_status(self.root),
+                    'data_scope':DATA_SCOPE,'tool_catalog_command':'kira describe --json',
+                    'integrations':{'h402':h402_status(load_config())},
                     'capabilities':{'headless':True,'manual_refresh':True,'web_controls':True,'model_runtime':False}}
         if name=='settings_read':return self.settings()
         if name=='ui_context':

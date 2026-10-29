@@ -1,8 +1,46 @@
 # Releases and preparation
 
-Current release: **1.0.2**. For implementation status and optional follow-ups,
+Published npm release: **1.0.2**. Prepared candidate: **1.1.0**.
+For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.1.0
+
+This compatible minor release adds tool discovery and optional h402 integration.
+`kira describe [tool] --json` returns the installed CLI/MCP schemas without
+creating a workspace or starting research. Workspace information explains the
+coverage limits of saved direct holdings. The portable skill guides host agents
+to combine those records with their own research and calculations, using generic
+wallet tags in examples. Kira adds no model runtime or strategy engine.
+
+h402 remains a separate, optional installation. Onboarding and Workspace settings
+offer an agent installation prompt, an opt-in preference and local installation
+status. CLI and browser changes share the durable settings job service. When
+enabled, discovery checks only the local executable version. It does not query
+a catalog, configure payment credentials or make paid calls. Missing or broken
+h402 installations do not block access to saved holdings.
+
+The 1.1.0 package keeps existing wallet records, provider settings, snapshots and
+job contracts. Install acceptance uses an isolated npm prefix and workspace,
+compares every installed package member with its archive, and exercises saved
+CLI/MCP reads, the browser service and durable jobs. OWS acceptance reads an empty
+temporary vault; automatic tests do not create or export wallet keys. The existing
+key lifecycle test is available only for an operator-run `KIRA_TEST_OWS_KEYS=1`
+invocation. Earlier desktop/mobile and actual h402 0.1.8 acceptance remains valid
+because release preparation does not change the product implementation.
+
+Release validation passed 275 engine tests, 71 viewer tests, all JavaScript
+suites and clean installation with all 95 archive members matched. The pinned
+dependency audit reported zero known vulnerabilities. Current-source privacy
+checks passed. Historical commit-identity findings are tracked separately and
+must not be described as a clean history scan.
+
+The frozen candidate and source commit are recorded in `dist/release.json`, with
+a versioned copy in `dist/release-1.1.0.json`. Preserve the exact archive after
+preparation. [PR #59](https://github.com/realproject7/kira-wallet/pull/59) contains
+the implementation and release preparation. Preparation does not merge the PR,
+publish to npm or deploy the website. Review not selected.
 
 ## Published 1.0.2
 
@@ -335,7 +373,15 @@ npm test
 python3 scripts/check-install.py
 python3 scripts/check-public.py --history --ref HEAD
 python3 scripts/prepare-release.py
+python3 scripts/check-install.py --archive dist/kira-wallet-VERSION.tgz
+npm publish ./dist/kira-wallet-VERSION.tgz --access public --dry-run --ignore-scripts
 ```
+
+The frozen-archive install check verifies the exact files that will be published.
+Default tests use public synthetic records and an empty temporary OWS vault.
+The real key lifecycle test requires the operator's explicit
+`KIRA_TEST_OWS_KEYS=1 node test-ows.cjs` invocation; it is not part of automated
+release preparation. Record the skip rather than claiming fresh key acceptance.
 
 `prepare-release.py` scans the package boundary and creates
 `dist/kira-wallet-VERSION.tgz` for the version in `package.json`. The ignored `dist/release.json` records its source

@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light"><meta name="description" content="Manage your wallets with your own AI. Track tokens, research markets and refresh holdings in a local workspace.">
   <title>Kira Wallet</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/kira-logo.png" type="image/png" sizes="1254x1254"><link rel="apple-touch-icon" href="/kira-logo.png">
-  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script src="/workspace-model.js" defer></script><script src="/app.js" defer></script><script src="/jobs.js" defer></script><script src="/watching-model.js" defer></script><script src="/watching.js" defer></script><script src="/workspace.js" defer></script><script src="/ows.js" defer></script><script src="/selects.js" defer></script><link rel="stylesheet" href="/report.css"><script src="/report.js" defer></script>
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script src="/workspace-model.js" defer></script><script src="/app.js" defer></script><script src="/jobs.js" defer></script><script src="/watching-model.js" defer></script><script src="/watching.js" defer></script><script src="/workspace.js" defer></script><script src="/ows.js" defer></script><script src="/selects.js" defer></script><link rel="stylesheet" href="/report.css"><script src="/integrations.js" defer></script><script src="/report.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -144,6 +144,15 @@
   <dialog id="tags-dialog" class="research-dialog" aria-labelledby="tags-title"><form id="tags-form"><div class="dialog-heading"><h2 id="tags-title">Wallet names</h2><button type="button" data-close-dialog aria-label="Close dialog"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div><label>One exact name per line<textarea id="tag-values" required rows="4"></textarea></label><p class="form-note">The first name is shown in navigation. Saved analyses retain their original names.</p><p id="tags-error" class="form-error" role="alert"></p><button class="primary-button" type="submit">Save names</button></form></dialog>
   <dialog id="workspace-settings-dialog" class="research-dialog" aria-labelledby="workspace-settings-title">
     <div class="dialog-heading"><h2 id="workspace-settings-title">Workspace settings</h2><button type="button" data-close-dialog aria-label="Close settings">×</button></div>
+    <section class="settings-section" aria-labelledby="h402-title"><h3 id="h402-title">Extra tools for your agent <span class="form-note">Optional</span></h3>
+      <p class="form-note">h402 helps your agent find extra data and tools when needed. Some calls cost money. Your agent can also use its own tools.</p>
+      <form id="h402-form"><fieldset id="h402-fields" disabled>
+        <label class="checkbox-row"><input id="h402-enabled" type="checkbox">Use h402 with this workspace</label>
+        <p id="h402-summary" class="form-note" role="status">Checking h402…</p>
+        <div class="integration-actions"><button class="primary-button" type="submit">Save preference</button><button id="h402-recheck" class="quiet-button" type="button">Check installation</button></div>
+      </fieldset><p id="h402-status" class="form-note" role="status"></p><p id="h402-error" class="form-error" role="alert"></p></form>
+      <details id="h402-install"><summary>Install with your agent</summary><p class="form-note">Paste this into an agent with local tool access, then check the installation here.</p><textarea id="h402-prompt" rows="4" readonly aria-label="h402 installation prompt"></textarea><button id="h402-copy" class="quiet-button" type="button" disabled>Copy install prompt</button><p class="form-note">Or run <code>npm install -g @h402/cli</code> in your terminal. Enabling h402 does not authorize payments. Payment setup and limits stay in h402.</p></details>
+    </section>
     <div class="settings-section"><h3>Alchemy connection</h3><p id="workspace-data-summary" class="form-note"></p><button id="settings-data" class="quiet-button" type="button">Manage Alchemy</button></div>
     <div class="settings-section"><h3>RPC connections</h3><p class="form-note">Choose public RPC or references to connections already stored on this computer. Enter environment variable names only.</p>
       <form id="rpc-form"><fieldset id="rpc-fields" disabled>

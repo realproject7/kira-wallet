@@ -1,6 +1,6 @@
 ---
 name: kira-wallet
-description: Use Kira Wallet to install or open its local dashboard, onboard public EVM wallets, configure provider references, query recorded holdings and history, refresh research, or inspect durable jobs. Use when a user asks to work with Kira or a Kira-managed wallet portfolio from their own agent session.
+description: Use Kira Wallet to install or open its local dashboard, manage public EVM wallets, query recorded holdings and history, or ground portfolio analysis in a registered wallet. Use the host agent's own tools for DeFi, lending, LP, perp and prediction-market research, with optional h402 capabilities when enabled.
 ---
 
 # Kira Wallet
@@ -9,6 +9,78 @@ Kira provides wallet research, saved data, a CLI and a human web interface.
 Use the current agent session for conversation, general work and approvals.
 Kira does not launch or configure a model. The web server is optional for CLI
 and MCP operations.
+
+## Discover the contract
+
+Run `kira describe --json` to list the installed tool schemas, or
+`kira describe wallet_read --json` to inspect one. This uses the same schemas as
+MCP and does not initialize a workspace or start research. If an older installed
+version lacks `describe`, use its own `kira skill` and `kira --help`.
+`kira info --json` reports `data_scope` and optional `integrations` alongside
+workspace readiness. Keep using the selected data directory for every command.
+
+Kira records direct holdings, price references and history on configured EVM
+networks, with explicit coverage gaps. These records do not establish complete
+DeFi positions, debts, perp accounts, prediction-market positions, deployable
+capital or total net worth. A receipt token is not a decoded underlying position.
+
+## Analyze with the host agent
+
+Use Kira as the source of saved wallet facts. Use your own search, browser, API
+and code-execution tools for the rest of the user's question. For example:
+
+- "Compare ways to put the USDC in my Daily wallet to work."
+- "Keep the ETH exposure in my Savings wallet and compare lending with an LP."
+- "Explain what changed between my wallet's last two saved snapshots."
+
+1. Resolve the exact registered tag through `portfolio_read` / `wallet_read`.
+   Read the relevant assets, chain and contract identities, timestamps and gaps.
+2. Distinguish recorded holdings from money available to invest. Use the user's
+   stated reserves, time horizon and preferences; ask only for missing choices
+   that materially affect the answer. Do not silently sell or reallocate assets.
+3. Identify missing evidence. An absent position in Kira is not proof that the
+   wallet has no debt or protocol exposure. Research those positions externally
+   when relevant; verify any proxy or subaccount relationship rather than guess.
+4. Use your own tools to check current product terms, official contracts and
+   market data. If current balances are needed, submit an explicit Kira refresh
+   within the user's authorization and inspect the completed job's coverage.
+   Otherwise label the analysis with the saved observation times.
+5. Run calculations with your code tools. State assumptions, costs and unknowns;
+   distinguish observed yield from future returns and compare holding unchanged
+   when relevant. Kira does not supply a strategy optimizer or protocol simulator.
+6. Explain which facts came from Kira, which came from external sources, and
+   which are calculated estimates. Preserve source links and observation times.
+   Keep external research and interpretations separate from Kira's recorded
+   balances. Present results in the host conversation; save a report only when
+   requested, using the host's own file tools.
+
+## Optional h402 tools
+
+Inspect `kira integrations --json` or `kira info --json`. h402 is optional and
+disabled by default. Use your existing tools when they suffice. If h402 is
+enabled and `available`, read the official `skill_url` returned by discovery,
+then use h402 directly to find and inspect a needed capability. Its catalog is
+live; do not assume a provider or route is available from an old example.
+
+`available` means only that the local CLI version check passed. It does not
+verify network access, provider health, wallet readiness or payment permission.
+If h402 is disabled, absent or unavailable, continue with your own tools and
+state any remaining gap. Do not install it or enable it without user intent.
+
+When the user chooses h402, install with `npm install -g @h402/cli` and enable
+the workspace preference with `kira integrations h402 --enable --json`.
+Inspect the returned job before claiming the preference was saved. Recheck
+with `kira integrations --json`; disable using `--disable`. Workspace settings
+provides the same preference and an installation prompt to copy into an agent.
+Disabling the preference does not uninstall h402 or modify its own configuration.
+
+Kira only discovers h402 and records this preference. The host agent invokes
+`h402 search`, `show`, `quote` and `call` as appropriate, using the inspected
+provider's schema. h402 owns its installation, configuration and payment limits.
+Enabling the integration is not authorization for paid calls. Honor the user's
+existing spending permissions and h402 limits; obtain missing authorization
+before a paid call. Never infer payment authority from a registered watching
+wallet. A per-call limit is not an enforced budget for an entire investigation.
 
 ## Start with the existing workspace
 
@@ -164,7 +236,7 @@ check `job.state` to separate them.
 `kira call TOOL --arguments JSON --json` exposes all shared reads and writes.
 Write tools require `idempotency_key`: `wallet_add`, `wallet_tags`,
 `holdings_refresh`, `prices_refresh`, `job_cancel`, `job_resume`, `job_deepen`,
-`settings_rpc`, `settings_discovery`, `settings_provider`. Prefer the short
+`settings_rpc`, `settings_discovery`, `settings_provider`, `settings_h402`. Prefer the short
 CLI forms above for onboarding and configuration. `workspace_status` and
 `settings_read` provide safe readiness and reference checks.
 
