@@ -1,7 +1,10 @@
 # Kira release status
 
-Updated: 2026-10-28. Kira 1.0.2 is published and its scoped implementation and
-installed-package acceptance are complete. This page records current status;
+Updated: 2026-10-29. Kira 1.0.2 is published and its scoped implementation and
+installed-package acceptance are complete. Version 1.1.0 is a prepared candidate
+in [PR #59](https://github.com/realproject7/kira-wallet/pull/59), not an npm release.
+It adds installed tool schemas, revised agent guidance and optional h402 setup
+without an embedded analysis engine. This page records current status;
 earlier plans and reports preserve historical evidence, not active release gates.
 
 ## Completed release scope
@@ -21,6 +24,19 @@ The [release notes](RELEASE.md#published-102) retain source identity, checksums
 and acceptance details. Published archives remain immutable. Later documentation
 or website changes do not rebuild 1.0.2 or require another npm publication.
 Review not selected for the 1.0.2 implementation and this release closeout.
+
+## 1.1.0 candidate
+
+The implementation and release preparation share PR #59. `kira describe --json`
+exposes the installed schemas; the skill separates recorded wallet facts from
+external analysis. Onboarding, Workspace settings and CLI support optional h402
+installation guidance, a durable preference and local version checks. No h402
+dependency, payment configuration or paid request is added to Kira.
+
+The prepared archive and source identity are in `dist/release-1.1.0.json`.
+PR merge and operator publication remain outstanding. Installing npm `latest`
+still selects 1.0.2 until publication. See the [candidate release notes](RELEASE.md#candidate-110)
+for verification and the operator publication command. Review not selected.
 
 ## Remaining verification and optional work
 

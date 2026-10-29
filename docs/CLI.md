@@ -13,8 +13,8 @@ kira integrations h402 --disable --json --idempotency-key h402-disable-once
 
 `describe` returns the installed CLI/MCP schemas without creating a workspace
 or starting research. `info` includes the recorded-data scope and optional
-integration status. These additions are in the development source; older
-installed releases should use their own `skill` and help output.
+integration status. These additions require the 1.1.0 candidate or later;
+older installed releases should use their own `skill` and help output.
 
 h402 is disabled by default. Enabling or disabling it saves a preference through
 the shared job queue; inspect the returned job before claiming success. This

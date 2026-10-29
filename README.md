@@ -19,7 +19,8 @@ Kira supplies wallet tools and a full-window
 management app. Your agent host manages its own conversations, models, files and
 approvals. Kira does not launch a model CLI or require a model login.
 
-Current release: **1.0.2**. [Release notes](docs/RELEASE.md) ·
+Published npm release: **1.0.2**. This source prepares **1.1.0**.
+[Release notes](docs/RELEASE.md) ·
 [Implementation status and follow-ups](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_NEXT_STEPS.md).
 
 ## Get started
@@ -84,7 +85,7 @@ DeFi positions, debts or investable capital. The agent checks missing evidence
 and keeps external research and calculated scenarios separate from recorded
 balances.
 
-The development source adds `kira describe --json` for tool schemas and optional
+The 1.1.0 candidate adds `kira describe --json` for tool schemas and optional
 h402 discovery in onboarding and Workspace settings. h402 supplies extra tools
 when your agent needs them. It is installed separately and disabled by default;
 Kira only records the preference and checks local CLI availability. Payment

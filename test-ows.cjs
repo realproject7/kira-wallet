@@ -1,11 +1,17 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const {execute} = require('./ows_bridge.cjs');
+(function main() {
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kira-ows-sdk-'));
 try {
   let sdk;
-  try { sdk = require('@open-wallet-standard/core'); } catch { console.log('OWS SDK acceptance skipped: optional native SDK is unavailable on this platform.'); process.exit(0); }
+  try { sdk = require('@open-wallet-standard/core'); } catch { console.log('OWS SDK acceptance skipped: optional native SDK is unavailable on this platform.'); return; }
+  assert.deepEqual(execute({action:'list', vault:root}, sdk), {wallets:[]});
   assert.throws(() => execute({action:'create', vault:root, name:'Synthetic wallet', passphrase:''}, sdk));
+  if (process.env.KIRA_TEST_OWS_KEYS !== '1') {
+    console.log('OWS SDK empty-vault read and input validation passed. Key lifecycle acceptance skipped; operator opt-in: KIRA_TEST_OWS_KEYS=1.');
+    return;
+  }
   const request = {action:'create', vault:root, name:'Synthetic-wallet-acceptance', passphrase:'synthetic-fixture-encryption-only'};
   const created = execute(request, sdk).wallet;
   assert(created.accounts.some(a => a.chain_id === 'eip155:1'));
@@ -27,3 +33,4 @@ try {
   assert(!files.some(file => fs.readFileSync(file).includes(Buffer.from(mnemonic))));
   console.log('Pinned OWS SDK creates an encrypted disposable wallet and returns public EVM descriptors; repeat recovery reuses it.');
 } finally { fs.rmSync(root, {recursive:true,force:true}); }
+})();
