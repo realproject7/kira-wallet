@@ -56,9 +56,14 @@ class DetailTests(unittest.TestCase):
         self.assertEqual(project_details([first],self.root)['tokens'][0]['sell_out']['value_usd'],4)
         both=project_details([first,second],self.root)['tokens'][0]
         self.assertIsNone(both['sell_out'])
+        self.assertEqual(both['sell_out_summary']['value_usd'],8)
+        self.assertFalse(both['sell_out_summary']['combined_execution_verified'])
+        self.assertEqual(project_details([first,second],self.root,include_wallets=False)['tokens'][0]['sell_out_summary']['value_usd'],8)
         self.assertEqual([r['asset']['sell_out']['value_usd'] for r in both['wallets']],[4,4])
         second['assets'][0]['sell_out']=None
-        self.assertIsNone(project_details([first,second],self.root)['tokens'][0]['sell_out'])
+        token=project_details([first,second],self.root)['tokens'][0]
+        self.assertIsNone(token['sell_out'])
+        self.assertEqual((token['sell_out_summary']['value_usd'],token['sell_out_summary']['missing_count']),(4,1))
 
     def test_shared_token_sums_balances_and_values_without_shared_backing(self):
         first=self.wallet('first',[self.asset(balance='1.000000000000000001')])

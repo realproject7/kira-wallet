@@ -49,7 +49,7 @@ def main():
         cli=str(temp/'installation/bin/kira');data=str(temp/'portfolio')
         assert run([cli,'--version']).strip()==json.loads((installed/'package.json').read_text())['version']
         catalog=json.loads(run([cli,'--data-dir',data,'describe','--json']))
-        assert any(tool['name']=='settings_h402' for tool in catalog['tools'])
+        assert {'settings_h402','portfolio_holdings_refresh','portfolio_sell_routes_analyze'} <= {tool['name'] for tool in catalog['tools']}
         assert not Path(data).exists(),'Tool discovery created a workspace.'
         info=json.loads(run([cli,'--data-dir',data,'info','--json']))
         assert info['capabilities']['headless'] and not info['capabilities']['model_runtime']
@@ -79,7 +79,7 @@ def main():
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/kira-logo.png') as response:assert response.headers['Content-Type']=='image/png'
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/ows-logo.svg') as response:
                 assert response.headers['Content-Type']=='image/svg+xml' and b'<svg' in response.read()
-            for asset in ['explorers/etherscan.png','venues/mintclub.png','venues/uniswap.svg','venues/aerodrome.svg','selects.js','ows.js','watching.js','watching-model.js','workspace.js','workspace-model.js','workspace.css','integrations.js']:
+            for asset in ['explorers/etherscan.png','venues/mintclub.png','venues/uniswap.svg','venues/aerodrome.svg','selects.js','ows.js','watching.js','watching-model.js','workspace.js','workspace-model.js','workspace.css','integrations.js','portfolio.js']:
                 with urllib.request.urlopen(f'http://127.0.0.1:{port}/'+asset) as response:assert response.status==200 and len(response.read())>100
             transcript='\n'.join(json.dumps(item) for item in [
                 {'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-06-18'}},

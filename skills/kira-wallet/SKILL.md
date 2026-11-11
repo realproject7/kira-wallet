@@ -250,3 +250,17 @@ Earlier embedded conversations and generated files remain local. Use
 `archive export WORKSPACE_ID --path report.csv --output ./recovered-report.csv`.
 Use returned IDs and paths. Export does not overwrite a destination. These
 archives are not automatically replayed or sent to the model.
+
+### Portfolio actions and quote subtotals
+
+Use `portfolio_holdings_refresh` or `portfolio_sell_routes_analyze` when asked to
+research all registered wallets. Inspect the batch receipt's jobs, skipped reasons
+and errors, then follow each job. Reuse the same idempotency key after a lost
+response. Active wallets and completed sell analysis are skipped; interrupted
+analysis can resume. These are explicit queued provider reads, never trades.
+
+`sell_out_summary` is an indicative sum of independent saved quotes. Report its
+quoted/missing counts and observation range. Shared liquidity, nested reserves,
+gas and differing observation times prevent claiming combined executable
+proceeds. Missing estimates remain unknown. The web app hides wallets without a
+recorded holding on token pages; this does not establish a zero balance elsewhere.

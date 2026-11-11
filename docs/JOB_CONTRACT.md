@@ -285,3 +285,16 @@ Each slice registers the known inventory for all mainnet chains before market
 checks, so the first completed chain does not imply all discovered work is done.
 The viewer separately shows saved asset checks, available prices and unresolved checks. It does not derive
 an overall ETA from this changing denominator. Review not selected.
+
+## Portfolio admission receipts
+
+`portfolio.refresh` and `portfolio.analyzeSell` accept an empty input object and
+a normal idempotency key through the shared application service. They return a
+`batch_id`, `wallet_count`, per-wallet `jobs`, `skipped` reasons and admission
+`errors`. They are admission plans, not new worker job types. Existing worker
+job envelopes, cancellation, progress and publication remain unchanged.
+
+The durable plan fixes wallet selection before admission. Each selected wallet
+uses a deterministic child request key so retries recover partially admitted
+plans. Active-wallet admission is checked under the existing job lock. Reads and
+page loads do not create plans. Sample and read-only modes reject writes.

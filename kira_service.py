@@ -44,6 +44,8 @@ READ_TOOLS += [tool('network_read','Read saved network allocation and coverage.'
                tool('settings_read','Read configuration references without credential values.'),
                tool('ui_context','Read the wallet, token or network selected in the local web app.')]
 MUTATIONS={
+    'portfolio_holdings_refresh':('portfolio.refresh',{}),
+    'portfolio_sell_routes_analyze':('portfolio.analyzeSell',{}),
     'settings_h402':('settings.h402',{'enabled':{'type':'boolean'}}),
     'wallet_add':('wallet.add',{'address':STRING,'tag':STRING}),
     'wallet_tags':('wallet.setTags',{'wallet':STRING,'tags':{'type':'array','items':STRING,'minItems':1,'maxItems':20}}),
@@ -59,6 +61,10 @@ MUTATIONS={
 WRITE_TOOLS=[tool(name,'Submit '+operation+' as a durable local job. Returns a receipt, not a completed result.',
     {**props,'idempotency_key':{'type':'string','minLength':8,'maxLength':200}},required=[k for k in props if k not in ('priority','explorers')]+['idempotency_key'],write=True)
     for name,(operation,props) in MUTATIONS.items()]
+
+for descriptor in WRITE_TOOLS:
+    if descriptor['name'].startswith('portfolio_'):
+        descriptor['description']='Queue research for all registered wallets using existing per-wallet jobs. Returns a durable batch receipt with jobs, skipped wallets and errors. Inspect each job for completion.'
 
 DATA_SCOPE = {
     'inventory': 'Recorded direct holdings on configured EVM networks; coverage may be partial.',
@@ -118,8 +124,13 @@ class Application:
         if registry.get('demo'):
             if operation in ('job.resume','job.deepen') and isinstance(request.get('input'),dict):
                 operation=self.jobs.get(request['input'].get('job_id'))['operation']
-            if operation in ('wallet.add','wallet.refresh','prices.refresh'):
+            if operation in ('wallet.add','wallet.refresh','prices.refresh','portfolio.refresh','portfolio.analyzeSell'):
                 raise JobError('demo_read_only','Sample portfolios never contact research providers.')
+        if operation in ('portfolio.refresh','portfolio.analyzeSell'):
+            from kira_batches import submit_batch
+            result=submit_batch(self.jobs,request)
+            if launch and any(j['state']=='queued' for j in result['jobs']):self.jobs.launch()
+            return result
         result=self.jobs.submit(request)
         if launch and result['state']=='queued':self.jobs.launch()
         return result

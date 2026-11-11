@@ -91,11 +91,13 @@ async function submitOperation(operation,input){
     const result=await localAPI('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schema_version:1,operation,input,idempotency_key:key})});
     sessionStorage.removeItem(storageKey);
     const scanMessage=operation==='job.deepen'?'Sell-route analysis queued. Your holdings stay available.':operation==='job.resume'?'Scan queued to resume from saved work.':operation==='job.cancel'?'Pause requested. Saved results stay available.':null;
-    toast(scanMessage||(operation.startsWith('settings.')?'Queued ':'Saved ')+(jobLabels[operation]||'job').toLowerCase());await pollJobs();await pollWorkspace();return result;
+    if(result.batch_id){toast(result.jobs.length+' wallet jobs · '+result.skipped.length+' skipped · '+result.errors.length+' need attention');}
+    else toast(scanMessage||(operation.startsWith('settings.')?'Queued ':'Saved ')+(jobLabels[operation]||'job').toLowerCase());await pollJobs();await pollWorkspace();return result;
   }finally{pendingActions.delete(fingerprint);}
 }
 function refreshControlState(){
   const enabled=localSession?.controls===true;
+  if(typeof renderPortfolioActions==='function')renderPortfolioActions();
   $('research-controls').hidden=!enabled;$('empty-add-wallet').hidden=!enabled;$('wallet-actions').hidden=!enabled;
   $('wallet-secondary-actions').hidden=!enabled;
   $('wallet-tools').hidden=!enabled&&!currentWallet()?.report_url;
@@ -160,12 +162,12 @@ setInterval(()=>{if(!document.hidden&&jobList.some(KiraView.active))tickJobTimer
 function pendingWalletJob(wallet){return jobList.find(job=>KiraView.active(job)&&['wallet.add','wallet.refresh','prices.refresh'].includes(job.operation)&&String(job.input?.wallet||job.input?.address||'').toLowerCase()===wallet.key);}
 function mergeJobs(){const rows=new Map();for(const job of [...recentJobs,...activeJobs,...walletJobs,...(activityData?.jobs||[])]){const prior=rows.get(job.job_id);if(!prior||(job.sequence??0)>=(prior.sequence??0))rows.set(job.job_id,job);}jobList=[...rows.values()].sort((a,b)=>b.created_at.localeCompare(a.created_at));}
 function renderActiveWork(){
-  const active=jobList.filter(KiraView.active).slice(0,5),panel=$('active-work');
+  const all=jobList.filter(KiraView.active).sort((a,b)=>(b.state==='running')-(a.state==='running')||a.created_at.localeCompare(b.created_at)),active=all.slice(0,1),panel=$('active-work');
   panel.hidden=!active.length;panel.innerHTML=active.map(job=>{
     const name=state?.wallets.find(w=>w.key===String(job.input?.wallet||job.input?.address||'').toLowerCase())?.name||job.input?.tag||jobLabels[job.operation]||'Research';
     const p=KiraView.jobPresentation(job,Date.now(),jobsConnected);
     return '<div class="active-work-row"><a href="#/activity"><span>'+ (p.spinner?'<span class="spinner" aria-hidden="true"></span>':'')+'<strong>'+escapeHTML(name)+'</strong> · '+escapeHTML(jobStage(job))+'</span><small data-job-timer="'+escapeHTML(job.job_id)+'">'+escapeHTML(KiraView.jobTimeText(job))+'</small></a><div class="job-actions">'+jobControls(job)+'</div></div>';
-  }).join('');
+  }).join('')+(all.length>1?'<a class="text-link" href="#/activity">View '+(all.length-1)+' more wallet jobs in Activity ↗</a>':'');
 }
 async function loadActivity(){
   if(!localSession?.controls)return;

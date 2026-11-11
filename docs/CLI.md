@@ -13,7 +13,7 @@ kira integrations h402 --disable --json --idempotency-key h402-disable-once
 
 `describe` returns the installed CLI/MCP schemas without creating a workspace
 or starting research. `info` includes the recorded-data scope and optional
-integration status. These additions require the 1.1.0 candidate or later;
+integration status. These additions require the 1.1.0 or later;
 older installed releases should use their own `skill` and help output.
 
 h402 is disabled by default. Enabling or disabling it saves a preference through
@@ -36,6 +36,36 @@ uses existing user permissions and h402 limits for any paid work.
 Kira is a local wallet engine, CLI and web interface. Any capable agent
 can use the CLI; MCP is optional. Your agent host supplies its own model,
 conversation, general tools and approvals. Kira does not start a model process.
+
+## Portfolio research actions
+
+From Home, use **Refresh all holdings** or **Analyze all sell-out values**.
+Both queue ordinary per-wallet jobs and preserve previous snapshots. Work runs
+one wallet at a time. Active wallets are skipped. Sell analysis requires a
+finished current holdings scan; interrupted analysis is resumed and completed
+analysis is skipped. A partial completed result can contain unknown quotes.
+
+Agents use the same actions:
+
+```sh
+kira call portfolio_holdings_refresh --arguments '{"idempotency_key":"portfolio-refresh-001"}' --json
+kira call portfolio_sell_routes_analyze --arguments '{"idempotency_key":"portfolio-sell-001"}' --json
+```
+
+The response is a batch receipt with `jobs`, `skipped` and `errors`, not a job
+completion. Read each returned `job_id`. Retry the same request key after a lost
+response to recover the same wallet selection and admitted jobs. Different
+requests skip wallets already queued or running. New wallets added later belong
+to the next batch. These actions require an explicit request and never execute
+trades. Sell analysis remains optional instead of starting on page loads.
+
+Home, wallets, tokens and networks expose a **Sell-out estimate sum**. This sums
+independent saved full-balance quotes and shows the quoted and missing position
+counts. It excludes testnets, archived networks, retained quantities and gas.
+Shared pools, nested reserve tokens and different observation times mean this
+is an indicative subtotal, not proceeds verified for a combined portfolio exit.
+Missing estimates remain unknown. Token pages show recorded holders, largest
+first; full coverage facts remain accessible through the CLI/MCP records.
 
 ## Install and choose a workspace
 

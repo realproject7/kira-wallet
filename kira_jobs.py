@@ -398,7 +398,7 @@ class JobStore:
                 parent['continuation_id']=job['job_id'];self.save(parent)
         return job
 
-    def submit(self, request, *, phase='baseline', parent=None):
+    def submit(self, request, *, phase='baseline', parent=None, skip_active=False):
         fields(request, ['schema_version', 'operation', 'input', 'idempotency_key'])
         if type(request['schema_version']) is not int or request['schema_version'] != 1:
             raise JobError('unsupported_version', 'Expected request schema version 1.')
@@ -409,6 +409,8 @@ class JobStore:
             operation = request['operation']
             if not isinstance(operation,str):raise JobError('unsupported_operation','Expected a typed operation name.')
             key_hash = digest(key); receipt = self.jobs / 'requests' / (key_hash + '.json')
+            if (self.jobs/'batches'/(key_hash+'.json')).exists():
+                raise JobError('idempotency_conflict','This request key already belongs to a portfolio action.')
             raw_hash=digest({'operation':operation,'input':request['input']})
             if receipt.exists() and read(receipt).get('raw_hash')==raw_hash:return self.admit_wallet(self.get(read(receipt)['job_id']))
             for p in self.jobs.glob('*.json'):
@@ -429,6 +431,8 @@ class JobStore:
                 recorded=existing.get('control_receipts',{}).get(key_hash,existing['request_hash'])
                 if recorded != fingerprint: raise JobError('idempotency_conflict', 'This request key already belongs to another operation.')
                 job = existing
+            elif skip_active and self.wallet_work_active(operation,value):
+                raise JobError('already_running','This wallet already has research queued or running.')
             elif operation=='job.deepen':
                 parent_job=self.get(value['job_id'])
                 if parent_job.get('analysis_phase')!='baseline' or parent_job['state'] not in {'succeeded','partial'} or not parent_job.get('result'):
@@ -467,6 +471,16 @@ class JobStore:
             self.admit_wallet(job)
             atomic(receipt, {'schema_version': 1, 'request_hash': fingerprint,'raw_hash':raw_hash, 'job_id': job['job_id']})
             return job
+
+    def wallet_work_active(self, operation, value):
+        target=value.get('wallet') or value.get('address')
+        if operation in ('job.deepen','job.resume'):
+            source=self.get(value['job_id'])
+            target=source['input'].get('wallet') or source['input'].get('address')
+        return bool(target) and any(j['state'] in ('queued','running') and
+            j['operation'] in ('wallet.add','wallet.refresh','prices.refresh') and
+            (j['input'].get('wallet') or j['input'].get('address') or '').lower()==target.lower()
+            for p in self.jobs.glob('*.json') for j in [self.get(p.stem)])
 
     def new_job(self,operation,value,key_hash,fingerprint,raw_hash,phase,parent):
         """Called under the request lock; child admission is serialized too."""

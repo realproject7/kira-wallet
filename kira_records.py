@@ -31,7 +31,7 @@ def projection(root, config, *, token_id=None, limit=12, offset=0, wallet_key=No
     for row,count in zip(rows,counts):
         row.update(asset_count=count,assets_omitted=count-len(row['assets']),offset=offset,
                    next_offset=offset+len(row['assets']) if token_id is None and offset+len(row['assets'])<count else None)
-    result = {'scope':config['scope'],'wallets':rows,'note':'Recorded direct holdings. Missing data is unknown. Mainnet priced totals exclude unpriced amounts and testnets. Exit quotes are independent historical full-balance burn outputs after royalty, before gas. Do not sum them, infer live execution, or convert output tokens at spot prices into cash-out value. pools_omitted counts bounded market detail; token_read can retrieve a specific approved token.'}
+    result = {'scope':config['scope'],'wallets':rows,'note':'Recorded direct holdings. Missing data is unknown. Mainnet priced totals exclude unpriced amounts and testnets. Exit quotes are independent historical full-balance burn outputs after royalty, before gas. Independent quote sums are indicative only. Do not infer combined live execution or convert output tokens at spot prices into cash-out value. pools_omitted counts bounded market detail; token_read can retrieve a specific approved token.'}
     from kira_config import public_status
     result['research_connection']=public_status(root)
     size=len(json.dumps(result,ensure_ascii=False).encode())
@@ -81,7 +81,7 @@ def wallet_facts(wallets, *, pool_budget=40_000):
     def pick(value, names): return {k:value.get(k) for k in names}
     rows = []
     for wallet in wallets:
-        row = pick(wallet,('address','tags','name','snapshot_id','analysed_at','prices_at','balance_observed_at','known_value_usd','unpriced_count','status'))
+        row = pick(wallet,('address','tags','name','snapshot_id','analysed_at','prices_at','balance_observed_at','known_value_usd','unpriced_count','status','sell_out_summary'))
         if not wallet.get('analysed_at'): row['known_value_usd']=None
         row['recorded_valuation']=wallet.get('recorded_valuation') or recorded_valuation(wallet['assets'])
         row['chains'] = [pick(c,('id','name','environment','complete','rpc_available','rpc_status','market_pending','market_errors','native_symbol','native_balance','native_observed_at','native_block_number','registry_block_number','discovery_status','registry_complete','registry_phase','rpc_pending','candidate_balance_errors','candidate_deferred','rpc_routes','history_window','discovery_provider','discovery_filters','lifecycle','head_status','head_age_seconds')) for c in wallet['chains']]

@@ -57,6 +57,18 @@ class JobsHTTPTest(unittest.TestCase):
         self.assertEqual(self.request('/api/jobs',method='GET')[0],200)
         self.assertEqual(self.request('/api/jobs',headers={'X-Kira-Session':''},method='GET')[0],403)
 
+    def test_portfolio_admission_has_the_same_session_origin_and_read_only_gates(self):
+        body=json.dumps({'schema_version':1,'operation':'portfolio.refresh','input':{},'idempotency_key':'portfolio-http-test'}).encode()
+        for headers in ({'X-Kira-Session':''},{'Origin':'https://foreign.test'}):
+            self.assertEqual(self.request(body=body,headers=headers)[0],403)
+        self.assertEqual(self.http.jobs.list(),[])
+        code,first=self.request(body=body)
+        self.assertEqual(code,202);self.assertEqual(len(first['jobs']),1)
+        self.assertEqual(self.request(body=body)[1],first)
+        self.assertEqual(self.request(body=body.replace(b'"input": {}',b'"input": {"unknown": true}'))[0],400)
+        self.http.controls=False
+        self.assertEqual(self.request(body=body)[0],501)
+
     def test_h402_preference_uses_existing_local_operation_boundary(self):
         body=json.dumps({'schema_version':1,'operation':'settings.h402','input':{'enabled':True},'idempotency_key':'h402-http-fixture'}).encode()
         for headers in ({'X-Kira-Session':''},{'Origin':'https://foreign.test'}):

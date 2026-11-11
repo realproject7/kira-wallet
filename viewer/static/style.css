@@ -692,3 +692,7 @@ button:disabled {opacity:.55;cursor:default}
 .pool-link.mint {background:#f6fcf9}
 .pool-metrics {max-width:45%;overflow-wrap:anywhere}
 .pool-art {flex-shrink:0}
+
+/* Portfolio actions and independently quoted sale estimates. */
+.portfolio-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;max-width:480px}.portfolio-actions p{flex-basis:100%;margin:0}.home-heading{gap:20px;flex-wrap:wrap}.sell-summary{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line,#ded8e5);margin-top:18px;padding-top:16px}.sell-summary-value{font-size:25px;line-height:1.2;font-weight:600;color:var(--text,#302b38)}.detail-sell-summary{margin:0 0 24px;padding:18px 22px;border:1px solid var(--line,#ded8e5);border-radius:14px}.sell-summary .valuation-note{max-width:560px}.sell-out-value+.price-basis{font-size:11px}
+@media(max-width:640px){.portfolio-actions{max-width:none;width:100%}.portfolio-actions button{flex:1 1 160px}.sell-summary-value{font-size:23px}.detail-sell-summary{padding:16px}}

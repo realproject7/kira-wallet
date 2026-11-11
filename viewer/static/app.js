@@ -142,6 +142,7 @@ function renderHome(){
   renderBreadcrumb([{label:'Home'}]);
   $('sync-label').textContent=s.analysed_wallet_count+' of '+s.wallet_count+' '+(s.wallet_count===1?'wallet':'wallets')+' analysed';
   $('home-total').textContent=money(s.known_value_usd);
+  $('home-sell-out').innerHTML=sellSummary(s.sell_out_summary);
   $('home-wallet-count').textContent=s.wallet_count;
   $('home-network-count').textContent=s.chain_count;
   $('home-position-count').textContent=s.position_count;
@@ -156,7 +157,7 @@ function renderHome(){
   $('wallet-cards').innerHTML=state.wallets.map(w=>{
     const count=w.mainnet_asset_count??w.assets.filter(a=>a.environment==='mainnet').length,unpriced=w.mainnet_unpriced_count??w.unpriced_count;
     const value=w.analysed_at?w.known_value_usd:null;
-    return `<button class="wallet-card" data-wallet="${escapeHTML(w.key)}" aria-label="Open ${escapeHTML(w.name)} holdings"><span class="wallet-card-heading"><span class="card-wallet-icon">${walletGlyph}</span><span class="wallet-card-identity"><strong>${escapeHTML(w.name)}</strong><span>${escapeHTML(shortAddress(w.address))}</span></span><span class="card-arrow" aria-hidden="true">${arrowGlyph}</span></span><span class="wallet-card-value">${money(value)}</span><span class="wallet-card-meta"><span>${w.analysed_at?count+(count===1?' position · ':' positions · ')+unpriced+' unpriced':'Not checked'}</span><span>${value!=null?share(value,s.known_value_usd)+' of priced value':''}</span></span>${progress(value,s.known_value_usd,w.name+' share of priced value')}</button>`;
+    return `<button class="wallet-card" data-wallet="${escapeHTML(w.key)}" aria-label="Open ${escapeHTML(w.name)} holdings"><span class="wallet-card-heading"><span class="card-wallet-icon">${walletGlyph}</span><span class="wallet-card-identity"><strong>${escapeHTML(w.name)}</strong><span>${escapeHTML(shortAddress(w.address))}</span></span><span class="card-arrow" aria-hidden="true">${arrowGlyph}</span></span><span class="wallet-card-value">${money(value)}</span><span class="wallet-card-meta" title="Sum of independent saved quotes. Gas excluded; shared liquidity can change combined proceeds.">Sell-out est. sum ${w.sell_out_summary?.value_usd==null?'—':'≈ '+money(w.sell_out_summary.value_usd)}</span><span class="wallet-card-meta"><span>${w.analysed_at?count+(count===1?' position · ':' positions · ')+unpriced+' unpriced':'Not checked'}</span><span>${value!=null?share(value,s.known_value_usd)+' of priced value':''}</span></span>${progress(value,s.known_value_usd,w.name+' share of priced value')}</button>`;
   }).join('');
   $('network-allocation').innerHTML=s.networks.map(c=>`<a class="network-row" href="${networkHref(c.id)}" aria-label="Open ${escapeHTML(c.name)} network overview"><div class="network-row-heading"><span class="network-label">${chainIcon(c.name)}${escapeHTML(c.name)}<span class="detail-arrow" aria-hidden="true">${arrowGlyph}</span></span><span class="network-value">${money(c.value_usd)}</span></div><div class="network-row-meta"><span>${c.position_count} ${c.position_count===1?'position':'positions'}${c.value_usd==null?' · Unpriced':''}</span><span>${share(c.value_usd,s.known_value_usd)}</span></div>${progress(c.value_usd,s.known_value_usd,c.name+' share of priced value')}</a>`).join('')||'<p class="panel-empty">Networks appear after analysis.</p>';
   if(typeof renderHomeTokens==='function')renderHomeTokens();
@@ -169,6 +170,7 @@ function renderWallet(){
   $('wallet-tags').innerHTML=w.tags.slice(1).map(t=>`<span class="tag">${escapeHTML(t)}</span>`).join(' ');
   $('report-link').hidden=!w.report_url;if(w.report_url)$('report-link').href=safeURL(w.report_url);
   $('total-value').textContent=w.analysed_at?money(w.known_value_usd):'—';
+  $('wallet-sell-out').innerHTML=sellSummary(w.sell_out_summary);
   const partial=w.chains.some(c=>c.environment==='mainnet'&&KiraView.coverageGap(c));
   $('valuation-note').textContent=w.analysed_at?(partial?'Partial portfolio · ':'')+(w.known_value_usd==null?((w.asset_count??w.assets.length)?'Value is unknown because prices are unavailable.':'No positive holdings recorded · unchecked networks remain unknown.'):'Market and curve spot estimates · excludes unpriced assets'):'No holdings lookup saved yet.';
   $('asset-count').textContent=w.asset_count??w.assets.length;$('unpriced-count').textContent=w.unpriced_count+' unpriced';
@@ -263,9 +265,15 @@ function bindImages(){
     if(img.complete){if(img.naturalWidth)show();else failed();}
   });
 }
+function sellSummary(summary){
+  if(!summary)return '';
+  const count=summary.quoted_count,missing=summary.missing_count;
+  return `<span class="summary-label">Sell-out estimate sum</span><strong class="sell-summary-value">${summary.value_usd==null?'—':'≈ '+money(summary.value_usd)}</strong><span class="valuation-note">${count} of ${summary.position_count} position quotes · ${missing} missing</span><span class="valuation-note">Independent quotes · Gas excluded · Shared liquidity may change combined proceeds</span>`;
+}
 function sellOutNote(a){
   if(a.environment==='testnet')return 'Testnet assets have no USD sale estimate.';
   if(a.archived)return 'Archived holdings have no current sale estimate.';
+  if(a.wallet_count>1&&a.sell_out_summary){const s=a.sell_out_summary;return s.quoted_count+' of '+s.position_count+' position quotes; '+s.missing_count+' missing. Sum of independent saved quotes, not a combined exit quote. Shared liquidity may change proceeds. Gas excluded.';}
   if(a.wallet_count>1)return 'Compare estimates by wallet. Separate quotes may use the same liquidity and cannot be added together.';
   const q=a.sell_out;
   if(!q)return 'No full-balance sale quote saved. This is unknown, not zero.';
@@ -274,9 +282,9 @@ function sellOutNote(a){
   return basis+' Gas excluded. Execution is not verified. Quote '+stamp(q.observed_at)+(q.output_price?.observed_at?'; output price '+stamp(q.output_price.observed_at):'; output USD price unavailable')+'.';
 }
 function sellOutValue(a,linked=true){
-  const q=a.sell_out, note=sellOutNote(a), value=a.environment==='testnet'||a.archived?null:q?.value_usd;
-  const label=a.wallet_count>1?'By wallet':value==null?'Unknown':money(value);
-  return `<${linked?'a':'span'} class="sell-out-value ${value==null?'unpriced':''}" ${linked?`href="${tokenHref(a.id)}"`:''} title="${escapeHTML(note)}" aria-label="Sell-out estimate: ${escapeHTML(label)}. ${escapeHTML(note)}">${a.wallet_count>1?'By wallet':value==null?'—':'≈ '+money(value)}</${linked?'a':'span'}>`;
+  const q=a.sell_out, note=sellOutNote(a), value=a.environment==='testnet'||a.archived?null:(a.sell_out_summary?a.sell_out_summary.value_usd:q?.value_usd),byWallet=a.wallet_count>1&&!a.sell_out_summary;
+  const label=byWallet?'By wallet':value==null?'Unknown':money(value);
+  return `<${linked?'a':'span'} class="sell-out-value ${value==null?'unpriced':''}" ${linked?`href="${tokenHref(a.id)}"`:''} title="${escapeHTML(note)}" aria-label="Sell-out estimate: ${escapeHTML(label)}. ${escapeHTML(note)}">${byWallet?'By wallet':value==null?'—':'≈ '+money(value)}</${linked?'a':'span'}>${a.wallet_count>1&&a.sell_out_summary?`<span class="price-basis">${a.sell_out_summary.quoted_count}/${a.sell_out_summary.position_count} quotes · ${a.sell_out_summary.missing_count} missing</span>`:''}`;
 }
 function assetRow(a){
   const p=a.price;
@@ -395,9 +403,9 @@ function renderDetail(){
     const reserve=latest?.curve_reserve;
     facts=`<div class="detail-facts"><section class="fact-panel"><h2>Token identity</h2><div class="contract-address">${escapeHTML(token.address||'Native asset · chain '+token.chain_id)}</div><dl><div><dt>Recorded price${low!==high?' range':''}</dt><dd>${unitPrice(low)}${low!==high?' – '+unitPrice(high):''}</dd></div><div><dt>Price observations</dt><dd>${timeRange(token.price_times)}</dd></div></dl></section><section class="fact-panel"><h2>Markets & backing</h2><div class="market-links detail-markets">${marketLinks(token.links,token,true)}</div>${reserve?`<p>Shared curve reserves are excluded from wallet value.</p>`:'<p>Links reflect markets found in the recorded research.</p>'}</section></div>`;
   }
-  const accounts=`<section class="detail-accounts"><div class="section-heading"><h2>${token?'Wallet holdings':'By wallet'}</h2>${token?'':'<span class="section-note">Network allocation</span>'}</div><div class="account-grid">${record.wallets.map(r=>accountCard(r,token)).join('')}</div><p class="detail-note">${token?'Sell-out estimates use saved full-balance quotes and exclude gas. Missing estimates are unknown, not zero.':'Totals include known mainnet values. Incomplete discovery can omit additional holdings.'}</p></section>`;
+  const accounts=`<section class="detail-accounts"><div class="section-heading"><h2>${token?'Wallet holdings':'By wallet'}</h2>${token?'':'<span class="section-note">Network allocation</span>'}</div><div class="account-grid">${(token?record.wallets.filter(r=>r.asset).sort((a,b)=>(b.asset.value_usd??-1)-(a.asset.value_usd??-1)||Number(b.asset.balance)-Number(a.asset.balance)||a.name.localeCompare(b.name)):record.wallets).map(r=>accountCard(r,token)).join('')}</div><p class="detail-note">${token?'Only recorded holders are shown, largest first. Sell-out estimates exclude gas. Missing estimates and holdings remain unknown.':'Totals include known mainnet values. Incomplete discovery can omit additional holdings.'}</p></section>`;
   const holdings=token?'':`<section class="holdings"><div class="holdings-toolbar"><h2>Tokens <span id="network-visible-count" class="count-badge"></span></h2><div class="filters"><label class="token-search"><span class="sr-only">Search network tokens</span><input id="network-token-search" type="search" placeholder="Search tokens" value="${escapeHTML(tokenSearch)}"></label><div class="segment" role="group" aria-label="Minimum combined token value">${[0,5,10].map(n=>`<button data-min="${n}" aria-pressed="${n===minimum}">${n?'≥ $'+n:'All'}</button>`).join('')}</div></div></div><p class="detail-note filter-note">Filter by combined token value across wallets. Summary totals include all recorded holdings.</p><div id="network-token-table" class="table-wrap"><table class="token-table holdings-table sale-table"><colgroup><col><col><col><col><col></colgroup><thead><tr><th scope="col">Token</th><th scope="col">Total balance</th><th scope="col">Wallets</th><th scope="col">Known value</th><th scope="col" title="Saved full-balance output valued in USD. Gas excluded.">Sell-out est.</th></tr></thead><tbody id="network-token-body"></tbody></table></div><div id="network-pagination" class="pagination" hidden><button class="quiet-button" data-page="network-prev" type="button">Previous</button><span id="network-page"></span><button class="quiet-button" data-page="network-next" type="button">Next</button></div><div id="network-token-empty" class="empty" hidden><h3>No tokens in this view</h3><p>Lower the minimum value or clear your search. Missing coverage does not mean zero holdings.</p></div></section>`;
-  $('detail-view').innerHTML=header+stats+facts+accounts+holdings+`<footer class="page-footer detail-footer"><span>Analysis ${timeRange(record.analysis_times)}</span><span>Prices ${timeRange(record.price_times)}</span></footer>`;
+  $('detail-view').innerHTML=header+stats+`<section class="detail-sell-summary sell-summary">${sellSummary(record.sell_out_summary)}</section>`+facts+accounts+holdings+`<footer class="page-footer detail-footer"><span>Analysis ${timeRange(record.analysis_times)}</span><span>Prices ${timeRange(record.price_times)}</span></footer>`;
   if(!token){$('network-switch').addEventListener('change',e=>navigate(networkHref(e.target.value)));$('network-token-search').addEventListener('input',e=>{tokenSearch=e.target.value;networkOffset=0;clearTimeout(networkSearchTimer);networkSearchTimer=setTimeout(()=>loadRoute(),160);});renderNetworkTokens(network);}
   bindImages();
 }

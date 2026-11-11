@@ -10,6 +10,7 @@ import re
 from token_images import image_for, read_catalog, safe_image
 from chain_images import chain_image
 from native_assets import native_identity
+from sell_summary import summarize_sell_out
 from details import project_details
 from sell_quotes import classify_with_cache as cashout_classification
 from market_records import canonical_token, canonical_source, merge_pools, market_url, number, checked_price, MIN_PRICE_LIQUIDITY_USD
@@ -349,6 +350,7 @@ def dashboard(wallets):
     """Sum direct mainnet positions, without adding pool liquidity or curve backing."""
     chains={};assets={};positions=[]
     for wallet in wallets:
+        wallet['sell_out_summary']=summarize_sell_out(wallet['assets'])
         names={c['id']:c['name'] for c in wallet['chains']}
         for asset in wallet['assets']:
             if asset.get('environment')!='mainnet':continue
@@ -372,7 +374,7 @@ def dashboard(wallets):
     for asset in asset_rows:asset['chain_name']=chains[asset['chain_id']]['name']
     values=[a['value_usd'] for a in positions if a['value_usd'] is not None]
     dates=[w['prices_at'] for w in wallets if w.get('prices_at')]
-    return {'known_value_usd':sum(values) if values else None,'wallet_count':len(wallets),
+    return {'sell_out_summary':summarize_sell_out(positions),'known_value_usd':sum(values) if values else None,'wallet_count':len(wallets),
         'analysed_wallet_count':sum(bool(w.get('analysed_at')) for w in wallets),
         'position_count':len(positions),'unique_asset_count':len(assets),'chain_count':len(chains),
         'priced_count':len(values),'unpriced_count':len(positions)-len(values),

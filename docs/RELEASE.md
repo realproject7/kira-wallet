@@ -1,11 +1,31 @@
 # Releases and preparation
 
-Published npm release: **1.0.2**. Prepared candidate: **1.1.0**.
+Published npm release: **1.1.0**. Prepared candidate: **1.2.0**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
 
-## Candidate 1.1.0
+## Candidate 1.2.0
+
+Home can queue holdings refresh or sell analysis for every registered wallet.
+Durable batch admission reuses per-wallet jobs, skips active work and preserves
+saved snapshots. Lost-response retries retain the same wallet selection and job
+receipts. Sell analysis resumes interrupted work and skips finished analysis.
+
+Home, wallet, token and network views show indicative sums of independent saved
+sell-out quotes with quoted/missing counts. The sums exclude gas and do not
+establish combined execution through shared liquidity or nested reserves. Token
+lists show these sums directly; token details show recorded holders, largest
+first. Coverage records remain accessible through CLI/MCP. Duplicate-address
+registration warnings appear as soon as the address matches a saved wallet.
+
+Release verification includes the full Python/JavaScript suite, protected HTTP
+batch admission, retry/concurrency tests, financial projection checks and desktop
+and mobile browser interactions with synthetic data. The local operator data is
+kept outside the repository. Review not selected. Registry publication remains
+an operator action.
+
+## Published 1.1.0
 
 This compatible minor release adds tool discovery and optional h402 integration.
 `kira describe [tool] --json` returns the installed CLI/MCP schemas without
@@ -36,11 +56,14 @@ dependency audit reported zero known vulnerabilities. Current-source privacy
 checks passed. Historical commit-identity findings are tracked separately and
 must not be described as a clean history scan.
 
-The frozen candidate and source commit are recorded in `dist/release.json`, with
-a versioned copy in `dist/release-1.1.0.json`. Preserve the exact archive after
-preparation. [PR #59](https://github.com/realproject7/kira-wallet/pull/59) contains
-the implementation and release preparation. Preparation does not merge the PR,
-publish to npm or deploy the website. Review not selected.
+The operator published 1.1.0 on October 29, 2026. Its registry archive matches
+the prepared source and all 95 installed members. [PR #59](https://github.com/realproject7/kira-wallet/pull/59)
+merged at `694c5a5183e4f814d7bb1c43af04a0767dbd3c1e`; the merged tree reproduces
+the archive byte for byte. SHA-256 is
+`ffd6bba877272214470cb51986b4157ea92163cb1433ff3f53ad02dd0860e105`.
+The versioned manifest and publication proof remain in `dist/release-1.1.0.json`
+and `dist/release-1.1.0.published.json`. Published archives stay immutable.
+Review not selected.
 
 ## Published 1.0.2
 

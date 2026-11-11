@@ -134,3 +134,17 @@ entry stays in the local interface. An external agent's own filesystem access
 and model data policy remain separate from these tool contracts.
 
 See [CLI commands](CLI.md) and the [packaged skill](../skills/kira-wallet/SKILL.md).
+
+## Portfolio operations and indicative sale summaries
+
+`portfolio_holdings_refresh` and `portfolio_sell_routes_analyze` are write tools
+with an `idempotency_key`. Read `jobs`, `skipped` and `errors` from the batch
+receipt, then inspect each job for completion. These tools use the ordinary
+per-wallet queue and share the browser controls' admission rules.
+
+Saved portfolio, wallet, token and network views include `sell_out_summary`:
+`value_usd`, `quoted_count`, `position_count`, `missing_count`, `observed_from`,
+`observed_to`, `basis`, `gas_included` and `combined_execution_verified`. The
+basis is `independent_saved_quotes`; the last two fields are false. Do not report
+this indicative sum as executable combined proceeds. Quote and balance coverage
+remain incomplete when observations are missing.

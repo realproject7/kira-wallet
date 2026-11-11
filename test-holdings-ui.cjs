@@ -13,6 +13,7 @@ const context={$:node,KiraView:require('./viewer/static/workspace-model.js'),cur
   localStorage:{setItem:(key,value)=>saved.set(key,value)},renderBreadcrumb(){},bindImages(){},
   assetRow:a=>'<tr>'+a.symbol+'</tr>',chainIcon:()=>'',networkHref:String,arrowGlyph:'',renderDetail(){}};
 vm.createContext(context);
+vm.runInContext(source.slice(source.indexOf('function sellSummary('),source.indexOf('function sellOutNote(')),context);
 vm.runInContext(source.slice(source.indexOf('function renderWallet(){'),source.indexOf('function icon(asset){')),context);
 vm.runInContext(source.slice(source.indexOf('function renderHoldings(){'),source.indexOf('function timeRange(')),context);
 vm.runInContext(source.split('\n').find(line=>line.startsWith("document.addEventListener('click',e=>{const b=e.target.closest('[data-min]")),context);
@@ -124,6 +125,9 @@ assert.match(testnet,/Testnet/);assert.doesNotMatch(testnet,/999/);
 assert.match(context.sellOutValue({id:'fixture',sell_out:{value_usd:0,output_amount:'0',output_symbol:'WETH'}}),/≈ \$0/);
 assert.doesNotMatch(context.sellOutValue({id:'fixture'}),/\$0/);
 assert.match(context.sellOutValue({id:'fixture',wallet_count:2}),/By wallet/);
+assert.match(context.sellOutValue({id:'fixture',wallet_count:3,sell_out_summary:{value_usd:20,quoted_count:2,position_count:3,missing_count:1}}),/≈ \$20/);
+assert.match(context.sellOutValue({id:'fixture',wallet_count:3,sell_out_summary:{value_usd:20,quoted_count:2,position_count:3,missing_count:1}}),/2\/3 quotes · 1 missing/);
+assert.match(context.sellSummary({value_usd:null,quoted_count:0,position_count:3,missing_count:3}),/0 of 3 position quotes/);
 assert.match(context.sellOutValue({id:'fixture',environment:'testnet',sell_out:{value_usd:999,output_amount:'1',output_symbol:'TEST'}}),/>—</);
 assert.match(context.explorerLink({symbol:'Example',chain_id:8453,links:[{label:'Explorer',url:'https://basescan.org/token/fixture'}]}),/explorers\/etherscan.png/);
 assert.match(context.explorerLink({symbol:'Example',chain_id:8453,links:[{label:'Explorer',url:'https://basescan.org/token/fixture'}]}),/>BaseScan/);

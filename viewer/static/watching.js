@@ -122,7 +122,7 @@ function renderWatching() {
   $('wallet-preview-address').textContent = address;
   $('wallet-preview-name').textContent = tag;
   const existing = state?.wallets.find(wallet => wallet.key === address.toLowerCase());
-  $('wallet-existing').hidden = !valid || !existing;
+  $('wallet-existing').hidden = !existing;
   $('wallet-existing-link').href = '#/wallet/'+address.toLowerCase();
   $('wallet-register').disabled = !!submission || !permitted || !valid || !!existing;
   const discovery=typeof setupReadiness!=='undefined'?setupReadiness:null,ready=discovery?.discovery_key_available===true;
