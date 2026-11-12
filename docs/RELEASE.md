@@ -1,9 +1,44 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.6.2**.
+Published npm release: **1.5.0**. Prepared candidate: **1.7.0**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.7.0
+
+The workspace now shares a compact information hierarchy across Home, wallet,
+token and network pages. Portfolio and sell estimates sit together. Wallet
+search works by exact address fragments, names and tags in navigation and Home.
+Mobile wallet navigation collapses after selection. Token filters have a clear
+reset that retains the chosen Portfolio / Needs review / Hidden membership.
+
+Token holders form connected rows with optional position evidence. Contract
+identity remains visible and copyable. Routine valuation controls and market
+details expand on demand; saved warnings and excluded assets open their risk
+panel by default. Expanded evidence survives published-data refreshes. Network
+views separate tokens from wallet allocation, with other wallets' incomplete
+coverage still available. No estimate arithmetic or uncertainty is changed.
+
+Settings separate data connection, RPC references and optional agent tools,
+preserving unsaved edits between keyboard-accessible tabs. Watching-wallet,
+browser-wallet, OWS, history and Alchemy setup surfaces use the same controls,
+spacing and responsive layout. Setup commands have a direct copy action.
+References from Coinbase, OpenSea and Notion were researched through Lazyweb.
+
+Wallet name edits previously waited behind long research jobs while the UI
+reported them saved on admission. The shared application service now completes
+these local edits immediately, under the existing job and registry locks,
+without acquiring the research writer. Older queued edits complete in order;
+idempotent receipts prevent a retry from restoring an obsolete name. UI success
+requires completion. Published data invalidates normally, updating titles,
+navigation and breadcrumbs while historical snapshots remain unchanged.
+
+Verification includes the complete Python/JavaScript suite, name edits with a
+held research lock, old queued edits and receipt recovery, protected HTTP writes,
+and desktop/mobile browser flows with an isolated 110-wallet portfolio. OWS key
+lifecycle testing is not selected. Review not selected. Registry publication
+remains an operator action. Earlier frozen archives remain preserved.
 
 ## Candidate 1.6.2
 

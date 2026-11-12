@@ -103,7 +103,7 @@ async function submitOperation(operation,input,{refresh=true}={}){
     if(operation.startsWith('token.')){if(refresh)await pollWorkspace();return result;}
     const scanMessage=operation==='job.deepen'?(['succeeded','partial'].includes(result.state)?'Holdings unchanged. Saved sell estimates retained.':'Sell estimate update queued. Your holdings stay available.'):operation==='job.resume'?'Scan queued to resume from saved work.':operation==='job.cancel'?'Pause requested. Saved results stay available.':null;
     if(result.batch_id){toast(result.jobs.length+' wallet jobs · '+result.skipped.length+' skipped · '+result.errors.length+' need attention');}
-    else toast(scanMessage||(operation.startsWith('settings.')?'Queued ':'Saved ')+(jobLabels[operation]||'job').toLowerCase());await pollJobs();await pollWorkspace();return result;
+    else toast(scanMessage||(operation==='wallet.setTags'?(result.state==='succeeded'?'Wallet names saved':'Wallet name change queued'):(operation.startsWith('settings.')?'Queued ':'Saved ')+(jobLabels[operation]||'job').toLowerCase()));await pollJobs();await pollWorkspace();return result;
   }finally{pendingActions.delete(fingerprint);}
 }
 function refreshControlState(){
@@ -240,7 +240,7 @@ $('wallet-form').addEventListener('submit',async event=>{
 $('refresh-wallet').addEventListener('click',async()=>{if(setupReadiness?.discovery_key_available!==true){await openDataConnections(false,true,selectedWallet);return;}try{await submitOperation('wallet.refresh',{wallet:selectedWallet});}catch(error){toast(error.message);}});
 $('refresh-prices').addEventListener('click',async()=>{if(setupReadiness?.discovery_key_available!==true){await openDataConnections(false,true,selectedWallet);return;}try{await submitOperation('prices.refresh',{wallet:selectedWallet});}catch(error){toast(error.message);}});
 $('edit-tags').addEventListener('click',()=>{if(!currentWallet())return;$('tags-dialog').dataset.wallet=selectedWallet;$('tag-values').value=currentWallet().tags.join('\n');$('tags-error').textContent='';$('tags-dialog').showModal();});
-formAction($('tags-form'),$('tags-error'),async()=>{await submitOperation('wallet.setTags',{wallet:$('tags-dialog').dataset.wallet,tags:$('tag-values').value.split('\n').filter(t=>t.length)});$('tags-dialog').close();});
+formAction($('tags-form'),$('tags-error'),async()=>{const result=await submitOperation('wallet.setTags',{wallet:$('tags-dialog').dataset.wallet,tags:$('tag-values').value.split('\n').filter(t=>t.length)});if(result.state!=='succeeded')throw Error(result.errors?.at(-1)?.message||'Name change is queued. Check Activity before saving another change.');$('tags-dialog').close();});
 async function handleScanAction(event) {
   const button=event.target.closest('[data-job-action]');if(!button||button.disabled||!jobsConnected)return;
   const id=button.dataset.jobId,action=button.dataset.jobAction;
@@ -307,9 +307,10 @@ async function saveRpcSettings(){
   catch(error){$('rpc-status').textContent='Could not confirm the settings result. Retry checks the same request.';throw error;}
   finally{rpcSaving=false;$('rpc-fields').disabled=!rpcLoaded;}
 }
-async function openWorkspaceSettings(){
+async function openWorkspaceSettings(section='data'){
   if(!localSession?.controls||rpcSaving)return;
   const revision=++workspaceSettingsRevision;
+  if(typeof setSettingsSection==='function')setSettingsSection(section);
   if(!$('workspace-settings-dialog').open)$('workspace-settings-dialog').showModal();
   rpcLoaded=false;$('rpc-fields').disabled=true;$('rpc-error').textContent='';$('rpc-status').textContent='';$('rpc-activity').hidden=true;
   $('workspace-data-summary').textContent='Checking the saved connection…';
@@ -431,7 +432,7 @@ function renderHistory(){
 }
 $('history-intermediate').addEventListener('change',renderHistory);
 $('view-history').addEventListener('click',async()=>{try{historyRows=await localAPI('/api/snapshots?wallet='+encodeURIComponent(selectedWallet));$('history-intermediate').checked=false;renderHistory();$('history-dialog').showModal();}catch(error){toast(error.message);}});
-formAction($('compare-form'),$('history-error'),async()=>{const comparison=await localAPI('/api/compare?before='+encodeURIComponent($('compare-before').value)+'&after='+encodeURIComponent($('compare-after').value));$('comparison-result').innerHTML=`<p>${escapeHTML(comparison.note)}</p><p>Coverage observations ${comparison.coverage_changed?'changed':'unchanged'} · native price references ${comparison.price_references_changed?'changed':'unchanged'}</p><div class="table-wrap"><table><thead><tr><th>Token / chain</th><th>Earlier balance</th><th>Later balance</th><th>Change</th></tr></thead><tbody>${comparison.positions.map(p=>`<tr><td>${escapeHTML(p.symbol||shortAddress(p.address))} · ${p.chain_id}<small>${escapeHTML(p.presence.replaceAll('_',' '))}${p.price_references_changed?' · price references changed':''}${p.valuation_method_changed?' · method changed':''}</small></td><td>${escapeHTML(p.before_balance??'Unknown')}</td><td>${escapeHTML(p.after_balance??'Unknown')}</td><td>${escapeHTML(p.balance_delta??'Unknown')}</td></tr>`).join('')}</tbody></table></div>`;});
+formAction($('compare-form'),$('history-error'),async()=>{const comparison=await localAPI('/api/compare?before='+encodeURIComponent($('compare-before').value)+'&after='+encodeURIComponent($('compare-after').value));$('comparison-result').innerHTML=`<p>Recorded balance observations. Missing records are unknown, not zero.</p><details class="comparison-note"><summary>How to read this comparison</summary><p>${escapeHTML(comparison.note)}</p></details><p>Coverage observations ${comparison.coverage_changed?'changed':'unchanged'} · native price references ${comparison.price_references_changed?'changed':'unchanged'}</p><div class="table-wrap"><table><thead><tr><th>Token / chain</th><th>Earlier balance</th><th>Later balance</th><th>Change</th></tr></thead><tbody>${comparison.positions.map(p=>`<tr><td>${escapeHTML(p.symbol||shortAddress(p.address))} · ${p.chain_id}<small>${escapeHTML(p.presence.replaceAll('_',' '))}${p.price_references_changed?' · price references changed':''}${p.valuation_method_changed?' · method changed':''}</small></td><td>${escapeHTML(p.before_balance??'Unknown')}</td><td>${escapeHTML(p.after_balance??'Unknown')}</td><td>${escapeHTML(p.balance_delta??'Unknown')}</td></tr>`).join('')}</tbody></table></div>`;});
 window.addEventListener('hashchange',()=>{activityEpoch++;walletJobsEpoch++;activityData=null;walletJobs=[];mergeJobs();refreshControlState();renderJobs();});
 document.addEventListener('visibilitychange',()=>{clearTimeout(workspaceTimer);if(!document.hidden)pollWorkspace();});
 pollWorkspace();

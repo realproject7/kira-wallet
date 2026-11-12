@@ -119,7 +119,7 @@ assert.match(absent,/account-position/);assert.match(absent,/No holding recorded
 assert.doesNotMatch(absent,/account-facts|account-quote/);
 const recorded=context.accountCard({...account,asset:{balance:'1',value_usd:100,price:{usd:100,basis:'Curve spot',observed_at:'2026-10-01T00:00:00Z'},
   sell_out:{valuation:'reserve_reference',value_usd:75,output_amount:'0.123',output_symbol:'ETH',observed_at:'2026-10-02T00:00:00Z',block_number:123,royalty_included:true}}},{symbol:'SAMPLE',value_usd:100,environment:'mainnet'});
-assert.doesNotMatch(recorded,/100.0%|Share of priced holdings|Recorded full-balance/);assert.match(recorded,/Curve spot/);assert.match(recorded,/Receive 0.123 ETH/);assert.match(recorded,/<details class="position-details">/);assert.match(recorded,/≈ \$75/);
+assert.doesNotMatch(recorded,/100.0%|Share of priced holdings|Recorded full-balance/);assert.match(recorded,/Curve spot/);assert.match(recorded,/Receive 0.123 ETH/);assert.match(recorded,/<details class="position-details"[^>]*>/);assert.match(recorded,/≈ \$75/);
 assert.match(recorded,/123 · After royalty/);assert.match(recorded,/Gas excluded/);assert.match(recorded,/Price checked<\/dt><dd>2026-10-01/);assert.match(recorded,/Selling that token to USD is not quoted/);
 const testnet=context.accountCard({...account,asset:{balance:'1',value_usd:null,price:{usd:999}}},{symbol:'SAMPLE',value_usd:null,environment:'testnet'});
 assert.match(testnet,/Testnet/);assert.doesNotMatch(testnet,/999/);

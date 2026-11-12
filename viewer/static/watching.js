@@ -122,6 +122,7 @@ function renderWatching() {
   $('wallet-preview-address').textContent = address;
   $('wallet-preview-name').textContent = tag;
   const existing = state?.wallets.find(wallet => wallet.key === address.toLowerCase());
+  $('wallet-preview-title').textContent = existing ? 'Already saved' : 'Ready to watch';
   $('wallet-existing').hidden = !existing;
   $('wallet-existing-link').href = '#/wallet/'+address.toLowerCase();
   $('wallet-register').disabled = !!submission || !permitted || !valid || !!existing;

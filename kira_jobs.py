@@ -768,6 +768,28 @@ class JobStore:
             wallet['tags'] = tags; atomic(self.root / 'wallets.json', registry)
         return {'wallet': wallet['address_key'], 'tags': tags, 'status': 'completed'}
 
+    def finish_tag_edits(self):
+        """Commit admitted name edits without waiting for the research writer.
+
+        The envelope lock excludes worker claims. The registry lock in set_tags
+        preserves concurrent registration/publication. Older queued edits run in
+        order so a later worker cannot restore an obsolete name.
+        """
+        with self.locked():
+            edits=[self.get(j['job_id']) for j in self.summaries() if j['operation']=='wallet.setTags' and j['state'] in ('queued','running')]
+            # An older worker may already be between claim and registry commit.
+            if any(j['state']=='running' for j in edits):return []
+            completed=[]
+            for job in sorted(edits,key=lambda j:(j['created_at'],j['job_id'])):
+                result=self.publication(job)
+                if result is None:
+                    job.update(started_at=now(),attempt=job['attempt']+1)
+                    result=self.set_tags(job)
+                    atomic(self.jobs/'results'/(job['job_id']+'.json'),result)
+                job.update(result=result,state='succeeded',stage='published')
+                self.save(job);completed.append(job['job_id'])
+            return completed
+
     def continue_research(self):
         """Compatibility hook. Deep work now requires explicit job.deepen.
 

@@ -40,6 +40,53 @@ class JobFixtures:
         atomic(self.root/job['checkpoint']/'run.json',{'wallet_address':ADDRESS,**({'completed_at':'now'} if completed_manifest else {'status':'running'})})
         registry=json.loads((self.root/'wallets.json').read_text());registry['wallets'][0]['latest_snapshot']={'directory':job['checkpoint']};atomic(self.root/'wallets.json',registry)
 class JobsTest(JobFixtures, unittest.TestCase):
+    def test_names_save_immediately_during_research_and_keep_saved_evidence(self):
+        from kira_service import Application
+        import fcntl
+        from viewer.test_viewer import fixture_snapshot
+        snapshot=fixture_snapshot();snapshot['wallet_address']=ADDRESS
+        atomic(self.root/'snapshots/prior/results.json',snapshot)
+        app=Application(self.root)
+        active=self.running()
+        previous=(self.root/'snapshots/prior/results.json').read_bytes()
+        with (self.root/'.analysis.lock').open('a') as writer:
+            fcntl.flock(writer,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            with patch.object(app.jobs,'launch') as launch,patch.object(app.jobs,'execute',side_effect=AssertionError('No research')):
+                result=app.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Savings','Main']},'immediate-name'))
+                self.assertEqual(result['state'],'succeeded');launch.assert_not_called()
+        self.assertEqual(app.jobs.wallet(ADDRESS)['tags'],['Savings','Main'])
+        self.assertEqual(app.jobs.get(active['job_id'])['state'],'running')
+        self.assertEqual((self.root/'snapshots/prior/results.json').read_bytes(),previous)
+        self.assertEqual(app.views.wallet(ADDRESS)['name'],'Savings')
+        repeated=app.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Savings','Main']},'immediate-name'))
+        self.assertEqual(repeated['job_id'],result['job_id'])
+        self.assertEqual(repeated['attempt'],1)
+
+    def test_pending_names_finish_in_order_without_overwriting_a_newer_edit(self):
+        from kira_service import Application
+        earlier=self.store.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Earlier']},'earlier-name'))
+        later=self.store.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Later']},'later-name'))
+        app=Application(self.root)
+        result=app.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Final']},'final-name'))
+        self.assertEqual(result['state'],'succeeded')
+        for job in (earlier,later):self.assertEqual(self.store.get(job['job_id'])['state'],'succeeded')
+        self.assertEqual(self.store.wallet(ADDRESS)['tags'],['Final'])
+        app.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Earlier']},'earlier-name'))
+        self.assertEqual(self.store.wallet(ADDRESS)['tags'],['Final'])
+        app.jobs.worker()
+        self.assertEqual(self.store.wallet(ADDRESS)['tags'],['Final'])
+
+    def test_names_recover_a_committed_receipt_without_reapplying_an_old_name(self):
+        from kira_service import Application
+        old=self.store.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Earlier']},'crashed-name'))
+        receipt=self.store.set_tags(old)
+        atomic(self.store.jobs/'results'/(old['job_id']+'.json'),receipt)
+        self.store.set_tags({**old,'input':{'wallet':ADDRESS,'tags':['Newer external edit']}})
+        app=Application(self.root)
+        self.assertEqual(app.jobs.finish_tag_edits(),[old['job_id']])
+        self.assertEqual(self.store.wallet(ADDRESS)['tags'],['Newer external edit'])
+        self.assertEqual(self.store.get(old['job_id'])['state'],'succeeded')
+
     def test_history_counts_and_search_cover_all_pages_without_provider_work(self):
         template=self.store.submit(self.request())
         for index in range(65):

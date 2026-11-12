@@ -67,6 +67,8 @@ WRITE_TOOLS=[tool(name,'Submit '+operation+' as a durable local job. Returns a r
     for name,(operation,props) in MUTATIONS.items()]
 
 for descriptor in WRITE_TOOLS:
+    if descriptor['name']=='wallet_tags':
+        descriptor['description']='Save exact wallet names immediately without waiting for research. Returns a durable job receipt; inspect its state for completion. Prior snapshots retain their original names.'
     if descriptor['name'] in TOKEN_ACTIONS:
         descriptor['description']='Apply a durable local token valuation preference immediately across every registered wallet.' if descriptor['name']=='token_policy' else 'Explicitly query GoPlus for a recorded token contract and save dated risk observations. Sends only chain and contract identity. No transaction, simulation or safety guarantee. Runs immediately; saved reads never call providers.'
     if descriptor['name'].startswith('portfolio_'):
@@ -146,6 +148,9 @@ class Application:
             if launch and any(j['state']=='queued' for j in result['jobs']):self.jobs.launch()
             return result
         result=self.jobs.submit(request)
+        if operation=='wallet.setTags':
+            self.jobs.finish_tag_edits()
+            result=self.jobs.get(result['job_id'])
         if launch and result['state']=='queued':self.jobs.launch()
         return result
 

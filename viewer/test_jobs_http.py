@@ -54,6 +54,8 @@ class JobsHTTPTest(unittest.TestCase):
 
     def test_valid_submission_duplicate_and_private_state(self):
         code,first=self.request();self.assertEqual(code,202);_,duplicate=self.request();self.assertEqual(first['job_id'],duplicate['job_id'])
+        self.assertEqual(first['state'],'succeeded')
+        self.assertEqual(self.http.jobs.wallet(ADDRESS)['tags'],['New name'])
         self.assertEqual(self.request('/api/jobs',method='GET')[0],200)
         self.assertEqual(self.request('/api/jobs',headers={'X-Kira-Session':''},method='GET')[0],403)
 

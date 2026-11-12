@@ -91,18 +91,19 @@ class ApplicationTest(unittest.TestCase):
         self.assertEqual(self.app.call('holdings_query',{'mode':'search','query':'TOKEN4999'})['matched_position_count'],1)
     def test_mutation_parity_preserves_history_and_can_be_waited_for(self):
         before=(self.root/'snapshots/demo/initial/results.json').read_bytes()
-        with patch.object(self.app.jobs,'launch'):
+        self.assertEqual(self.app.call('wallet_read',{'wallet':'Demo wallet'})['name'],'Demo wallet')
+        with patch.object(self.app.jobs,'launch') as launch:
             job=self.app.call('wallet_tags',{'wallet':'Demo wallet','tags':['New','Old'],'idempotency_key':'new-tags-once'},allow_write=True)
-        self.assertFalse(self.app.wait(job['job_id'],0)['completed'])
-        self.app.jobs.worker();self.assertTrue(self.app.wait(job['job_id'],0)['completed'])
+            launch.assert_not_called()
+        self.assertTrue(self.app.wait(job['job_id'],0)['completed'])
         self.assertEqual((self.root/'snapshots/demo/initial/results.json').read_bytes(),before)
         self.assertEqual(self.app.call('wallet_read',{'wallet':'New'})['tags'],['New','Old'])
         self.assertTrue(json.loads((self.root/'wallets.json').read_text())['tag_history'])
         with self.assertRaises(JobError):self.app.wait(job['job_id'],121)
     def test_jobs_status_does_not_rebuild_data_or_reread_unchanged_history(self):
         self.app.views.summary()
-        with patch.object(self.app.jobs,'launch'):
-            job=self.app.call('wallet_tags',{'wallet':'Demo wallet','tags':['New'],'idempotency_key':'jobs-only-tags'},allow_write=True)
+        # Legacy queued edits still exercise stat-cached job headers.
+        job=self.app.jobs.submit({'schema_version':1,'operation':'wallet.setTags','input':{'wallet':'Demo wallet','tags':['New']},'idempotency_key':'jobs-only-tags'})
         first=self.app.status();self.assertEqual(first['active_job_count'],1)
         with patch.object(self.app.jobs,'get',side_effect=AssertionError('Idle history reread')):
             self.assertEqual(self.app.status(),first)

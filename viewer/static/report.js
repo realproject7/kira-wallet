@@ -21,7 +21,7 @@ function renderSetupPath() {
     '<li><span class="setup-check">'+(wallet?'✓':'2')+'</span><div><strong>Add your wallet</strong><p>Use a public EVM address. No signature or seed phrase.</p></div><button class="quiet-button" id="setup-wallet" type="button" '+(!connected?'disabled':'')+'>'+ (wallet?'Add another':'Add wallet')+'</button></li></ol><p class="form-note">Your agent can use the same saved research through the Kira CLI.</p><button id="setup-extra-tools" class="quiet-button" type="button">Optional: add h402 tools</button>';
   $('setup-wallet').addEventListener('click',openAdd);
   $('setup-discovery').addEventListener('click',()=>openDataConnections());
-  $('setup-extra-tools').addEventListener('click',openWorkspaceSettings);
+  $('setup-extra-tools').addEventListener('click',()=>openWorkspaceSettings('tools'));
 }
 async function loadSetupReadiness(){
   if(setupLoading||!localSession?.controls)return false;setupLoading=true;

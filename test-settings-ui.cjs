@@ -7,7 +7,7 @@ const old={rpc:{mode:'public',priority:'public_first',allow_public_fallback:true
 const fresh={rpc:{mode:'custom',priority:'public_first',allow_public_fallback:true,chains:{8453:{url_env:'EXISTING_KEY',alchemy_network:'base-mainnet'}}},discovery:{provider:'alchemy',key_env:'EXISTING_KEY'}};
 const ctx=vm.createContext({$:el,jobList:[],connectionWallet:null,selectedView:'home',localSession:{controls:true},settingSaving:false,pendingSetting:null,connectionRevision:1,connectionConfig:old,connectionReadiness:null,settingSaved:false,settingFailed:false,Promise,localAPI:async path=>path==='/api/settings'?fresh:{local_key_available:true}});
 vm.runInContext(source.slice(source.indexOf('function connectionSummary(config)'),source.indexOf('function renderConnectionForm()')),ctx);
-vm.runInContext(source.slice(source.indexOf('function renderConnectionForm()'),source.indexOf('async function openWorkspaceSettings()')),ctx);
+vm.runInContext(source.slice(source.indexOf('function renderConnectionForm()'),source.indexOf('async function openWorkspaceSettings(')),ctx);
 vm.runInContext(source.slice(source.indexOf('async function openDataConnections('),source.indexOf('async function saveConnectionSetting(')),ctx);
 vm.runInContext(source.slice(source.indexOf('async function saveConnectionSetting('),source.indexOf("$('open-settings').addEventListener")),ctx);
 vm.runInContext(source.slice(source.indexOf("$('provider-recheck').addEventListener"),source.indexOf("$('settings-refresh').addEventListener")),ctx);
