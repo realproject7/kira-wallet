@@ -40,6 +40,42 @@ class JobFixtures:
         atomic(self.root/job['checkpoint']/'run.json',{'wallet_address':ADDRESS,**({'completed_at':'now'} if completed_manifest else {'status':'running'})})
         registry=json.loads((self.root/'wallets.json').read_text());registry['wallets'][0]['latest_snapshot']={'directory':job['checkpoint']};atomic(self.root/'wallets.json',registry)
 class JobsTest(JobFixtures, unittest.TestCase):
+    def test_worker_launches_bound_waiters_and_recover_a_lost_successor(self):
+        import fcntl,time
+        children=[];spawn=subprocess.Popen
+        def capture(*args,**kwargs):
+            child=spawn(*args,**kwargs);children.append(child);return child
+        def held(path):
+            with path.open('a') as file:
+                try:fcntl.flock(file,fcntl.LOCK_EX|fcntl.LOCK_NB);return False
+                except BlockingIOError:return True
+        def until(check):
+            deadline=time.monotonic()+5
+            while not check():
+                if time.monotonic()>deadline:self.fail('Worker lock handoff timed out')
+                time.sleep(.01)
+        try:
+            with (self.root/'.analysis.lock').open('a') as writer,patch('kira_jobs.subprocess.Popen',side_effect=capture):
+                fcntl.flock(writer,fcntl.LOCK_EX)
+                self.assertTrue(self.store.launch())
+                until(lambda:held(self.root/'.job-worker.lock') and not held(self.root/'.job-launch.lock'))
+                self.assertTrue(self.store.launch())
+                with ThreadPoolExecutor(max_workers=8) as pool:self.assertFalse(any(pool.map(lambda _:self.store.launch(),range(24))))
+                self.assertEqual(len(children),2)
+                children[1].terminate();children[1].wait(timeout=5)
+                self.assertTrue(self.store.launch());self.assertEqual(len(children),3)
+                # A request admitted while the current worker is blocked is
+                # retained even though subsequent launches are coalesced.
+                job=self.store.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Saved after handoff']},'worker-handoff'))
+                self.assertFalse(self.store.launch())
+            for child in children:child.wait(timeout=10)
+            self.assertEqual(self.store.get(job['job_id'])['state'],'succeeded')
+            self.assertEqual(self.store.wallet(ADDRESS)['tags'],['Saved after handoff'])
+            self.assertFalse(held(self.root/'.job-launch.lock'))
+        finally:
+            for child in children:
+                if child.poll() is None:child.terminate();child.wait(timeout=5)
+
     def test_names_save_immediately_during_research_and_keep_saved_evidence(self):
         from kira_service import Application
         import fcntl

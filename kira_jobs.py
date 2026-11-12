@@ -926,9 +926,12 @@ class JobStore:
         else:
             job.update(state='queued',stage='waiting' if saved['not_before']>time.time() else 'queued',errors=[])
 
-    def worker(self):
+    def worker(self, startup_fd=None):
         with (self.root / '.job-worker.lock').open('a') as lease:
             fcntl.flock(lease, fcntl.LOCK_EX)
+            # The launcher transfers one reservation to its child. Keep it
+            # while waiting for the current worker, then allow one successor.
+            if startup_fd is not None:os.close(startup_fd)
             # Do not reconcile or claim work while a legacy engine/config writer is live.
             with (self.root / '.analysis.lock').open('a') as writer:
                 fcntl.flock(writer, fcntl.LOCK_EX)
@@ -983,12 +986,24 @@ class JobStore:
                 finally: writer.close()
 
     def launch(self):
-        # Logs never contain raw engine output or credentials.
-        with (self.root / 'jobs-worker.log').open('ab') as log:
-            subprocess.Popen([sys.executable, str(ASSETS / 'kira_jobs.py'), '--worker', str(self.root)],
-                stdout=log, stderr=log, start_new_session=True, env=os.environ.copy())
+        # One active worker and at most one waiting successor. The successor
+        # also avoids a lost wakeup when a request arrives during worker exit.
+        with (self.root / '.job-launch.lock').open('a') as reservation:
+            try:fcntl.flock(reservation,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:return False
+            # Logs never contain raw engine output or credentials.
+            with (self.root / 'jobs-worker.log').open('ab') as log:
+                subprocess.Popen([sys.executable, str(ASSETS / 'kira_jobs.py'), '--worker', str(self.root),
+                                  '--startup-fd',str(reservation.fileno())],pass_fds=(reservation.fileno(),),
+                    stdout=log, stderr=log, start_new_session=True, env=os.environ.copy())
+            return True
 
 if __name__ == '__main__':
-    if len(sys.argv) == 3 and sys.argv[1] == '--worker':
+    if len(sys.argv) in (3,5) and sys.argv[1] == '--worker':
+        startup_fd=None
+        if len(sys.argv)==5:
+            if sys.argv[3]!='--startup-fd' or not sys.argv[4].isdigit():raise SystemExit('Invalid worker reservation.')
+            startup_fd=int(sys.argv[4]);saved=os.fstat(startup_fd);expected=(Path(sys.argv[2])/'.job-launch.lock').stat()
+            if startup_fd<3 or (saved.st_dev,saved.st_ino)!=(expected.st_dev,expected.st_ino):raise SystemExit('Invalid worker reservation.')
         signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
-        JobStore(sys.argv[2]).worker()
+        JobStore(sys.argv[2]).worker(startup_fd)

@@ -1,9 +1,22 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.7.0**.
+Published npm release: **1.5.0**. Prepared candidate: **1.7.1**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.7.1
+
+Worker launch admission is bounded to one active worker and one waiting
+successor. A reservation lock transfers to the child until it acquires the
+worker lease. Repeated or concurrent submissions reuse that waiting successor;
+they no longer create one sleeping process per request. A successor still
+handles the boundary where new work arrives as the current worker exits.
+Process exit releases reservations automatically. Existing research and older
+workers remain untouched during local adoption. Synthetic process acceptance
+covers concurrent submissions, lock handoff and a terminated waiting successor.
+The frozen 1.7.0 archive remains preserved; 1.7.1 is the current candidate.
+Review not selected. Registry publication remains an operator action.
 
 ## Candidate 1.7.0
 
