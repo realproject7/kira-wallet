@@ -136,26 +136,7 @@ function renderJobs(){
   notifyResearchCompletions();
   const active=jobList.filter(KiraView.active).sort((a,b)=>(a.state!=='running')-(b.state!=='running'));
   $('activity-count').textContent=(workspaceStatus?.active_job_count??active.length)||'';
-  $('jobs-summary').textContent=active.length?active.length+' in progress':jobList.length+(jobList.length===1?' saved job':' saved jobs');
-  $('jobs-freshness').textContent=!localSession?.controls?'Activity needs a local control session.':!jobsConnected?'Reconnecting. Last recorded states shown.':lastJobsPoll?'Checked '+stamp(lastJobsPoll):'Loading saved jobs…';
-  const filter=$('job-filter').value;
-  const filtered=jobList.filter(j=>filter==='all'||(filter==='active'?KiraView.active(j):filter==='attention'?['partial','interrupted','failed'].includes(j.state):j.state===filter));
-  const history=selectedView==='activity'&&activityData;
-  const total=history?history.total:filtered.length;
-  const pages=Math.max(1,Math.ceil(total/20));jobsPage=Math.min(jobsPage,pages);
-  $('jobs-page').textContent=jobsPage+' / '+pages;$('jobs-prev').disabled=jobsPage===1;$('jobs-next').disabled=jobsPage===pages;
-  const rows=history?history.jobs:filtered.slice((jobsPage-1)*20,jobsPage*20);
-  $('jobs-list').innerHTML=rows.map(j=>{
-    const presentation=KiraView.jobPresentation(j,Date.now(),jobsConnected),progress=KiraView.jobProgress(j,Date.now(),jobsConnected);
-    const counts=j.events?.at(-1)?.counts||{},context=j.events?.at(-1)?.context;
-    const evidence=progress.count?(Number.isSafeInteger(counts.pending_ranges)?counts.pending_ranges+' block ranges still pending':''):[...Object.entries(counts).filter(([name])=>name!=='block_number').map(([name,count])=>`${name.replaceAll('_',' ')} ${count}`),...(context?.block_number?['block '+context.block_number]:[])].join(' · ');
-    const controls=jobControls(j);
-    const link=j.input.wallet||j.input.address;
-    const name=state?.wallets.find(w=>w.key===link?.toLowerCase())?.name||(j.operation==='wallet.add'?j.input.tag:null);
-    const recorded=(j.events||[]).map(event=>{const context=event.context;const detail=Object.entries(event.counts||{}).filter(([name])=>name!=='block_number').map(([name,value])=>name.replaceAll('_',' ')+': '+value).join(' · ');return `<li><strong>${escapeHTML(researchStage(event))}</strong><span>${stamp(event.observed_at)} · ${escapeHTML(detail)}${context?.block_number?' · block '+escapeHTML(context.block_number):''}</span></li>`;}).join('');
-    const stages=recorded?`<details class="job-stages"><summary>Recorded stages · ${j.events.length}</summary><ol>${recorded}</ol></details>`:'';
-    return `<article class="job-row"><div class="job-identity"><span class="job-state ${escapeHTML(j.state)}">${presentation.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(presentation.label)}</span><strong>${escapeHTML(j.analysis_phase==='enrichment'?'Sell estimate analysis':jobLabels[j.operation]||j.operation)}</strong>${link?`<a href="#/wallet/${escapeHTML(link.toLowerCase())}">${escapeHTML(name||shortAddress(link))}</a>`:''}<p>${escapeHTML(jobStage(j))}${j.state==='partial'?' · coverage gaps remain':''}</p><p class="job-timer" data-job-timer="${escapeHTML(j.job_id)}">${KiraView.jobTimeText(j,Date.now(),jobsConnected)}</p>${progress.assets?`<p class="job-progress">${escapeHTML(assetProgressText(progress))}</p>`:''}${progress.count&&!progress.cumulative?`<p class="job-progress">${escapeHTML(progress.count)}</p>`:''}<p class="job-estimate" data-job-estimate="${escapeHTML(j.job_id)}">${escapeHTML(progress.eta)}</p>${progress.saved?`<p class="job-saved">${escapeHTML(progress.saved)}</p>`:''}${evidence?`<p class="job-evidence">${escapeHTML(evidence)}</p>`:''}${presentation.freshness?`<p class="job-freshness">${escapeHTML(presentation.freshness)}</p>`:''}${j.errors?.length?`<p class="job-error">${escapeHTML(KiraView.jobErrorMessage(j))}</p>`:''}${stages}${sellAnalysisNote(j)}<small>Last update ${stamp(j.updated_at)} · attempt ${j.attempt} · ${escapeHTML(j.job_id.slice(0,8))}</small></div><div class="job-actions">${controls}</div></article>`;
-  }).join('')||'<div class="empty"><h3>'+(!localSession?.controls?'Activity is not available in this session':'No jobs in this view')+'</h3><p>Research jobs appear here when a local action starts.</p></div>';
+  if(typeof renderActivity==='function')renderActivity();
   $('active-work').hidden=true;$('active-work').innerHTML='';
   renderActiveWork();
   if(typeof renderWallets==='function'&&state)renderWallets();
@@ -164,6 +145,7 @@ function renderJobs(){
 function tickJobTimers(){
   if(document.hidden)return;
   document.querySelectorAll('[data-job-timer]').forEach(node=>{const job=jobList.find(j=>j.job_id===node.dataset.jobTimer);if(!job)return;node.textContent=KiraView.jobTimeText(job,Date.now(),jobsConnected);});
+  document.querySelectorAll('[data-activity-duration]').forEach(node=>{const job=jobList.find(j=>j.job_id===node.dataset.activityDuration);if(job)node.textContent=KiraView.duration(KiraView.jobPresentation(job,Date.now(),jobsConnected).elapsed);});
   document.querySelectorAll('[data-job-estimate]').forEach(node=>{const job=jobList.find(j=>j.job_id===node.dataset.jobEstimate);if(job)node.textContent=KiraView.jobProgress(job,Date.now(),jobsConnected).eta;});
 }
 $('job-filter').addEventListener('change',()=>{jobsPage=1;loadActivity();});
@@ -174,7 +156,7 @@ function pendingWalletJob(wallet){return jobList.find(job=>KiraView.active(job)&
 function mergeJobs(){const rows=new Map();for(const job of [...recentJobs,...activeJobs,...walletJobs,...(activityData?.jobs||[])]){const prior=rows.get(job.job_id);if(!prior||(job.sequence??0)>=(prior.sequence??0))rows.set(job.job_id,job);}jobList=[...rows.values()].sort((a,b)=>b.created_at.localeCompare(a.created_at));}
 function renderActiveWork(){
   const all=jobList.filter(KiraView.active).sort((a,b)=>(b.state==='running')-(a.state==='running')||a.created_at.localeCompare(b.created_at)),active=all.slice(0,1),panel=$('active-work');
-  panel.hidden=!active.length;panel.innerHTML=active.map(job=>{
+  panel.hidden=!active.length||selectedView==='activity';panel.innerHTML=active.map(job=>{
     const name=state?.wallets.find(w=>w.key===String(job.input?.wallet||job.input?.address||'').toLowerCase())?.name||job.input?.tag||jobLabels[job.operation]||'Research';
     const p=KiraView.jobPresentation(job,Date.now(),jobsConnected);
     return '<div class="active-work-row"><a href="#/activity"><span>'+ (p.spinner?'<span class="spinner" aria-hidden="true"></span>':'')+'<strong>'+escapeHTML(name)+'</strong> · '+escapeHTML(jobStage(job))+'</span><small data-job-timer="'+escapeHTML(job.job_id)+'">'+escapeHTML(KiraView.jobTimeText(job))+'</small></a><div class="job-actions">'+jobControls(job)+'</div></div>';
@@ -183,12 +165,15 @@ function renderActiveWork(){
 async function loadActivity(){
   if(!localSession?.controls)return;
   const epoch=++activityEpoch,page=jobsPage,filter=$('job-filter').value;
-  $('jobs-prev').disabled=true;$('jobs-next').disabled=true;
+  $('jobs-prev').disabled=true;$('jobs-next').disabled=true;$('research-jobs').setAttribute('aria-busy','true');
   try{
-    const result=await localAPI('/api/job-history?offset='+((page-1)*20)+'&limit=20&state='+encodeURIComponent(filter));
+    const wallet=$('activity-wallet').value,query=$('activity-query').value.trim();
+    const result=await localAPI('/api/job-history?offset='+((page-1)*20)+'&limit=20&state='+encodeURIComponent(filter)+(wallet&&wallet!=='all'?'&wallet='+encodeURIComponent(wallet):'')+(query?'&query='+encodeURIComponent(query):''));
     if(epoch!==activityEpoch||selectedView!=='activity')return;
-    activityData=result;mergeJobs();renderJobs();
-  }catch(error){if(epoch===activityEpoch){$('jobs-freshness').textContent=error.message;toast(error.message);}}
+    if(result.total&&result.offset>=result.total){jobsPage=Math.max(1,Math.ceil(result.total/20));return loadActivity();}
+    $('activity-load-error').hidden=true;activityData=result;mergeJobs();renderJobs();
+  }catch(error){if(epoch===activityEpoch){$('activity-load-error').hidden=false;$('activity-load-error-message').textContent=error.message;$('jobs-freshness').textContent='Unable to load activity';}}
+  finally{if(epoch===activityEpoch)$('research-jobs').setAttribute('aria-busy','false');}
 }
 async function loadWalletJobs(wallet){
   if(!localSession?.controls)return;

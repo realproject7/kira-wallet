@@ -30,7 +30,7 @@ vm.createContext(context);vm.runInContext(fs.readFileSync('viewer/static/portfol
   context.localSession.controls=true;context.state.demo=true;context.renderPortfolioActions();assert.equal($('portfolio-actions').hidden,true);
   console.log('Portfolio controls prevent double submission, retain errors and honor read-only and sample modes.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
-const activity={$,jobList:[{job_id:'queued',state:'queued',created_at:'2026-11-01',input:{}},{job_id:'running',state:'running',created_at:'2026-11-02',input:{}},{job_id:'later',state:'queued',created_at:'2026-11-03',input:{}}],state:{wallets:[]},KiraView:{active:j=>['queued','running'].includes(j.state),jobPresentation:()=>({}),jobTimeText:()=>''},jobsConnected:true,escapeHTML:String,jobStage:j=>j.job_id,jobControls:()=>'',jobLabels:{},Date};
+const activity={$,selectedView:'home',jobList:[{job_id:'queued',state:'queued',created_at:'2026-11-01',input:{}},{job_id:'running',state:'running',created_at:'2026-11-02',input:{}},{job_id:'later',state:'queued',created_at:'2026-11-03',input:{}}],state:{wallets:[]},KiraView:{active:j=>['queued','running'].includes(j.state),jobPresentation:()=>({}),jobTimeText:()=>''},jobsConnected:true,escapeHTML:String,jobStage:j=>j.job_id,jobControls:()=>'',jobLabels:{},Date};
 vm.createContext(activity);
 const jobsSource=fs.readFileSync('viewer/static/jobs.js','utf8');
 vm.runInContext(jobsSource.slice(jobsSource.indexOf('function renderActiveWork(){'),jobsSource.indexOf('async function loadActivity(){')),activity);

@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light"><meta name="description" content="Manage your wallets with your own AI. Track tokens, research markets and refresh holdings in a local workspace.">
   <title>Kira Wallet</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/kira-logo.png" type="image/png" sizes="1254x1254"><link rel="apple-touch-icon" href="/kira-logo.png">
-  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script src="/workspace-model.js" defer></script><script src="/app.js" defer></script><script src="/jobs.js" defer></script><script src="/portfolio.js" defer></script><script src="/watching-model.js" defer></script><script src="/watching.js" defer></script><script src="/workspace.js" defer></script><script src="/token-visibility.js" defer></script><script src="/ows.js" defer></script><script src="/selects.js" defer></script><link rel="stylesheet" href="/report.css"><script src="/integrations.js" defer></script><script src="/report.js" defer></script><link rel="stylesheet" href="/token-visibility.css">
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script src="/workspace-model.js" defer></script><script src="/app.js" defer></script><script src="/activity.js" defer></script><script src="/jobs.js" defer></script><script src="/portfolio.js" defer></script><script src="/watching-model.js" defer></script><script src="/watching.js" defer></script><script src="/workspace.js" defer></script><script src="/token-visibility.js" defer></script><script src="/ows.js" defer></script><script src="/selects.js" defer></script><link rel="stylesheet" href="/report.css"><script src="/integrations.js" defer></script><script src="/report.js" defer></script><link rel="stylesheet" href="/token-visibility.css"><link rel="stylesheet" href="/activity.css">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -91,8 +91,23 @@
           <p class="detail-note">50 rows per page. Totals exclude testnets and unpriced amounts. An unknown value is not zero.</p></div>
         </div>
         <div id="activity-view" hidden>
-          <section class="view-heading"><div class="eyebrow">KIRA'S RESEARCH NOTEBOOK</div><h1>Work, recorded.</h1><p>Follow research progress and manage every job and its saved evidence.</p></section>
-          <section id="research-jobs" class="research-jobs" aria-label="Research activity"><div class="section-heading"><h2>Activity</h2><span id="jobs-summary" class="section-note"></span></div><div class="activity-toolbar"><label><span class="sr-only">Filter activity status</span><select id="job-filter"><option value="all">All statuses</option><option value="active">In progress</option><option value="succeeded">Completed</option><option value="attention">Needs attention</option><option value="cancelled">Stopped</option></select></label><span id="jobs-freshness" role="status"></span></div><div id="jobs-list"></div><div class="pagination"><button id="jobs-prev" class="quiet-button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="m10 6-6 6 6 6M4 12h16"/></svg><span>Previous</span></button><span id="jobs-page"></span><button id="jobs-next" class="quiet-button"><span>Next</span><svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="m14 6 6 6-6 6M4 12h16"/></svg></button></div></section>
+          <header class="activity-heading"><div><div class="eyebrow">RESEARCH HISTORY</div><h1 id="activity-title" tabindex="-1">Activity</h1><p>Wallet updates and research, with every result kept.</p></div><span id="jobs-freshness" class="activity-connection" role="status"></span></header>
+          <section id="activity-current" class="activity-current" aria-label="Current research" hidden></section>
+          <section id="research-jobs" class="research-jobs activity-history" aria-label="Research history">
+            <div class="activity-history-heading"><h2>History</h2><span id="jobs-summary" class="section-note"></span></div>
+            <div id="activity-tabs" class="activity-tabs" role="group" aria-label="Filter activity status">
+              <button type="button" data-activity-filter="all" aria-pressed="true">All activity <span data-activity-count="all"></span></button>
+              <button type="button" data-activity-filter="active" aria-pressed="false">In progress <span data-activity-count="active"></span></button>
+              <button type="button" data-activity-filter="attention" aria-pressed="false">Needs attention <span data-activity-count="attention"></span></button>
+              <button type="button" data-activity-filter="succeeded" aria-pressed="false">Saved <span data-activity-count="succeeded"></span></button>
+              <button type="button" data-activity-filter="cancelled" aria-pressed="false">Paused <span data-activity-count="cancelled"></span></button>
+            </div>
+            <select id="job-filter" hidden aria-label="Activity status"><option value="all">All activity</option><option value="active">In progress</option><option value="attention">Needs attention</option><option value="succeeded">Saved</option><option value="cancelled">Paused</option></select>
+            <div class="activity-toolbar"><label class="activity-search"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><span class="sr-only">Search activity</span><input id="activity-query" type="search" maxlength="200" placeholder="Search wallets or tasks" autocomplete="off"></label><label class="activity-wallet-filter"><span class="sr-only">Filter by wallet</span><select id="activity-wallet"><option value="all">All wallets</option></select></label><button id="activity-clear" class="text-button" type="button" hidden>Clear filters</button></div>
+            <div class="activity-columns" aria-hidden="true"><span>Wallet &amp; task</span><span>Result</span><span>Started</span><span>Duration</span><span></span></div>
+            <div id="activity-load-error" class="activity-load-error" role="alert" hidden><span id="activity-load-error-message"></span><button id="activity-retry" class="quiet-button" type="button">Try again</button></div><div id="jobs-list" class="activity-list"></div>
+            <div class="activity-pagination"><span id="activity-range" class="section-note"></span><div class="pagination"><button id="jobs-prev" class="quiet-button" type="button" aria-label="Previous activity page"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button><span id="jobs-page"></span><button id="jobs-next" class="quiet-button" type="button" aria-label="Next activity page"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg></button></div></div>
+          </section>
         </div>
         </div>
         </div>
@@ -184,5 +199,9 @@
     <button id="settings-done" class="quiet-button" type="button">Close</button>
   </dialog>
   <dialog id="history-dialog" class="research-dialog history-dialog" aria-labelledby="history-title"><div class="dialog-heading"><h2 id="history-title">Saved analyses</h2><button type="button" data-close-dialog aria-label="Close dialog"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div><label id="history-options" class="history-options" hidden><input id="history-intermediate" type="checkbox"> Show intermediate checkpoints</label><div id="history-list"></div><form id="compare-form" hidden><label>Earlier analysis<select id="compare-before"></select></label><label>Later analysis<select id="compare-after"></select></label><button class="quiet-button" type="submit">Compare evidence</button></form><div id="comparison-result" class="comparison-result"></div><p id="history-error" class="form-error" role="alert"></p></dialog>
+<dialog id="activity-detail" class="activity-detail" aria-labelledby="activity-detail-title">
+  <header class="activity-detail-heading"><div><span class="eyebrow">TASK DETAILS</span><h2 id="activity-detail-title">Research task</h2></div><button id="activity-detail-close" type="button" class="icon-button" aria-label="Close task details" autofocus><svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
+  <div id="activity-detail-body" class="activity-detail-body"></div>
+</dialog>
 </body>
 </html>

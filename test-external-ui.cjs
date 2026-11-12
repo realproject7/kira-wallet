@@ -101,7 +101,7 @@ test('read-only status checks never request privileged job history or local cont
 });
 test('Activity pages apply filters on the server and ignore late older pages',async()=>{
   const h=jobHarness(),pending=[];h.context.selectedView='activity';h.run("localAPI=path=>new Promise(resolve=>globalThis.pending.push({path,resolve}))");h.context.pending=pending;
-  h.element('job-filter').value='attention';h.run('jobsPage=2');const first=h.run('loadActivity()');h.run('jobsPage=3');const second=h.run('loadActivity()');
+  h.element('activity-query').value='';h.element('job-filter').value='attention';h.run('jobsPage=2');const first=h.run('loadActivity()');h.run('jobsPage=3');const second=h.run('loadActivity()');
   assert.equal(pending[0].path,'/api/job-history?offset=20&limit=20&state=attention');assert.equal(pending[1].path,'/api/job-history?offset=40&limit=20&state=attention');
   pending[1].resolve({jobs:[],total:41,offset:40});await second;pending[0].resolve({jobs:[],total:41,offset:20});await first;
   assert.equal(h.run('activityData.offset'),40);

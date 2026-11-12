@@ -357,3 +357,11 @@ hides/restores directly. **Manage tokens** selects visible-page identities for
 bulk hiding/restoration; page or filter changes clear selection. Hidden assets
 still use `portfolio_status=excluded` in CLI/MCP. Existing financial semantics
 and raw evidence are unchanged. Undo restores each confirmed item's prior mode.
+
+Activity supports full-history wallet/task search and wallet/status filters.
+The job-history response includes scoped `counts` and `last_updated_at` before
+status filtering, independent of the requested page. `job_list` also accepts
+`query` (up to 200 characters). Partial completed work counts as saved; only
+failed/interrupted work counts as needing attention. The browser keeps stage
+logs and technical identifiers in task details, with the existing recovery
+operations and no automatic provider calls.

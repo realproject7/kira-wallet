@@ -50,6 +50,7 @@ function renderWorkspace() {
   } else if (selectedView === 'activity') {
     renderBreadcrumb([{ label: 'Home', href: '#/home' }, { label: 'Activity' }]);
     document.title = 'Activity · Kira Wallet'; $('sync-label').textContent = 'Local research history';
+    if(typeof renderActivity==='function')renderActivity();
   }
 }
 function resetRouteFilters() {
@@ -57,6 +58,7 @@ function resetRouteFilters() {
   $('all-token-testnets').checked=false;catalogPage=1;catalogMinimum=0;
   walletSort='value';networkSort='value';walletStatus='portfolio';networkStatus='portfolio';$('wallet-token-status').value='portfolio';$('wallet-token-sort').value='value';
   if(typeof jobsPage!=='undefined')jobsPage=1;
+  $('activity-query').value='';$('activity-wallet').value='all';
   if(typeof KiraSelect!=='undefined')KiraSelect.refresh();
 }
 for (const id of ['all-token-status','all-token-network', 'all-token-pricing', 'all-token-sort', 'all-token-testnets']) $(id).addEventListener('change', () => { catalogPage = 1; state?.paged?loadRoute():renderCatalog(); });

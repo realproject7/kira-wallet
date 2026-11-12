@@ -40,6 +40,37 @@ class JobFixtures:
         atomic(self.root/job['checkpoint']/'run.json',{'wallet_address':ADDRESS,**({'completed_at':'now'} if completed_manifest else {'status':'running'})})
         registry=json.loads((self.root/'wallets.json').read_text());registry['wallets'][0]['latest_snapshot']={'directory':job['checkpoint']};atomic(self.root/'wallets.json',registry)
 class JobsTest(JobFixtures, unittest.TestCase):
+    def test_history_counts_and_search_cover_all_pages_without_provider_work(self):
+        template=self.store.submit(self.request())
+        for index in range(65):
+            identity=str(uuid.uuid4())
+            job={**template,'job_id':identity,'checkpoint':'snapshots/jobs/'+identity,'key_hash':digest('history-'+str(index)),
+                 'state':'partial' if index%2 else 'succeeded','created_at':f'2026-10-03T00:00:{index%60:02d}Z'}
+            atomic(self.store.jobs/(identity+'.json'),job)
+        page=self.store.page(limit=20,state='succeeded')
+        self.assertEqual(len(page['jobs']),20);self.assertEqual(page['total'],65)
+        self.assertEqual(page['counts']['succeeded'],65);self.assertEqual(page['counts']['active'],1)
+        self.assertEqual(page['counts']['attention'],0)
+        self.assertEqual(self.store.page(query='ORIGINAL',state='succeeded')['total'],65)
+        self.assertEqual(self.store.page(query='holdings',state='succeeded')['total'],65)
+        self.assertEqual(self.store.page(query='Holdings refresh',state='succeeded')['total'],65)
+        self.assertEqual(self.store.page(query=template['job_id'])['total'],1)
+        self.assertEqual(self.store.page(query='no such wallet')['counts']['all'],0)
+        with self.assertRaises(JobError):self.store.page(query='x'*201)
+        with self.assertRaises(JobError):self.store.page(query=None)
+
+    def test_status_includes_running_work_outside_the_oldest_five_queued_jobs(self):
+        template=self.store.submit(self.request())
+        for index in range(8):
+            identity=str(uuid.uuid4())
+            job={**template,'job_id':identity,'checkpoint':'snapshots/jobs/'+identity,
+                 'created_at':f'2026-10-01T00:00:{index:02d}Z'}
+            atomic(self.store.jobs/(identity+'.json'),job)
+        template.update(state='running',created_at='2026-11-12T00:00:00Z');self.store.save(template)
+        status=self.store.status()
+        self.assertEqual(status['active_job_count'],9)
+        self.assertEqual(status['active_jobs'][0]['job_id'],template['job_id'])
+
     def test_price_phase_events_keep_only_safe_context_and_real_counts(self):
         job=self.running()
         self.store.event(job['job_id'],{'stage':'price_refresh','phase':'markets','checked':2,'total':5,'url':'https://provider.test/PRIVATE-KEY'})

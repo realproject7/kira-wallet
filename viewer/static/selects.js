@@ -20,7 +20,7 @@ const KiraSelect=(()=>{
   }
   function choose(value){if(!opened)return;const select=opened.select,previous=select.value;select.value=value;close(true);if(select.value!==previous){select.dispatchEvent(new Event('input',{bubbles:true}));select.dispatchEvent(new Event('change',{bubbles:true}));}refresh();}
   function enhance(){prune();for(const select of document.querySelectorAll('select')){
-    if(entries.has(select)||!select.id)continue;
+    if(entries.has(select)||!select.id||select.hidden)continue;
     const wrapper=document.createElement('div');wrapper.className='kira-select';select.before(wrapper);wrapper.append(select);select.classList.add('custom-select-source');select.tabIndex=-1;select.setAttribute('aria-hidden','true');
     const label=document.createElement('span'),button=document.createElement('button');button.type='button';button.className='kira-select-trigger';button.setAttribute('role','combobox');button.setAttribute('aria-haspopup','listbox');button.setAttribute('aria-expanded','false');button.setAttribute('aria-label',select.closest('label')?.querySelector('span')?.textContent||select.closest('label')?.childNodes[0]?.textContent?.trim()||'Choose an option');
     button.append(label);button.insertAdjacentHTML('beforeend','<svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>');wrapper.append(button);

@@ -24,9 +24,10 @@ for row in CATALOG:
         properties.update(offset=INTEGER,limit={'type':'integer','minimum':1,'maximum':100})
     summary=row['description']
     if row['name']=='job_list':
-        summary='Read a newest-first page of durable jobs. Optionally filter by state or registered wallet.'
+        summary='Read a newest-first page of durable jobs with scoped status counts. Filter by state, registered wallet or search across saved history.'
         properties.update(state={'type':'string','enum':list(STATE_FILTERS),'description':'Default all. Groups: active (queued, running), succeeded (succeeded, partial), attention (interrupted, failed). The other values match one exact state.'},
                           wallet={**STRING,'description':'registered address or exact name'})
+        properties['query']={'type':'string','maxLength':200,'description':'Search wallet names, addresses, task type or job ID before pagination.'}
     READ_TOOLS.append({'name':row['name'],'description':summary,
         'inputSchema':{'type':'object','properties':properties,'required':list(row['arguments']),'additionalProperties':False},
         'annotations':{'readOnlyHint':True,'destructiveHint':False,'idempotentHint':True,'openWorldHint':False}})

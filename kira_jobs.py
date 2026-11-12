@@ -246,23 +246,40 @@ class JobStore:
         for key in set(self._summary_cache) - existing:del self._summary_cache[key]
         return rows
 
-    def page(self, offset=0, limit=50, state='all', wallet=None):
+    def page(self, offset=0, limit=50, state='all', wallet=None, query=''):
         from kira_state import page_bounds
         page_bounds(offset, limit)
         if state not in STATE_FILTERS:raise JobError('invalid_state','Choose a job state filter: '+', '.join(STATE_FILTERS)+'.')
+        if not isinstance(query,str) or len(query)>200:raise JobError('invalid_query','Search activity with up to 200 characters.')
+        query=query.strip().casefold()
         selected = self.wallet(wallet)['address_key'] if wallet else None
         with self.locked():
-            rows = [r for r in self.summaries() if (STATE_FILTERS[state] is None or r['state'] in STATE_FILTERS[state])
-                    and (selected is None or (r['input'].get('wallet') or r['input'].get('address','')).lower() == selected)]
+            names={w['address_key']:' '.join(w.get('tags',[])) for w in read(self.root/'wallets.json').get('wallets',[])} if query else {}
+            labels={'wallet.add':'wallet lookup add wallet holdings','wallet.refresh':'holdings refresh refresh holdings',
+                    'prices.refresh':'price refresh refresh prices','wallet.setTags':'wallet names',
+                    'settings.rpc':'RPC settings','settings.discovery':'token discovery','settings.provider':'data provider connection',
+                    'settings.importEnv':'local connection setup','settings.h402':'h402 preference'}
+            rows=[]
+            for row in self.summaries():
+                address=(row['input'].get('wallet') or row['input'].get('address','')).lower()
+                if selected is not None and address!=selected:continue
+                words=' '.join((address,names.get(address,''),row['job_id'],row['operation'],
+                    'sell estimates routes analysis' if row.get('analysis_phase')=='enrichment' else labels.get(row['operation'],''),str(row['input'].get('tag',''))))
+                if query and query not in words.casefold():continue
+                rows.append(row)
+            counts={key:sum(group is None or row['state'] in group for row in rows) for key,group in STATE_FILTERS.items()}
+            updated=max((row['updated_at'] for row in rows),default=None)
+            rows=[row for row in rows if STATE_FILTERS[state] is None or row['state'] in STATE_FILTERS[state]]
             rows.sort(key=lambda r: r['created_at'], reverse=True)
             jobs = [self.get(r['job_id']) for r in rows[offset:offset+limit]]
         end = offset + len(jobs)
-        return {'jobs': jobs, 'offset': offset, 'total': len(rows), 'next_offset': end if end < len(rows) else None}
+        return {'jobs': jobs, 'offset': offset, 'total': len(rows), 'next_offset': end if end < len(rows) else None,
+                'counts':counts,'last_updated_at':updated}
 
     def status(self):
         with self.locked():
             rows = self.summaries()
-            active = sorted((r for r in rows if r['state'] in ('queued','running')), key=lambda r:r['created_at'])
+            active = sorted((r for r in rows if r['state'] in ('queued','running')), key=lambda r:(r['state']!='running',r['created_at']))
             revision = digest([(r['job_id'],r['updated_at'],r['state'],r['stage']) for r in sorted(rows,key=lambda r:r['job_id'])])
             return {'jobs_revision': revision, 'active_job_count': len(active),
                     'active_jobs': [{**{k:r[k] for k in ('job_id','operation','state','stage')},
