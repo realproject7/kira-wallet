@@ -1,11 +1,14 @@
 'use strict';
 let portfolioSubmitting=false;
 function renderPortfolioActions(){
-  const available=localSession?.controls===true&&!!state?.wallets.length&&!state?.demo;
+  const scoped=typeof FolderUI!=='undefined'&&FolderUI.id;
+  const wallets=(scoped?FolderUI.view()?.wallets:state?.wallets)||[];
+  const available=localSession?.controls===true&&!!wallets.length&&!state?.demo;
   $('portfolio-actions').hidden=!available;
   for(const id of ['refresh-portfolio','analyze-portfolio'])$(id).disabled=!available||portfolioSubmitting;
-  const wallets=state?.wallets||[],known=wallets.some(w=>w.sell_analysis),jobs=typeof jobList==='undefined'?[]:jobList;
-  const busy=new Set(jobs.filter(j=>['queued','running'].includes(j.state)&&['wallet.add','wallet.refresh','prices.refresh'].includes(j.operation)).map(j=>String(j.input?.wallet||j.input?.address||'').toLowerCase()));
+  const known=wallets.some(w=>w.sell_analysis),jobs=typeof jobList==='undefined'?[]:jobList,keys=new Set(wallets.map(w=>w.key));
+  $('refresh-portfolio').textContent=scoped?'Refresh folder holdings':'Refresh all holdings';
+  const busy=new Set(jobs.filter(j=>['queued','running'].includes(j.state)&&['wallet.add','wallet.refresh','prices.refresh'].includes(j.operation)).map(j=>String(j.input?.wallet||j.input?.address||'').toLowerCase()).filter(key=>keys.has(key)));
   const eligible=wallets.filter(w=>w.sell_analysis?.needs_analysis&&!busy.has(w.key)).length;
   if(known){
     $('analyze-portfolio').disabled=!available||portfolioSubmitting||!eligible;
@@ -21,13 +24,15 @@ async function submitPortfolio(operation){
   if(portfolioSubmitting||!localSession?.controls||state?.demo)return;
   if(setupReadiness?.discovery_key_available!==true){await openDataConnections();return;}
   portfolioSubmitting=true;renderPortfolioActions();
-  $('portfolio-action-status').textContent='Queuing wallet research…';
+  const folder=typeof FolderUI!=='undefined'?FolderUI.id:null;
+  const scopeName=folder?FolderUI.label(folder):'All wallets';
+  $('portfolio-action-status').textContent='Queuing wallet research for '+scopeName+'…';
   try{
-    const receipt=await submitOperation(operation,{});
+    const receipt=await submitOperation(operation,folder?{folder_id:folder}:{});
     const reasons={already_running:'already running',already_analyzed:'already analyzed',unchanged_holdings:'unchanged; saved estimates retained',holdings_unverified:'need verified holdings',holdings_refresh_required:'need a holdings refresh first'};
     const counts={};for(const row of receipt.skipped)counts[row.reason]=(counts[row.reason]||0)+1;
     const skipped=Object.entries(counts).map(([reason,count])=>count+' '+(reasons[reason]||reason)).join(' · ');
-    $('portfolio-action-status').textContent=receipt.jobs.length+' wallet jobs accepted. '+(skipped?skipped+'. ':'')+
+    $('portfolio-action-status').textContent=scopeName+': '+receipt.jobs.length+' wallet jobs accepted. '+(skipped?skipped+'. ':'')+
       (receipt.errors.length?receipt.errors.length+' could not be queued. Retry this action or check Activity. ':'')+'Follow progress in Activity; wallets run one at a time.';
     if(receipt.jobs.length)navigate('#/activity');
   }catch(error){$('portfolio-action-status').textContent=error.message;}

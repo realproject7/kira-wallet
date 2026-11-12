@@ -24,6 +24,13 @@ networks, with explicit coverage gaps. These records do not establish complete
 DeFi positions, debts, perp accounts, prediction-market positions, deployable
 capital or total net worth. A receipt token is not a decoded underlying position.
 
+When the installed catalogue exposes folder tools, read `folders_list` and
+`folder_overview` for a folder-scoped request. `portfolio_read` accepts `folder_id` for bounded wallet pages.
+The browser's `ui_context` can include the selected `folder_id`. Folder reads
+reuse saved data and do not start research. Keep that scope explicit in any
+requested refresh; omitting `folder_id` targets the whole workspace. Folder
+writes organize registered addresses without changing their names or snapshots.
+
 ## Analyze with the host agent
 
 Use Kira as the source of saved wallet facts. Use your own search, browser, API

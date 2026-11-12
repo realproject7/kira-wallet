@@ -10,6 +10,9 @@ from kira_research_tools import ResearchTools, CATALOG
 
 STRING={'type':'string','minLength':1,'maxLength':500}
 INTEGER={'type':'integer','minimum':0}
+FOLDER_NAME={'type':'string','minLength':1,'maxLength':80}
+FOLDER_ID={'type':'string','minLength':1,'maxLength':32,'description':'Saved folder ID or unfiled. Use folders_list to read IDs and metadata revision.'}
+WALLET_ADDRESS={'type':'string','minLength':42,'maxLength':42,'pattern':'^0x[0-9a-fA-F]{40}$'}
 READ_TOOLS=[]
 for row in CATALOG:
     if row['name'] in ('records_read','holdings_refresh','prices_refresh'):continue
@@ -22,6 +25,7 @@ for row in CATALOG:
         properties[name]={**schema,'description':description}
     if row['name'] in ('portfolio_read','job_list','snapshots_list'):
         properties.update(offset=INTEGER,limit={'type':'integer','minimum':1,'maximum':100})
+    if row['name']=='portfolio_read':properties['folder_id']={**FOLDER_ID,'description':'Optional folder ID or unfiled. Omit for all registered wallets.'}
     summary=row['description']
     if row['name']=='job_list':
         summary='Read a newest-first page of durable jobs with scoped status counts. Filter by state, registered wallet or search across saved history.'
@@ -41,12 +45,14 @@ def tool(name,description,properties=None,required=None,write=False):
 
 
 READ_TOOLS += [tool('network_read','Read saved network allocation and coverage.',{'chain_id':{'type':'integer','minimum':1}}),
+               tool('folders_list','List saved folders and registered wallet membership. No research is started.'),
+               tool('folder_overview','Read cached portfolio, sell-estimate and network statistics for a saved folder.',{'folder_id':FOLDER_ID}),
                tool('workspace_status','Read local readiness, capabilities, saved-data revisions and active jobs.'),
                tool('settings_read','Read configuration references without credential values.'),
                tool('ui_context','Read the wallet, token or network selected in the local web app.')]
 MUTATIONS={
-    'portfolio_holdings_refresh':('portfolio.refresh',{}),
-    'portfolio_sell_routes_analyze':('portfolio.analyzeSell',{}),
+    'portfolio_holdings_refresh':('portfolio.refresh',{'folder_id':FOLDER_ID}),
+    'portfolio_sell_routes_analyze':('portfolio.analyzeSell',{'folder_id':FOLDER_ID}),
     'settings_h402':('settings.h402',{'enabled':{'type':'boolean'}}),
     'wallet_add':('wallet.add',{'address':STRING,'tag':STRING}),
     'wallet_tags':('wallet.setTags',{'wallet':STRING,'tags':{'type':'array','items':STRING,'minItems':1,'maxItems':20}}),
@@ -62,17 +68,28 @@ MUTATIONS={
 TOKEN_ACTIONS={'token_policy':('token.policy',{'chain_id':{'type':'integer','minimum':1},'address':STRING,'mode':{'type':'string','enum':['auto','include','exclude']}}),
                'token_risk_check':('token.riskCheck',{'chain_id':{'type':'integer','minimum':1},'address':STRING})}
 MUTATIONS.update(TOKEN_ACTIONS)
+FOLDER_ACTIONS={
+    'folder_create':('folder.create',{'name':FOLDER_NAME,'expected_revision':INTEGER}),
+    'folder_rename':('folder.rename',{'folder_id':FOLDER_ID,'name':FOLDER_NAME,'expected_revision':INTEGER}),
+    'folder_delete':('folder.delete',{'folder_id':FOLDER_ID,'expected_revision':INTEGER}),
+    'folder_assign':('folder.assign',{'folder_id':FOLDER_ID,'wallets':{'type':'array','items':WALLET_ADDRESS,'minItems':1,'maxItems':1000},'expected_revision':INTEGER}),
+    'folder_set_members':('folder.setMembers',{'folder_id':FOLDER_ID,'wallets':{'type':'array','items':WALLET_ADDRESS,'maxItems':1000},'expected_revision':INTEGER})}
+MUTATIONS.update(FOLDER_ACTIONS)
 WRITE_TOOLS=[tool(name,'Submit '+operation+' as a durable local job. Returns a receipt, not a completed result.',
-    {**props,'idempotency_key':{'type':'string','minLength':8,'maxLength':200}},required=[k for k in props if k not in ('priority','explorers')]+['idempotency_key'],write=True)
+    {**props,'idempotency_key':{'type':'string','minLength':8,'maxLength':200}},required=[k for k in props if k not in ('priority','explorers') and not (name.startswith('portfolio_') and k=='folder_id') and not (k=='expected_revision' and name!='folder_set_members')]+['idempotency_key'],write=True)
     for name,(operation,props) in MUTATIONS.items()]
 
 for descriptor in WRITE_TOOLS:
+    if descriptor['name'] in FOLDER_ACTIONS:
+        descriptor['description']='Apply '+FOLDER_ACTIONS[descriptor['name']][0]+' immediately to local organization metadata. Wallet names, snapshots and keys are preserved. One folder per wallet; unfiled removes membership. setMembers replaces that folder membership; expected_revision prevents stale form overwrites. No research or worker launch.'
+        descriptor['annotations']['openWorldHint']=False
+        descriptor['annotations']['destructiveHint']=descriptor['name']=='folder_delete'
     if descriptor['name']=='wallet_tags':
         descriptor['description']='Save exact wallet names immediately without waiting for research. Returns a durable job receipt; inspect its state for completion. Prior snapshots retain their original names.'
     if descriptor['name'] in TOKEN_ACTIONS:
         descriptor['description']='Apply a durable local token valuation preference immediately across every registered wallet.' if descriptor['name']=='token_policy' else 'Explicitly query GoPlus for a recorded token contract and save dated risk observations. Sends only chain and contract identity. No transaction, simulation or safety guarantee. Runs immediately; saved reads never call providers.'
     if descriptor['name'].startswith('portfolio_'):
-        descriptor['description']='Queue research for all registered wallets using existing per-wallet jobs. Returns a durable batch receipt with jobs, skipped wallets and errors. Inspect each job for completion.'
+        descriptor['description']='Queue research for all registered wallets or one explicit folder using existing per-wallet jobs. Folder membership is captured at admission; retries retain that target set. Returns a durable batch receipt with jobs, skipped wallets and errors. Inspect each job for completion.'
 
 DATA_SCOPE = {
     'inventory': 'Recorded direct holdings on configured EVM networks; coverage may be partial.',
@@ -129,6 +146,9 @@ class Application:
     def submit(self,request,*,launch=True):
         registry=json.loads((self.root/'wallets.json').read_text())
         operation=request.get('operation') if isinstance(request,dict) else None
+        if operation in {row[0] for row in FOLDER_ACTIONS.values()}:
+            from kira_folders import action
+            with self.jobs.locked():return action(self.jobs,request)
         if operation in ('token.policy','token.riskCheck'):
             if registry.get('demo') and operation=='token.riskCheck':raise JobError('demo_read_only','Sample portfolios never contact risk providers.')
             fields(request,['schema_version','operation','input','idempotency_key'])
@@ -170,6 +190,10 @@ class Application:
                     'integrations':{'h402':h402_status(load_config())},
                     'capabilities':{'headless':True,'manual_refresh':True,'web_controls':True,'model_runtime':False}}
         if name=='settings_read':return self.settings()
+        if name=='folders_list':
+            from kira_folders import catalog
+            return catalog(self.root)
+        if name=='folder_overview':return self.views.overview(arguments['folder_id'])
         if name=='ui_context':
             try:return json.loads((self.root/'.ui-context.json').read_text())
             except FileNotFoundError:return {'view':None,'note':'No web selection has been recorded.'}
@@ -177,7 +201,7 @@ class Application:
         if name=='job_list':return self.jobs.page(**arguments)
         if name=='job_read':return self.jobs.get(arguments['job_id'])
         if name=='portfolio_read':
-            state=self.views.refresh();offset=arguments.get('offset',0);limit=arguments.get('limit',100)
+            state=self.views.scoped(arguments.get('folder_id'));offset=arguments.get('offset',0);limit=arguments.get('limit',100)
             from kira_records import wallet_facts, recorded_valuation
             rows=wallet_facts([{**w,'recorded_valuation':recorded_valuation(w['assets']),'assets':[]} for w in state['wallets']])
             return {'schema_version':1,'dashboard':state['dashboard'],**page(rows,offset,limit,key='wallets'),
@@ -187,13 +211,16 @@ class Application:
         return self.records.call(name,arguments,str(uuid.uuid4()))
 
     def select(self,value):
-        if not isinstance(value,dict) or set(value)-{'view','wallet','token','chain_id'}:raise JobError('invalid_context','Expected a web selection.')
+        if not isinstance(value,dict) or set(value)-{'view','wallet','token','chain_id','folder_id'}:raise JobError('invalid_context','Expected a web selection.')
         for key,item in value.items():
             if item is not None and (type(item) is not int if key=='chain_id' else not isinstance(item,str) or len(item)>200):
                 raise JobError('invalid_context','Use bounded selection identifiers.')
         if value.get('wallet'):self.jobs.wallet(value['wallet'])
+        if value.get('folder_id'):
+            from kira_folders import catalog,members
+            members(catalog(self.root),[],value['folder_id'])
         if value.get('token'):
-            try:chain,address=value['token'].split(':',1);self.views.token(int(chain),address)
+            try:chain,address=value['token'].split(':',1);self.views.token(int(chain),address,folder_id=value.get('folder_id'))
             except (ValueError,AttributeError):raise JobError('invalid_context','Use a recorded token identity.') from None
         result={'schema_version':1,**value,'data_revision':self.views.data_revision()}
         atomic(self.root/'.ui-context.json',result)

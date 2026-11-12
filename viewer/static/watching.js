@@ -159,6 +159,7 @@ $('wallet-change-account').addEventListener('click', () => {
 $('wallet-session').addEventListener('click', () => {
   if (!localSession?.controls) return;
   if (!watchingSubmission) setWatchingMode('browser');
+  if(typeof FolderUI!=='undefined'&&!watchingSubmission)FolderUI.prepareAdd();
   renderWatching(); $('wallet-dialog').showModal();
 });
 $('wallet-submission-activity').addEventListener('click', () => {
@@ -180,5 +181,6 @@ $('open-connection').addEventListener('click', () => {
   if (!watchingCanAct()) return;
   if (typeof owsState !== 'undefined' && owsState?.connection && !watchingConnection.snapshot().accounts.length) { openOws(); return; }
   if (!watchingSubmission) setWatchingMode('browser');
+  if(typeof FolderUI!=='undefined'&&!watchingSubmission)FolderUI.prepareAdd();
   renderWatching(); $('wallet-dialog').showModal();
 });

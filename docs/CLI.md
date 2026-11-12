@@ -1,5 +1,38 @@
 # CLI and provider configuration
 
+## Wallet folders
+
+Folder tools are introduced in 1.8.0. Check the installed `describe` output
+before calling them.
+
+```sh
+kira describe folders_list --json
+kira describe folder_set_members --json
+kira call folders_list --arguments '{}' --json
+kira call folder_create --arguments '{"name":"Treasury","idempotency_key":"create-treasury-once"}' --json
+kira call folder_overview --arguments '{"folder_id":"FOLDER_ID"}' --json
+```
+
+Replace `FOLDER_ID` with an ID returned by the tools. `unfiled` reads wallets
+without a folder. `portfolio_read` also accepts an optional `folder_id`, and
+keeps its existing bounded wallet pagination. `folder_overview` returns the
+saved dashboard, compact wallets and network summaries without token payloads.
+These reads use projected records and start no provider or worker activity.
+
+Folder writes are immediate metadata operations with durable idempotent
+receipts. `folder_assign` moves registered public addresses to one folder or
+`unfiled`. `folder_set_members` replaces one named folder's membership with the
+chosen addresses, removing unchecked wallets to Unfiled. It requires the
+`revision` returned by `folders_list` as `expected_revision`. Other folder edits
+can use the same optional guard. A conflict keeps the saved state unchanged.
+Folder deletion preserves wallets, names and all research snapshots.
+
+`portfolio_holdings_refresh` and `portfolio_sell_routes_analyze` accept an
+optional `folder_id`. Omitting it retains the global behavior. Batch admission
+captures folder membership, so a retry cannot include newly moved wallets.
+Existing per-wallet job receipts, eligibility and sequential execution remain
+in use. These explicit research actions can consume provider allowance.
+
 ## Discover tools and optional h402 capabilities
 
 ```sh

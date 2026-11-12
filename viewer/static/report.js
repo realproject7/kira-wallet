@@ -2,7 +2,9 @@
 let setupReadiness=null,setupLoading=false,setupUnavailable=false,setupRetryAfter=0;
 function renderHomeTokens(){
   if(!state)return;
-  const result=state.paged?{rows:routeData.page?.assets||[],count:routeData.page?.matched_count??state.dashboard.unique_asset_count}:KiraView.catalog(state.details.tokens,{sort:'value'}),rows=result.rows.slice(0,5);
+  const home=typeof FolderUI!=='undefined'?FolderUI.view():state;
+  if(!home){$('home-token-body').innerHTML='';renderSetupPath();return;}
+  const result=state.paged?{rows:routeData.page?.assets||[],count:routeData.page?.matched_count??home.dashboard.unique_asset_count}:KiraView.catalog(home.details.tokens,{sort:'value'}),rows=result.rows.slice(0,5);
   $('home-token-body').innerHTML=rows.map(catalogRow).join('');
   $('home-token-count').textContent=rows.length+' of '+result.count;
   $('home-tokens-empty').hidden=result.count>0;
@@ -11,6 +13,7 @@ function renderHomeTokens(){
 }
 function renderSetupPath() {
   if(!state)return;
+  if(typeof FolderUI!=='undefined'&&FolderUI.id){$('setup-path').hidden=true;$('home-empty').hidden=true;$('home-heading').hidden=false;$('home-summary').hidden=!FolderUI.view();return;}
   const wallet=state.wallets.length>0,connected=setupReadiness?.discovery_key_available===true;
   $('home-heading').hidden=!wallet;$('home-summary').hidden=!wallet;
   $('setup-path').hidden=state.demo||!localSession?.controls||(wallet&&connected);

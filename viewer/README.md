@@ -6,6 +6,30 @@ application service. Your agent host owns the conversation and can display
 this app beside it. Kira does not embed a model runtime or model-account setup.
 Signing and trading are not exposed.
 
+## Find and organize wallets
+
+Use **Find wallet** in the top bar, or Command-K / Control-K, to search every
+registered wallet by name, tag or public address. This includes wallets still
+awaiting research. Search runs against the loaded directory and starts no work.
+
+Choose a folder from the sidebar or the overview selector to inspect its saved
+portfolio, sell estimates, tokens and networks. **Manage folders** creates or
+renames folders and places existing wallets with searchable bulk selection.
+The folder button beside a wallet address moves that individual wallet. New
+watching wallets can choose a folder during registration. Every wallet belongs
+to one folder or Unfiled. Folder removal keeps the wallets and their research.
+
+Research buttons in a folder target that folder's wallets. Requests keep the
+wallet set captured when accepted; later moves do not retarget queued research.
+Activity remains workspace-wide. Token visibility preferences also remain
+workspace-wide. Folders organize records and do not create access boundaries.
+
+Statistics reuse cached observations. Folder views never refresh providers,
+copy balances or alter unknowns. At most eight folder aggregates are cached;
+the manager renders 50 wallet rows per page and accepts up to 1,000 selected
+addresses per membership save. Unsaved drafts survive ordinary data updates;
+conflicting folder edits require an explicit reload before saving.
+
 ## Open the viewer
 
 ```sh

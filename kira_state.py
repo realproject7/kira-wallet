@@ -5,12 +5,13 @@ import json
 from pathlib import Path
 import sys
 import threading
+from collections import OrderedDict
 from decimal import Decimal, InvalidOperation
 from kira_jobs import JobError
 from asset_policy import STATUSES
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'viewer'))
-from model import load_state, within
+from model import load_state, within, dashboard
 from details import project_details, wallet_identity, coverage_for, coverage_status
 
 
@@ -86,6 +87,9 @@ class StateCache:
         self.body = None
         self.builds = 0
         self.wallet_cache = {}
+        self.scope_cache = OrderedDict()
+        self.scope_builds = 0
+        self.overview_state = None
 
     def data_revision(self):
         """Stat published inputs before projecting; also sees legacy writers and crash gaps."""
@@ -94,7 +98,7 @@ class StateCache:
             current = signature(registry)
             if current != self.registry_signature or not self.paths:
                 value = json.loads(registry.read_text())
-                paths = {registry, self.root / 'networks.json', self.root / 'cache/token-images.json', self.root / 'token-policy.json'}
+                paths = {registry, self.root / 'networks.json', self.root / 'cache/token-images.json', self.root / 'token-policy.json', self.root / 'wallet-folders.json'}
                 folders=[]
                 for entry in value.get('wallets', []):
                     latest = entry.get('latest_snapshot') or {}
@@ -134,30 +138,58 @@ class StateCache:
                 for _ in range(3):
                     state, _, _ = load_state(self.root, include_details=False, encode=False, wallet_cache=self.wallet_cache)
                     state['details'] = project_details(state['wallets'], self.root, include_wallets=False)
+                    from kira_folders import catalog
+                    state['wallet_folders'] = catalog(self.root,state['wallets'])
                     after = self.data_revision()
                     if revision == after:break
                     revision = after
                 else:raise ValueError('Published data changed during projection.')
-                wallets = []
-                for wallet in state['wallets']:
-                    mainnet = [a for a in wallet['assets'] if a.get('environment') == 'mainnet']
-                    wallets.append({**wallet, 'assets': [], 'asset_count': len(wallet['assets']),
-                                    'mainnet_asset_count': len(mainnet),
-                                    'mainnet_unpriced_count': sum(a.get('value_usd') is None for a in mainnet)})
-                networks = [{k: v for k, v in n.items() if k not in ('wallets', 'token_ids')} for n in state['details']['networks']]
-                summary = {**state, 'wallets': wallets, 'details': {'tokens': [], 'networks': networks},
-                           'paged': True, 'data_revision': revision}
+                summary = self.compact(state,revision)
                 body = json.dumps(summary, ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode()
             except (OSError, ValueError, KeyError):
                 if self.state is None:raise
                 return self.state
             self.state, self.body, self.revision = state, body, revision
+            self.overview_state = summary
+            self.scope_cache.clear()
             self.builds += 1
             return state
 
     def summary(self):
         self.refresh()
         return self.body, self.revision
+
+    @staticmethod
+    def compact(state,revision):
+        wallets=[]
+        for wallet in state['wallets']:
+            mainnet=[a for a in wallet['assets'] if a.get('environment')=='mainnet']
+            wallets.append({**wallet,'assets':[],'asset_count':len(wallet['assets']),
+                            'mainnet_asset_count':len(mainnet),
+                            'mainnet_unpriced_count':sum(a.get('value_usd') is None for a in mainnet)})
+        networks=[{k:v for k,v in n.items() if k not in ('wallets','token_ids')} for n in state['details']['networks']]
+        return {**state,'wallets':wallets,'details':{'tokens':[],'networks':networks},'paged':True,'data_revision':revision}
+
+    def scoped(self,folder_id=None):
+        """Aggregate only selected cached positions, once per revision and scope."""
+        with self.lock:
+            state=self.refresh()
+            if folder_id in (None,'all'):return state
+            if folder_id not in self.scope_cache:
+                from kira_folders import members
+                wallets=members(state['wallet_folders'],state['wallets'],folder_id)
+                selected={**state,'wallets':wallets,'folder_id':folder_id,'dashboard':dashboard(wallets),
+                          'details':project_details(wallets,self.root,include_wallets=False)}
+                self.scope_cache[folder_id]=(selected,self.compact(selected,self.revision))
+                self.scope_builds+=1
+                if len(self.scope_cache)>8:self.scope_cache.popitem(last=False)
+            self.scope_cache.move_to_end(folder_id)
+            return self.scope_cache[folder_id][0]
+
+    def overview(self,folder_id=None):
+        with self.lock:
+            self.scoped(folder_id)
+            return self.overview_state if folder_id in (None,'all') else self.scope_cache[folder_id][1]
 
     def wallet(self, selector, offset=0, limit=100, **filters):
         from kira_jobs import JobStore
@@ -168,13 +200,13 @@ class StateCache:
             return {**wallet, **page(filter_assets(wallet['assets'], **filters), offset, limit),
                     'asset_count': len(wallet['assets']), 'data_revision': self.revision}
 
-    def holdings(self, offset=0, limit=100, **filters):
+    def holdings(self, offset=0, limit=100, *, folder_id=None, **filters):
         with self.lock:
-            tokens = self.refresh()['details']['tokens']
+            tokens = self.scoped(folder_id)['details']['tokens']
             return {**page(filter_assets(tokens, **filters), offset, limit),
                     'asset_count': len(tokens), 'data_revision': self.revision}
 
-    def token(self, chain_id, address):
+    def token(self, chain_id, address, *, folder_id=None):
         from kira_jobs import ADDRESS
         if type(chain_id) is not int or chain_id < 1 or not isinstance(address, str):
             raise JobError('invalid_token', 'Expected a chain and contract identity.')
@@ -182,7 +214,7 @@ class StateCache:
         if address != 'native' and not ADDRESS.fullmatch(address):raise JobError('invalid_token', 'Use native or an EVM contract address.')
         identity = str(chain_id) + ':' + address
         with self.lock:
-            state = self.refresh()
+            state = self.scoped(folder_id)
             token = next((t for t in state['details']['tokens'] if t['id'] == identity), None)
             if token is None:raise JobError('not_found', 'No saved token evidence. Missing data is unknown.')
             rows = []
@@ -195,9 +227,9 @@ class StateCache:
                              'status': 'Held' if asset else 'No holding recorded' if coverage == 'Researched' else 'Unknown'})
             return {**token, 'wallets': rows, 'data_revision': self.revision}
 
-    def network(self, chain_id):
+    def network(self, chain_id, *, folder_id=None):
         if type(chain_id) is not int or chain_id < 1:raise JobError('invalid_chain', 'Expected a positive chain ID.')
         with self.lock:
-            row = next((n for n in self.refresh()['details']['networks'] if n['id'] == chain_id), None)
+            row = next((n for n in self.scoped(folder_id)['details']['networks'] if n['id'] == chain_id), None)
             if row is None:raise JobError('not_found', 'No recorded network evidence.')
-            return {k: v for k, v in row.items() if k != 'token_ids'}
+            return {**{k: v for k, v in row.items() if k != 'token_ids'},'data_revision':self.revision}

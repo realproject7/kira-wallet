@@ -12,15 +12,18 @@ def submit_batch(store, request):
     operation = request['operation']
     if operation not in OPERATIONS:
         raise JobError('unsupported_operation', 'Choose a portfolio research action.')
-    fields(request['input'], [])
+    value=request['input']
+    if not isinstance(value,dict) or set(value)-{'folder_id'} or 'folder_id' in value and not isinstance(value['folder_id'],str):
+        raise JobError('invalid_input','Use an optional saved folder ID for portfolio research.')
     key = request['idempotency_key']
     if not isinstance(key, str) or not 8 <= len(key) <= 200:
         raise JobError('invalid_key', 'Supply an idempotency key of 8 to 200 characters.')
     batch_id = digest(key)
-    fingerprint = digest({'operation': operation, 'input': {}})
+    fingerprint = digest({'operation': operation, 'input': value})
     path = store.jobs / 'batches' / (batch_id + '.json')
     with store.locked():
-        if (store.root / '.token-actions' / (batch_id + '.json')).exists() or (store.jobs / 'requests' / (batch_id + '.json')).exists() or any(j['key_hash']==batch_id or batch_id in (j.get('control_receipts') or {}) for j in store.summaries()):
+        from kira_folders import key_used, catalog, members
+        if key_used(store.root,batch_id) or (store.root / '.token-actions' / (batch_id + '.json')).exists() or (store.jobs / 'requests' / (batch_id + '.json')).exists() or any(j['key_hash']==batch_id or batch_id in (j.get('control_receipts') or {}) for j in store.summaries()):
             raise JobError('idempotency_conflict', 'This request key already belongs to another operation.')
         if path.exists():
             plan = json.loads(path.read_text())
@@ -29,6 +32,7 @@ def submit_batch(store, request):
         else:
             store.require_connection()
             wallets = json.loads((store.root / 'wallets.json').read_text())['wallets']
+            wallets = members(catalog(store.root,wallets),wallets,value.get('folder_id'))
             jobs = store.summaries()
             from sell_analysis import analysis_index, assess
             analyses=analysis_index(store.root) if operation=='portfolio.analyzeSell' else {}
@@ -67,6 +71,7 @@ def submit_batch(store, request):
                 if reason: skipped.append({'wallet': address, 'reason': reason})
             plan = {'schema_version': 1, 'batch_id': batch_id, 'operation': operation,
                     'request_hash': fingerprint, 'wallet_count': len(wallets), 'items': items, 'skipped': skipped}
+            if 'folder_id' in value:plan['folder_id']=value['folder_id']
             atomic(path, plan)
     admitted, errors, skipped = [], [], list(plan['skipped'])
     for item in plan['items']:
@@ -78,5 +83,6 @@ def submit_batch(store, request):
             if error.code=='already_running':skipped.append({'wallet':item['wallet'],'reason':'already_running'})
             else:errors.append({'wallet': item['wallet'], 'code': error.code, 'message': str(error)})
     return {'schema_version': 1, 'batch_id': batch_id, 'operation': operation, 'wallet_count': plan['wallet_count'],
+            **({'folder_id':plan['folder_id']} if 'folder_id' in plan else {}),
             'jobs': admitted, 'skipped': skipped, 'errors': errors,
             'note': 'Per-wallet job receipts. Research runs sequentially; inspect Activity for completion.'}

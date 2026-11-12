@@ -1,9 +1,42 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.7.1**.
+Published npm release: **1.5.0**. Prepared candidate: **1.8.0**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.8.0
+
+Find wallet opens a keyboard-accessible lookup by saved name, tag or public
+address, from any screen. Matching stays local to the loaded wallet directory,
+prioritizes exact matches in one linear pass and renders at most 20 results.
+It includes wallets awaiting their first analysis and searches across folders.
+
+Wallets can belong to one named folder or Unfiled. Folder metadata is stored
+separately from the wallet registry, names, research snapshots and credentials.
+Creation, rename, individual moves and bulk membership changes apply immediately
+without launching research. Atomic metadata commits retain their last receipt
+for crash recovery, and revision checks prevent stale drafts overwriting newer
+organization. Removing a folder moves its wallets to Unfiled and keeps research.
+
+Folder overview, token catalogue, token detail and network detail use only that
+folder's cached saved positions. Existing policy exclusions, testnet rules,
+unknown values and dated independent sell observations remain unchanged.
+Token visibility preferences still apply across the workspace. Folder research
+buttons freeze the selected wallet set at admission and reuse the existing
+sequential queue. All wallets keeps the original global controls.
+
+Folder aggregates are lazy and cached for at most eight recently used scopes
+per published-data revision. They reuse projected records, with no provider
+calls or snapshot parsing on ordinary scope switches. Bulk management renders
+50 rows at a time, preserves selection across searches and pages, and saves
+membership in one metadata operation. Existing research continues independently.
+
+Verification covers synthetic 100-wallet / 15,000-plus-position scale, cached reads,
+null valuations, membership moves, receipt recovery, stale/concurrent edits,
+scoped batch replay and protected HTTP writes. CLI/MCP expose folder metadata
+and saved statistics through the installed tool catalogue. Review not selected.
+Earlier frozen archives remain preserved. Registry publication is operator-only.
 
 ## Candidate 1.7.1
 

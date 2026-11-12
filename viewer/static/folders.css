@@ -1,0 +1,112 @@
+.wallet-finder-trigger { flex:none; gap:8px; white-space:nowrap; background:#fff; }
+.topbar .connection-button { margin-left:0; }
+.portfolio-scope-bar { display:flex; align-items:center; gap:12px; margin:0 0 22px; }
+.portfolio-scope-bar>label { width:260px; min-width:0; }
+.portfolio-scope-bar .kira-select-trigger,.portfolio-scope-bar>.quiet-button { min-height:40px; padding:9px 12px; font-size:12px; background:#fff; }
+.portfolio-scope-bar>.quiet-button { margin-left:auto; }
+.folder-navigation { padding:0 4px 12px; margin-bottom:12px; border-bottom:1px solid #4b4356; }
+.folder-nav-heading { display:flex; align-items:center; justify-content:space-between; color:#bcb0ca; font-size:10px; letter-spacing:.06em; padding:0 7px 4px; }
+.folder-nav-heading button { display:inline-flex; align-items:center; justify-content:center; width:30px; min-height:30px; padding:0; font-size:20px; border:0; border-radius:6px; background:transparent; color:#dfd3ed; }
+.folder-nav-heading button:hover { background:#3c3448; }
+#folder-list { display:grid; gap:2px; max-height:190px; overflow:auto; scrollbar-width:thin; }
+.folder-link { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:34px; padding:6px 8px; border-radius:7px; color:#d4cadf; font-size:12px; }
+.folder-link:hover { background:#332d3d; }
+.folder-link[aria-current] { background:#44374f; color:#fff; }
+.folder-link>span { display:flex; align-items:center; gap:8px; min-width:0; }
+.folder-link>span>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.folder-link .ui-icon { width:15px; height:15px; color:#bda9d5; }
+.folder-link small { font-size:10px; color:#c3b4d1; }
+.wallet-folder-button { display:inline-flex; align-items:center; gap:6px; min-height:36px; padding:6px 9px; border:1px solid #ded5e6; border-radius:8px; background:#fff; color:#685172; font:12px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; max-width:240px; }
+.wallet-folder-button>.ui-icon { width:15px; height:15px; }
+#wallet-folder-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#home-folder-empty { margin-top:22px; background:#fff; padding:38px 22px; }
+#home-folder-empty button { margin-top:20px; }
+.wallet-finder { width:min(680px,calc(100% - 32px)); padding:22px; }
+.wallet-finder .dialog-heading { margin-bottom:14px; }
+.wallet-finder input[type=search] { margin:0; min-height:50px; font-weight:400; }
+.wallet-finder>.form-note { margin:12px 0; min-height:20px; }
+.finder-results { list-style:none; padding:0; margin:0; max-height:430px; overflow:auto; scrollbar-width:thin; border:1px solid var(--line); border-radius:10px; }
+.finder-results:empty { display:none; }
+.finder-results li+li { border-top:1px solid var(--line); }
+.finder-results button { display:grid; grid-template-columns:32px minmax(0,1fr) auto; align-items:center; gap:12px; width:100%; min-height:70px; padding:12px; background:#fff; border:0; color:var(--ink); text-align:left; }
+.finder-results button:hover,.finder-results button:focus-visible { background:#f5f0fa; outline-offset:-3px; }
+.finder-results strong { display:block; font-size:13px; font-weight:500; overflow-wrap:anywhere; }
+.finder-results small { display:block; margin-top:4px; color:var(--secondary); font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; overflow-wrap:anywhere; }
+.finder-results .card-wallet-icon { width:32px; height:32px; display:grid; place-items:center; }
+.finder-results .card-wallet-icon .ui-icon { width:18px; height:18px; }
+.finder-folder { max-width:100px; font-size:11px; color:var(--secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.research-dialog .finder-help { margin:14px 0 0; font-size:11px; color:var(--secondary); }
+.folder-manager { width:min(780px,calc(100% - 32px)); max-height:calc(100dvh - 48px); padding:24px; }
+.folder-manager[open] { display:flex; flex-direction:column; overflow:hidden; }
+.folder-manager>.dialog-heading { flex:none; margin-bottom:14px; align-items:flex-start; }
+.folder-manager>.dialog-heading .form-note { margin:5px 0 0; }
+.folder-manager-body { min-height:0; flex:1 1 auto; overflow:auto; overscroll-behavior:contain; }
+#folder-manager-fields { display:block; padding:0; margin:0; border:0; min-width:0; }
+.folder-manager-choice { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:12px; }
+.folder-manager-choice>label { margin:0!important; }
+.folder-manager-choice>.quiet-button { min-height:44px; margin-bottom:0; }
+.folder-manager .folder-create-panel { margin:16px 0 20px; padding:0 14px; border:1px solid var(--line); border-radius:10px; background:#faf8fc; }
+.folder-create-panel>summary { padding:11px 0; }
+#folder-create-form,#folder-rename-form { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; margin:0 0 14px; }
+#folder-create-form>label,#folder-rename-form>label { flex:1; min-width:140px; margin:0; }
+#folder-create-form>button,#folder-rename-form>button { min-height:46px; }
+.folder-editor-heading { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-top:18px; }
+.folder-editor-heading h3 { margin:0; }
+.folder-editor-heading .text-link { font-size:11px; }
+.folder-selection-tools { display:flex; align-items:center; gap:8px 16px; flex-wrap:wrap; padding:10px 0; font-size:12px; }
+.folder-selection-tools>span { margin-right:auto; color:var(--secondary); }
+.folder-selection-tools button { font-size:11px; min-height:36px; padding:5px 0; }
+.folder-members { max-height:330px; overflow:auto; border:1px solid var(--line); border-radius:10px; overscroll-behavior:contain; scrollbar-width:thin; }
+.research-dialog label.folder-member { display:grid; grid-template-columns:18px minmax(0,1fr) minmax(70px,120px); gap:12px; align-items:center; padding:12px 14px; margin:0; cursor:pointer; font-weight:400; }
+.folder-member+.folder-member { border-top:1px solid var(--line); }
+.folder-member:has(input:checked) { background:#f8f4fc; }
+.folder-member input { width:16px; height:16px; accent-color:var(--accent); margin:0; }
+.folder-member strong { display:block; font-size:13px; font-weight:500; overflow-wrap:anywhere; }
+.folder-member small { display:block; font:10px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--secondary); overflow-wrap:anywhere; margin-top:3px; }
+.folder-member-source { font-size:11px; color:var(--secondary); text-align:right; overflow-wrap:anywhere; }
+.folder-member-pagination { display:flex; align-items:center; gap:8px; padding:10px 0; color:var(--secondary); font-size:11px; }
+.folder-member-pagination>span { margin-right:auto; }
+.folder-member-pagination button { min-height:36px; width:36px; padding:4px; }
+.folder-member-footer { display:flex; align-items:center; gap:18px; padding:14px 0; position:sticky; bottom:0; background:#fff; border-top:1px solid var(--line); z-index:1; }
+.folder-member-footer>.form-note { flex:1; margin:0; font-size:11px; }
+.folder-member-footer>button { flex:none; }
+.folder-manager>.folder-member-footer { position:static; flex:none; margin-top:12px; padding-bottom:0; }
+.folder-settings { border-top:1px solid var(--line); }
+.folder-remove { color:#9b493c; }
+.folder-stale { padding:10px 14px; margin-bottom:14px; background:#fbf3e6; border:1px solid #ecdab7; border-radius:9px; color:#7d6031; font-size:12px; line-height:1.6; }
+@media(max-width:980px) {
+  #folder-list { grid-template-columns:repeat(2,minmax(0,1fr)); max-height:180px; }
+  .folder-navigation { padding:0 0 10px; margin:4px 0 8px; }
+  .folder-link { min-height:44px; padding:9px; }
+  .folder-nav-heading button { min-height:44px; width:44px; }
+}
+@media(max-width:640px) {
+  .wallet-finder-trigger { width:44px; min-width:44px; padding:0; }
+  .wallet-finder-trigger>span { display:none; }
+  .topbar { gap:8px; }
+  .portfolio-scope-bar { gap:8px; margin-bottom:20px; }
+  .portfolio-scope-bar>label { flex:1; width:auto; }
+  .portfolio-scope-bar .kira-select-trigger,.portfolio-scope-bar>.quiet-button { min-height:44px; font-size:11px; padding:9px 10px; }
+  .wallet-folder-button { min-height:44px; }
+  .wallet-finder { padding:18px; }
+  .finder-results { max-height:calc(100dvh - 270px); }
+  .finder-results button { grid-template-columns:28px minmax(0,1fr); gap:4px 10px; padding:12px; }
+  .finder-results .card-wallet-icon { width:28px; height:28px; grid-row:1/3; }
+  .finder-results small { font-size:10px; }
+  .finder-folder { grid-column:2; max-width:none; margin-top:2px; font-size:10px; }
+  .folder-manager { padding:18px; max-height:calc(100dvh - 24px); }
+  .folder-manager .dialog-heading h2 { font-size:20px; }
+  .folder-manager .dialog-heading .form-note { font-size:11px; }
+  .folder-selection-tools { gap:3px 16px; }
+  .folder-selection-tools>span { flex-basis:100%; }
+  .folder-selection-tools button { min-height:44px; }
+  .research-dialog label.folder-member { grid-template-columns:18px minmax(0,1fr); padding:12px; gap:3px 10px; }
+  .folder-member input { grid-row:1/3; }
+  .folder-member-source { grid-column:2; text-align:left; font-size:10px; }
+  .folder-member small { font-size:9px; }
+  .folder-member-footer { flex-wrap:wrap; gap:10px; }
+  .folder-member-footer>.form-note { flex-basis:100%; }
+  .folder-member-footer>button { width:100%; }
+  .folder-member-pagination button { min-height:44px; width:44px; }
+  #folder-create-form>button { width:100%; }
+}

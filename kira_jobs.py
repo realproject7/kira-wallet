@@ -427,6 +427,8 @@ class JobStore:
             operation = request['operation']
             if not isinstance(operation,str):raise JobError('unsupported_operation','Expected a typed operation name.')
             key_hash = digest(key); receipt = self.jobs / 'requests' / (key_hash + '.json')
+            from kira_folders import key_used
+            if key_used(self.root,key_hash):raise JobError('idempotency_conflict','This request key belongs to a folder action.')
             if (self.root/'.token-actions'/(key_hash+'.json')).exists() or (self.jobs/'batches'/(key_hash+'.json')).exists():
                 raise JobError('idempotency_conflict','This request key already belongs to a portfolio action.')
             raw_hash=digest({'operation':operation,'input':request['input']})

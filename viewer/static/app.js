@@ -40,7 +40,7 @@ function showRouteStatus(message,retry=false){
   const node=$('route-status');node.hidden=!message;node.textContent=message;
   if(retry){const button=document.createElement('button');button.type='button';button.className='quiet-button';button.textContent='Retry';button.addEventListener('click',()=>loadRoute(true));node.append(button);}
 }
-function selectedContext(){return {view:selectedView,...(selectedView==='wallet'?{wallet:selectedWallet}:selectedView==='token'?{token:selectedToken,chain_id:Number(selectedToken.split(':')[0])}:selectedView==='network'?{chain_id:selectedNetwork}:{})};}
+function selectedContext(){return {view:selectedView,...(typeof FolderUI!=='undefined'&&FolderUI.id?{folder_id:FolderUI.id}:{}),...(selectedView==='wallet'?{wallet:selectedWallet}:selectedView==='token'?{token:selectedToken,chain_id:Number(selectedToken.split(':')[0])}:selectedView==='network'?{chain_id:selectedNetwork}:{})};}
 async function publishUiContext(){
   if(typeof localSession==='undefined'||!localSession?.controls)return;
   try{await localAPI('/api/ui-context',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(selectedContext())});}catch{/* Selection is optional; saved research remains usable. */}
@@ -54,18 +54,32 @@ async function loadRoute(force=false){
   else if(view==='token'){const [chain_id,address]=selectedToken.split(':');requests=[queryPath('/api/token',{chain_id,address})];}
   else if(view==='network')requests=[queryPath('/api/network',{chain_id:selectedNetwork}),queryPath('/api/holdings',{chain_id:selectedNetwork,offset:networkOffset,limit:100,query:tokenSearch,minimum_value_usd:minimum,include_testnets:1,sort:networkSort,portfolio_status:networkStatus})];
   else if(view==='tokens'){const f=catalogFilters();requests=[queryPath('/api/holdings',{offset:(f.page-1)*50,limit:50,chain_id:f.network,query:f.search,minimum_value_usd:f.minimum,sort:f.sort,pricing:f.pricing,portfolio_status:f.status,include_testnets:f.testnets?1:0})];}
+  const folder=typeof FolderUI!=='undefined'?FolderUI.id:null;
+  if(folder)requests=requests.map(path=>/^\/api\/(holdings|token|network)\?/.test(path)?path+'&folder_id='+encodeURIComponent(folder):path);
+  const overviewIndex=requests.length;
+  if(folder)requests.push(queryPath('/api/overview',{folder_id:folder}));
   const key=JSON.stringify([revision,view,requests]);
   if(key===routeLoadedKey&&!force){publishUiContext();return;}
   const focused=document.activeElement?.id?{id:document.activeElement.id,start:document.activeElement.selectionStart,end:document.activeElement.selectionEnd}:null;
   routeAbort?.abort();routeAbort=new AbortController();routeLoadedKey=null;routeLoading=true;routeData={};showRouteStatus(requests.length?'Loading saved research…':'');renderView();
   try{
     let results=!force&&routeCache.get(key);
-    if(!results){results=await Promise.all(requests.map(path=>readAPI(path,routeAbort.signal)));routeCache.set(key,results);if(routeCache.size>12)routeCache.delete(routeCache.keys().next().value);}
+    if(!results){
+      results=await Promise.all(requests.map(path=>readAPI(path,routeAbort.signal)));
+      const consistent=rows=>new Set(rows.map(row=>row.data_revision).filter(Boolean)).size<=1;
+      if(folder&&!consistent(results)){
+        if(epoch!==routeEpoch||revision!==state.data_revision)return;
+        results=await Promise.all(requests.map(path=>readAPI(path,routeAbort.signal)));
+        if(!consistent(results))throw Error('Saved data changed while this view was loading. Please retry.');
+      }
+      routeCache.set(key,results);if(routeCache.size>12)routeCache.delete(routeCache.keys().next().value);
+    }
     if(epoch!==routeEpoch||revision!==state.data_revision)return;
     if(view==='wallet')routeData={wallet:results[0]};
     else if(view==='token')routeData={token:results[0]};
     else if(view==='network')routeData={network:results[0],page:results[1]};
     else if(view==='tokens'||view==='home')routeData={page:results[0]};
+    if(folder){routeData.overview=results[overviewIndex];FolderUI.acceptOverview(routeData.overview);}
     routeLoadedKey=key;routeLoading=false;showRouteStatus('');renderView();
     const field=focused&&$(focused.id);if(field&&!field.disabled){field.focus({preventScroll:true});if(typeof field.setSelectionRange==='function'&&typeof focused.start==='number')field.setSelectionRange(focused.start,focused.end);}
     if(typeof refreshControlState==='function')refreshControlState();
@@ -75,14 +89,15 @@ async function loadRoute(force=false){
   }catch(error){if(epoch!==routeEpoch||error.name==='AbortError')return;routeLoading=false;showRouteStatus(error.message,true);renderView();}
 }
 function currentWallet(){return typeof routeData!=='undefined'&&routeData.wallet?.key===selectedWallet ? routeData.wallet : state?.wallets.find(w=>w.key===selectedWallet);}
-const tokenHref = id => '#/token/'+id.split(':').map(encodeURIComponent).join('/');
-const networkHref = id => '#/network/'+id;
+const tokenHref = id => (typeof FolderUI!=='undefined'?FolderUI.path('token'):'#/token')+'/'+id.split(':').map(encodeURIComponent).join('/');
+const networkHref = id => (typeof FolderUI!=='undefined'?FolderUI.path('network'):'#/network')+'/'+id;
 function navigate(hash){if(location.hash===hash)readRoute();else location.hash=hash;}
 let routeIdentity=null;
 function readRoute(){
   const identity=location.hash||'#/home';
   if(identity!==routeIdentity){selectedChain='all';minimum=0;tokenSearch='';walletOffset=0;networkOffset=0;routeData={};routeLoadedKey=null;if(typeof resetRouteFilters==='function')resetRouteFilters();routeIdentity=identity;}
   let parts=[];try{parts=location.hash.replace(/^#\/?/,'').split('/').map(decodeURIComponent);}catch{}
+  if(typeof FolderUI!=='undefined')parts=FolderUI.route(parts);
   if(parts[0]==='wallet'&&/^0x[0-9a-f]{40}$/i.test(parts[1]||'')){selectedWallet=parts[1].toLowerCase();selectedView='wallet';selectedChain='all';}
   else if(parts[0]==='network'&&/^\d+$/.test(parts[1]||'')){selectedNetwork=Number(parts[1]);selectedView='network';tokenSearch='';}
   else if(parts[0]==='token'&&/^\d+$/.test(parts[1]||'')&&/^(native|0x[0-9a-f]{40})$/i.test(parts[2]||'')){selectedToken=Number(parts[1])+':'+parts[2].toLowerCase();selectedView='token';}
@@ -93,7 +108,7 @@ function readRoute(){
 }
 function selectWallet(key){
   if(!state?.wallets.some(w=>w.key===key))return;
-  navigate('#/wallet/'+key);
+  navigate(typeof FolderUI!=='undefined'?FolderUI.walletPath(key):'#/wallet/'+key);
 }
 function goHome(){
   navigate('#/home');
@@ -102,8 +117,9 @@ function renderBreadcrumb(items){
   $('breadcrumbs').innerHTML='<ol>'+items.map(item=>`<li>${item.href?`<a href="${escapeHTML(item.href)}" title="${escapeHTML(item.label)}">${escapeHTML(item.label)}</a>`:`<span aria-current="page" title="${escapeHTML(item.label)}">${escapeHTML(item.label)}</span>`}</li>`).join('')+'</ol>';
 }
 function renderWallets(){
-  $('wallet-count').textContent=state.wallets.length;
-  const visible=typeof matchingWallets==='function'?matchingWallets(state.wallets,$('wallet-nav-search').value):state.wallets;
+  const wallets=typeof FolderUI!=='undefined'?FolderUI.wallets():state.wallets;
+  $('wallet-count').textContent=wallets.length;
+  const visible=typeof matchingWallets==='function'?matchingWallets(wallets,$('wallet-nav-search').value):wallets;
   $('wallet-list').innerHTML=visible.map(w=>{
     const active=selectedView==='wallet'&&w.key===selectedWallet;
     const status=KiraView.walletStatus(typeof jobList==='undefined'?[]:jobList,w);
@@ -127,6 +143,7 @@ function renderView(){
   else if(['token','network'].includes(selectedView))renderDetail();
   if(typeof renderWorkspace==='function')renderWorkspace();
   if(typeof KiraSelect!=='undefined')KiraSelect.refresh();
+  if(typeof FolderUI!=='undefined')FolderUI.render();
 }
 function progress(value,total,label){
   return value!=null&&total>0 ? `<progress class="allocation-progress" value="${value}" max="${total}" aria-label="${escapeHTML(label)}">${(value/total*100).toFixed(1)}%</progress>` : '';
@@ -139,8 +156,11 @@ function chainIcon(chain){
   return `<span class="chain-icon ${escapeHTML(cls)}" aria-hidden="true"><span class="chain-fallback">${escapeHTML(glyph)}</span>${url?`<img src="${escapeHTML(url)}" alt="" width="24" height="24" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-chain-image>`:''}</span>`;
 }
 function renderHome(){
-  const s=state.dashboard;
-  renderBreadcrumb([{label:'Home'}]);
+  const home=typeof FolderUI!=='undefined'?FolderUI.view():state;
+  const crumbs=typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Home'}];
+  renderBreadcrumb([...crumbs.slice(0,-1),{label:crumbs.at(-1).label}]);
+  if(!home){$('home-summary').hidden=true;$('home-details').hidden=true;$('home-empty').hidden=true;$('home-discovery-notice').hidden=true;$('home-coverage-note').textContent='';$('home-price-time').textContent='';return;}
+  const s=home.dashboard;$('home-summary').hidden=false;
   $('sync-label').textContent=s.analysed_wallet_count+' of '+s.wallet_count+' '+(s.wallet_count===1?'wallet':'wallets')+' analysed';
   $('home-total').textContent=money(s.known_value_usd);
   $('home-sell-out').innerHTML=sellSummary(s.sell_out_summary);
@@ -153,10 +173,10 @@ function renderHome(){
   $('home-empty').hidden=s.wallet_count>0;$('home-details').hidden=s.wallet_count===0;
   $('home-policy-note').innerHTML=policyNotice(s.asset_policy_summary);
   renderHomeCoverage();
-  const incomplete=state.wallets.some(w=>w.chains.some(c=>c.environment==='mainnet'&&KiraView.coverageGap(c)));
+  const incomplete=home.wallets.some(w=>w.chains.some(c=>c.environment==='mainnet'&&KiraView.coverageGap(c)));
   $('home-coverage-note').textContent='Mainnet holdings only · '+(incomplete?'Research coverage is incomplete.':'Testnets excluded from totals.');
   $('home-price-time').textContent=s.prices_from ? 'Prices '+stamp(s.prices_from)+(s.prices_from!==s.prices_to?' – '+stamp(s.prices_to):'') : '';
-  $('wallet-cards').innerHTML=state.wallets.map(w=>{
+  $('wallet-cards').innerHTML=home.wallets.map(w=>{
     const count=w.mainnet_asset_count??w.assets.filter(a=>a.environment==='mainnet').length,unpriced=w.mainnet_unpriced_count??w.unpriced_count;
     const value=w.analysed_at?w.known_value_usd:null;
     return `<button class="wallet-card" data-wallet="${escapeHTML(w.key)}" aria-label="Open ${escapeHTML(w.name)} holdings"><span class="wallet-card-heading"><span class="card-wallet-icon">${walletGlyph}</span><span class="wallet-card-identity"><strong>${escapeHTML(w.name)}</strong><span>${escapeHTML(shortAddress(w.address))}</span></span><span class="card-arrow" aria-hidden="true">${arrowGlyph}</span></span><span class="wallet-card-value">${money(value)}</span><span class="wallet-card-meta" title="Sum of independent saved quotes. Gas excluded; shared liquidity can change combined proceeds.">Sell-out est. sum ${w.sell_out_summary?.value_usd==null?'—':'≈ '+money(w.sell_out_summary.value_usd)}</span><span class="wallet-card-meta"><span>${w.analysed_at?count+(count===1?' position · ':' positions · ')+unpriced+' unpriced':'Not checked'}</span><span>${value!=null?share(value,s.known_value_usd)+' of priced value':''}</span></span>${progress(value,s.known_value_usd,w.name+' share of priced value')}</button>`;
@@ -169,7 +189,7 @@ function renderHome(){
 function renderWallet(){
   const w=currentWallet();if(!w)return;
   if($('wallet-tools').dataset.wallet!==w.key){$('wallet-tools').open=false;$('wallet-tools').dataset.wallet=w.key;}
-  $('wallet-name').textContent=w.name;renderBreadcrumb([{label:'Home',href:'#/home'},{label:w.name}]);$('address').textContent=w.address;$('address').title=w.address;
+  $('wallet-name').textContent=w.name;renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Home',href:'#/home'}]),{label:w.name}]);$('address').textContent=w.address;$('address').title=w.address;
   $('wallet-tags').innerHTML=w.tags.slice(1).map(t=>`<span class="tag">${escapeHTML(t)}</span>`).join(' ');
   $('report-link').hidden=!w.report_url;if(w.report_url)$('report-link').href=safeURL(w.report_url);
   $('total-value').textContent=w.analysed_at?money(w.known_value_usd):'—';
@@ -193,7 +213,8 @@ function renderWallet(){
 }
 function renderHomeCoverage(){
   const readiness=typeof setupReadiness!=='undefined'?setupReadiness:null;
-  const affected=state?.wallets.find(w=>KiraView.discoveryNotice(w,readiness)?.rpcIssues)||state?.wallets.find(w=>{const n=KiraView.discoveryNotice(w,readiness);return n?.gapCount>0||n?.action==='settings';});
+  const wallets=typeof FolderUI!=='undefined'?(FolderUI.view()?.wallets||[]):state?.wallets||[];
+  const affected=wallets.find(w=>KiraView.discoveryNotice(w,readiness)?.rpcIssues)||wallets.find(w=>{const n=KiraView.discoveryNotice(w,readiness);return n?.gapCount>0||n?.action==='settings';});
   const notice=affected?KiraView.discoveryNotice(affected,readiness):null;
   $('home-discovery-notice').hidden=!notice;
   if(!notice)return;
@@ -202,7 +223,7 @@ function renderHomeCoverage(){
   $('home-discovery-settings').textContent=notice.settingsLabel||'Review data connection';
   $('home-discovery-settings').dataset.wallet=affected.key;
   $('home-discovery-settings').hidden=(notice.action!=='settings'&&!notice.settings)||typeof localSession==='undefined'||localSession?.controls!==true||state.demo===true;
-  $('home-discovery-review').href='#/wallet/'+encodeURIComponent(affected.key);
+  $('home-discovery-review').href=typeof FolderUI!=='undefined'?FolderUI.walletPath(affected.key):'#/wallet/'+encodeURIComponent(affected.key);
 }
 function renderDiscoveryCoverage(w) {
   const readiness=typeof setupReadiness!=='undefined'?setupReadiness:null;
@@ -388,22 +409,23 @@ function explorerLink(token){
   return `<a class="explorer-link" href="${escapeHTML(safeURL(link.url))}" target="_blank" rel="noopener noreferrer" aria-label="View ${escapeHTML(token.symbol)} on ${known}"><img src="/explorers/etherscan.png" width="18" height="18" alt="">${known}<span aria-hidden="true">↗</span></a>`;
 }
 function renderDetail(){
+  const context=typeof FolderUI!=='undefined'?(FolderUI.view()||state):state;
   const disclosures=typeof savedDisclosures==='function'?savedDisclosures($('detail-view')):null;
   const token=selectedView==='token'?(state.paged?routeData.token:state.details.tokens.find(a=>a.id===selectedToken)):null;
   const network=token?.network||(state.paged?routeData.network:state.details.networks.find(c=>c.id===selectedNetwork));
   const record=selectedView==='token'?token:network;
   if(!record){
-    renderBreadcrumb([{label:'Home',href:'#/home'},{label:'Research detail'}]);$('sync-label').textContent='Latest recorded research';
+    renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Home',href:'#/home'}]),{label:'Research detail'}]);$('sync-label').textContent='Latest recorded research';
     $('detail-view').innerHTML=routeLoading?'<div class="empty"><h3>Loading saved detail…</h3></div>':'<div class="empty"><h3>No recorded detail for this selection</h3><p>Return Home or retry the saved research above.</p></div>';
     document.title='Research detail · Wallets';return;
   }
   const label=token?token.symbol:network.name,isTestnet=record.environment==='testnet';
-  renderBreadcrumb([{label:'Home',href:'#/home'},...(token?[{label:network.name,href:networkHref(network.id)}]:[]),{label}]);
-  $('sync-label').textContent='Across '+state.wallets.length+' registered wallets';document.title=label+' · Kira Wallet';
+  renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Home',href:'#/home'}]),...(token?[{label:network.name,href:networkHref(network.id)}]:[]),{label}]);
+  $('sync-label').textContent='Across '+context.wallets.length+' registered wallets';document.title=label+' · Kira Wallet';
   const note=token&&token.included_in_totals===false?'Reported spot estimate · excluded from portfolio totals. Sellability unverified.':isTestnet?'Testnet holdings · excluded from USD totals.':'Recorded spot estimates · '+record.unpriced_count+' unpriced positions excluded';
-  const header=`<section class="detail-heading"><div class="detail-identity">${token?coinIcon(token):chainIcon(network)}<div><div class="eyebrow">${token?'TOKEN':'NETWORK'} OVERVIEW${isTestnet?' · TESTNET':''}</div><div class="token-title-line"><h1>${escapeHTML(label)}</h1>${token?explorerLink(token):''}</div><p>${token?policyBadge(token)+escapeHTML(token.name)+' · '+escapeHTML(network.name):'Holdings across all your registered wallets.'}</p></div></div>${!token?`<label class="chain-select"><span class="sr-only">Open another network</span><select id="network-switch">${state.details.networks.map(c=>`<option value="${c.id}" data-chain-id="${c.id}" ${c.id===network.id?'selected':''}>${escapeHTML(c.name)}${c.environment==='testnet'?' · Testnet':''}</option>`).join('')}</select></label>`:''}</section>`;
+  const header=`<section class="detail-heading"><div class="detail-identity">${token?coinIcon(token):chainIcon(network)}<div><div class="eyebrow">${token?'TOKEN':'NETWORK'} OVERVIEW${isTestnet?' · TESTNET':''}</div><div class="token-title-line"><h1>${escapeHTML(label)}</h1>${token?explorerLink(token):''}</div><p>${token?policyBadge(token)+escapeHTML(token.name)+' · '+escapeHTML(network.name):'Holdings across all your registered wallets.'}</p></div></div>${!token?`<label class="chain-select"><span class="sr-only">Open another network</span><select id="network-switch">${context.details.networks.map(c=>`<option value="${c.id}" data-chain-id="${c.id}" ${c.id===network.id?'selected':''}>${escapeHTML(c.name)}${c.environment==='testnet'?' · Testnet':''}</option>`).join('')}</select></label>`:''}</section>`;
   const identity=token?`<div class="record-address"><span>${escapeHTML(token.address||'Native asset · chain '+token.chain_id)}</span>${token.address?`<button type="button" class="icon-button" data-copy-record="${escapeHTML(token.address)}" aria-label="Copy token address" title="Copy token address"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="11" height="12" rx="2"/><path d="M15 8V5H4v12h4"/></svg></button>`:''}</div>`:'';
-  const stats=`<section class="portfolio-summary detail-summary" aria-label="${token?'Token':'Network'} summary"><div class="valuation"><div class="summary-label">${token&&token.included_in_totals===false?'Reported spot estimate':'Estimated value across wallets'}</div><div class="total-value">${money(record.value_usd)}</div><div class="valuation-note">${note}</div></div><div class="summary-stat"><span class="summary-label">${token?'Total balance':'Unique assets'}</span><strong title="${escapeHTML(token?.balance||'')}">${token?compactQuantity(token.balance):network.unique_asset_count}</strong><span class="stat-note">${token?escapeHTML(token.symbol):network.position_count+' positions'}</span></div><div class="summary-stat"><span class="summary-label">Holding wallets</span><strong>${record.wallet_count}</strong><span class="stat-note">Of ${state.wallets.length} registered</span></div></section>`;
+  const stats=`<section class="portfolio-summary detail-summary" aria-label="${token?'Token':'Network'} summary"><div class="valuation"><div class="summary-label">${token&&token.included_in_totals===false?'Reported spot estimate':'Estimated value across wallets'}</div><div class="total-value">${money(record.value_usd)}</div><div class="valuation-note">${note}</div></div><div class="summary-stat"><span class="summary-label">${token?'Total balance':'Unique assets'}</span><strong title="${escapeHTML(token?.balance||'')}">${token?compactQuantity(token.balance):network.unique_asset_count}</strong><span class="stat-note">${token?escapeHTML(token.symbol):network.position_count+' positions'}</span></div><div class="summary-stat"><span class="summary-label">Holding wallets</span><strong>${record.wallet_count}</strong><span class="stat-note">Of ${context.wallets.length} registered</span></div></section>`;
   let facts='';
   if(token){
     const held=token.wallets.filter(r=>r.asset),prices=isTestnet?[]:held.map(r=>r.asset.price?.usd).filter(p=>p!=null);
@@ -484,10 +506,10 @@ function policyPanel(asset){
   const observations=[...reasons,...(risk?.flags||[])];
   let status=!risk?'Not checked':risk.status==='flagged'?'Risk reported':risk.status==='no_high_risk_flags_reported'?'No high-risk flags reported · not a safety guarantee':'Unknown';
   if(risk?.last_attempt)status+=' · latest attempt unavailable; earlier observations retained';
-  return `<section class="token-policy-panel fact-panel" aria-label="Asset valuation and risk"><div class="section-heading"><h2>Valuation & risk</h2>${policyBadge(asset)}</div><p>${asset.included_in_totals===false?'This asset is excluded from portfolio and sell-out totals. Its reported estimates and holdings are preserved.':'Included in portfolio totals. A reported price does not establish sale proceeds.'}</p>${observations.length?'<ul>'+observations.map(text=>'<li>'+escapeHTML(text)+'</li>').join('')+'</ul>':''}<dl><div><dt>Risk check</dt><dd>${escapeHTML(status)}</dd></div><div><dt>Sellability</dt><dd>Unverified · estimates do not test token transfer restrictions</dd></div>${risk?`<div><dt>Source & time</dt><dd><a href="${escapeHTML(safeURL(risk.source))}" target="_blank" rel="noopener noreferrer">GoPlus</a> · ${stamp(risk.observed_at)}</dd></div>`:''}</dl>${enabled?`<div class="policy-actions">${asset.portfolio_status!=='excluded'?policyButton(asset,'exclude','Hide token'):policyButton(asset,'auto','Restore token')}${asset.included_in_totals===false?policyButton(asset,'include','Include in totals'):asset.valuation_policy?.mode==='include'?policyButton(asset,'auto','Use automatic classification'):''}${asset.address&&!state.demo?`<button class="quiet-button" type="button" data-token-risk="${escapeHTML(asset.id)}">${risk?'Recheck risk':'Check risk'}</button>`:''}</div>${asset.address&&!state.demo?'<p class="detail-note">Check risk sends only this chain and contract address to GoPlus. It does not connect your wallet or execute a transaction.</p>':''}`:''}<details class="detail-note"><summary>Automatic review rules</summary><p>Automatic review uses saved evidence. Exceeding twice the largest reported pool liquidity with at least $10,000 in spot value and no saved sale quote is a valuation warning, not a scam verdict.</p></details></section>`;
+  return `<section class="token-policy-panel fact-panel" aria-label="Asset valuation and risk"><div class="section-heading"><h2>Valuation & risk</h2>${policyBadge(asset)}</div><p>${asset.included_in_totals===false?'This asset is excluded from portfolio and sell-out totals. Its reported estimates and holdings are preserved.':'Included in portfolio totals. A reported price does not establish sale proceeds.'}</p>${typeof FolderUI!=='undefined'&&FolderUI.id?'<p class="detail-note">Visibility changes apply across all registered wallets.</p>':''}${observations.length?'<ul>'+observations.map(text=>'<li>'+escapeHTML(text)+'</li>').join('')+'</ul>':''}<dl><div><dt>Risk check</dt><dd>${escapeHTML(status)}</dd></div><div><dt>Sellability</dt><dd>Unverified · estimates do not test token transfer restrictions</dd></div>${risk?`<div><dt>Source & time</dt><dd><a href="${escapeHTML(safeURL(risk.source))}" target="_blank" rel="noopener noreferrer">GoPlus</a> · ${stamp(risk.observed_at)}</dd></div>`:''}</dl>${enabled?`<div class="policy-actions">${asset.portfolio_status!=='excluded'?policyButton(asset,'exclude','Hide token'):policyButton(asset,'auto','Restore token')}${asset.included_in_totals===false?policyButton(asset,'include','Include in totals'):asset.valuation_policy?.mode==='include'?policyButton(asset,'auto','Use automatic classification'):''}${asset.address&&!state.demo?`<button class="quiet-button" type="button" data-token-risk="${escapeHTML(asset.id)}">${risk?'Recheck risk':'Check risk'}</button>`:''}</div>${asset.address&&!state.demo?'<p class="detail-note">Check risk sends only this chain and contract address to GoPlus. It does not connect your wallet or execute a transaction.</p>':''}`:''}<details class="detail-note"><summary>Automatic review rules</summary><p>Automatic review uses saved evidence. Exceeding twice the largest reported pool liquidity with at least $10,000 in spot value and no saved sale quote is a valuation warning, not a scam verdict.</p></details></section>`;
 }
 function openPolicyList(status){
-  navigate('#/tokens');readRoute();
+  navigate(typeof FolderUI!=='undefined'?FolderUI.path('tokens'):'#/tokens');readRoute();
   $('all-token-status').value=status;$('all-token-search').value='';catalogPage=1;catalogMinimum=0;
   if(typeof KiraSelect!=='undefined')KiraSelect.refresh();
   state?.paged?loadRoute(true):renderCatalog();

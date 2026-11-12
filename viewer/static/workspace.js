@@ -38,13 +38,15 @@ function renderWorkspace() {
     if (current) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   });
   if (selectedView === 'home') $('brand-home').setAttribute('aria-current', 'page'); else $('brand-home').removeAttribute('aria-current');
-  $('all-token-count').textContent = state.dashboard.unique_asset_count;
+  const context=typeof FolderUI!=='undefined'?FolderUI.view():state;
+  $('all-token-count').textContent = context?.dashboard.unique_asset_count??'—';
   if (selectedView === 'tokens') {
-    renderBreadcrumb([{ label: 'Home', href: '#/home' }, { label: 'All tokens' }]);
+    renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Home',href:'#/home'}]),{label:'All tokens'}]);
     document.title = 'All tokens · Kira Wallet';
+    if(!context){$('sync-label').textContent='Loading folder holdings…';renderCatalog();return;}
     const network = $('all-token-network').value;
-    const recordedChains = new Set(state.paged?state.details.networks.filter(n=>n.position_count>0).map(n=>n.id):state.details.tokens.map(t=>t.chain_id));
-    $('all-token-network').innerHTML = '<option value="all">All chains</option>' + state.details.networks.filter(n => recordedChains.has(n.id)).map(n => `<option value="${n.id}" data-chain-id="${n.id}">${escapeHTML(n.name)}${n.environment === 'testnet' ? ' · Testnet' : ''}</option>`).join('');
+    const recordedChains = new Set(state.paged?context.details.networks.filter(n=>n.position_count>0).map(n=>n.id):state.details.tokens.map(t=>t.chain_id));
+    $('all-token-network').innerHTML = '<option value="all">All chains</option>' + context.details.networks.filter(n => recordedChains.has(n.id)).map(n => `<option value="${n.id}" data-chain-id="${n.id}">${escapeHTML(n.name)}${n.environment === 'testnet' ? ' · Testnet' : ''}</option>`).join('');
     $('all-token-network').value = [...$('all-token-network').options].some(o => o.value === network) ? network : 'all';
     $('sync-label').textContent = 'Latest recorded holdings'; renderCatalog();
   } else if (selectedView === 'activity') {

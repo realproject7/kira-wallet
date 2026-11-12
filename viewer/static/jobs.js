@@ -100,6 +100,7 @@ async function submitOperation(operation,input,{refresh=true}={}){
   try{
     const result=await localAPI('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schema_version:1,operation,input,idempotency_key:key})});
     sessionStorage.removeItem(storageKey);
+    if(operation.startsWith('folder.')){if(refresh)await pollWorkspace();return result;}
     if(operation.startsWith('token.')){if(refresh)await pollWorkspace();return result;}
     const scanMessage=operation==='job.deepen'?(['succeeded','partial'].includes(result.state)?'Holdings unchanged. Saved sell estimates retained.':'Sell estimate update queued. Your holdings stay available.'):operation==='job.resume'?'Scan queued to resume from saved work.':operation==='job.cancel'?'Pause requested. Saved results stay available.':null;
     if(result.batch_id){toast(result.jobs.length+' wallet jobs · '+result.skipped.length+' skipped · '+result.errors.length+' need attention');}
@@ -218,7 +219,7 @@ async function pollWorkspace(){
   finally{workspacePolling=false;scheduleWorkspacePoll();}
 }
 for(const button of document.querySelectorAll('[data-close-dialog]'))button.addEventListener('click',()=>button.closest('dialog').close());
-function openAdd(){if(!localSession?.controls)return;if(setupReadiness?.discovery_key_available!==true){openDataConnections();return;}if(!watchingSubmission)$('wallet-form-error').textContent='';if(typeof renderWatching==='function')renderWatching();$('wallet-dialog').showModal();if(typeof loadSetupReadiness==='function')loadSetupReadiness();}
+function openAdd(){if(!localSession?.controls)return;if(typeof FolderUI!=='undefined'&&!watchingSubmission)FolderUI.prepareAdd();if(setupReadiness?.discovery_key_available!==true){openDataConnections();return;}if(!watchingSubmission)$('wallet-form-error').textContent='';if(typeof renderWatching==='function')renderWatching();$('wallet-dialog').showModal();if(typeof loadSetupReadiness==='function')loadSetupReadiness();}
 $('open-wallet').addEventListener('click',openAdd);$('empty-add-wallet').addEventListener('click',openAdd);
 function formAction(form,error,action){
   form.addEventListener('submit',async e=>{e.preventDefault();error.textContent='';const buttons=[...form.querySelectorAll('button[type="submit"]')];if(buttons.some(b=>b.disabled))return;buttons.forEach(b=>b.disabled=true);
@@ -230,7 +231,10 @@ $('wallet-form').addEventListener('submit',async event=>{
   $('wallet-form-error').textContent='';
   try{
     const input=Object.freeze({...watchingRegistrationInput()});watchingSubmission=input;watchingSubmitting=true;renderWatching();
+    const folder=typeof FolderUI!=='undefined'?$('new-wallet-folder').value:null;
+    const folderRevision=state?.wallet_folders?.revision;
     await submitOperation('wallet.add',input);
+    if(typeof FolderUI!=='undefined')await FolderUI.afterAdd(input.address,folder,folderRevision);
     watchingSubmission=null;
     $('wallet-dialog').close();$('wallet-form').reset();watchingConnection.clearSelection();
     navigate('#/activity');

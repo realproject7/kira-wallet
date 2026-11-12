@@ -35,7 +35,7 @@ def main():
         members={}
         with tarfile.open(package) as archive:
             names=archive.getnames()
-            assert not any('/snapshots/' in n or '/cache/' in n or '/jobs/' in n or n.endswith(('wallets.json','session.json','.env','.kira.local.json')) for n in names)
+            assert not any('/snapshots/' in n or '/cache/' in n or '/jobs/' in n or '/.folder-actions/' in n or n.endswith(('wallets.json','wallet-folders.json','session.json','.env','.kira.local.json')) for n in names)
             for member in archive.getmembers():
                 if member.isfile():members[member.name.removeprefix('package/')]=hashlib.sha256(archive.extractfile(member).read()).hexdigest()
                 if member.isfile() and member.name.endswith(('.py','.cjs','.md','.json','.js','.html','.css')):
@@ -49,7 +49,7 @@ def main():
         cli=str(temp/'installation/bin/kira');data=str(temp/'portfolio')
         assert run([cli,'--version']).strip()==json.loads((installed/'package.json').read_text())['version']
         catalog=json.loads(run([cli,'--data-dir',data,'describe','--json']))
-        assert {'settings_h402','portfolio_holdings_refresh','portfolio_sell_routes_analyze'} <= {tool['name'] for tool in catalog['tools']}
+        assert {'folders_list','folder_overview','folder_create','folder_set_members','settings_h402','portfolio_holdings_refresh','portfolio_sell_routes_analyze'} <= {tool['name'] for tool in catalog['tools']}
         assert not Path(data).exists(),'Tool discovery created a workspace.'
         info=json.loads(run([cli,'--data-dir',data,'info','--json']))
         assert info['capabilities']['headless'] and not info['capabilities']['model_runtime']
@@ -72,14 +72,14 @@ def main():
             assert json.loads(run([cli,'--data-dir',data,'status']))==first
             run([cli,'--data-dir',data,'start','--port',str(port),'--no-open'],expected=1)
             run([cli,'--data-dir',str(temp/'other-portfolio'),'start','--port',str(port),'--no-open'],expected=1)
-            for path in ['/.kira.local.json','/wallets.json','/.rpc.env']:
+            for path in ['/.kira.local.json','/wallets.json','/wallet-folders.json','/.folder-actions/receipt.json','/.rpc.env']:
                 try:urllib.request.urlopen(f'http://127.0.0.1:{port}'+path)
                 except urllib.error.HTTPError as error:assert error.code==404;error.close()
                 else:raise AssertionError('Private file was exposed.')
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/kira-logo.png') as response:assert response.headers['Content-Type']=='image/png'
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/ows-logo.svg') as response:
                 assert response.headers['Content-Type']=='image/svg+xml' and b'<svg' in response.read()
-            for asset in ['explorers/etherscan.png','venues/mintclub.png','venues/uniswap.svg','venues/aerodrome.svg','selects.js','ows.js','watching.js','watching-model.js','workspace.js','workspace-model.js','workspace.css','integrations.js','portfolio.js']:
+            for asset in ['folders.js','folders-model.js','folders.css','explorers/etherscan.png','venues/mintclub.png','venues/uniswap.svg','venues/aerodrome.svg','selects.js','ows.js','watching.js','watching-model.js','workspace.js','workspace-model.js','workspace.css','integrations.js','portfolio.js']:
                 with urllib.request.urlopen(f'http://127.0.0.1:{port}/'+asset) as response:assert response.status==200 and len(response.read())>100
             transcript='\n'.join(json.dumps(item) for item in [
                 {'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-06-18'}},
@@ -106,9 +106,15 @@ def main():
             else:raise AssertionError('Installed synthetic names job did not complete.')
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/state') as response:changed=json.load(response)
             assert 'Install check' in changed['wallets'][0]['tags'] and changed['dashboard']['known_value_usd']==125
+            group=json.loads(run([cli,'--data-dir',data,'call','folder_create','--arguments',json.dumps({'name':'Install folder','idempotency_key':'install-check-folder'}),'--json']))['folder_id']
+            assignment={'folder_id':group,'wallets':[state['wallets'][0]['key']],'idempotency_key':'install-check-folder-members'}
+            assert json.loads(run([cli,'--data-dir',data,'call','folder_assign','--arguments',json.dumps(assignment),'--json']))['completed']
+            overview=json.loads(run([cli,'--data-dir',data,'call','folder_overview','--arguments',json.dumps({'folder_id':group}),'--json']))
+            assert overview['dashboard']['known_value_usd']==125 and overview['dashboard']['wallet_count']==1
             run([cli,'--data-dir',data,'start','--read-only','--no-open'],expected=1)
             run([cli,'--data-dir',data,'stop']);run([cli,'--data-dir',data,'start','--port',str(port),'--read-only','--no-open'])
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/session') as response:assert json.load(response)['controls'] is False
+            with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/folders') as response:assert json.load(response)['folders'][0]['wallet_count']==1
             run([cli,'--data-dir',data,'stop']);assert json.loads(run([cli,'--data-dir',data,'status']))['status']=='stopped'
         finally:
             subprocess.run([cli,'--data-dir',data,'stop'],cwd=temp,env=env,capture_output=True,timeout=10)

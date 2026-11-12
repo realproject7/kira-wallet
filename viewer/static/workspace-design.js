@@ -43,7 +43,7 @@ function clearCatalogFilters(){
 }
 function filterHomeWallets(){
   if(!state)return;
-  const keys=new Set(matchingWallets(state.wallets,$('home-wallet-search').value).map(w=>w.key));
+  const keys=new Set(matchingWallets(typeof FolderUI!=='undefined'?FolderUI.wallets():state.wallets,$('home-wallet-search').value).map(w=>w.key));
   for(const row of $('wallet-cards').querySelectorAll('[data-wallet]'))row.hidden=!keys.has(row.dataset.wallet);
   $('home-wallet-empty').hidden=keys.size>0;
 }
