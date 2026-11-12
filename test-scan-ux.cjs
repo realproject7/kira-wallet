@@ -25,6 +25,22 @@ test('basic saved results offer optional depth without implying complete coverag
  const interrupted=KiraView.researchSession([{...basic,state:'interrupted'}],wallet);
  assert.equal(interrupted.action,'resume');assert.equal(interrupted.basicReady,false);
 });
+test('quantity status retains dated estimates and only changed holdings show an update',()=>{
+ const h=harness(),saved={status:'current',needs_analysis:false,last_analyzed_at:'2026-11-11T10:00:00Z'};
+ const current={...wallet,sell_analysis:saved};h.context.currentWallet=()=>current;h.context.state.wallets=[current];
+ h.run('renderWalletScan()');
+ assert.equal(h.el('wallet-analysis').hidden,false);
+ assert.match(h.el('wallet-analysis').innerHTML,/Saved sell estimates[\s\S]*Last sell analysis[\s\S]*2026-11-11/);
+ assert.doesNotMatch(h.el('wallet-analysis').innerHTML,/data-job-action="deepen"/);
+ assert.equal(h.run('jobControls(jobList[0])'),'');
+ current.sell_analysis={...saved,status:'changed',needs_analysis:true,changed_count:2};h.run('renderWalletScan()');
+ assert.match(h.el('wallet-analysis').innerHTML,/2 recorded positions changed[\s\S]*Update sell estimates/);
+ assert.match(h.run('jobControls(jobList[0])'),/Update sell estimates/);
+ current.sell_analysis={...saved,status:'unverified'};h.run('renderWalletScan()');
+ assert.match(h.el('wallet-analysis').innerHTML,/could not be verified/);
+ assert.doesNotMatch(h.el('wallet-analysis').innerHTML,/data-job-action="deepen"/);
+ assert.match(h.run('sellAnalysisNote(jobList[0])'),/Last sell analysis/);
+});
 test('deep waits, pause, disconnect recovery and new basic generations stay distinct',()=>{
  const p=KiraView.researchSession([deep,basic],wallet);assert.equal(p.action,'cancel');assert.equal(p.isDeep,true);
  const paused=KiraView.researchSession([{...deep,state:'cancelled'},basic],wallet);
@@ -87,7 +103,7 @@ test('visible analysis card stays separate from lookup status and guards writes'
  const h=harness();h.run('renderWalletScan()');assert.doesNotMatch(h.el('wallet-scan').innerHTML,/Analyze sell routes|<h2|Your holdings are ready/);
  assert.equal(h.el('wallet-analysis').hidden,false);
  const analysis=h.el('wallet-analysis').innerHTML;
- assert.match(analysis.slice(0,analysis.indexOf('<details')),/Your holdings are ready[\s\S]*Analyze sell routes/);
+ assert.match(analysis.slice(0,analysis.indexOf('<details')),/Calculate sell estimates[\s\S]*Analyze sell routes/);
  assert.doesNotMatch(analysis,/More analysis/);
  assert.match(h.el('wallet-analysis').innerHTML,/does not look for more tokens or execute trades/);
  assert.doesNotMatch(h.el('wallet-analysis').innerHTML,/<details[^>]* open/);

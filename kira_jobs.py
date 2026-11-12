@@ -239,7 +239,8 @@ class JobStore:
             cached = self._summary_cache.get(path.stem)
             if cached is None or cached[0] != version:
                 job = self.get(path.stem)
-                row = {k: job.get(k) for k in ('job_id','operation','state','stage','created_at','updated_at','input','analysis_phase','parent_job_id','continuation_id')}
+                row = {k: job.get(k) for k in ('job_id','operation','state','stage','created_at','updated_at','input','analysis_phase','parent_job_id','continuation_id',
+                    'key_hash','raw_hash','request_hash','control_receipts','control_raw','result','errors','scan_policy')}
                 self._summary_cache[path.stem] = version, row
             rows.append(self._summary_cache[path.stem][1])
         for key in set(self._summary_cache) - existing:del self._summary_cache[key]
@@ -413,9 +414,9 @@ class JobStore:
                 raise JobError('idempotency_conflict','This request key already belongs to a portfolio action.')
             raw_hash=digest({'operation':operation,'input':request['input']})
             if receipt.exists() and read(receipt).get('raw_hash')==raw_hash:return self.admit_wallet(self.get(read(receipt)['job_id']))
-            for p in self.jobs.glob('*.json'):
-                saved=self.get(p.stem)
-                if saved.get('control_raw',{}).get(key_hash)==raw_hash or saved['key_hash']==key_hash and saved.get('raw_hash')==raw_hash:
+            for saved in self.summaries():
+                if (saved.get('control_raw') or {}).get(key_hash)==raw_hash or saved['key_hash']==key_hash and saved.get('raw_hash')==raw_hash:
+                    saved=self.get(saved['job_id'])
                     fingerprint=saved.get('control_receipts',{}).get(key_hash,saved['request_hash'])
                     atomic(receipt,{'schema_version':1,'request_hash':fingerprint,'raw_hash':raw_hash,'job_id':saved['job_id']})
                     return self.admit_wallet(saved)
@@ -426,8 +427,9 @@ class JobStore:
                 if old['request_hash'] != fingerprint: raise JobError('idempotency_conflict', 'This request key already belongs to another operation.')
                 return self.admit_wallet(self.get(old['job_id']))
             # Recover an envelope committed before its request receipt.
-            existing = next((j for p in self.jobs.glob('*.json') if (j := self.get(p.stem))['key_hash'] == key_hash or key_hash in j.get('control_receipts',{})), None)
+            existing = next((j for j in self.summaries() if j['key_hash'] == key_hash or key_hash in (j.get('control_receipts') or {})), None)
             if existing:
+                existing=self.get(existing['job_id'])
                 recorded=existing.get('control_receipts',{}).get(key_hash,existing['request_hash'])
                 if recorded != fingerprint: raise JobError('idempotency_conflict', 'This request key already belongs to another operation.')
                 job = existing
@@ -443,7 +445,15 @@ class JobStore:
                 if wallet.get('research_generation') not in (None,parent_job['job_id']):
                     raise JobError('superseded','A newer basic scan is available. Start deep scanning from its saved result.')
                 # Recover admission if the child was saved before its parent link.
-                job=next((j for p in self.jobs.glob('*.json') if (j:=self.get(p.stem)).get('parent_job_id')==parent_job['job_id']),None)
+                child=next((j for j in self.summaries() if j.get('parent_job_id')==parent_job['job_id']),None)
+                job=self.get(child['job_id']) if child else None
+                if job is None:
+                    from sell_analysis import assess
+                    analysis=assess(self.root,wallet,snapshot_id=parent_job['result']['snapshot_id'])
+                    if analysis['status']=='unverified':
+                        raise JobError('holdings_unverified','Some previously held quantities could not be checked. Refresh holdings before updating sell estimates. Saved estimates are preserved.')
+                    if analysis['status']=='current':
+                        job=self.get(analysis['job_id'])
                 if job is None:
                     job=self.new_job('wallet.refresh',{'wallet':wallet['address_key']},key_hash,fingerprint,raw_hash,'enrichment',parent_job['job_id'])
                 job.setdefault('control_receipts',{})[key_hash]=fingerprint
@@ -480,7 +490,7 @@ class JobStore:
         return bool(target) and any(j['state'] in ('queued','running') and
             j['operation'] in ('wallet.add','wallet.refresh','prices.refresh') and
             (j['input'].get('wallet') or j['input'].get('address') or '').lower()==target.lower()
-            for p in self.jobs.glob('*.json') for j in [self.get(p.stem)])
+            for j in self.summaries())
 
     def new_job(self,operation,value,key_hash,fingerprint,raw_hash,phase,parent):
         """Called under the request lock; child admission is serialized too."""

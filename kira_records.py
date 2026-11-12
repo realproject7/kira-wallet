@@ -82,7 +82,7 @@ def wallet_facts(wallets, *, pool_budget=40_000):
     def pick(value, names): return {k:value.get(k) for k in names}
     rows = []
     for wallet in wallets:
-        row = pick(wallet,('address','tags','name','snapshot_id','analysed_at','prices_at','balance_observed_at','known_value_usd','unpriced_count','status','sell_out_summary','asset_policy_summary'))
+        row = pick(wallet,('address','tags','name','snapshot_id','analysed_at','prices_at','balance_observed_at','known_value_usd','unpriced_count','status','sell_out_summary','sell_analysis','asset_policy_summary'))
         if not wallet.get('analysed_at'): row['known_value_usd']=None
         row['recorded_valuation']=wallet.get('recorded_valuation') or recorded_valuation(wallet['assets'])
         row['chains'] = [pick(c,('id','name','environment','complete','rpc_available','rpc_status','market_pending','market_errors','native_symbol','native_balance','native_observed_at','native_block_number','registry_block_number','discovery_status','registry_complete','registry_phase','rpc_pending','candidate_balance_errors','candidate_deferred','rpc_routes','history_window','discovery_provider','discovery_filters','lifecycle','head_status','head_age_seconds')) for c in wallet['chains']]
@@ -104,6 +104,7 @@ def wallet_facts(wallets, *, pool_budget=40_000):
             item['exit_quote'] = asset.get('exit_quote')
             item['sell_out'] = asset.get('sell_out')
             item['sell_out_reference'] = asset.get('sell_out_reference')
+            item['sell_analysis_provenance'] = asset.get('sell_analysis_provenance')
             item['exit_quote_recorded'] = item['exit_quote'] is not None or item['sell_out'] is not None
             item['exit_route'] = asset.get('exit_route')
             item['markets'] = asset.get('links',[])

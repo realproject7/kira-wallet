@@ -85,6 +85,7 @@ class StateCache:
         self.state = None
         self.body = None
         self.builds = 0
+        self.wallet_cache = {}
 
     def data_revision(self):
         """Stat published inputs before projecting; also sees legacy writers and crash gaps."""
@@ -110,6 +111,19 @@ class StateCache:
             for folder in self.folders:
                 paths.extend(folder.glob('chain-*.json'))
             values = [(str(p.relative_to(self.root)), signature(p)) for p in paths]
+            from sell_analysis import analysis_index, snapshot_path, _job
+            value=json.loads(registry.read_text())
+            for entry in value.get('wallets',[]):
+                if entry.get('research_generation'):
+                    path=self.root/'jobs'/(entry['research_generation']+'.json')
+                    try:
+                        baseline=_job(str(path),signature(path))
+                        values.append((entry['address_key'],baseline['state'],(baseline['result'] or {}).get('snapshot_id')))
+                    except (OSError,ValueError,TypeError):pass
+            for address, analysis in sorted(analysis_index(self.root).items()):
+                folder=snapshot_path(self.root,analysis['snapshot_id']).parent
+                values.append((address,analysis['job_id'],analysis['analysed_at'],
+                               signature(folder/'results.json'),signature(folder/'market-prices.json'),signature(folder/'token-market-metadata.json')))
             return hashlib.sha256(json.dumps(values, separators=(',', ':')).encode()).hexdigest()
 
     def refresh(self):
@@ -118,7 +132,7 @@ class StateCache:
             if revision == self.revision and self.state is not None:return self.state
             try:
                 for _ in range(3):
-                    state, _, _ = load_state(self.root, include_details=False, encode=False)
+                    state, _, _ = load_state(self.root, include_details=False, encode=False, wallet_cache=self.wallet_cache)
                     state['details'] = project_details(state['wallets'], self.root, include_wallets=False)
                     after = self.data_revision()
                     if revision == after:break

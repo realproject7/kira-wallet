@@ -118,7 +118,7 @@ portfolio totals.
 
 Alchemy remains required for new holdings and price research. Token indexes
 provide candidates; on-chain reads verify balances. Unsupported indexes and
-failed reads remain coverage gaps. **Analyze sell routes** is optional and uses
+failed reads remain coverage gaps. **Calculate sell estimates** is optional and uses
 saved holdings; it does not discover additional tokens. Price refresh preserves
 recorded balances and does not recover missing holdings.
 

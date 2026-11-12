@@ -235,14 +235,35 @@ It invokes `--phase sell --holdings-snapshot SNAPSHOT`. The source must belong t
 that wallet and have `pipeline.phase: holdings`. Its balances, blocks and clocks
 are copied into the new analysis without running discovery, registry scans or
 balance refresh. Route checks use those recorded blocks. Partial historical
-scans require a new holdings lookup first. New holdings supersede older analysis.
+scans require a new holdings lookup first. A new holdings generation supersedes
+older in-flight work, while matching quantities can reuse completed analysis.
+
+Before admitting a new enrichment child, compare the current saved quantities
+against the wallet's latest completed enrichment, including history outside the
+current Activity page. Compare exact raw balances where both exist, otherwise
+exact decimal strings, by chain, contract, token type and token ID. Native
+balances participate. Prices, block numbers, metadata and observation times
+alone do not invalidate quantity reuse. Testnets and retired chains are outside
+this comparison. Failed reads and missing positions on incomplete chains are
+unverified, never inferred sales. `job.deepen` can return the earlier terminal
+job receipt without a new provider job. No persisted envelope schema changes.
+
+`portfolio.analyzeSell` uses the same comparison and skips `unchanged_holdings`
+or `holdings_unverified`. Home displays the eligible wallet count, retains
+**Refresh all holdings**, and disables the sell action when no wallet needs it.
+Partial results do not continually prompt another analysis for unknown routes.
+Projection reuses only equal-quantity, verified positions, preserves original
+quote/price clocks, and exposes `sell_analysis_provenance`. Changed positions never
+inherit an old full-balance estimate. Fresh holdings, prices and coverage remain
+the current snapshot's observations; historical files remain immutable.
 
 Pause and resume preserve the same job and its evidence. App restart requires
 explicit resume for queued or interrupted scans. Market slices, provider pacing,
 short-operation priority, immutable publication and no-progress protection remain.
 There is no overall twenty-minute deadline. Finite route work never proves every
-market has been searched. The viewer calls this optional action **Analyze sell
-routes**; holdings, token prices and artwork do not depend on it.
+market has been searched. The viewer calls this optional action **Calculate sell
+estimates** initially and **Update sell estimates** after quantities change;
+holdings, token prices and artwork do not depend on it.
 Pending or failed route checks stay in sell-analysis progress and do not
 invalidate the saved holdings coverage.
 

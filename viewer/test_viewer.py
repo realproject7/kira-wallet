@@ -254,6 +254,30 @@ class ViewerTests(unittest.TestCase):
         self.assertTrue(asset['exit_quote']['royalty_included'])
         self.assertFalse(asset['exit_quote']['gas_included'])
 
+    def test_holdings_refresh_retains_original_quote_and_price_clocks(self):
+        self.quoted_token()
+        prior=model.project_wallet(self.entry,self.snapshot,self.root)
+        expected=next(a for a in prior['assets'] if a['symbol']=='CHICKEN')['sell_out']
+        self.assertIsNotNone(expected)
+        old=self.root/'snapshots/older';old.mkdir(parents=True)
+        (old/'results.json').write_text(json.dumps(self.snapshot))
+        evidence=(old/'results.json').read_bytes()
+        jobs=self.root/'jobs';jobs.mkdir()
+        (jobs/'saved.json').write_text(json.dumps({'job_id':'saved','analysis_phase':'enrichment','state':'partial',
+            'input':{'wallet':self.entry['address_key']},'created_at':'2026-10-01T00:00:00Z','result':{'snapshot_id':'snapshots/older'}}))
+        for token in self.snapshot['tokens']:
+            if token.get('mintclub'):token['mintclub'].pop('wallet_full_burn',None)
+        self.snapshot['compiled_at']='2026-11-12T00:00:00Z'
+        self.snapshot['price_references']['ETH_USD'].update(value=3000,observed_at=self.snapshot['compiled_at'])
+        (self.directory/'results.json').write_text(json.dumps(self.snapshot))
+        state,_,_=model.load_state(self.root,include_details=False)
+        wallet=state['wallets'][0];asset=next(a for a in wallet['assets'] if a['symbol']=='CHICKEN')
+        self.assertEqual(wallet['sell_analysis']['status'],'current')
+        self.assertEqual(asset['sell_out'],expected)
+        self.assertEqual(asset['value_usd'],3000)
+        self.assertEqual(asset['sell_analysis_provenance']['snapshot_id'],'snapshots/older')
+        self.assertEqual((old/'results.json').read_bytes(),evidence)
+
     def test_exit_quote_requires_matching_balance_block_and_backing(self):
         token=self.quoted_token()
         token['balance_block_number']=124

@@ -1,9 +1,34 @@
 # Releases and preparation
 
-Published npm release: **1.1.0**. Prepared candidate: **1.5.0**.
+Published npm release: **1.5.0**. Prepared candidate: **1.6.0**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.6.0
+
+Holdings refreshes retain completed sell analysis when exact recorded quantities
+match. Changed positions need updated estimates; incomplete balance checks stay
+unverified. Reused estimates preserve quote and price timestamps, and never
+replace fresh balances, prices or coverage. No historical snapshot is rewritten.
+
+Home, wallet and Activity share eligibility and show the last sell-analysis time.
+Home queues only changed or never-analyzed wallets and reports unchanged skips.
+The initial action is Calculate sell estimates; subsequent changes offer Update
+sell estimates. Completed partial analyses do not repeatedly prompt new work.
+CLI, MCP and browser admission share the same comparison.
+
+Published wallet projections are cached per wallet, with at most current and
+latest-analysis entries per registered wallet. A changed wallet does not force
+all wallets through raw snapshot projection again. Offline acceptance covers
+100 wallets and 15,000 positions, bounded responses and incremental invalidation.
+Admission uses compact stat-cached job headers rather than repeatedly decoding
+historical events. In a synthetic local benchmark with 100 wallets, 1,000 prior
+jobs and 100 events per prior job, admitting 100 refreshes fell from 52.8 seconds
+to 2.9 seconds. This measures queue admission, not provider research throughput.
+Provider research stays sequential and explicitly requested. Total scan time,
+provider quotas and retained disk history still grow with the portfolio.
+Review not selected. Registry publication remains an operator action.
 
 ## Candidate 1.5.0
 

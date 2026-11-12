@@ -384,18 +384,45 @@ def dashboard(wallets):
         'prices_from':min(dates,default=None),'prices_to':max(dates,default=None),
         'networks':network_rows,'largest_holdings':[a for a in asset_rows if a['value_usd'] is not None][:5]}
 
-def load_state(root=ROOT, *, include_details=True, encode=True):
+def load_state(root=ROOT, *, include_details=True, encode=True, wallet_cache=None):
+    from copy import deepcopy
+    from sell_analysis import analysis_index, assess, quantities, reuse_estimates, signature
     registry=read(root/'wallets.json');wallets=[];images=read_catalog(root)
+    analyses=analysis_index(root)
+    def project(entry, slot):
+        latest=entry['latest_snapshot'];folder=within(root,latest['directory'])
+        paths=[within(root,latest['result']),folder/'market-prices.json',folder/'token-market-metadata.json',root/'cache/token-images.json']
+        paths.extend(sorted(folder.glob('chain-*.json')))
+        version=(json.dumps(entry,sort_keys=True),tuple((str(p),signature(p)) for p in paths))
+        key=(entry['address_key'],slot)
+        cached=wallet_cache.get(key) if wallet_cache is not None else None
+        if cached and cached[0]==version:return deepcopy(cached[1])
+        result=read(paths[0])
+        if result['wallet_address'].lower()!=entry['address_key']:raise ValueError('Snapshot wallet identity mismatch')
+        wallet=project_wallet(entry,result,root,images)
+        if wallet_cache is not None:wallet_cache[key]=(version,deepcopy(wallet))
+        return wallet
     for entry in registry.get('wallets',[]):
         latest=entry.get('latest_snapshot')
         if latest and latest.get('result'):
-            result=read(within(root,latest['result']))
-            if result['wallet_address'].lower()!=entry['address_key']:raise ValueError('Snapshot wallet identity mismatch')
-            wallets.append(project_wallet(entry,result,root,images))
+            wallet=project(entry,'current')
+            summary=assess(root,entry,analyses)
+            if summary['snapshot_id'] and summary['snapshot_id']!=latest.get('directory'):
+                prior=summary['snapshot_id']
+                old=project({**entry,'latest_snapshot':{'directory':prior,'result':prior+'/results.json'}},'analysis')
+                current=quantities(root,latest.get('directory'),entry['address_key'])
+                previous=quantities(root,prior,entry['address_key'])
+                if current and previous:reuse_estimates(wallet,old,current,previous,summary)
+            wallet['sell_analysis']=summary
+            wallets.append(wallet)
         else:
             wallets.append({'address':entry['address'],'key':entry['address_key'],'tags':entry.get('tags',[]),
                 'name':(entry.get('tags') or [entry['address'][:10]])[0],'assets':[],'chains':[],
-                'known_value_usd':0,'unpriced_count':0,'analysed_at':None,'status':'awaiting_analysis','counts':{}})
+                'known_value_usd':0,'unpriced_count':0,'analysed_at':None,'status':'awaiting_analysis','counts':{},'sell_analysis':assess(root,entry,analyses)})
+    if wallet_cache is not None:
+        registered={entry['address_key'] for entry in registry.get('wallets',[])}
+        for key in list(wallet_cache):
+            if key[0] not in registered:del wallet_cache[key]
     apply_policy(wallets, root)
     state={'wallets':wallets,'currency':'USD','dashboard':dashboard(wallets),
            'details':project_details(wallets,root) if include_details else {'tokens':[], 'networks':[]}}

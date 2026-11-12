@@ -144,7 +144,12 @@
       mode=job.state==='partial'?'partial':'complete';title=mode==='partial'?'Completed with gaps':'Lookup complete';description=mode==='partial'?'The lookup finished with gaps. Available holdings are saved; some networks or token checks remain incomplete.':'The configured holdings checks finished. These are saved observations, not live balances.';
       if(basic?.result){action='deepen';actionLabel='Analyze sell routes';}
     }
-    return {basic,deep,job,isDeep,basicReady,mode,title,description,failure,action,actionLabel};
+    const analysis=wallet?.sell_analysis;
+    if(analysis&&!isDeep&&basicReady&&!active(job)&&!['failed','interrupted','cancelled'].includes(job.state)){
+      action=analysis.needs_analysis?'deepen':null;
+      actionLabel=analysis.last_analyzed_at?'Update sell estimates':'Calculate sell estimates';
+    }
+    return {basic,deep,job,isDeep,basicReady,mode,title,description,failure,action,actionLabel,analysis};
   }
   function walletStatus(jobs,wallet) {
     // Optional sale analysis must not replace the holdings lookup status.

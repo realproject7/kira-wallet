@@ -223,6 +223,14 @@ latest 100 events.
 Accepted work survives viewer shutdown or agent disconnection. Cancel only
 when requested; resume interrupted jobs explicitly. `jobs deepen` adds
 optional sell-route analysis from saved holdings without rediscovering tokens.
+Read `wallet_read.sell_analysis` before proposing another sell analysis. Matching
+recorded quantities keep prior completed estimates across holdings refreshes.
+`current` requires no new job; `changed` or `not_analyzed` can need one, while
+`unverified` needs a holdings check. A completed partial analysis may still have
+unknown routes. Explain its `last_analyzed_at` and quote timestamps instead of
+presenting reused estimates as current execution prices. Portfolio sell analysis
+uses the same eligibility and skips unchanged wallets. `job_deepen` may return
+an earlier completed job receipt when quantities match.
 
 Use `call job_list` with optional `state`, `wallet`, `offset` and `limit` for
 paged job discovery. `state` is `all` (default), a group (`active`,

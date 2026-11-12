@@ -20,7 +20,7 @@ def submit_batch(store, request):
     fingerprint = digest({'operation': operation, 'input': {}})
     path = store.jobs / 'batches' / (batch_id + '.json')
     with store.locked():
-        if (store.root / '.token-actions' / (batch_id + '.json')).exists() or (store.jobs / 'requests' / (batch_id + '.json')).exists() or any(j['key_hash']==batch_id or batch_id in j.get('control_receipts',{}) for file in store.jobs.glob('*.json') for j in [store.get(file.stem)]):
+        if (store.root / '.token-actions' / (batch_id + '.json')).exists() or (store.jobs / 'requests' / (batch_id + '.json')).exists() or any(j['key_hash']==batch_id or batch_id in (j.get('control_receipts') or {}) for j in store.summaries()):
             raise JobError('idempotency_conflict', 'This request key already belongs to another operation.')
         if path.exists():
             plan = json.loads(path.read_text())
@@ -29,7 +29,9 @@ def submit_batch(store, request):
         else:
             store.require_connection()
             wallets = json.loads((store.root / 'wallets.json').read_text())['wallets']
-            jobs = [store.get(p.stem) for p in store.jobs.glob('*.json')]
+            jobs = store.summaries()
+            from sell_analysis import analysis_index, assess
+            analyses=analysis_index(store.root) if operation=='portfolio.analyzeSell' else {}
             items, skipped = [], []
             for wallet in wallets:
                 address = wallet['address_key']
@@ -51,7 +53,12 @@ def submit_batch(store, request):
                         reason = 'holdings_refresh_required'
                     else:
                         child = next((j for j in related if j.get('parent_job_id') == baseline['job_id']), None)
-                        if child and child['state'] in ('succeeded', 'partial'):
+                        analysis=assess(store.root,wallet,analyses,snapshot_id=baseline['result']['snapshot_id'])
+                        if analysis['status']=='current':
+                            reason = 'unchanged_holdings'
+                        elif analysis['status']=='unverified':
+                            reason = 'holdings_unverified'
+                        elif child and child['state'] in ('succeeded', 'partial'):
                             reason = 'already_analyzed'
                         elif child:
                             items.append({'wallet': address, 'operation': 'job.resume', 'input': {'job_id': child['job_id']}})

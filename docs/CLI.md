@@ -39,11 +39,18 @@ conversation, general tools and approvals. Kira does not start a model process.
 
 ## Portfolio research actions
 
-From Home, use **Refresh all holdings** or **Analyze all sell-out values**.
+From Home, use **Refresh all holdings** or **Update sell estimates (N)**.
 Both queue ordinary per-wallet jobs and preserve previous snapshots. Work runs
 one wallet at a time. Active wallets are skipped. Sell analysis requires a
 finished current holdings scan; interrupted analysis is resumed and completed
-analysis is skipped. A partial completed result can contain unknown quotes.
+analysis is skipped. Unchanged recorded quantities retain the last completed
+analysis across new holdings snapshots, including completed partial analyses
+with unknown routes. Only changed or never-analyzed wallets need a sell update.
+Missing/retained balances wait for verified holdings instead of implying sales.
+Home, wallet and Activity show the last sell-analysis timestamp. Saved quotes
+keep their original price and quote times; equal holdings do not imply current
+market conditions or guaranteed execution. Native/stable market references use
+their separately recorded price timestamps.
 
 Agents use the same actions:
 

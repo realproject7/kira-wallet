@@ -18,6 +18,13 @@ vm.createContext(context);vm.runInContext(fs.readFileSync('viewer/static/portfol
   context.submitOperation=async()=>{throw new Error('Connection lost. Retry the same request.');};
   await context.submitPortfolio('portfolio.analyzeSell');assert.match($('portfolio-action-status').textContent,/Connection lost/);assert.equal($('analyze-portfolio').disabled,false);
   context.setupReadiness.discovery_key_available=false;await context.submitPortfolio('portfolio.refresh');assert.equal(connections,1);
+  context.state.wallets=[{key:'unchanged',sell_analysis:{status:'current',needs_analysis:false}},{key:'changed',sell_analysis:{status:'changed',needs_analysis:true}},{key:'new',sell_analysis:{status:'not_analyzed',needs_analysis:true}},{key:'pending',sell_analysis:{status:'holdings_pending',needs_analysis:false}}];
+  context.renderPortfolioActions();assert.equal($('analyze-portfolio').textContent,'Update sell estimates (2)');
+  assert.match($('portfolio-sell-status').textContent,/2 wallets need analysis · 1 unchanged · 1 awaiting verified holdings/);
+  context.jobList=[{state:'queued',operation:'wallet.refresh',input:{wallet:'changed'}}];context.renderPortfolioActions();
+  assert.equal($('analyze-portfolio').textContent,'Update sell estimates (1)');
+  context.state.wallets=context.state.wallets.slice(0,1);context.renderPortfolioActions();
+  assert.equal($('analyze-portfolio').disabled,true);assert.equal($('refresh-portfolio').disabled,false);
   context.localSession.controls=false;context.renderPortfolioActions();assert.equal($('portfolio-actions').hidden,true);
   await context.submitPortfolio('portfolio.refresh');assert.equal(requests,1);
   context.localSession.controls=true;context.state.demo=true;context.renderPortfolioActions();assert.equal($('portfolio-actions').hidden,true);
