@@ -82,6 +82,7 @@ def project_details(wallets, root, *, include_wallets=True):
         # Never sum them into a purported combined full-position sale.
         token['sell_out_summary'] = summarize_sell_out(assets)
         token['sell_out'] = assets[0].get('sell_out') if len(assets) == 1 else None
+        token['sell_out_reference'] = assets[0].get('sell_out_reference') if len(assets) == 1 else None
         links = {(link['label'], link['url']): link for a in assets for link in a['links']}
         token['links'] = list(links.values())
         pools={}

@@ -1,9 +1,28 @@
 # Releases and preparation
 
-Published npm release: **1.1.0**. Prepared candidate: **1.2.0**.
+Published npm release: **1.1.0**. Prepared candidate: **1.3.0**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.3.0
+
+Portfolio refresh accepts upstream SDK additions without expanding the local
+network scope. Removed deployment entries require an exact match in the pinned,
+reviewed SDK source; changed addresses and malformed sources still stop research.
+A fresh portfolio request resumes current baseline jobs rejected by this preflight
+instead of duplicating them. Published snapshots remain immutable.
+
+Sell estimates use saved market references for recognized native assets and
+reviewed stablecoin contract identities when no amount-specific quote exists.
+References use observed market values, never an assumed dollar peg, and remain
+explicitly unverified for execution. Quote and reference counts are separate.
+Retained, archived, unsupported and testnet observations do not gain references.
+Tables show missing counts without quote fractions and support sell-out sorting
+before pagination on all-token, wallet and network views.
+
+The earlier 1.2.0 candidate archive stays preserved. Registry publication remains
+an operator action. Review not selected.
 
 ## Candidate 1.2.0
 

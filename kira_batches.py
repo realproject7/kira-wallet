@@ -38,7 +38,11 @@ def submit_batch(store, request):
                 if any(j['state'] in ('queued', 'running') and j['operation'] in ('wallet.add', 'wallet.refresh', 'prices.refresh') for j in related):
                     reason = 'already_running'
                 elif operation == 'portfolio.refresh':
-                    items.append({'wallet': address, 'operation': 'wallet.refresh', 'input': {'wallet': address}})
+                    blocked=next((j for j in related if j['job_id']==wallet.get('research_generation')
+                        and j.get('analysis_phase')=='baseline' and j['state']=='failed' and not j.get('result')
+                        and any(e.get('code')=='network_scope_changed' for e in j.get('errors',[]))),None)
+                    items.append({'wallet':address,'operation':'job.resume','input':{'job_id':blocked['job_id']}} if blocked else
+                                 {'wallet': address, 'operation': 'wallet.refresh', 'input': {'wallet': address}})
                 else:
                     baseline = next((j for j in related if j['job_id'] == wallet.get('research_generation')), None)
                     if baseline is None:

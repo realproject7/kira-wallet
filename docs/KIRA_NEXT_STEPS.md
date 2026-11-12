@@ -1,8 +1,9 @@
 # Kira release status
 
-Updated: 2026-11-11. Kira 1.1.0 is published and PR #59 is merged. Its registry
+Updated: 2026-11-12. Kira 1.1.0 is published and PR #59 is merged. Its registry
 archive matches the tested source and installed package. This source prepares
-1.2.0 with portfolio research controls and indicative sell-out subtotals.
+1.3.0 with portfolio research controls, native/stable market references and
+sell-out sorting.
 Earlier plans and reports preserve historical evidence, not active release gates.
 
 ## Completed release scope

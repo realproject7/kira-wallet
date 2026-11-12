@@ -10,8 +10,10 @@
       && (filters.pricing !== 'unpriced' || t.value_usd == null || t.unpriced_count > 0)
       && (!search || [t.symbol, t.name, t.address || 'native'].some(v => String(v || '').toLowerCase().includes(search))));
     const order = filters.sort || 'value';
+    const sale=t=>t.sell_out_summary?t.sell_out_summary.value_usd:(t.sell_out?.value_usd??t.sell_out_reference?.value_usd);
     rows.sort((a, b) => (order === 'name' ? String(a.name || a.symbol).localeCompare(String(b.name || b.symbol))
       : order === 'wallets' ? b.wallet_count - a.wallet_count
+      : order === 'sell_out' ? (sale(b) ?? -Infinity) - (sale(a) ?? -Infinity)
       : (b.value_usd ?? -Infinity) - (a.value_usd ?? -Infinity)) || String(a.id).localeCompare(String(b.id)));
     const pages = Math.max(1, Math.ceil(rows.length / pageSize));
     const page = Math.min(Math.max(1, filters.page || 1), pages);

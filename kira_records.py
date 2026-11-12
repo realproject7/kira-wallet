@@ -102,6 +102,7 @@ def wallet_facts(wallets, *, pool_budget=40_000):
             item['price'] = pick(asset['price'],('usd','basis','quality','observed_at')) if asset.get('price') else None
             item['exit_quote'] = asset.get('exit_quote')
             item['sell_out'] = asset.get('sell_out')
+            item['sell_out_reference'] = asset.get('sell_out_reference')
             item['exit_quote_recorded'] = item['exit_quote'] is not None or item['sell_out'] is not None
             item['exit_route'] = asset.get('exit_route')
             item['markets'] = asset.get('links',[])

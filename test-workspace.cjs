@@ -94,3 +94,5 @@ assert(require('./viewer/static/workspace-model.js').discoveryNotice(retiredAndT
 assert.equal(require('./viewer/static/workspace-model.js').coverageGap(retiredAndTestnet.chains[0]),false);
 assert.equal(require('./viewer/static/workspace-model.js').discoveryNotice(retiredAndTestnet).gapCount,0);
 assert.match(require('./viewer/static/workspace-model.js').discoveryNotice(completeStale).title,/1 incomplete/);
+const saleRows=[{id:'high-spot',environment:'mainnet',wallet_count:1,value_usd:100,sell_out_summary:{value_usd:1}},{id:'high-sale',environment:'mainnet',wallet_count:1,value_usd:10,sell_out_summary:{value_usd:8}},{id:'missing',environment:'mainnet',wallet_count:1,value_usd:90}];
+assert.deepEqual(catalog(saleRows,{sort:'sell_out'}).rows.map(row=>row.id),['high-sale','high-spot','missing']);

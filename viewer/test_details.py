@@ -65,6 +65,11 @@ class DetailTests(unittest.TestCase):
         self.assertIsNone(token['sell_out'])
         self.assertEqual((token['sell_out_summary']['value_usd'],token['sell_out_summary']['missing_count']),(4,1))
 
+    def test_single_holder_preserves_reference_explanation(self):
+        asset=self.asset();asset['sell_out_reference']={'value_usd':5,'kind':'stable_market_reference','observed_at':'2026-11-12','source':'https://example.com/reference'}
+        token=project_details([self.wallet('daily',[asset])],self.root)['tokens'][0]
+        self.assertEqual(token['sell_out_reference'],asset['sell_out_reference'])
+
     def test_shared_token_sums_balances_and_values_without_shared_backing(self):
         first=self.wallet('first',[self.asset(balance='1.000000000000000001')])
         second=self.wallet('second',[self.asset(balance='2.000000000000000002',value=7)])

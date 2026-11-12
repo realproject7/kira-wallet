@@ -56,6 +56,16 @@ class PortfolioTests(JobFixtures,unittest.TestCase):
         self.assertEqual(len(self.store.list()),2)
         self.assertEqual((self.root/'snapshots/prior/results.json').read_bytes(),before)
 
+    def test_refresh_recovers_the_rejected_preflight_instead_of_duplicating_it(self):
+        failed=self.store.submit(self.request(key='failed-preflight'))
+        failed.update(state='failed',errors=[{'code':'network_scope_changed','message':'Compatibility check failed.'}])
+        self.store.save(failed)
+        receipt=self.batch()
+        self.assertEqual(len(receipt['jobs']),2)
+        self.assertIn(failed['job_id'],[j['job_id'] for j in receipt['jobs']])
+        self.assertEqual(self.store.get(failed['job_id'])['state'],'queued')
+        self.assertEqual(len(self.store.list()),2)
+
     def test_retry_recovers_a_partially_admitted_plan_without_new_wallets(self):
         original=self.store.submit;calls=0
         def interrupt(*args,**kwargs):

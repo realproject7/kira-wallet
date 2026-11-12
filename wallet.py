@@ -620,16 +620,36 @@ class NetworkScopeError(ValueError):
     code='network_scope_changed'
 
 
+def bond_deployments(source):
+    block=re.search(r'\bBOND:\s*\{(.*?)\n\s*\}',source,re.S)
+    if not block:raise NetworkScopeError('Mint Club SDK deployment source could not be validated.')
+    rows=re.findall(r'''\[(\w+)\.id\]:\s*['"]([^'"]+)['"]''',block[1])
+    if not rows or len(rows)!=len(dict(rows)) or any(not re.fullmatch(r'0x[0-9a-fA-F]{40}',address) for _,address in rows):
+        raise NetworkScopeError('Mint Club SDK deployment source could not be validated.')
+    return {name:address.lower() for name,address in rows}
+
+
 def source_check(networks, folder):
     import urllib.request
     with urllib.request.urlopen(CONTRACT_SOURCE,timeout=20) as response:
         source=response.read().decode()
-    bond=source.split('  BOND: {',1)[1].split('\n  },',1)[0]
-    configured={name:address.lower() for name,address in re.findall(r"\[(\w+)\.id\]:\s*'([^']+)'",bond)}
+    configured=bond_deployments(source)
     expected={SOURCE_NAMES[n['chain_id']]:n['mintclub_bond_address'].lower() for n in networks}
-    if configured!=expected:
+    missing=set(expected)-set(configured)
+    historical={};historical_source=None
+    if missing:
+        # A removed SDK entry does not remove its deployed contract. Validate
+        # those entries against the immutable, reviewed package catalogue.
+        commit=read(ASSETS/'networks.json')['sdk_commit']
+        if not re.fullmatch(r'[0-9a-f]{40}',commit):raise NetworkScopeError('Invalid historical SDK source.')
+        historical_source=CONTRACT_SOURCE.replace('/main/','/'+commit+'/')
+        with urllib.request.urlopen(historical_source,timeout=20) as response:
+            historical=bond_deployments(response.read().decode())
+    if any((configured.get(name) if name in configured else historical.get(name))!=address for name,address in expected.items()):
         raise NetworkScopeError('Mint Club SDK network/deployment scope changed. Reconcile networks.json before analysis.')
-    atomic(folder/'mintclub-support.json',{'observed_at':h.now(),'source':CONTRACT_SOURCE,'networks_verified':len(networks),'bond_deployments':configured})
+    atomic(folder/'mintclub-support.json',{'observed_at':h.now(),'source':CONTRACT_SOURCE,'networks_verified':len(networks),
+        'bond_deployments':expected,'removed_from_current_sdk':sorted(missing),'new_sdk_networks':sorted(set(configured)-set(expected)),
+        'historical_source':historical_source})
 
 
 def dex_fetch(t, folder, deadline=None, attempt_limit=None):

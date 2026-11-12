@@ -236,6 +236,14 @@ class ViewerTests(unittest.TestCase):
         token['mintclub'].update({'block_number':123,'wallet_full_burn':{'net_refund':'0.02','gas_included':False}})
         return token
 
+    def test_native_market_reference_keeps_the_actual_price_clock(self):
+        stamp='2026-11-12T00:00:00Z'
+        self.snapshot['price_references']['ETH_USD'].update(observed_at=stamp,source='https://example.com/native')
+        projected=model.project_wallet(self.entry,self.snapshot,self.root)
+        native=next(asset for asset in projected['assets'] if asset['is_native'])
+        self.assertEqual(native['price']['observed_at'],stamp)
+        self.assertEqual(native['sell_out_reference']['observed_at'],stamp)
+
     def test_exit_proceeds_use_full_burn_not_spot_price(self):
         self.quoted_token()
         asset=next(t for t in model.project_wallet(self.entry,self.snapshot,self.root)['assets'] if t['symbol']=='CHICKEN')

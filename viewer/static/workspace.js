@@ -53,6 +53,7 @@ function renderWorkspace() {
 function resetRouteFilters() {
   for (const [id,value] of Object.entries({'all-token-network':'all','all-token-pricing':'all','all-token-sort':'value','all-token-search':'','job-filter':'all'})) $(id).value=value;
   $('all-token-testnets').checked=false;catalogPage=1;catalogMinimum=0;
+  walletSort='value';networkSort='value';$('wallet-token-sort').value='value';
   if(typeof jobsPage!=='undefined')jobsPage=1;
   if(typeof KiraSelect!=='undefined')KiraSelect.refresh();
 }
@@ -71,3 +72,5 @@ $('home-view-all').addEventListener('click', () => {
 });
 window.addEventListener('hashchange',renderWorkspace);
 renderWorkspace();
+
+$('wallet-token-sort').addEventListener('change',()=>{walletSort=$('wallet-token-sort').value;walletOffset=0;state?.paged?loadRoute():renderHoldings();});

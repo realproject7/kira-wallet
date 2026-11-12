@@ -311,3 +311,19 @@ Linking an existing, unregistered OWS wallet still starts its initial research.
 Agents must leave passphrase entry to the human. OWS absence
 does not block ordinary public-address onboarding. Kira exposes no signing,
 trading, key export or account deletion.
+
+## Market references and sell-estimate ordering
+
+Version 1.3.0 displays saved market references for recognized native coins and
+stablecoin contract identities when a saved amount-specific quote is unavailable.
+The UI marks these as `Spot ref.`. They use the recorded market value, including
+any observed deviation from a dollar peg. Gas, fees, price impact and execution
+are not verified by these references. Symbols alone never establish identity.
+All-token, wallet and network tables offer sell-out ordering; paged local read
+endpoints accept `sort=sell_out`, with unknowns last. This includes indicative
+quote subtotals and eligible references, not guaranteed proceeds.
+
+If SDK membership changes while configured deployment addresses remain valid,
+portfolio refresh now preserves the configured network scope and verifies removed
+entries against the reviewed immutable SDK source. A retry reuses current jobs
+that failed this preflight. Contract-address mismatches still require correction.

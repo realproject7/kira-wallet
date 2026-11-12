@@ -10,7 +10,7 @@ import re
 from token_images import image_for, read_catalog, safe_image
 from chain_images import chain_image
 from native_assets import native_identity
-from sell_summary import summarize_sell_out
+from sell_summary import summarize_sell_out, spot_sell_reference
 from details import project_details
 from sell_quotes import classify_with_cache as cashout_classification
 from market_records import canonical_token, canonical_source, merge_pools, market_url, number, checked_price, MIN_PRICE_LIQUIDITY_USD
@@ -279,7 +279,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None, *, market=None):
             'address':None,'balance':raw,'is_native':True,'curve_reserve':None,
             'balance_observed_at':c.get('native_observed_at'),
             'image_url':image_for(images,c['chain_id'],native_symbol=sym),
-            'price':{'usd':px,'basis':ref.get('basis','Market index') if ref else 'Market index','quality':'estimated','observed_at':ref.get('observed_at') if ref else price_time,
+            'price':{'usd':px,'basis':ref.get('basis','Market index') if ref else 'Market index','quality':'estimated','observed_at':ref.get('observed_at') if ref else refs.get(sym+'_USD',{}).get('observed_at') or price_time,
                      'source':ref.get('source') if ref else refs.get(sym+'_USD',{}).get('source')} if px is not None else None,
             'value_usd':quantity*px if px is not None and c['environment']=='mainnet' else None,
             'links':[{'label':'Explorer','url':EXPLORERS[c['chain_id']]+'/address/'+entry['address']}] if c['chain_id'] in EXPLORERS else []})
@@ -299,6 +299,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None, *, market=None):
             if a['archived']:a['historical_value_usd']=a['value_usd'];a['value_usd']=None
             if a['environment'] != 'mainnet' or a['archived'] or a.get('quantity_retained'):
                 a['sell_out'] = None
+            a['sell_out_reference']=spot_sell_reference(a)
         chains.append({'id':c['chain_id'],'name':c['name'],'environment':c['environment'],
             'image_url':chain_image(c['chain_id']),
             'assets':len(rows),'value_usd':sum(a['value_usd'] for a in rows if a['value_usd'] is not None) if c['environment']=='mainnet' and any(a['value_usd'] is not None for a in rows) else None,

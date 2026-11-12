@@ -126,8 +126,8 @@ assert.match(context.sellOutValue({id:'fixture',sell_out:{value_usd:0,output_amo
 assert.doesNotMatch(context.sellOutValue({id:'fixture'}),/\$0/);
 assert.match(context.sellOutValue({id:'fixture',wallet_count:2}),/By wallet/);
 assert.match(context.sellOutValue({id:'fixture',wallet_count:3,sell_out_summary:{value_usd:20,quoted_count:2,position_count:3,missing_count:1}}),/≈ \$20/);
-assert.match(context.sellOutValue({id:'fixture',wallet_count:3,sell_out_summary:{value_usd:20,quoted_count:2,position_count:3,missing_count:1}}),/2\/3 quotes · 1 missing/);
-assert.match(context.sellSummary({value_usd:null,quoted_count:0,position_count:3,missing_count:3}),/0 of 3 position quotes/);
+assert.match(context.sellOutValue({id:'fixture',wallet_count:3,sell_out_summary:{value_usd:20,quoted_count:2,position_count:3,missing_count:1}}),/1 missing/);
+assert.match(context.sellSummary({value_usd:null,quoted_count:0,position_count:3,missing_count:3}),/3 missing/);
 assert.match(context.sellOutValue({id:'fixture',environment:'testnet',sell_out:{value_usd:999,output_amount:'1',output_symbol:'TEST'}}),/>—</);
 assert.match(context.explorerLink({symbol:'Example',chain_id:8453,links:[{label:'Explorer',url:'https://basescan.org/token/fixture'}]}),/explorers\/etherscan.png/);
 assert.match(context.explorerLink({symbol:'Example',chain_id:8453,links:[{label:'Explorer',url:'https://basescan.org/token/fixture'}]}),/>BaseScan/);
@@ -214,3 +214,7 @@ networkContext.renderNetworkTokens(network);assert.match(node('network-token-emp
 
 const paired=context.marketLinks([{label:'Mint Club',url:'https://mint.club/token/base/PLOT'}],{symbol:'PLOT',chain_id:8453,curve_reserve:{symbol:'HUNT',address:'0x'+'2'.repeat(40),amount:'9'}},false);
 assert.match(paired,/PLOT \/ HUNT/);assert.match(paired,/venues\/mintclub.png/);
+
+const referenceCell=context.sellOutValue({id:'fixture',environment:'mainnet',sell_out_reference:{value_usd:123,kind:'native_market_reference',observed_at:'2026-11-11T00:00:00Z'}});
+assert.match(referenceCell,/≈ \$123/);assert.match(referenceCell,/Spot ref\./);
+assert.doesNotMatch(context.sellOutValue({id:'fixture',wallet_count:2,sell_out_summary:{value_usd:20,quoted_count:2,position_count:3,missing_count:1}}),/2\/3 quotes/);

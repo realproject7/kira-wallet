@@ -148,3 +148,11 @@ Saved portfolio, wallet, token and network views include `sell_out_summary`:
 basis is `independent_saved_quotes`; the last two fields are false. Do not report
 this indicative sum as executable combined proceeds. Quote and balance coverage
 remain incomplete when observations are missing.
+
+Version 1.3.0 adds `sell_out_reference` on individual positions for recognized
+native assets and stablecoin contract identities with usable saved market prices.
+It is a market reference, not an amount-specific quote. `sell_out_summary` retains
+`quoted_count` and adds `reference_count`; `missing_count` excludes both known
+quotes and references. `basis` is `independent_quotes_and_market_references` when
+references contribute. `gas_included` and `combined_execution_verified` remain
+false. Never infer transferability or token safety from either value.

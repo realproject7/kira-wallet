@@ -264,3 +264,10 @@ quoted/missing counts and observation range. Shared liquidity, nested reserves,
 gas and differing observation times prevent claiming combined executable
 proceeds. Missing estimates remain unknown. The web app hides wallets without a
 recorded holding on token pages; this does not establish a zero balance elsewhere.
+
+Recognized native/stable assets can expose `sell_out_reference` using their saved
+market value. A summary's `reference_count` separates these from real quotes.
+Use `basis`, observation times and missing counts; do not describe market
+references as executable full-balance proceeds. Sell estimates also do not prove
+that an unfamiliar token permits transfers or is safe. Token security research
+requires independent evidence about the exact chain and contract.

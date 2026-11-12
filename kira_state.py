@@ -41,7 +41,7 @@ def filter_assets(rows, *, query='', chain_id=None, minimum_value_usd='0',
         raise JobError('invalid_query', 'Use a search string of up to 500 characters.')
     if chain_id is not None and (type(chain_id) is not int or chain_id < 1):
         raise JobError('invalid_chain', 'Expected a positive chain ID.')
-    if sort not in ('value', 'name', 'wallets') or pricing not in ('all', 'priced', 'unpriced') or type(include_testnets) is not bool:
+    if sort not in ('value', 'name', 'wallets', 'sell_out') or pricing not in ('all', 'priced', 'unpriced') or type(include_testnets) is not bool:
         raise JobError('invalid_filter', 'Choose supported sorting and price filters.')
     try:
         if type(minimum_value_usd) not in (str, int, float) or len(str(minimum_value_usd)) > 80:raise ValueError()
@@ -61,6 +61,12 @@ def filter_assets(rows, *, query='', chain_id=None, minimum_value_usd='0',
         result.append(asset)
     if sort == 'name':result.sort(key=lambda a: (str(a.get('symbol') or '').casefold(), a['id']))
     elif sort == 'wallets':result.sort(key=lambda a: (-a.get('wallet_count', 1), a['id']))
+    elif sort == 'sell_out':
+        def sale_value(asset):
+            if asset.get('sell_out_summary') is not None:return asset['sell_out_summary'].get('value_usd')
+            quote=(asset.get('sell_out') or {}).get('value_usd')
+            return quote if quote is not None else (asset.get('sell_out_reference') or {}).get('value_usd')
+        result.sort(key=lambda a:(sale_value(a) is None,-(sale_value(a) or 0),a['id']))
     else:result.sort(key=lambda a: (a.get('value_usd') is None, -(a.get('value_usd') or 0), a['id']))
     return result
 
