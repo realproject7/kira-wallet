@@ -698,3 +698,20 @@ button:disabled {opacity:.55;cursor:default}
 @media(max-width:640px){.portfolio-actions{max-width:none;width:100%}.portfolio-actions button{flex:1 1 160px}.sell-summary-value{font-size:23px}.detail-sell-summary{padding:16px}}
 
 .sell-out-value+.price-basis{display:block;line-height:1.4;margin-top:4px;white-space:normal}
+
+/* Valuation membership is separate from observed balances and prices. */
+.policy-badge{display:inline-block;margin:.25rem .4rem;padding:.18rem .45rem;border:1px solid #cdbbdf;border-radius:5px;font-size:.68rem;line-height:1.35;font-weight:500;white-space:normal;color:#65467d;background:#f1eaf8;vertical-align:middle}
+.policy-badge.review{color:#79531e;background:#fbf1df;border-color:#ddc594}
+.policy-badge.excluded{color:#625d69;background:#efedf1;border-color:#d3ced8}
+.policy-note{margin-top:.65rem;font-size:.8rem;color:var(--muted,#6c6376)}
+.policy-note .text-button,.policy-undo .text-button{padding:.2rem .4rem;text-decoration:underline}
+.policy-filter{display:flex;align-items:center;gap:.75rem;margin:1rem 0;max-width:360px;font-size:.85rem}
+.token-actions{margin:.3rem 0 0 46px;font-size:.78rem}
+.token-actions summary{cursor:pointer;display:inline-block;list-style:none;padding:0 .6rem;border:1px solid #ddd5e5;border-radius:4px}
+.token-actions>div{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.4rem}
+.token-actions .quiet-button{font-size:.75rem;padding:.4rem .55rem}
+.token-policy-panel{margin:1.2rem 0;padding:1.2rem;border:1px solid #d9cce5;border-radius:10px;background:#fbf8fd}
+.token-policy-panel p,.token-policy-panel li{line-height:1.65}
+.token-policy-panel dl{margin:1rem 0}.token-policy-panel dl>div{display:flex;gap:1rem;padding:.4rem 0}.token-policy-panel dt{min-width:100px;color:#74667e}.token-policy-panel dd{margin:0;overflow-wrap:anywhere}
+.policy-actions{display:flex;flex-wrap:wrap;gap:.6rem}.policy-undo{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:100;max-width:calc(100vw - 30px);padding:.7rem 1rem;background:#2b2435;color:#fff;border-radius:8px;box-shadow:0 3px 18px #0002;font-size:.85rem}.policy-undo button{color:#ead6ff}
+@media(max-width:600px){.policy-filter{width:100%}.token-policy-panel dl>div{display:block}.token-policy-panel dt{margin-bottom:.25rem}.policy-undo{width:calc(100vw - 30px)}.policy-actions .quiet-button{flex:1 1 160px}}

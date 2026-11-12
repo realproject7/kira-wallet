@@ -271,3 +271,22 @@ Use `basis`, observation times and missing counts; do not describe market
 references as executable full-balance proceeds. Sell estimates also do not prove
 that an unfamiliar token permits transfers or is safe. Token security research
 requires independent evidence about the exact chain and contract.
+
+
+## Excluded assets and risk observations
+
+Read `included_in_totals`, `portfolio_status`, `valuation_policy` and
+`risk_check` before using any reported value. Raw inventory preserves estimates
+for review/excluded assets; portfolio totals and `recorded_valuation` omit them.
+`holdings_query` defaults to included portfolio assets. Use `portfolio_status`
+`review`, `excluded`, or `all` to investigate exclusions explicitly. A large
+reported DEX price is not verified wealth or executable proceeds.
+
+Use `token_policy` only for the user's requested valuation preference. Modes
+are `exclude`, `include`, and `auto`, scoped to exact chain and contract across
+registered wallets. `token_risk_check` is an explicit external GoPlus lookup;
+never call it merely because a page or saved read was requested. Both return
+immediate durable receipts and require write access and an idempotency key.
+Treat absent flags, failed checks and closed-source mechanisms as unknown.
+Manual inclusion does not make a token safe. Saved estimates do not test token
+transfer restrictions. Keep detailed investigation in the host agent.

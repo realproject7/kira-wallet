@@ -3,7 +3,7 @@
   const pageSize = 50;
   function catalog(tokens, filters = {}) {
     const search = (filters.search || '').trim().toLowerCase();
-    const rows = tokens.filter(t => (filters.testnets || t.environment !== 'testnet')
+    const rows = tokens.filter(t => ((filters.status||'portfolio')==='all'||(t.portfolio_status||'portfolio')===(filters.status||'portfolio')) && (filters.testnets || t.environment !== 'testnet')
       && (!filters.network || filters.network === 'all' || String(t.chain_id) === String(filters.network))
       && (!(filters.minimum > 0) || (t.environment !== 'testnet' && t.value_usd != null && t.value_usd >= filters.minimum))
       && (filters.pricing !== 'priced' || (t.value_usd != null && !t.unpriced_count))

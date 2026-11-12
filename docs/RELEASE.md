@@ -1,9 +1,28 @@
 # Releases and preparation
 
-Published npm release: **1.1.0**. Prepared candidate: **1.3.0**.
+Published npm release: **1.1.0**. Prepared candidate: **1.4.0**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.4.0
+
+Token valuation preferences persist by chain and contract across all registered
+wallets, refreshes and restarts. Portfolio / Needs review / Excluded lists support
+one-click exclusion, Undo, automatic restoration and explicit inclusion with
+warnings retained. Original balances, estimates and snapshots are preserved.
+Home and wallet summaries link to omitted assets without advertising their
+reported amounts as portfolio value. UI and CLI/MCP valuation totals agree.
+
+Saved evidence can place material spot-only liquidity mismatches into review.
+An explicit Check risk action queries GoPlus and saves dated factual flags;
+reads never contact the provider. Unknowns remain unknown, and failed rechecks
+retain prior observations. There is no embedded risk score or trading engine.
+Token actions apply immediately with durable idempotent receipts and the same
+session/origin and MCP write boundaries as other local controls.
+
+The frozen 1.2.0 and 1.3.0 archives remain intact. Registry publication remains
+an operator action. Review not selected.
 
 ## Candidate 1.3.0
 

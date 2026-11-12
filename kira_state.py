@@ -7,6 +7,7 @@ import sys
 import threading
 from decimal import Decimal, InvalidOperation
 from kira_jobs import JobError
+from asset_policy import STATUSES
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'viewer'))
 from model import load_state, within
@@ -36,13 +37,14 @@ def page(rows, offset=0, limit=100, *, key='assets'):
 
 
 def filter_assets(rows, *, query='', chain_id=None, minimum_value_usd='0',
-                  sort='value', pricing='all', include_testnets=True):
+                  sort='value', pricing='all', include_testnets=True, portfolio_status='portfolio'):
     if not isinstance(query, str) or len(query) > 500:
         raise JobError('invalid_query', 'Use a search string of up to 500 characters.')
     if chain_id is not None and (type(chain_id) is not int or chain_id < 1):
         raise JobError('invalid_chain', 'Expected a positive chain ID.')
     if sort not in ('value', 'name', 'wallets', 'sell_out') or pricing not in ('all', 'priced', 'unpriced') or type(include_testnets) is not bool:
         raise JobError('invalid_filter', 'Choose supported sorting and price filters.')
+    if portfolio_status not in STATUSES:raise JobError('invalid_filter', 'Choose a supported portfolio status.')
     try:
         if type(minimum_value_usd) not in (str, int, float) or len(str(minimum_value_usd)) > 80:raise ValueError()
         minimum = Decimal(str(minimum_value_usd))
@@ -52,6 +54,7 @@ def filter_assets(rows, *, query='', chain_id=None, minimum_value_usd='0',
     query = query.strip().casefold()
     result = []
     for asset in rows:
+        if portfolio_status != 'all' and asset.get('portfolio_status','portfolio') != portfolio_status:continue
         value = asset.get('value_usd')
         if chain_id is not None and asset['chain_id'] != chain_id:continue
         if not include_testnets and asset.get('environment') != 'mainnet':continue
@@ -90,7 +93,7 @@ class StateCache:
             current = signature(registry)
             if current != self.registry_signature or not self.paths:
                 value = json.loads(registry.read_text())
-                paths = {registry, self.root / 'networks.json', self.root / 'cache/token-images.json'}
+                paths = {registry, self.root / 'networks.json', self.root / 'cache/token-images.json', self.root / 'token-policy.json'}
                 folders=[]
                 for entry in value.get('wallets', []):
                     latest = entry.get('latest_snapshot') or {}

@@ -35,7 +35,7 @@ kira call holdings_refresh --arguments '{"wallet":"Daily wallet","idempotency_ke
 ```
 
 `call` supports the full shared catalogue. Mutations require an idempotency key
-and return a durable job receipt. Reuse a key only for the same intended request.
+and normally return a durable job receipt. Token preferences and risk checks return immediate durable action receipts. Reuse a key only for the same intended request.
 The short `add`, `refresh`, `prices`, `wallets tags` and `jobs` commands use the
 same service. `--json` is accepted before or after the command.
 
@@ -156,3 +156,30 @@ It is a market reference, not an amount-specific quote. `sell_out_summary` retai
 quotes and references. `basis` is `independent_quotes_and_market_references` when
 references contribute. `gas_included` and `combined_execution_verified` remain
 false. Never infer transferability or token safety from either value.
+
+
+## Token valuation membership (1.4.0)
+
+`token_policy` applies `exclude`, `include`, or `auto` to one recorded chain and
+contract across every registered wallet. It returns an immediate durable receipt,
+without entering the research queue. `token_risk_check` explicitly sends only the
+chain and contract to GoPlus and saves its timestamped observations. It does not
+simulate a sale, connect a wallet, or establish safety. Neither saved reads nor
+refreshes initiate risk lookups. Native assets have no contract risk endpoint.
+MCP writes still require `--allow-writes`.
+
+Home, wallet, network, portfolio reads and sell-out summaries share the same
+membership. `holdings_query` defaults to `portfolio_status=portfolio`; use
+`review`, `excluded`, or `all` when investigating omitted assets. Raw inventory
+and token reads preserve reported `value_usd`, `included_in_totals`,
+`portfolio_status`, `valuation_policy`, and `risk_check`. Never add excluded
+reported estimates to portfolio value. Manual inclusion does not clear warnings.
+`recorded_valuation` totals only included mainnet positions.
+
+Automatic review separates explicit provider honeypot/full-balance restrictions
+or sell tax >= 50%, plus material DEX spot-only valuations >= $10,000 that exceed
+twice the largest observed pool liquidity with no saved sale quote. The latter
+is a valuation warning, not a fraud verdict. Unknown or closed source alone does
+not exclude an asset. Ordinary community assets remain visible. Failed rechecks
+retain the previous successful risk observation and record the failed attempt.
+Local preferences survive refresh/restart and never rewrite historical snapshots.

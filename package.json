@@ -1,6 +1,6 @@
 {
   "name": "kira-wallet",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Local wallet research for your agent session and a human-controlled web workspace.",
   "license": "MIT",
   "private": false,
@@ -16,6 +16,7 @@
     "kira_config.py",
     "kira_integrations.py",
     "kira_batches.py",
+    "asset_policy.py",
     "sell_summary.py",
     "kira_jobs.py",
     "kira_tools.py",

@@ -2,9 +2,12 @@
 from decimal import Decimal, localcontext
 import json
 from kira_jobs import JobError
+from asset_policy import STATUSES
 
 
 def query_holdings(wallets, args):
+    status=args.get('portfolio_status','portfolio')
+    if status not in STATUSES:raise JobError('invalid_filter','Choose portfolio, review, excluded or all.')
     mode=args['mode'];query=args.get('query','').strip().casefold()
     if mode not in ('search','rank','aggregate'):raise JobError('invalid_tool','Choose search, rank or aggregate.')
     if mode=='search' and not query:raise JobError('invalid_tool','Supply a token symbol, name, contract or native.')
@@ -16,7 +19,7 @@ def query_holdings(wallets, args):
     if limit>25:raise JobError('invalid_tool','Use at most 25 query results; this does not limit the scanned inventory.')
     minimum=Decimal(str(args['minimum_value_usd'])) if 'minimum_value_usd' in args else None
     def eligible(asset):
-        return not asset.get('archived') and (environment=='all' or asset.get('environment')==environment) and ('chain_id' not in args or asset['chain_id']==args['chain_id'])
+        return (status=='all' or asset.get('portfolio_status','portfolio')==status) and not asset.get('archived') and (environment=='all' or asset.get('environment')==environment) and ('chain_id' not in args or asset['chain_id']==args['chain_id'])
     def exact(asset):
         return query in {str(asset.get('symbol','')).casefold(),str(asset.get('name','')).casefold(),str(asset.get('address','')).casefold()} or query=='native' and asset.get('is_native')
     exact_match=bool(query) and any(eligible(a) and exact(a) for w in wallets for a in w['assets'])
@@ -24,6 +27,7 @@ def query_holdings(wallets, args):
     for wallet in wallets:
         for asset in wallet['assets']:
             scanned+=1
+            if status!='all' and asset.get('portfolio_status','portfolio')!=status:continue
             if 'chain_id' in args and asset['chain_id']!=args['chain_id']:continue
             if query and not (exact(asset) if exact_match else query in str(asset.get('name','')).casefold() or query in str(asset.get('symbol','')).casefold()):continue
             if asset.get('archived') or environment!='all' and asset.get('environment')!=environment:
@@ -58,7 +62,7 @@ def query_holdings(wallets, args):
                      'position_count':len(positions),'unpriced_position_count':len(positions)-sum(a.get('value_usd') is not None and a.get('environment')=='mainnet' for _,a in positions),
                      'positions':facts})
     count=len(ranked)
-    response={'mode':mode,'match_type':'exact' if exact_match else 'substring' if query else 'all','group_by':group_by,'environment':environment,'scanned_position_count':scanned,
+    response={'mode':mode,'match_type':'exact' if exact_match else 'substring' if query else 'all','group_by':group_by,'environment':environment,'portfolio_status':status,'scanned_position_count':scanned,
               'matched_position_count':len(selected),'matched_asset_count':len({a['id'] for _,a in selected}),
               'unpriced_position_count':unpriced,'outside_scope_count':outside,'valuation':valuation,
               'result_count':count,'results':rows,'offset':offset,'next_offset':offset+len(rows) if mode!='aggregate' and offset+len(rows)<count else None,

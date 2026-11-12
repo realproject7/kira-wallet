@@ -58,11 +58,16 @@ MUTATIONS={
     'settings_discovery':('settings.discovery',{'provider':STRING,'key_env':STRING,'explorers':{'type':'boolean'}}),
     'settings_provider':('settings.provider',{'provider':STRING,'key_env':STRING}),
 }
+TOKEN_ACTIONS={'token_policy':('token.policy',{'chain_id':{'type':'integer','minimum':1},'address':STRING,'mode':{'type':'string','enum':['auto','include','exclude']}}),
+               'token_risk_check':('token.riskCheck',{'chain_id':{'type':'integer','minimum':1},'address':STRING})}
+MUTATIONS.update(TOKEN_ACTIONS)
 WRITE_TOOLS=[tool(name,'Submit '+operation+' as a durable local job. Returns a receipt, not a completed result.',
     {**props,'idempotency_key':{'type':'string','minLength':8,'maxLength':200}},required=[k for k in props if k not in ('priority','explorers')]+['idempotency_key'],write=True)
     for name,(operation,props) in MUTATIONS.items()]
 
 for descriptor in WRITE_TOOLS:
+    if descriptor['name'] in TOKEN_ACTIONS:
+        descriptor['description']='Apply a durable local token valuation preference immediately across every registered wallet.' if descriptor['name']=='token_policy' else 'Explicitly query GoPlus for a recorded token contract and save dated risk observations. Sends only chain and contract identity. No transaction, simulation or safety guarantee. Runs immediately; saved reads never call providers.'
     if descriptor['name'].startswith('portfolio_'):
         descriptor['description']='Queue research for all registered wallets using existing per-wallet jobs. Returns a durable batch receipt with jobs, skipped wallets and errors. Inspect each job for completion.'
 
@@ -121,6 +126,14 @@ class Application:
     def submit(self,request,*,launch=True):
         registry=json.loads((self.root/'wallets.json').read_text())
         operation=request.get('operation') if isinstance(request,dict) else None
+        if operation in ('token.policy','token.riskCheck'):
+            if registry.get('demo') and operation=='token.riskCheck':raise JobError('demo_read_only','Sample portfolios never contact risk providers.')
+            fields(request,['schema_version','operation','input','idempotency_key'])
+            value=request['input']
+            fields(value,['chain_id','address','mode'] if operation=='token.policy' else ['chain_id','address'])
+            self.views.token(value.get('chain_id'),value.get('address'))
+            from asset_policy import action
+            with self.jobs.locked():return action(self.root,request)
         if registry.get('demo'):
             if operation in ('job.resume','job.deepen') and isinstance(request.get('input'),dict):
                 operation=self.jobs.get(request['input'].get('job_id'))['operation']

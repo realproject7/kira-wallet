@@ -11,6 +11,7 @@ from token_images import image_for, read_catalog, safe_image
 from chain_images import chain_image
 from native_assets import native_identity
 from sell_summary import summarize_sell_out, spot_sell_reference
+from asset_policy import apply as apply_policy, included, summary as policy_summary
 from details import project_details
 from sell_quotes import classify_with_cache as cashout_classification
 from market_records import canonical_token, canonical_source, merge_pools, market_url, number, checked_price, MIN_PRICE_LIQUIDITY_USD
@@ -356,6 +357,7 @@ def dashboard(wallets):
         for asset in wallet['assets']:
             if asset.get('environment')!='mainnet':continue
             positions.append(asset)
+            if not included(asset):continue
             chain=chains.setdefault(asset['chain_id'],{'id':asset['chain_id'],'name':names[asset['chain_id']],
                 'position_count':0,'wallet_keys':set(),'values':[],'unpriced_count':0})
             chain['position_count']+=1;chain['wallet_keys'].add(wallet['key'])
@@ -373,12 +375,12 @@ def dashboard(wallets):
     network_rows=sorted((finish(c) for c in chains.values()),key=lambda c:c['value_usd'] or 0,reverse=True)
     asset_rows=sorted((finish(a) for a in assets.values()),key=lambda a:a['value_usd'] or 0,reverse=True)
     for asset in asset_rows:asset['chain_name']=chains[asset['chain_id']]['name']
-    values=[a['value_usd'] for a in positions if a['value_usd'] is not None]
+    values=[a['value_usd'] for a in positions if included(a) and a['value_usd'] is not None]
     dates=[w['prices_at'] for w in wallets if w.get('prices_at')]
-    return {'sell_out_summary':summarize_sell_out(positions),'known_value_usd':sum(values) if values else None,'wallet_count':len(wallets),
+    return {'asset_policy_summary':policy_summary(positions),'sell_out_summary':summarize_sell_out(positions),'known_value_usd':sum(values) if values else None,'wallet_count':len(wallets),
         'analysed_wallet_count':sum(bool(w.get('analysed_at')) for w in wallets),
-        'position_count':len(positions),'unique_asset_count':len(assets),'chain_count':len(chains),
-        'priced_count':len(values),'unpriced_count':len(positions)-len(values),
+        'position_count':len(positions),'unique_asset_count':len({a['id'] for a in positions}),'chain_count':len(chains),
+        'priced_count':len(values),'unpriced_count':sum(included(a) and a['value_usd'] is None for a in positions),
         'prices_from':min(dates,default=None),'prices_to':max(dates,default=None),
         'networks':network_rows,'largest_holdings':[a for a in asset_rows if a['value_usd'] is not None][:5]}
 
@@ -394,6 +396,7 @@ def load_state(root=ROOT, *, include_details=True, encode=True):
             wallets.append({'address':entry['address'],'key':entry['address_key'],'tags':entry.get('tags',[]),
                 'name':(entry.get('tags') or [entry['address'][:10]])[0],'assets':[],'chains':[],
                 'known_value_usd':0,'unpriced_count':0,'analysed_at':None,'status':'awaiting_analysis','counts':{}})
+    apply_policy(wallets, root)
     state={'wallets':wallets,'currency':'USD','dashboard':dashboard(wallets),
            'details':project_details(wallets,root) if include_details else {'tokens':[], 'networks':[]}}
     if registry.get('demo') is True:state['demo']=True

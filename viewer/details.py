@@ -4,11 +4,12 @@ import json
 from chain_images import chain_image
 from market_records import pool_identity
 from sell_summary import summarize_sell_out
+from asset_policy import included, summary as policy_summary
 
 
-def total_value(assets):
+def total_value(assets, *, reported=False):
     values = [a['value_usd'] for a in assets
-              if a.get('environment') == 'mainnet' and a.get('value_usd') is not None]
+              if (reported or included(a)) and a.get('environment') == 'mainnet' and a.get('value_usd') is not None]
     return sum(values) if values else None
 
 
@@ -74,9 +75,11 @@ def project_details(wallets, root, *, include_wallets=True):
         first = holdings[0][1]
         network = catalog.get(first['chain_id'], {'id': first['chain_id'], 'name': str(first['chain_id']), 'environment': 'unknown'})
         assets = [a for _, a in holdings]
-        token = {k: first.get(k) for k in ('id', 'chain_id', 'symbol', 'name', 'address', 'is_native', 'image_url', 'curve_reserve')}
+        token = {k: first.get(k) for k in ('id', 'chain_id', 'symbol', 'name', 'address', 'is_native', 'image_url', 'curve_reserve', 'portfolio_status', 'included_in_totals', 'valuation_policy', 'risk_check')}
+        token['portfolio_status']=first.get('portfolio_status') or 'portfolio'
+        token['included_in_totals']=included(first)
         token.update({'network': network, 'environment': network['environment'],
-                      'balance': total_balance(assets), 'value_usd': total_value(assets),
+                      'balance': total_balance(assets), 'value_usd': total_value(assets,reported=True),
                       'wallet_count': len(holdings), 'unpriced_count': sum(a.get('value_usd') is None for a in assets)})
         # Separate wallet quotes may consume the same pool or curve backing.
         # Never sum them into a purported combined full-position sale.
@@ -129,7 +132,7 @@ def project_details(wallets, root, *, include_wallets=True):
             rows.append(account)
         value = total_value(assets)
         if not assets and rows and all(r['coverage'] == 'Researched' for r in rows) and network['environment'] == 'mainnet': value = 0
-        row.update({'sell_out_summary':summarize_sell_out(assets),'value_usd': value, 'position_count': len(assets), 'unique_asset_count': len(chain_tokens),
+        row.update({'asset_policy_summary':policy_summary(assets),'sell_out_summary':summarize_sell_out(assets),'value_usd': value, 'position_count': len(assets), 'unique_asset_count': len(chain_tokens),
                     'wallet_count': sum(r['has_holdings'] for r in rows),
                     'unpriced_count': sum(a.get('value_usd') is None for a in assets),
                     'wallets': rows, 'tokens': chain_tokens,

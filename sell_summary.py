@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from market_records import number
 from native_assets import native_identity
+from asset_policy import included
 
 STABLE_ASSETS = {(row['chain_id'],row['address'].lower())
                  for row in json.loads((Path(__file__).parent/'sources/known-tokens.json').read_text())['tokens']
@@ -24,7 +25,7 @@ def spot_sell_reference(asset):
 
 
 def summarize_sell_out(assets):
-    positions = [a for a in assets if a.get('environment') == 'mainnet' and not a.get('archived')]
+    positions = [a for a in assets if included(a) and a.get('environment') == 'mainnet' and not a.get('archived')]
     quotes = [a['sell_out'] for a in positions
               if not a.get('quantity_retained') and number((a.get('sell_out') or {}).get('value_usd')) is not None]
     references = [a['sell_out_reference'] for a in positions if number((a.get('sell_out') or {}).get('value_usd')) is None

@@ -327,3 +327,19 @@ If SDK membership changes while configured deployment addresses remain valid,
 portfolio refresh now preserves the configured network scope and verifies removed
 entries against the reviewed immutable SDK source. A retry reuses current jobs
 that failed this preflight. Contract-address mismatches still require correction.
+
+
+## Asset exclusions and explicit risk checks (1.4.0)
+
+Discover `token_policy` and `token_risk_check` with `kira describe TOOL --json`.
+Pass the recorded `chain_id`, contract `address` (or `native` for preferences),
+and an `idempotency_key` to `kira call`. Preferences also require `mode`:
+`exclude`, `include`, or `auto`. These actions finish immediately and return
+persisted receipts, rather than queued jobs. Risk lookup explicitly contacts
+GoPlus, sending only the token identity; no wallet or credentials are sent.
+
+Use `holdings_query` with `portfolio_status` set to `portfolio` (default),
+`review`, `excluded`, or `all`. Browser lists offer the same selection. Excluded
+and review assets retain balances and reported estimates, but do not contribute
+to portfolio or sell-out totals. Restore automatic classification or explicitly
+include an asset to reverse the preference. Warnings survive manual inclusion.

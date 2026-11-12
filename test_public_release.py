@@ -48,7 +48,7 @@ class PublicReleaseTest(unittest.TestCase):
         self.assertIn('loaded secret',checker.check('commit message',b'synthetic-private-value',set(),{'synthetic-private-value'}))
 
     def test_forced_runtime_config_and_transcripts_are_rejected(self):
-        for path in ('.kira-agent.json','.kira.local.json','subdir/.kira-agent.json','conversations/synthetic.json','site/.vercel/project.json'):
+        for path in ('.kira-agent.json','.kira.local.json','subdir/.kira-agent.json','conversations/synthetic.json','site/.vercel/project.json','token-policy.json','.token-policy.lock','.token-actions/synthetic.json'):
             self.assertIn('private runtime file',checker.check(path,b'{}',set(),set()))
         self.assertEqual(checker.check('kira_agent.py',b'public source',set(),set()),[])
 

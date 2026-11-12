@@ -3,6 +3,7 @@ import json
 import re
 from pathlib import Path
 from kira_jobs import JobError
+from asset_policy import included, summary as policy_summary
 
 def scoped_wallets(root,config):
     import sys
@@ -31,7 +32,7 @@ def projection(root, config, *, token_id=None, limit=12, offset=0, wallet_key=No
     for row,count in zip(rows,counts):
         row.update(asset_count=count,assets_omitted=count-len(row['assets']),offset=offset,
                    next_offset=offset+len(row['assets']) if token_id is None and offset+len(row['assets'])<count else None)
-    result = {'scope':config['scope'],'wallets':rows,'note':'Recorded direct holdings. Missing data is unknown. Mainnet priced totals exclude unpriced amounts and testnets. Exit quotes are independent historical full-balance burn outputs after royalty, before gas. Independent quote sums are indicative only. Do not infer combined live execution or convert output tokens at spot prices into cash-out value. pools_omitted counts bounded market detail; token_read can retrieve a specific approved token.'}
+    result = {'scope':config['scope'],'wallets':rows,'note':'Recorded direct holdings. value_usd preserves reported spot estimates even for excluded assets. Only included_in_totals assets contribute to portfolio and sell-out totals. Never treat a reported estimate as sale proceeds or an excluded estimate as portfolio value. Missing data is unknown. Mainnet priced totals exclude unpriced amounts and testnets. Exit quotes are independent historical full-balance burn outputs after royalty, before gas. Independent quote sums are indicative only. Do not infer combined live execution or convert output tokens at spot prices into cash-out value. pools_omitted counts bounded market detail; token_read can retrieve a specific approved token.'}
     from kira_config import public_status
     result['research_connection']=public_status(root)
     size=len(json.dumps(result,ensure_ascii=False).encode())
@@ -47,7 +48,7 @@ def projection(root, config, *, token_id=None, limit=12, offset=0, wallet_key=No
     return result
 
 def compact_wallet_facts(rows):
-    asset_fields=('id','chain_id','address','display_identity','symbol','name','environment','balance','is_native','value_usd','historical_value_usd','balance_observed_at','price','pools','pools_recorded','pools_omitted','exit_quote_recorded','archived')
+    asset_fields=('id','chain_id','address','display_identity','symbol','name','environment','balance','is_native','value_usd','historical_value_usd','balance_observed_at','price','pools','pools_recorded','pools_omitted','exit_quote_recorded','archived','portfolio_status','included_in_totals','valuation_policy','risk_check')
     return [{**row,'assets':[{key:asset[key] for key in asset_fields if key in asset and
                            (asset[key] is not None or key in ('address','value_usd','price'))}
                           for asset in row['assets']]} for row in rows]
@@ -58,7 +59,7 @@ def recorded_valuation(assets):
     groups={'native':[], 'mintclub':[], 'other_tokens':[]}
     unpriced=0
     for asset in assets:
-        if asset.get('environment')!='mainnet' or asset.get('archived'):continue
+        if not included(asset) or asset.get('environment')!='mainnet' or asset.get('archived'):continue
         try:value=Decimal(str(asset.get('value_usd')))
         except InvalidOperation:unpriced+=1;continue
         if not value.is_finite() or value<0:unpriced+=1;continue
@@ -72,7 +73,7 @@ def recorded_valuation(assets):
         return {'estimated_value_usd':value,'priced_position_count':len(rows),
                 'price_observed_at':{'from':min(times,default=None),'to':max(times,default=None)},
                 'price_time_unknown_count':sum(time is None for _,time in rows)}
-    return {'scope':'Full recorded mainnet inventory, before pagination. Categories are disjoint.',
+    return {'asset_policy_summary':policy_summary(assets),'scope':'Included recorded mainnet inventory, before pagination. Categories are disjoint.',
             'all_priced_positions':summarize([row for rows in groups.values() for row in rows]),
             'categories':{name:summarize(rows) for name,rows in groups.items()},'unpriced_mainnet_count':unpriced,
             'interpretation':'Estimated recorded priced subset at separate observation times. Not a floor on current wealth or realizable proceeds. Missing values remain unknown; indicative prices are not executable quotes.'}
@@ -81,7 +82,7 @@ def wallet_facts(wallets, *, pool_budget=40_000):
     def pick(value, names): return {k:value.get(k) for k in names}
     rows = []
     for wallet in wallets:
-        row = pick(wallet,('address','tags','name','snapshot_id','analysed_at','prices_at','balance_observed_at','known_value_usd','unpriced_count','status','sell_out_summary'))
+        row = pick(wallet,('address','tags','name','snapshot_id','analysed_at','prices_at','balance_observed_at','known_value_usd','unpriced_count','status','sell_out_summary','asset_policy_summary'))
         if not wallet.get('analysed_at'): row['known_value_usd']=None
         row['recorded_valuation']=wallet.get('recorded_valuation') or recorded_valuation(wallet['assets'])
         row['chains'] = [pick(c,('id','name','environment','complete','rpc_available','rpc_status','market_pending','market_errors','native_symbol','native_balance','native_observed_at','native_block_number','registry_block_number','discovery_status','registry_complete','registry_phase','rpc_pending','candidate_balance_errors','candidate_deferred','rpc_routes','history_window','discovery_provider','discovery_filters','lifecycle','head_status','head_age_seconds')) for c in wallet['chains']]
@@ -94,7 +95,7 @@ def wallet_facts(wallets, *, pool_budget=40_000):
         row['snapshot_price_references'] = wallet.get('snapshot_price_references',{})
         row['assets'] = []
         for asset in wallet['assets']:
-            item = pick(asset,('id','chain_id','address','symbol','name','environment','balance','is_native','value_usd','balance_observed_at'))
+            item = pick(asset,('id','chain_id','address','symbol','name','environment','balance','is_native','value_usd','balance_observed_at','portfolio_status','included_in_totals','valuation_policy','risk_check'))
             address=asset.get('address')
             item['display_identity']=str(asset['chain_id'])+':'+(address[:8]+'…'+address[-6:] if isinstance(address,str) and re.fullmatch(r'0x[0-9a-fA-F]{40}',address) else 'native')
             item['archived']=asset.get('archived',False)

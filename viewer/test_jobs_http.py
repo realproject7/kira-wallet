@@ -69,6 +69,24 @@ class JobsHTTPTest(unittest.TestCase):
         self.http.controls=False
         self.assertEqual(self.request(body=body)[0],501)
 
+    def test_token_preferences_apply_immediately_with_the_same_local_auth_boundary(self):
+        from kira_cli import initialize, sample
+        atomic(self.root/'wallets.json',{'schema_version':1,'wallets':[]})
+        initialize(self.root);sample(self.root)
+        body=json.dumps({'schema_version':1,'operation':'token.policy','input':{'chain_id':8453,'address':'0x0000000000000000000000000000000000000002','mode':'exclude'},'idempotency_key':'token-policy-http'}).encode()
+        for headers in ({'X-Kira-Session':''},{'Origin':'https://foreign.test'}):
+            self.assertEqual(self.request(body=body,headers=headers)[0],403)
+        self.assertFalse((self.root/'token-policy.json').exists())
+        code,receipt=self.request(body=body);self.assertEqual(code,202);self.assertTrue(receipt['completed'])
+        self.assertEqual(self.request(body=body)[1],receipt)
+        self.assertEqual(self.http.jobs.list(),[])
+        self.assertEqual(self.request('/api/holdings',method='GET')[1]['matched_count'],0)
+        excluded=self.request('/api/holdings?portfolio_status=excluded',method='GET')[1]
+        self.assertEqual(excluded['matched_count'],1);self.assertFalse(excluded['assets'][0]['included_in_totals'])
+        self.assertEqual(self.request('/api/holdings?portfolio_status=all',method='GET')[1]['matched_count'],1)
+        self.assertEqual(self.request('/api/holdings?portfolio_status=bogus',method='GET')[0],400)
+        self.http.controls=False;self.assertEqual(self.request(body=body)[0],501)
+
     def test_h402_preference_uses_existing_local_operation_boundary(self):
         body=json.dumps({'schema_version':1,'operation':'settings.h402','input':{'enabled':True},'idempotency_key':'h402-http-fixture'}).encode()
         for headers in ({'X-Kira-Session':''},{'Origin':'https://foreign.test'}):

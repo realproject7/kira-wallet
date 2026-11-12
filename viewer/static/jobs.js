@@ -90,6 +90,7 @@ async function submitOperation(operation,input){
   try{
     const result=await localAPI('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schema_version:1,operation,input,idempotency_key:key})});
     sessionStorage.removeItem(storageKey);
+    if(operation.startsWith('token.')){await pollWorkspace();return result;}
     const scanMessage=operation==='job.deepen'?'Sell-route analysis queued. Your holdings stay available.':operation==='job.resume'?'Scan queued to resume from saved work.':operation==='job.cancel'?'Pause requested. Saved results stay available.':null;
     if(result.batch_id){toast(result.jobs.length+' wallet jobs · '+result.skipped.length+' skipped · '+result.errors.length+' need attention');}
     else toast(scanMessage||(operation.startsWith('settings.')?'Queued ':'Saved ')+(jobLabels[operation]||'job').toLowerCase());await pollJobs();await pollWorkspace();return result;
@@ -211,7 +212,7 @@ function scheduleWorkspacePoll(){
 async function pollWorkspace(){
   if(workspacePolling||document.hidden)return;workspacePolling=true;
   try{
-    if(!localSession){const response=await fetch('/api/session',{cache:'no-store',signal:AbortSignal.timeout(5000)});if(!response.ok)throw Error('Local session unavailable');localSession=await response.json();}
+    if(!localSession){const response=await fetch('/api/session',{cache:'no-store',signal:AbortSignal.timeout(5000)});if(!response.ok)throw Error('Local session unavailable');localSession=await response.json();if(state)renderView();}
     const next=await readAPI('/api/status');workspaceStatus=next;
     if((!state||state.data_revision!==next.data_revision)&&await poll()===false)throw Error('Saved research unavailable');
     if(localSession.controls&&(lastJobsRevision!==next.jobs_revision||!jobsConnected)){await pollJobs();if(jobsConnected)lastJobsRevision=next.jobs_revision;}

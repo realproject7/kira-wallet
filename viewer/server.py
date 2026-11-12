@@ -98,7 +98,7 @@ class Handler(BaseHTTPRequestHandler):
                 if testnets not in ('0','1'):raise JobError('invalid_query','Use 0 or 1 for include_testnets.')
                 return {'query':text('query',''),'chain_id':integer('chain_id'),
                     'minimum_value_usd':text('minimum_value_usd','0'),'sort':text('sort','value'),
-                    'pricing':text('pricing','all'),'include_testnets':testnets=='1'}
+                    'pricing':text('pricing','all'),'include_testnets':testnets=='1','portfolio_status':text('portfolio_status','portfolio')}
             if path in ('/api/state','/api/status','/api/wallet','/api/token','/api/network','/api/holdings'):
                 app=self.application()
                 if path=='/api/state':

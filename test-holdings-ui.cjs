@@ -7,12 +7,13 @@ let click;const saved=new Map();
 const wallet={name:'Fixture',address:'0x'+'1'.repeat(40),tags:['Fixture'],analysed_at:'2026-10-04',known_value_usd:null,unpriced_count:3,
   assets:[1,33139,56].map((chain_id,i)=>({chain_id,environment:'mainnet',value_usd:null,symbol:['ETH','APE','BNB'][i]})),
   chains:[1,33139,56].map(id=>({id,name:'Chain '+id,environment:'mainnet',assets:1,complete:false,rpc_available:true,value_usd:null}))};
-const context={$:node,KiraView:require('./viewer/static/workspace-model.js'),currentWallet:()=>wallet,minimum:10,selectedChain:'all',selectedView:'wallet',
+const context={$:node,KiraView:require('./viewer/static/workspace-model.js'),currentWallet:()=>wallet,minimum:10,walletStatus:'portfolio',networkStatus:'portfolio',selectedChain:'all',selectedView:'wallet',
   escapeHTML:String,money:n=>n==null?'—':'$'+n,stamp:String,safeURL:String,
   document:{querySelectorAll:()=>buttons,addEventListener:(event,handler)=>{click=handler;}},
   localStorage:{setItem:(key,value)=>saved.set(key,value)},renderBreadcrumb(){},bindImages(){},
   assetRow:a=>'<tr>'+a.symbol+'</tr>',chainIcon:()=>'',networkHref:String,arrowGlyph:'',renderDetail(){}};
 vm.createContext(context);
+vm.runInContext(source.slice(source.indexOf('function policyBadge('),source.indexOf('function policyPanel(')),context);
 vm.runInContext(source.slice(source.indexOf('function sellSummary('),source.indexOf('function sellOutNote(')),context);
 vm.runInContext(source.slice(source.indexOf('function renderWallet(){'),source.indexOf('function icon(asset){')),context);
 vm.runInContext(source.slice(source.indexOf('function renderHoldings(){'),source.indexOf('function timeRange(')),context);

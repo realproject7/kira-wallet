@@ -409,7 +409,7 @@ class JobStore:
             operation = request['operation']
             if not isinstance(operation,str):raise JobError('unsupported_operation','Expected a typed operation name.')
             key_hash = digest(key); receipt = self.jobs / 'requests' / (key_hash + '.json')
-            if (self.jobs/'batches'/(key_hash+'.json')).exists():
+            if (self.root/'.token-actions'/(key_hash+'.json')).exists() or (self.jobs/'batches'/(key_hash+'.json')).exists():
                 raise JobError('idempotency_conflict','This request key already belongs to a portfolio action.')
             raw_hash=digest({'operation':operation,'input':request['input']})
             if receipt.exists() and read(receipt).get('raw_hash')==raw_hash:return self.admit_wallet(self.get(read(receipt)['job_id']))

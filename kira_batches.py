@@ -20,7 +20,7 @@ def submit_batch(store, request):
     fingerprint = digest({'operation': operation, 'input': {}})
     path = store.jobs / 'batches' / (batch_id + '.json')
     with store.locked():
-        if (store.jobs / 'requests' / (batch_id + '.json')).exists() or any(j['key_hash']==batch_id or batch_id in j.get('control_receipts',{}) for file in store.jobs.glob('*.json') for j in [store.get(file.stem)]):
+        if (store.root / '.token-actions' / (batch_id + '.json')).exists() or (store.jobs / 'requests' / (batch_id + '.json')).exists() or any(j['key_hash']==batch_id or batch_id in j.get('control_receipts',{}) for file in store.jobs.glob('*.json') for j in [store.get(file.stem)]):
             raise JobError('idempotency_conflict', 'This request key already belongs to another operation.')
         if path.exists():
             plan = json.loads(path.read_text())
