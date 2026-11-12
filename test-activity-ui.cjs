@@ -43,6 +43,13 @@ test('filters, wallet selection and search read activity without submitting rese
  h.run('clearActivityFilters()');assert.equal(h.node('job-filter').value,'all');assert.equal(h.node('activity-wallet').value,'all');assert.equal(h.node('activity-query').value,'');
  assert.ok(h.calls.every(c=>c!=='write'));
 });
+test('the current-work pause control reaches the durable operation handler once',()=>{
+ const h=harness(),button={dataset:{jobAction:'cancel',jobId:'running'}};
+ h.node('activity-current').listeners.click({target:{closest:selector=>selector==='[data-job-action]'?button:null}});
+ assert.deepEqual(h.calls,['write']);
+ h.node('activity-current').listeners.click({target:{closest:()=>null}});
+ assert.deepEqual(h.calls,['write']);
+});
 test('empty and disconnected states keep their meaning and escape untrusted wallet text',()=>{
  const h=harness();h.node('job-filter').value='attention';h.context.jobList=[];h.run('renderActivity()');assert.match(h.node('jobs-list').innerHTML,/No tasks need attention/);
  h.context.jobsConnected=false;h.run('renderActivity()');assert.match(h.node('jobs-freshness').textContent,/Reconnecting/);

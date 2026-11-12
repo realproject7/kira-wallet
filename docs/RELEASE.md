@@ -1,11 +1,11 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.6.1**.
+Published npm release: **1.5.0**. Prepared candidate: **1.6.2**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
 
-## Candidate 1.6.1
+## Candidate 1.6.2
 
 Activity separates current research from a compact, aligned history. Status
 filters, wallet selection and search work across the full saved history before
@@ -21,7 +21,9 @@ step progress is explicitly separated from cumulative asset review counts.
 Design references: Databricks job runs and n8n executions, researched through
 Lazyweb. The existing Kira palette, type and controls remain shared. Desktop,
 mobile, keyboard, filters, paging, recovery and error states are verified.
-The frozen 1.6.0 archive is preserved. Review not selected.
+The frozen 1.6.0 and 1.6.1 archives are preserved. The 1.6.2 candidate
+also wires the current-work pause action to the durable operation handler;
+1.6.1 is superseded and must not be published. Review not selected.
 
 ## Candidate 1.6.0
 

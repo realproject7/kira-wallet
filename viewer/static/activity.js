@@ -103,6 +103,7 @@ $('activity-view').addEventListener('click',event=>{
   const filter=event.target.closest('[data-activity-filter]');if(filter){chooseActivityFilter(filter.dataset.activityFilter);return;}
   const detail=event.target.closest('[data-activity-detail]');if(detail)openActivityDetails(detail.dataset.activityDetail);
 });
+$('activity-current').addEventListener('click',event=>{if(event.target.closest('[data-job-action]'))handleScanAction(event);});
 $('activity-wallet').addEventListener('change',()=>{jobsPage=1;loadActivity();});
 $('activity-query').addEventListener('input',()=>{clearTimeout(activitySearchTimer);activityEpoch++;activitySearchTimer=setTimeout(()=>{jobsPage=1;loadActivity();},200);});
 $('activity-clear').addEventListener('click',clearActivityFilters);
