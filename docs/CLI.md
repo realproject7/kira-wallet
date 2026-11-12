@@ -343,3 +343,10 @@ Use `holdings_query` with `portfolio_status` set to `portfolio` (default),
 and review assets retain balances and reported estimates, but do not contribute
 to portfolio or sell-out totals. Restore automatic classification or explicitly
 include an asset to reverse the preference. Warnings survive manual inclusion.
+
+
+In 1.5.0 the browser calls manual exclusions **Hidden**. A trailing eye control
+hides/restores directly. **Manage tokens** selects visible-page identities for
+bulk hiding/restoration; page or filter changes clear selection. Hidden assets
+still use `portfolio_status=excluded` in CLI/MCP. Existing financial semantics
+and raw evidence are unchanged. Undo restores each confirmed item's prior mode.

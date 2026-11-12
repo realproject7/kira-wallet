@@ -82,7 +82,7 @@ async function localAPI(path,options={}){
   if(response.status===403){localSession=null;throw new Error('The local session changed. Reopen this action after reconnecting.');}
   const data=await response.json();if(!response.ok)throw new Error(data.error?.message||'The local action could not be completed.');return data;
 }
-async function submitOperation(operation,input){
+async function submitOperation(operation,input,{refresh=true}={}){
   const fingerprint=JSON.stringify({operation,input});if(pendingActions.has(fingerprint))throw new Error('This request is already being submitted.');
   pendingActions.add(fingerprint);
   const storageKey='kira-request:'+fingerprint;
@@ -90,7 +90,7 @@ async function submitOperation(operation,input){
   try{
     const result=await localAPI('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schema_version:1,operation,input,idempotency_key:key})});
     sessionStorage.removeItem(storageKey);
-    if(operation.startsWith('token.')){await pollWorkspace();return result;}
+    if(operation.startsWith('token.')){if(refresh)await pollWorkspace();return result;}
     const scanMessage=operation==='job.deepen'?'Sell-route analysis queued. Your holdings stay available.':operation==='job.resume'?'Scan queued to resume from saved work.':operation==='job.cancel'?'Pause requested. Saved results stay available.':null;
     if(result.batch_id){toast(result.jobs.length+' wallet jobs · '+result.skipped.length+' skipped · '+result.errors.length+' need attention');}
     else toast(scanMessage||(operation.startsWith('settings.')?'Queued ':'Saved ')+(jobLabels[operation]||'job').toLowerCase());await pollJobs();await pollWorkspace();return result;

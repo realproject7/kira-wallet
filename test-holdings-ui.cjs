@@ -88,7 +88,7 @@ vm.runInContext(source.slice(source.indexOf('function venueMark('),source.indexO
 vm.runInContext(source.slice(source.indexOf('function sellOutNote(a){'),source.indexOf('function renderHoldings(){')),context);
 const historic=context.assetRow({id:'fixture',symbol:'Fixture',name:'Fixture',balance:'1',value_usd:100,links:[],
   price:{usd:100,basis:'Curve spot',retained_from_previous:true,observed_at:'2026-10-01T00:00:00Z'}});
-assert.match(historic,/holding-markets/);assert.doesNotMatch(historic,/markets-label/);assert.match(historic,/colspan="5"/);assert.match(historic,/Previous Curve spot/);assert.match(historic,/title="2026-10-01T00:00:00Z"/);
+assert.match(historic,/holding-markets/);assert.doesNotMatch(historic,/markets-label/);assert.match(historic,/colspan="6"/);assert.match(historic,/Previous Curve spot/);assert.match(historic,/title="2026-10-01T00:00:00Z"/);
 console.log('Retained price labels preserve the original observation time.');
 const pools=Array.from({length:4},(_,i)=>({url:'https://example.com/pool/'+i,pool:'0x'+'1'.repeat(40),
   venue:'Uniswap V3',pair:[{symbol:'USDC'},{symbol:'WETH'}],liquidity_usd:i===0?null:100,

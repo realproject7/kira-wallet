@@ -1,9 +1,30 @@
 # Releases and preparation
 
-Published npm release: **1.1.0**. Prepared candidate: **1.4.0**.
+Published npm release: **1.1.0**. Prepared candidate: **1.5.0**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.5.0
+
+Token rows have a direct trailing Hide / Restore control instead of an inline
+expanding overflow menu. The action has a keyboard label, tooltip and mobile
+touch target. Portfolio, Needs review, Hidden and All recorded tabs expose
+membership and recovery without a status dropdown. Existing saved valuation
+membership and risk rules are unchanged.
+
+Manage tokens enables explicit checkbox selection on the current page, a
+contextual toolbar, bulk hiding/restoration and concise Undo notifications.
+Changing a page or filter clears selection. Confirmed changes alone enter Undo;
+unconfirmed changes retain idempotency keys and can be retried separately.
+Bulk updates reuse the immediate token policy operation and refresh the view
+once after the batch. No provider research is started by managing visibility.
+
+Visual references were researched through Lazyweb: Phantom's asset hierarchy,
+Aboard's deliberate selection, and E*TRADE's direct visibility controls. Kira
+retains its own exclusion-from-totals semantics. Desktop and mobile acceptance
+covers direct hiding, bulk actions, recovery, keyboard access and layout.
+Earlier frozen archives remain preserved. Review not selected.
 
 ## Candidate 1.4.0
 

@@ -2,8 +2,9 @@
 
 Updated: 2026-11-12. Kira 1.1.0 is published and PR #59 is merged. Its registry
 archive matches the tested source and installed package. This source prepares
-1.4.0 with portfolio research controls, native/stable market references,
-sell-out sorting, persistent valuation exclusions and explicit risk observations.
+1.5.0 with portfolio research controls, native/stable market references,
+sell-out sorting, persistent valuation exclusions, direct visibility controls,
+bulk management and explicit risk observations.
 Earlier plans and reports preserve historical evidence, not active release gates.
 
 ## Completed release scope
