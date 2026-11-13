@@ -1,9 +1,26 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.11.1**.
+Published npm release: **1.5.0**. Prepared candidate: **1.11.2**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.11.2
+
+Portfolio position admission now queues every registered wallet behind active
+holdings work instead of permanently skipping busy wallets. Duplicate covering
+position scans coalesce; an explicit full scan can follow a known-only scan.
+V4 owner transport failures stay partial and retain earlier evidence. Excluded
+receipt tokens remain excluded after decoding, including staked receipts without
+a loose wallet balance. Position cards explain exclusions. Operator-retired
+networks stay outside new position research and valuation. Raw inputs for
+principal calculations are saved without adding provider requests, allowing
+independent offline quantity verification.
+
+Regression coverage includes busy-wallet batch admission, full/known mode
+coalescing, failed V4 ownership with zero direct inventory, excluded custodial
+receipts and retired network filtering. Review not selected. Earlier archives
+remain immutable; registry publication remains an operator action.
 
 ## Candidate 1.11.1
 

@@ -42,11 +42,13 @@ def submit_batch(store, request):
                 address = wallet['address_key']
                 related = [j for j in jobs if (j['input'].get('wallet') or j['input'].get('address') or '').lower() == address]
                 reason = None
-                if any(j['state'] in ('queued', 'running') and j['operation'] in ('wallet.add', 'wallet.refresh', 'prices.refresh') for j in related):
+                if operation == 'portfolio.positionsRefresh':
+                    # The shared writer runs holdings first. Admit every registration,
+                    # including a wallet whose newer holdings are still being collected.
+                    # Per-job admission coalesces a scan covering the requested mode.
+                    items.append({'wallet':address,'operation':'positions.refresh','input':{'wallet':address,**({'discover':value['discover']} if 'discover' in value else {})}})
+                elif any(j['state'] in ('queued', 'running') and j['operation'] in ('wallet.add', 'wallet.refresh', 'prices.refresh') for j in related):
                     reason = 'already_running'
-                elif operation == 'portfolio.positionsRefresh':
-                    if any(j['state'] in ('queued','running') and j['operation']=='positions.refresh' for j in related):reason='already_running'
-                    else:items.append({'wallet':address,'operation':'positions.refresh','input':{'wallet':address,**({'discover':value['discover']} if 'discover' in value else {})}})
                 elif operation == 'portfolio.refresh':
                     blocked=next((j for j in related if j['job_id']==wallet.get('research_generation')
                         and j.get('analysis_phase')=='baseline' and j['state']=='failed' and not j.get('result')
@@ -81,7 +83,7 @@ def submit_batch(store, request):
     for item in plan['items']:
         try:
             job = store.submit({'schema_version': 1, 'operation': item['operation'], 'input': item['input'],
-                                'idempotency_key': 'batch:' + digest({'batch': batch_id, 'wallet': item['wallet']})}, skip_active=True)
+                                'idempotency_key': 'batch:' + digest({'batch': batch_id, 'wallet': item['wallet']})}, skip_active=operation!='portfolio.positionsRefresh')
             admitted.append({'job_id': job['job_id'], 'state': job['state'], 'wallet': item['wallet'], 'operation': job['operation']})
         except JobError as error:
             if error.code=='already_running':skipped.append({'wallet':item['wallet'],'reason':'already_running'})

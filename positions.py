@@ -29,12 +29,13 @@ def decimal(value):
 
 
 def prices(wallets):
+    from chain_lifecycle import retired
     result={}
     for wallet in wallets:
         for a in wallet.get('assets',[]):
             p=a.get('price') or {};value=decimal(p.get('usd'))
             from asset_policy import included
-            if a.get('environment')!='mainnet' or not included(a) or value is None or not p.get('observed_at') or not p.get('source'):continue
+            if a.get('environment')!='mainnet' or a.get('archived') or retired(a['chain_id']) or not included(a) or value is None or not p.get('observed_at') or not p.get('source'):continue
             if p.get('quality')!='estimated' or p.get('retained_from_previous'):continue
             key=a['id'];prior=result.get(key)
             if prior is None or p['observed_at']>prior['observed_at']:result[key]=dict(p)
@@ -59,6 +60,10 @@ def attach(root, wallets):
     root=Path(root);path=root/'positions/index.json'
     index=json.loads(path.read_text()) if path.is_file() else {'wallets':{}}
     price_map=prices(wallets)
+    from asset_policy import included, load
+    from chain_lifecycle import retired
+    excluded={a['id'] for w in wallets for a in w.get('assets',[]) if not included(a)}
+    excluded.update(identity for identity,row in load(root).get('overrides',{}).items() if row.get('mode')=='exclude')
     for wallet in wallets:
         reference=index.get('wallets',{}).get(wallet['key']);saved=None
         if reference:
@@ -68,6 +73,9 @@ def attach(root, wallets):
                 except (OSError,ValueError):pass
         if saved and saved.get('wallet')==wallet['key'] and saved.get('schema_version')==1:
             wallet['positions']=[valued(p,price_map) for p in saved.get('positions',[]) if p.get('platform') in PLATFORMS][:5000]
+            for p in wallet['positions']:
+                receipt=(p.get('receipt') or {}).get('address','').lower()
+                p['included_in_totals']=str(p['chain_id'])+':'+receipt not in excluded and not retired(p['chain_id'])
             wallet['position_coverage']=saved.get('coverage',[])
             wallet['positions_observed_at']=saved.get('observed_at')
             wallet['positions_scan_status']=saved.get('status')
@@ -92,7 +100,8 @@ def allocation(wallets, *, token_id=None, chain_id=None):
         for wallet in wallets:
             checked+=wallet.get('positions_scan_status') in ('checked','partial')
             observations.extend([wallet['positions_observed_at']] if wallet.get('positions_observed_at') else [])
-            rows=[p for p in wallet.get('positions',[]) if chain_id is None or p['chain_id']==chain_id]
+            excluded={a['id'] for a in wallet.get('assets',[]) if not included(a)}
+            rows=[p for p in wallet.get('positions',[]) if included(p) and (str(p['chain_id'])+':'+(p.get('receipt') or {}).get('address','').lower()) not in excluded and (chain_id is None or p['chain_id']==chain_id)]
             receipts={str(p['chain_id'])+':'+p['receipt']['address'].lower() for p in rows if p.get('receipt') and p['receipt'].get('custody')=='wallet'}
             seen=set()
             for p in rows:
@@ -106,7 +115,7 @@ def allocation(wallets, *, token_id=None, chain_id=None):
                 positions_count+=1;stale+=bool(p.get('retained'))
                 add(p['platform'],value,True)
             for a in wallet.get('assets',[]):
-                if a.get('environment')!='mainnet' or not included(a) or a['id'] in receipts:continue
+                if a.get('environment')!='mainnet' or a.get('archived') or not included(a) or a['id'] in receipts:continue
                 if token_id is not None and a['id']!=token_id or chain_id is not None and a['chain_id']!=chain_id:continue
                 platform='mintclub' if a.get('curve_reserve') else 'wallet'
                 add(platform,a.get('value_usd'))

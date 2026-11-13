@@ -78,6 +78,16 @@ test('v4 packed pool identity, owner and chain-specific state view precede valua
  const h=harness({kind:'nft',ids:['2'],manager:MANAGER,view:FACTORY,type:'v4'},resolve);const row=Object.values((await finish(h)).positions)[0];assert.equal(row.pool,pool);assert.equal(row.platform,'uniswap');
  const bad=harness({kind:'nft',ids:['2'],manager:MANAGER,view:FACTORY,type:'v4'},c=>c.functionName==='getPoolAndPositionInfo'?[k,0n]:resolve(c));assert.equal(Object.keys((await finish(bad)).positions).length,0);
 });
+test('a V4 owner transport failure remains unknown even when wallet NFT count is zero',async()=>{
+ const h=harness({kind:'nft',ids:['2'],manager:MANAGER,view:FACTORY,type:'v4'},()=>{throw Error('offline');});
+ h.state.nft_expected={'8453:test':'0'};
+ const state=await finish(h);assert.equal(state.coverage['8453:test'].status,'partial');assert.equal(state.coverage['8453:test'].errors,1);assert.equal(Object.keys(state.positions).length,0);
+});
+test('principal records retain the raw calculation inputs without more provider calls',async()=>{
+ const h=harness({kind:'nft',ids:['1'],manager:MANAGER,factory:FACTORY,platform:'uniswap',type:'v3'},c=>nftResolve(c));
+ const row=Object.values((await finish(h)).positions)[0];assert.equal(row.audit.kind,'concentrated-liquidity');
+ assert.deepEqual(math.liquidityAmounts(row.audit.liquidity_raw,row.audit.sqrt_price_x96,row.audit.tick_lower,row.audit.tick_upper).map(String),row.assets.map(a=>a.amount_raw));
+});
 test('a spoofed LP cannot claim reserves merely by naming a real factory',async()=>{
  const h=harness({kind:'pair',pool:POOL,factory:FACTORY,platform:'uniswap',type:'v2'},c=>({factory:FACTORY,token0:T0,token1:T1,totalSupply:100n,getReserves:[1000n,1000n,1n],balanceOf:10n,getPair:GAUGE}[c.functionName]));
  assert.equal(Object.keys((await finish(h)).positions).length,0);assert.equal(h.state.coverage['8453:test'].status,'partial');

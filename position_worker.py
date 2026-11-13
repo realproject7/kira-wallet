@@ -41,9 +41,10 @@ def prepare(root, job):
     networks=json.loads((root/'networks.json').read_text())['networks']
     # Configured mainnets are checked even when the wallet has no loose tokens.
     from native_assets import NATIVE_ASSETS
+    from chain_lifecycle import retired
     native={cid:(row[0],18) for cid,row in NATIVE_ASSETS.items()}
     native.update({5042:('USDC',6),99901:('HYPE',18),57073:('ETH',18)})
-    return {'wallet':address,'networks':[{**n,'native_symbol':native.get(n['chain_id'],('Unknown',None))[0],'native_decimals':native.get(n['chain_id'],('Unknown',None))[1]} for n in networks if n['environment']=='mainnet'],
+    return {'wallet':address,'networks':[{**n,'native_symbol':native.get(n['chain_id'],('Unknown',None))[0],'native_decimals':native.get(n['chain_id'],('Unknown',None))[1]} for n in networks if n['environment']=='mainnet' and not retired(n['chain_id'])],
             'tokens':list(tokens.values()),'discover':job['input'].get('discover',True),
             'known_positions':[{k:p.get(k) for k in ('id','scope','chain_id','platform','protocol','version','manager','token_id','pool','factory','gauge','farm','pool_id')} for p in (old or {}).get('positions',[])],
             'max_reads':48,'budget_ms':25000}

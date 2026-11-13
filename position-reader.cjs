@@ -97,7 +97,7 @@ class Reader{
  async assets(t,addresses,amounts){const rows=[];for(let i=0;i<addresses.length;i++){const meta=t.erc1155?{address:key(addresses[i]),symbol:'NFT',decimals:0,token_type:'ERC1155',token_id:'0'}:await this.token(t,addresses[i]);rows.push({...meta,amount_raw:String(amounts[i]),amount:v.formatUnits(BigInt(amounts[i]),meta.decimals)});}return rows;}
  put(t,row){
   if(Object.keys(this.state.positions).length>=MAX_POSITIONS&&!this.state.positions[row.id])throw Error('Position result limit reached');
-  const block=this.state.blocks[t.chain_id];this.state.positions[row.id]={...row,scope:t.scope,chain_id:t.chain_id,observed_at:block.observed_at,block_number:block.number,block_hash:block.hash};
+  const block=this.state.blocks[t.chain_id];this.state.positions[row.id]={...row,...(t.audit?{audit:{...t.audit}}:{}),scope:t.scope,chain_id:t.chain_id,observed_at:block.observed_at,block_number:block.number,block_hash:block.hash};
  }
  async handle(t){
   this.scope(t);const cid=t.chain_id;
@@ -132,6 +132,7 @@ class Reader{
    const d=protocols.factory_nft,values=await this.multi(t,[spec(d.address,'balanceOf',[this.input.wallet,0n]),spec(d.address,'navPerNFT')]);
    const count=BigInt(this.good(values[0]));if(!count)return;
    const amount=count*BigInt(this.good(values[1]));
+   t.audit={kind:'factory-nav',quantity:String(count),nav_per_nft_raw:String(values[1].result)};
    this.put(t,{id:'1:'+key(d.address)+':0',platform:'factory',protocol:'factory',version:'ERC-1155',label:'Factory NFT',quantity:String(count),receipt:{address:key(d.address),custody:'wallet',balance_raw:String(count),standard:'ERC1155',token_id:'0'},assets:await this.assets(t,[d.underlying],[amount]),source_url:'https://hunt.town/factory',exit_note:'NAV before the 5% burn fee; gas excluded.'});return;
   }
   if(t.kind==='vault-discover'){
@@ -146,6 +147,7 @@ class Reader{
    if(!configured||!await this.read(t,spec(factory,'isVault',[t.vault])))throw Error('Unverified LP vault');
    const shares=t.shares===undefined?BigInt(this.good(values[3])):BigInt(t.shares);if(!shares)return;
    const amounts=await this.read(t,spec(t.vault,'claimForShares',[shares]));
+   t.audit={kind:'vault-claim',shares_raw:String(shares),claim_raw:amounts.map(String)};
    this.put(t,{id:cid+':'+key(t.vault)+':'+(t.stake_id||'wallet'),platform:'lptoken',protocol:'uniswap',version:'v4 vault',label:'lpTOKEN liquidity',assets:await this.assets(t,[this.good(values[1]),this.good(values[2])],amounts),receipt:{address:key(t.vault),balance_raw:String(shares),custody:t.stake_id?'mintclub-staking':'wallet'},custody_platform:t.stake_id?'mintclub-staking':null,source_url:'https://lptoken.fun/markets',exit_note:'NAV includes accrued vault assets; redemption terms and gas are separate.'});return;
   }
   if(t.kind==='pair-discover'){
@@ -165,6 +167,7 @@ class Reader{
    if(t.gauge&&key(t.gauge)!==ZERO)staked=BigInt(await this.read(t,spec(t.gauge,'balanceOf',[this.input.wallet])));
    for(const [custody,quantity] of [['wallet',balance],['gauge',staked],['farm',BigInt(t.farm_shares||0)]]){
     if(!quantity)continue;const reserves=this.good(r[4]),amounts=math.shareAmounts(quantity,this.good(r[3]),[reserves[0],reserves[1]]);
+    t.audit={kind:'pool-share',shares_raw:String(quantity),supply_raw:String(r[3].result),reserves_raw:[String(reserves[0]),String(reserves[1])]};
     this.put(t,{id:cid+':'+key(t.pool)+':'+custody+(custody==='farm'?':'+key(t.farm)+':'+t.pool_id:''),platform:t.platform||'aerodrome',protocol:t.platform||'aerodrome',version:t.version,label:'Liquidity pool',pool:key(t.pool),factory:key(t.factory),gauge:t.gauge?key(t.gauge):null,farm:custody==='farm'?key(t.farm):null,pool_id:t.pool_id,assets:await this.assets(t,[a,b],amounts),receipt:{address:key(t.pool),balance_raw:String(quantity),custody},custody_platform:custody==='gauge'?'aerodrome':custody==='farm'?'pancakeswap':null,source_url:t.platform==='uniswap'?'https://app.uniswap.org/portfolio':t.platform==='pancakeswap'?'https://pancakeswap.finance/liquidity':'https://aero.xyz',exit_note:'Pool reserve share; unclaimed rewards and exit costs excluded.'});
    }return;
   }
@@ -238,6 +241,7 @@ class Reader{
     if(key(pool)===ZERO||t.pool&&key(pool)!==key(t.pool))throw Error('NFT pool identity mismatch');
     const price=await this.read(t,spec(pool,'slot0',[],t.type==='cl'?v.parseAbi(['function slot0() view returns(uint160,int24,uint16,uint16,uint16,bool)']):abi));
     const amounts=math.liquidityAmounts(p[7],price[0],Number(p[5]),Number(p[6]));
+    t.audit={kind:'concentrated-liquidity',liquidity_raw:String(p[7]),sqrt_price_x96:String(price[0]),tick_lower:Number(p[5]),tick_upper:Number(p[6])};
     const inGauge=owner===key(t.gauge||ZERO),inFarm=owner===key(t.inventory_address||ZERO);
     this.put(t,{id:cid+':'+key(t.manager)+':'+t.ids[i],platform:t.platform,protocol:t.platform,version:t.version,label:'Liquidity #'+t.ids[i],manager:key(t.manager),token_id:t.ids[i],pool:key(pool),factory:key(t.factory),gauge:inGauge?key(t.gauge):null,farm:inFarm?key(t.inventory_address):null,custody_platform:inGauge?'aerodrome':inFarm?'pancakeswap':null,assets:await this.assets(t,[p[2],p[3]],amounts),range:{lower:Number(p[5]),upper:Number(p[6]),tick:Number(price[1])},source_url:t.platform==='uniswap'?'https://app.uniswap.org/portfolio':t.platform==='pancakeswap'?'https://pancakeswap.finance/liquidity':'https://aero.xyz',exit_note:'Liquidity principal; uncollected fees, rewards and gas excluded.'});
    }
@@ -305,12 +309,17 @@ class Reader{
  async v4(t){
   const rows=await this.multi(t,t.ids.flatMap(id=>[spec(t.manager,'ownerOf',[BigInt(id)]),spec(t.manager,'getPoolAndPositionInfo',[BigInt(id)]),spec(t.manager,'getPositionLiquidity',[BigInt(id)])]));
   for(let i=0;i<t.ids.length;i++){
-   if(rows[i*3]?.status!=='success'||key(rows[i*3].result)!==key(this.input.wallet))continue;
+   if(rows[i*3]?.status!=='success'){
+    if(rows[i*3]?.reason==='contract')continue;
+    throw Error('V4 NFT ownership unavailable');
+   }
+   if(key(rows[i*3].result)!==key(this.input.wallet))continue;
    (this.state.nft_owned ||= {})[t.scope+':'+t.ids[i]]=true;
    const [k,info]=this.good(rows[i*3+1]),l=BigInt(this.good(rows[i*3+2]));if(!l)continue;
    const pool=v.keccak256(v.encodeAbiParameters([{type:'address'},{type:'address'},{type:'uint24'},{type:'int24'},{type:'address'}],[k.currency0,k.currency1,k.fee,k.tickSpacing,k.hooks]));
    if((BigInt(pool)>>56n)!==(BigInt(info)>>56n))throw Error('V4 pool identity mismatch');
    const price=await this.read(t,spec(t.view,'getSlot0',[pool])),ticks=math.v4Ticks(info),amounts=math.liquidityAmounts(l,price[0],...ticks);
+   t.audit={kind:'concentrated-liquidity',liquidity_raw:String(l),sqrt_price_x96:String(price[0]),tick_lower:ticks[0],tick_upper:ticks[1]};
    this.put(t,{id:t.chain_id+':'+key(t.manager)+':'+t.ids[i],platform:'uniswap',protocol:'uniswap',version:'v4',label:'Liquidity #'+t.ids[i],manager:key(t.manager),token_id:t.ids[i],pool,assets:await this.assets(t,[k.currency0,k.currency1],amounts),range:{lower:ticks[0],upper:ticks[1],tick:Number(price[1])},source_url:'https://app.uniswap.org/portfolio',exit_note:'Liquidity principal; hook terms, unclaimed fees and gas excluded.'});
   }
  }

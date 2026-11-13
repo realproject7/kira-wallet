@@ -12,7 +12,7 @@ from kira_cli import initialize
 from kira_jobs import atomic, JobError
 from kira_service import Application
 from positions import allocation, valued, prices
-from position_worker import projection, publish
+from position_worker import projection, publish, prepare
 from viewer.test_viewer import fixture_snapshot
 
 A='0x'+'1'*40;B='0x'+'2'*40;TOKEN='0x'+'3'*40;RECEIPT='0x'+'4'*40
@@ -53,6 +53,12 @@ class PositionAccountingTests(unittest.TestCase):
         w['assets'][0]['environment']='mainnet';w['assets'][0]['price']['usd']=float('nan');self.assertFalse(prices([w]))
         w['assets'][0]['price']=dict(PRICE);w['assets'][0]['included_in_totals']=False;self.assertFalse(prices([w]))
         p=position();p['assets'][0]['amount']='NaN';self.assertIsNone(valued(p,{})['value_usd'])
+
+    def test_excluded_receipt_cannot_reenter_totals_through_a_claim(self):
+        w=wallet();w['assets'].append({'id':'8453:'+RECEIPT,'chain_id':8453,'included_in_totals':False})
+        w['positions']=[valued(position(receipt={'address':RECEIPT,'custody':'wallet'}),prices([w]))]
+        self.assertEqual(allocation([w])['known_value_usd'],10)
+        self.assertEqual(allocation([w])['position_count'],0)
 
     def test_token_scope_counts_only_its_underlying(self):
         p=position();p['assets'].append({'address':RECEIPT,'amount':'50','symbol':'OTHER'})
@@ -98,7 +104,29 @@ class PositionApplicationTests(unittest.TestCase):
         resumed=self.app.jobs.submit({'schema_version':1,'operation':'job.resume','input':{'job_id':a['job_id']},'idempotency_key':'resume-platform-scan'})
         self.assertEqual(resumed['job_id'],a['job_id'])
         batch=self.app.submit({'schema_version':1,'operation':'portfolio.positionsRefresh','input':{},'idempotency_key':'batch-platform-refresh'},launch=False)
-        self.assertEqual(len(batch['jobs']),1);self.assertEqual(len(batch['skipped']),1)
+        self.assertEqual(len(batch['jobs']),2);self.assertEqual(len(batch['skipped']),0)
+        self.assertIn(a['job_id'],[j['job_id'] for j in batch['jobs']])
+
+    def test_global_scan_admits_wallets_waiting_for_holdings_and_coalesces_modes(self):
+        baseline=self.app.submit({'schema_version':1,'operation':'wallet.refresh','input':{'wallet':A},'idempotency_key':'holdings-before-positions'},launch=False)
+        known=self.app.submit({'schema_version':1,'operation':'positions.refresh','input':{'wallet':B,'discover':False},'idempotency_key':'known-before-full'},launch=False)
+        batch=self.app.submit({'schema_version':1,'operation':'portfolio.positionsRefresh','input':{'discover':True},'idempotency_key':'all-wallet-platform-full'},launch=False)
+        self.assertEqual(len(batch['jobs']),2);self.assertFalse(batch['skipped']);self.assertFalse(batch['errors'])
+        self.assertEqual({j['wallet'] for j in batch['jobs']},{A,B})
+        self.assertTrue(all(self.app.jobs.get(j['job_id'])['input']['discover'] for j in batch['jobs']))
+        self.assertNotIn(known['job_id'],[j['job_id'] for j in batch['jobs']])
+        self.assertEqual(self.app.jobs.get(baseline['job_id'])['state'],'queued')
+
+    def test_exclusion_applies_to_staked_receipt_even_without_a_loose_balance(self):
+        p=position(receipt={'address':RECEIPT,'custody':'mintclub-staking'})
+        job=self.job();job['attempt']=1;publish(self.root,job,self.state([p]))
+        atomic(self.root/'token-policy.json',{'overrides':{'8453:'+RECEIPT:{'mode':'exclude'}},'risk_checks':{}})
+        saved=self.app.views.positions();self.assertFalse(saved['positions'][0]['included_in_totals'])
+        self.assertEqual(saved['allocation']['position_count'],0)
+
+    def test_retired_networks_are_not_reintroduced_by_platform_scans(self):
+        job=self.job();inp=prepare(self.root,job)
+        self.assertFalse({5112,54176,666666666}&{n['chain_id'] for n in inp['networks']})
 
     def test_partial_results_keep_prior_claims_and_completed_empty_removes_them(self):
         job=self.job();job['attempt']=1;publish(self.root,job,self.state([position()]))
