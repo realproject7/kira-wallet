@@ -1,7 +1,7 @@
 'use strict';
 /* Organization and saved-record navigation only. No discovery on a read. */
 const FolderUI=(()=>{
-  let scope=null,draft=null,busy=false,memberPage=0,shownMembers=[],cachedOverview=null;
+  let scope=null,draft=null,busy=false,memberPage=0,shownMembers=[],cachedOverview=null,selectionAnchor=null,rangeClick=false,managerNotice='';
   const empty={revision:0,folders:[],assignments:{},unfiled_count:0};
   const data=()=>state?.wallet_folders||empty;
   const label=id=>id==='unfiled'?'Unfiled':data().folders.find(f=>f.id===id)?.name||'Folder';
@@ -36,7 +36,7 @@ const FolderUI=(()=>{
     const current=typeof currentWallet==='function'?currentWallet():null;
     if(scope&&selectedView==='wallet'&&current&&(saved.assignments[current.key]||'unfiled')!==scope){navigate('#/wallet/'+current.key);return;}
     if(current)$('wallet-folder-name').textContent=label(saved.assignments[current.key]||'unfiled');
-    if(!busy&&draft&&$('folder-manager').open&&saved.revision!==draft.revision){$('folder-manager-stale').hidden=false;}
+    if(!busy&&draft&&$('folder-manager').open&&saved.revision!==draft.revision){$('folder-manager-stale').hidden=false;$('folder-members-move').disabled=true;}
     if(typeof KiraSelect!=='undefined')KiraSelect.refresh();
   }
   function openSearch(){
@@ -55,52 +55,81 @@ const FolderUI=(()=>{
     await poll();await loadRoute(true);
     return result;
   }
-  function capture(id){
-    memberPage=0;
-    draft=id?{id,revision:data().revision,selected:new Set((state?.wallets||[]).filter(w=>data().assignments[w.key]===id).map(w=>w.key)),dirty:false}:null;
-    if(draft)draft.original=new Set(draft.selected);
-    $('folder-manager-stale').hidden=true;$('folder-member-search').value='';$('folder-manager-error').textContent='';
-    $('folder-editor').hidden=!draft;
-    $('folder-save-footer').hidden=!draft;
-    $('folder-create-panel').open=!data().folders.length;
-    $('folder-manage-select').innerHTML=data().folders.map(f=>`<option value="${f.id}">${escapeHTML(f.name)}</option>`).join('');
-    $('folder-manage-select').disabled=!data().folders.length;
-    if(draft){$('folder-manage-select').value=id;$('folder-rename-value').value=label(id);$('folder-open-overview').href=folderPath(id);renderMembers();}
-    else{$('folder-member-list').innerHTML='';}
-    if(typeof KiraSelect!=='undefined')KiraSelect.refresh();
+  const managerData=()=>draft?.saved||data();
+  const managerLabel=id=>!id?'All wallets':id==='unfiled'?'Unfiled':managerData().folders.find(f=>f.id===id)?.name||'Folder';
+  function capture(id=scope,keepSelection=false){
+    const previous=keepSelection?draft?.selected:new Set(),saved=data(),registered=new Set((state?.wallets||[]).map(w=>w.key));
+    draft={id:id==='unfiled'||saved.folders.some(f=>f.id===id)?id:null,revision:saved.revision,saved,
+      wallets:[...(state?.wallets||[])],selected:new Set([...(previous||[])].filter(key=>registered.has(key)))};
+    memberPage=0;selectionAnchor=null;$('folder-manager-stale').hidden=true;$('folder-manager-error').textContent='';
+    renderManager();$('folder-member-list').scrollTop=0;
   }
-  function openManager(id=scope,create=false){
+  function openManager(id=scope){
     if(!localSession?.controls||!state||busy)return;
-    capture(data().folders.some(f=>f.id===id)?id:data().folders[0]?.id);
-    $('folder-manager').showModal();
-    if(create||!draft){$('folder-create-panel').open=true;$('folder-create-name').focus();}else $('folder-member-search').focus();
+    $('folder-member-search').value='';$('organizer-folder-search').value='';managerNotice='';capture(id);
+    $('folder-manager').showModal();$('folder-member-search').focus();
   }
-  function allMatches(){return matchingWallets(state?.wallets||[],$('folder-member-search').value);}
-  function draftCount(){
+  function renderManagerNav(){
     if(!draft)return;
-    draft.dirty=draft.selected.size!==draft.original.size||[...draft.selected].some(key=>!draft.original.has(key));
-    $('folder-selected-count').textContent=draft.selected.size+' wallets selected';
-    $('folder-members-save').textContent=busy?'Saving…':'Save wallets ('+draft.selected.size+')';
-    $('folder-members-save').disabled=busy||!draft.dirty||draft.selected.size>1000;
-    $('folder-manage-select').disabled=busy||draft.dirty;
-    $('folder-draft-note').textContent=draft.selected.size>1000?'Choose up to 1,000 wallets per action.':draft.dirty?'Unsaved wallet changes. Save or reload before switching folders.':'Each wallet belongs to one folder. Selecting a wallet from another folder moves it here.';
+    const saved=managerData(),query=$('organizer-folder-search').value.trim().toLocaleLowerCase();
+    const options=[{id:'',name:'All wallets',wallet_count:draft.wallets.length},{id:'unfiled',name:'Unfiled',wallet_count:saved.unfiled_count},...saved.folders.filter(f=>f.name.toLocaleLowerCase().includes(query))];
+    $('folder-manager-nav').innerHTML=options.map(f=>`<button type="button" data-organize-folder="${f.id}" title="${escapeHTML(f.name)}" ${f.id===(draft.id||'')?'aria-current="true"':''}><span>${folderGlyph}<span>${escapeHTML(f.name)}</span></span><small>${f.wallet_count}</small></button>`).join('');
+  }
+  function renderManager(){
+    if(!draft)return;
+    renderManagerNav();
+    $('folder-current-title').textContent=managerLabel(draft.id);$('folder-current-title').title=managerLabel(draft.id);
+    const count=KiraFolders.members(draft.wallets,managerData(),draft.id).length;
+    $('folder-current-count').textContent=count+' wallet'+(count===1?'':'s');
+    $('folder-open-overview').href=draft.id?folderPath(draft.id):'#/home';
+    for(const id of ['folder-rename','folder-remove'])$(id).hidden=!draft.id||draft.id==='unfiled';
+    const target=$('folder-bulk-target').value;
+    $('folder-bulk-target').innerHTML='<option value="">Move to folder…</option><option value="unfiled">Unfiled</option>'+managerData().folders.map(f=>`<option value="${f.id}">${escapeHTML(f.name)}</option>`).join('');
+    $('folder-bulk-target').value=target==='unfiled'||managerData().folders.some(f=>f.id===target)?target:'';
+    renderMembers();
+  }
+  function currentPage(){return KiraFolders.organize(draft.wallets,managerData(),draft.id,$('folder-member-search').value,memberPage);}
+  function selectionSummary(){
+    if(!draft)return;
+    const count=draft.selected.size,pageSelected=shownMembers.filter(w=>draft.selected.has(w.key)).length;
+    const target=$('folder-bulk-target').value,moves=KiraFolders.movable(draft.selected,managerData(),target),stale=data().revision!==draft.revision;
+    $('folder-selected-count').textContent=count?count+' selected':'No wallets selected';
+    $('folder-member-clear').hidden=!count;
+    $('folder-members-move').textContent=busy?'Moving…':moves.length?'Move '+moves.length+' wallet'+(moves.length===1?'':'s'):'Move wallets';
+    $('folder-members-move').disabled=busy||stale||!moves.length||count>1000;
+    $('folder-bulk-target').disabled=busy||!count;
+    const outside=count-pageSelected;
+    $('folder-selection-note').textContent=count>=1000?'1,000-wallet limit. Move or clear this selection first.':count&&target&&!moves.length?'Already in '+managerLabel(target)+'. Choose another folder.':count?(outside?outside+' selected outside this page.':'Choose a destination, then move.'):(managerNotice||'Choose wallets from the list above.');
+    $('folder-page-check').checked=!!shownMembers.length&&pageSelected===shownMembers.length;
+    $('folder-page-check').indeterminate=pageSelected>0&&pageSelected<shownMembers.length;
+    $('folder-page-check').disabled=busy||!shownMembers.length;
+    const page=currentPage();
+    $('folder-select-banner').hidden=!(pageSelected===shownMembers.length&&pageSelected&&page.total>shownMembers.length);
+    $('folder-select-description').textContent='All '+shownMembers.length+' wallets on this page selected.';
+    $('folder-member-select-all').textContent='Select all '+page.total+' matches';
+    $('folder-member-select-all').disabled=busy||count+page.matches.filter(w=>!draft.selected.has(w.key)).length>1000||page.matches.every(w=>draft.selected.has(w.key));
     if(typeof KiraSelect!=='undefined')KiraSelect.refresh();
   }
-  function sourceText(key,selected){const previous=data().assignments[key];return previous&&previous!==draft.id?(selected?'Moves from ':'')+label(previous):previous===draft.id?(selected?'In this folder':'Moves to Unfiled'):(selected?'Moves from Unfiled':'Unfiled');}
   function renderMembers(){
     if(!draft)return;
-    const matches=allMatches(),pages=Math.max(1,Math.ceil(matches.length/50));memberPage=Math.min(memberPage,pages-1);shownMembers=matches.slice(memberPage*50,memberPage*50+50);
-    $('folder-member-list').innerHTML=shownMembers.map(w=>`<label class="folder-member"><input type="checkbox" data-folder-wallet="${escapeHTML(w.key)}" ${draft.selected.has(w.key)?'checked':''} ${busy?'disabled':''}><span><strong>${escapeHTML(w.name)}</strong><small>${escapeHTML(w.address)}</small></span><span class="folder-member-source">${escapeHTML(sourceText(w.key,draft.selected.has(w.key)))}</span></label>`).join('')||'<p class="panel-empty">No wallets match this search.</p>';
-    $('folder-member-page').textContent=matches.length?((memberPage*50+1)+'–'+Math.min((memberPage+1)*50,matches.length)+' of '+matches.length):'No matches';
-    $('folder-member-prev').disabled=busy||memberPage===0;$('folder-member-next').disabled=busy||memberPage===pages-1;
-    $('folder-member-select-all').textContent='Select all matches ('+matches.length+')';$('folder-member-select-all').disabled=busy||matches.length>1000||!matches.length;
-    draftCount();
+    const page=currentPage();memberPage=page.page;shownMembers=page.rows;
+    $('folder-member-list').innerHTML=shownMembers.map(w=>`<label class="folder-member"><input type="checkbox" data-folder-wallet="${escapeHTML(w.key)}" aria-label="Select ${escapeHTML(w.name)}" ${draft.selected.has(w.key)?'checked':''} ${busy?'disabled':''}><span class="organizer-wallet-identity"><strong>${escapeHTML(w.name)}</strong><small title="${escapeHTML(w.address)}">${escapeHTML(w.address)}</small></span><span class="folder-member-source">${folderGlyph}<span>${escapeHTML(managerLabel(managerData().assignments[w.key]||'unfiled'))}</span></span></label>`).join('')||`<div class="organizer-empty">${folderGlyph}<h4>${$('folder-member-search').value?'No matching wallets':draft.id==='unfiled'?'All wallets are organized':'This folder is ready'}</h4><p>${$('folder-member-search').value?'Try a different name, tag or address.':draft.id==='unfiled'?'Every registered wallet has a folder.':'Choose All wallets or Unfiled to select wallets, then move them here.'}</p>${$('folder-member-search').value?'<button type="button" class="quiet-button" data-clear-organizer-search>Clear search</button>':'<button type="button" class="quiet-button" data-organize-folder="unfiled">Browse Unfiled</button>'}</div>`;
+    $('folder-member-page').textContent=page.total?((memberPage*50+1)+'–'+Math.min((memberPage+1)*50,page.total)+' of '+page.total):'0 wallets';
+    $('folder-member-prev').disabled=busy||memberPage===0;$('folder-member-next').disabled=busy||memberPage===page.pages-1;
+    selectionSummary();
   }
   async function change(action){
-    if(busy)return;busy=true;$('folder-manager-error').textContent='';$('folder-manager-fields').disabled=true;if(draft)draftCount();
+    if(busy)return;busy=true;$('folder-manager-error').textContent='';$('folder-manager-fields').disabled=true;selectionSummary();
     try{await action();}
-    catch(error){$('folder-manager-error').textContent=error.message;}
+    catch(error){$('folder-manager-error').textContent=error.message;try{state.wallet_folders=await readAPI('/api/folders');}catch{}}
     finally{busy=false;$('folder-manager-fields').disabled=false;if(draft){renderMembers();$('folder-manager-stale').hidden=data().revision===draft.revision;}}
+  }
+  function openName(rename=false){
+    if(busy||!draft)return;
+    const dialog=$('folder-name-dialog');dialog.dataset.folder=rename?draft.id:'';dialog.dataset.revision=draft.revision;
+    $('folder-name-title').textContent=rename?'Rename folder':'New folder';$('folder-name-save').textContent=rename?'Save name':'Create folder';
+    $('folder-name-value').value=rename?managerLabel(draft.id):'';$('folder-name-error').textContent='';dialog.showModal();$('folder-name-value').focus();
+    if(rename)$('folder-name-value').select();
   }
   function openMove(){
     const wallet=currentWallet();if(!wallet||!localSession?.controls)return;
@@ -130,20 +159,38 @@ const FolderUI=(()=>{
     $('find-wallet-results').addEventListener('keydown',event=>{const buttons=[...$('find-wallet-results').querySelectorAll('button')],index=buttons.indexOf(event.target.closest('button'));if(index<0)return;if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();const next=index+(event.key==='ArrowDown'?1:-1);if(next<0)$('find-wallet-query').focus();else buttons[Math.min(next,buttons.length-1)].focus();}});
     $('find-wallet-results').addEventListener('click',event=>{const button=event.target.closest('[data-find-wallet]');if(button){$('find-wallet-dialog').close();navigate('#/wallet/'+button.dataset.findWallet);}});
     $('folder-scope').addEventListener('change',event=>navigate(event.target.value?folderPath(event.target.value):'#/home'));
-    $('create-folder-nav').addEventListener('click',()=>openManager(null,true));$('manage-folders').addEventListener('click',()=>openManager());$('empty-folder-manage').addEventListener('click',()=>openManager());
-    $('folder-manager-reload').addEventListener('click',()=>change(async()=>{state.wallet_folders=await readAPI('/api/folders');capture(data().folders.some(f=>f.id===draft?.id)?draft.id:data().folders[0]?.id);render();}));
+    $('create-folder-nav').addEventListener('click',()=>openManager());$('manage-folders').addEventListener('click',()=>openManager());$('empty-folder-manage').addEventListener('click',()=>openManager());
+    $('folder-manager-reload').addEventListener('click',()=>change(async()=>{state.wallet_folders=await readAPI('/api/folders');capture(draft.id,true);render();}));
     $('folder-open-overview').addEventListener('click',()=>$('folder-manager').close());
-    $('folder-manage-select').addEventListener('change',event=>capture(event.target.value));
-    $('folder-create-form').addEventListener('submit',event=>{event.preventDefault();change(async()=>{if(draft?.dirty)throw Error('Save or reload wallet changes before creating another folder.');const created=await write('folder.create',{name:$('folder-create-name').value,expected_revision:data().revision});$('folder-create-name').value='';capture(created.folder_id);});});
-    $('folder-rename-form').addEventListener('submit',event=>{event.preventDefault();change(async()=>{const result=await write('folder.rename',{folder_id:draft.id,name:$('folder-rename-value').value,expected_revision:draft.revision});draft.revision=result.revision;$('folder-manager-stale').hidden=true;});});
-    $('folder-members-form').addEventListener('submit',event=>{event.preventDefault();change(async()=>{const id=draft.id;await write('folder.setMembers',{folder_id:id,wallets:[...draft.selected],expected_revision:draft.revision});capture(id);toast('Folder wallets saved');});});
-    $('folder-member-search').addEventListener('input',()=>{memberPage=0;renderMembers();});
-    $('folder-member-list').addEventListener('change',event=>{const box=event.target.closest('[data-folder-wallet]');if(!box)return;box.checked?draft.selected.add(box.dataset.folderWallet):draft.selected.delete(box.dataset.folderWallet);draft.dirty=true;box.closest('label').querySelector('.folder-member-source').textContent=sourceText(box.dataset.folderWallet,box.checked);draftCount();});
-    $('folder-member-select-all').addEventListener('click',()=>{for(const wallet of allMatches())draft.selected.add(wallet.key);draft.dirty=true;renderMembers();});
-    $('folder-member-clear').addEventListener('click',()=>{draft.selected.clear();draft.dirty=true;renderMembers();});
-    $('folder-member-prev').addEventListener('click',()=>{memberPage--;renderMembers();});$('folder-member-next').addEventListener('click',()=>{memberPage++;renderMembers();});
-    $('folder-remove').addEventListener('click',()=>{$('folder-remove-name').textContent=label(draft.id);$('folder-remove-dialog').showModal();});
-    formAction($('folder-remove-form'),$('folder-remove-error'),async()=>{const id=draft.id;await write('folder.delete',{folder_id:id,expected_revision:draft.revision});$('folder-remove-dialog').close();capture(data().folders[0]?.id);if(scope===id)navigate('#/home');});
+    function selectFolder(event){const button=event.target.closest('[data-organize-folder]');if(!button||busy)return;draft.id=button.dataset.organizeFolder||null;memberPage=0;selectionAnchor=null;$('folder-member-search').value='';renderManager();$('folder-member-list').scrollTop=0;}
+    $('folder-manager-nav').addEventListener('click',selectFolder);
+    $('organizer-folder-search').addEventListener('input',renderManagerNav);
+    $('folder-new').addEventListener('click',()=>openName());$('folder-rename').addEventListener('click',()=>openName(true));
+    formAction($('folder-name-form'),$('folder-name-error'),async()=>{
+      if(busy)return;
+      const dialog=$('folder-name-dialog'),id=dialog.dataset.folder;busy=true;$('folder-manager-fields').disabled=true;
+      try{
+        const result=await write(id?'folder.rename':'folder.create',{...(id?{folder_id:id}:{}),name:$('folder-name-value').value,expected_revision:Number(dialog.dataset.revision)});
+        capture(draft.id,true);if(!id)$('folder-bulk-target').value=result.folder_id;
+        managerNotice=id?'Folder name updated.':'Folder created. Select wallets and move them here.';renderManager();dialog.close();
+      }finally{busy=false;$('folder-manager-fields').disabled=false;selectionSummary();}
+    });
+    $('folder-members-form').addEventListener('submit',event=>{event.preventDefault();if($('folder-members-move').disabled)return;change(async()=>{
+      const target=$('folder-bulk-target').value,keys=KiraFolders.movable(draft.selected,managerData(),target),destination=managerLabel(target);
+      if(!keys.length||draft.selected.size>1000)return;
+      await write('folder.assign',{folder_id:target,wallets:keys,expected_revision:draft.revision});
+      managerNotice=keys.length+' wallet'+(keys.length===1?'':'s')+' moved to '+destination+'.';capture(draft.id);toast(managerNotice);
+    });});
+    $('folder-bulk-target').addEventListener('change',selectionSummary);
+    $('folder-member-search').addEventListener('input',()=>{memberPage=0;selectionAnchor=null;renderMembers();$('folder-member-list').scrollTop=0;});
+    $('folder-member-list').addEventListener('click',event=>{selectFolder(event);if(event.target.closest('[data-clear-organizer-search]')){$('folder-member-search').value='';memberPage=0;renderMembers();$('folder-member-search').focus();}if(event.target.matches('[data-folder-wallet]'))rangeClick=event.shiftKey;});
+    $('folder-member-list').addEventListener('change',event=>{const box=event.target.closest('[data-folder-wallet]');if(!box||busy)return;draft.selected=KiraFolders.selectRange(draft.selected,shownMembers,selectionAnchor,box.dataset.folderWallet,box.checked,rangeClick);selectionAnchor=box.dataset.folderWallet;managerNotice='';if(rangeClick){rangeClick=false;renderMembers();}else{box.checked=draft.selected.has(box.dataset.folderWallet);selectionSummary();}});
+    $('folder-page-check').addEventListener('change',event=>{for(const wallet of shownMembers){if(event.target.checked){if(draft.selected.size<1000)draft.selected.add(wallet.key);}else draft.selected.delete(wallet.key);}renderMembers();});
+    $('folder-member-select-all').addEventListener('click',()=>{const page=currentPage();if(draft.selected.size+page.matches.filter(w=>!draft.selected.has(w.key)).length>1000)return;for(const wallet of page.matches){if(draft.selected.size<1000)draft.selected.add(wallet.key);}renderMembers();});
+    $('folder-member-clear').addEventListener('click',()=>{draft.selected.clear();selectionAnchor=null;renderMembers();});
+    $('folder-member-prev').addEventListener('click',()=>{memberPage--;selectionAnchor=null;renderMembers();$('folder-member-list').scrollTop=0;});$('folder-member-next').addEventListener('click',()=>{memberPage++;selectionAnchor=null;renderMembers();$('folder-member-list').scrollTop=0;});
+    $('folder-remove').addEventListener('click',()=>{$('folder-remove-dialog').dataset.folder=draft.id;$('folder-remove-dialog').dataset.revision=draft.revision;$('folder-remove-name').textContent=managerLabel(draft.id);$('folder-remove-dialog').showModal();});
+    formAction($('folder-remove-form'),$('folder-remove-error'),async()=>{if(busy)return;busy=true;$('folder-manager-fields').disabled=true;try{const dialog=$('folder-remove-dialog');await write('folder.delete',{folder_id:dialog.dataset.folder,expected_revision:Number(dialog.dataset.revision)});dialog.close();capture(null,true);managerNotice='Folder removed. Its wallets are now Unfiled.';selectionSummary();}finally{busy=false;$('folder-manager-fields').disabled=false;selectionSummary();}});
     $('wallet-folder-button').addEventListener('click',openMove);
     formAction($('folder-move-form'),$('folder-move-error'),async()=>{const dialog=$('folder-move-dialog');await write('folder.assign',{folder_id:$('folder-move-select').value,wallets:[dialog.dataset.wallet],expected_revision:Number(dialog.dataset.revision)});dialog.close();});
     render();

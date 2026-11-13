@@ -13,8 +13,10 @@ registered wallet by name, tag or public address. This includes wallets still
 awaiting research. Search runs against the loaded directory and starts no work.
 
 Choose a folder from the sidebar or the overview selector to inspect its saved
-portfolio, sell estimates, tokens and networks. **Manage folders** creates or
-renames folders and places existing wallets with searchable bulk selection.
+portfolio, sell estimates, tokens and networks. **Manage folders** opens the organizer. Pick a source folder or All wallets,
+select wallets, choose a destination and press **Move wallets**. Selections stay
+with you across folders, searches and pages. **+ New** creates a folder and
+selects it as the destination; the folder heading offers rename and remove.
 The folder button beside a wallet address moves that individual wallet. New
 watching wallets can choose a folder during registration. Every wallet belongs
 to one folder or Unfiled. Folder removal keeps the wallets and their research.
@@ -27,8 +29,9 @@ workspace-wide. Folders organize records and do not create access boundaries.
 Statistics reuse cached observations. Folder views never refresh providers,
 copy balances or alter unknowns. At most eight folder aggregates are cached;
 the manager renders 50 wallet rows per page and accepts up to 1,000 selected
-addresses per membership save. Unsaved drafts survive ordinary data updates;
-conflicting folder edits require an explicit reload before saving.
+addresses per move. Wallets already at the destination are skipped. Selection
+survives ordinary data updates; conflicting folder edits require **Load latest
+folders** before moving. No checkbox alone changes membership.
 
 ## Open the viewer
 

@@ -16,6 +16,20 @@ assert.deepEqual(model.parse(['folder','unfiled']),{id:'unfiled',parts:['home']}
 assert.deepEqual(model.parse(['folder','../outside']),{id:null,parts:['home']});
 assert.deepEqual(model.members(wallets,{assignments:{[a]:id,[b]:other}},id).map(w=>w.key),[a]);
 assert.deepEqual(model.members(wallets,{assignments:{[a]:id,[b]:other}},'unfiled').map(w=>w.key),[c]);
+// Organizing selects wallets independently of membership; pages and filters do not replace selection.
+const catalog={assignments:{[a]:id,[b]:other}};
+let page=model.organize(wallets,catalog,null,'SAVINGS',0);assert.equal(page.total,2);
+assert.deepEqual(model.organize(wallets,catalog,id,'',0).rows.map(w=>w.key),[a]);
+assert.deepEqual(model.organize(wallets,catalog,'unfiled','',0).rows.map(w=>w.key),[c]);
+let selection=model.selectRange(new Set(),wallets,null,a,true);
+selection=model.selectRange(selection,model.organize(wallets,catalog,other,'').rows,null,b,true);
+assert.deepEqual([...selection],[a,b]);assert.deepEqual(model.movable(selection,catalog,id),[b]);
+assert.deepEqual(model.movable(selection,catalog,'unfiled'),[a,b]);assert.deepEqual(model.movable(selection,catalog,''),[]);
+selection=model.selectRange(selection,wallets,a,c,true,true);assert.deepEqual([...selection],[a,b,c]);
+selection=model.selectRange(selection,wallets,a,b,false,true);assert.deepEqual([...selection],[c]);
+const lastPage=model.organize(many,{assignments:{}},null,'Research',999);assert.equal(lastPage.page,23);assert.equal(lastPage.rows.length,50);
+assert.equal(model.organize(many,{assignments:{}},null,'missing',999).rows.length,0);
+const full=new Set(many.slice(0,1000).map(w=>w.key));assert.equal(model.selectRange(full,many,null,many[1199].key,true).size,1000);
 const nodes=new Map(),$=key=>{if(!nodes.has(key))nodes.set(key,{textContent:'',hidden:false,disabled:false,addEventListener(){}});return nodes.get(key);};
 const notices=[],writes=[],ctx=vm.createContext({$,window:{addEventListener(){}},KiraFolders:model,state:{wallets,wallet_folders:{revision:1,folders:[{id,name:'Savings group'}],assignments:{[a]:id}},data_revision:'saved'},routeData:{},toast:value=>notices.push(value),submitOperation:async(op,input)=>{writes.push({op,input});throw Error('Synthetic transport interruption');}});
 vm.runInContext(fs.readFileSync('viewer/static/folders.js','utf8'),ctx);const ui=vm.runInContext('FolderUI',ctx);

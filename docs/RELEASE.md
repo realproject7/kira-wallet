@@ -1,9 +1,33 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.8.0**.
+Published npm release: **1.5.0**. Prepared candidate: **1.8.1**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.8.1
+
+Folder management now uses a wide organizer with folder navigation beside a
+searchable wallet list. Checkboxes select wallets for a move, independently of
+current membership. Selection survives folder, search and page changes. Choose
+a destination and explicitly move the selected wallets in one metadata action.
+Wallets already at the destination are excluded from that action.
+
+New folders use a small name dialog and become the selected destination without
+losing wallet selection. Rename and remove actions sit in the folder heading.
+The selection count, destination and move action remain visible while scrolling;
+mobile uses a horizontal folder strip and a fixed footer. The list renders at
+most 50 rows, with page and matching-result selection, an optional Shift range
+and a 1,000-wallet action limit. Concurrent edits preserve selection and require
+loading the latest folders before a move. No provider work is added.
+
+Reference: Lazyweb's public [Dropbox screen library](https://design.lazyweb.com/company/dropbox)
+provided file-list, search and creation examples. Authenticated screen search
+and Agentic Search finalization were unavailable, so no private research resource
+is claimed. Kira's bulk-move flow is an implementation decision. Browser checks
+use an isolated 110-wallet fixture and never reorganize the operator's wallets.
+Review not selected. Earlier frozen archives are preserved; registry publication
+remains an operator action.
 
 ## Candidate 1.8.0
 

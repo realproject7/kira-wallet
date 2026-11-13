@@ -18,6 +18,18 @@
     }
     return {total,rows:buckets.flat().slice(0,cap)};
   }
-  const api={parse,members,find};
+  function organize(wallets,catalog,id,query='',page=0){
+    const text=fold(query),matches=members(wallets,catalog,id).filter(w=>!text||[w.name,w.address,w.key,...(w.tags||[])].some(value=>fold(value).includes(text)));
+    const pages=Math.max(1,Math.ceil(matches.length/50)),index=Math.max(0,Math.min(page,pages-1));
+    return {matches,total:matches.length,page:index,pages,rows:matches.slice(index*50,index*50+50)};
+  }
+  function movable(selected,catalog,target){return target?[...selected].filter(key=>(catalog.assignments[key]||'unfiled')!==target):[];}
+  function selectRange(selected,rows,anchor,key,checked,extend=false){
+    const next=new Set(selected),start=rows.findIndex(w=>w.key===anchor),end=rows.findIndex(w=>w.key===key);
+    const keys=extend&&start>=0&&end>=0?rows.slice(Math.min(start,end),Math.max(start,end)+1).map(w=>w.key):[key];
+    for(const value of keys){if(checked){if(next.size<1000)next.add(value);}else next.delete(value);}
+    return next;
+  }
+  const api={parse,members,find,organize,movable,selectRange};
   if(typeof module!=='undefined')module.exports=api;else root.KiraFolders=api;
 })(typeof window!=='undefined'?window:this);
