@@ -1,9 +1,18 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.11.4**.
+Published npm release: **1.5.0**. Prepared candidate: **1.11.5**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.11.5
+
+Completed task payloads release cumulative NFT pagination frontiers. Pending
+and failed task arguments remain available for continuation and bounded rechecks.
+A 64-page / 1,024-ID history regression keeps the checkpoint below 200KB while
+retaining serial requests. This prevents repeated copies of the full ID and page
+history without adding provider calls or dropping saved positions. Earlier
+archives stay immutable. Review not selected.
 
 ## Candidate 1.11.4
 

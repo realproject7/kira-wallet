@@ -136,3 +136,11 @@ test('incomplete holdings discovery cannot become complete LP inventory coverage
  const h=harness({kind:'seed'},()=>0n,{cid:109});h.input.inventory_coverage=[{chain_id:109,status:'partial'}];
  const s=await finish(h);assert.equal(s.coverage['109:wallet-token-inventory'].status,'partial');assert.match(s.coverage['109:wallet-token-inventory'].message,/receipts may be missing/);
 });
+test('long NFT histories keep only the pending frontier rather than copying it into completed pages',async()=>{
+ let peak=0;const h=harness({kind:'nft-history',type:'v4',manager:MANAGER,view:FACTORY,ids:[],page:null},c=>c.functionName==='ownerOf'?T0:0n,{ioExtra:{async transfers(c,args){
+  const page=Number(args.pageKey||0);return {transfers:Array.from({length:100},(_,i)=>({rawContract:{address:MANAGER},tokenId:v.toHex(BigInt((page*100+i)%1024)),hash:'event-'+page+'-'+i})),...(page<63?{pageKey:String(page+1)}:{})};
+ }}});
+ for(let i=0;i<100;i++){const s=await h.reader().run(s=>{peak=Math.max(peak,Buffer.byteLength(JSON.stringify(s)));});if(s.complete)break;}
+ assert.ok(h.state.complete);assert.ok(peak<200000,'checkpoint retained completed page payloads');
+ assert.ok(h.state.tasks.filter(t=>t.kind==='nft-history').every(t=>!t.ids&&!t.seen_hashes));assert.equal(h.metrics().maxActive,1);
+});

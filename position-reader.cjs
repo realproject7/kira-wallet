@@ -352,7 +352,11 @@ class Reader{
    let best=this.state.cursor;for(let i=best+1;i<this.state.tasks.length;i++)if(priority(this.state.tasks[i])<priority(this.state.tasks[best]))best=i;
    if(best!==this.state.cursor)[this.state.tasks[best],this.state.tasks[this.state.cursor]]=[this.state.tasks[this.state.cursor],this.state.tasks[best]];
    const task=this.state.tasks[this.state.cursor],tail=this.state.tasks.length;
-   try{await this.handle(task);}
+   try{await this.handle(task);
+    // Completed pagination pages must not retain another copy of the entire
+    // cumulative NFT frontier. Failed tasks keep their arguments for rechecks.
+    for(const field of ['tokens','ids','pools','seen_pages','seen_hashes','page'])delete task[field];
+   }
    catch(error){if(error instanceof SliceEnd){this.state.tasks.length=tail;break;}const c=this.scope(task);c.status='partial';c.errors++;c.failed_step=task.kind;if(error.read_function)c.failed_function=error.read_function;if(error.reason)c.reason=error.reason;c.message='Some position reads were unavailable. Missing amounts remain unknown.';
     (this.state.failed_tasks ||= []).push({index:this.state.cursor,scope:task.scope,kind:task.kind,...(error.read_function?{function:error.read_function}:{}),reason:error.reason||'unknown'});
    }
