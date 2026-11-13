@@ -462,9 +462,16 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
   const holdingBlock=pinned?{block_number:String(pinned.balance_block_number),block_hash:pinned.balance_block_hash}:null;
   const client=await boundedMarket(connect(n),deadline),snapshot=await boundedMarket(h.snapshotBlock(client,cache||holdingBlock),deadline),block=snapshot.number;
   cache=cache||{wallet:wallet.toLowerCase(),chain_id:n.chain_id,fingerprint,block_number:block.toString(),block_hash:snapshot.hash,requests:{},completed_pools:[],tokens:cacheEncode(tokens),quote_schema_version:3};
-  // Legacy completed pool checks predate amount-specific quotes. Preserve their
-  // cached reads and fixed block, but revisit the pools to record quote status.
-  if(cache.quote_schema_version!==3){cache.completed_pools=[];cache.asset_reviews={};cache.quote_schema_version=3;}
+  // V2 quotes are already amount-specific. Revisit only assets affected by
+  // the new Base v4 adapter; preserve other completed reviews across upgrades.
+  if(cache.quote_schema_version!==3){
+    if(cache.quote_schema_version===2){
+      const affected=new Set([...tokens,...cacheDecode(cache.tokens)].filter(t=>n.chain_id===8453&&(t.dex_pools||[]).some(p=>p.pool?.length===66)).map(t=>t.token_address.toLowerCase()));
+      cache.completed_pools=cache.completed_pools.filter(key=>!affected.has(key.split(':')[0]));
+      for(const key of Object.keys(cache.asset_reviews||{}))if(affected.has(key.split(':')[0]))delete cache.asset_reviews[key];
+    }else{cache.completed_pools=[];cache.asset_reviews={};}
+    cache.quote_schema_version=3;
+  }
   cache.pool_attempts=cache.pool_attempts||{};
   cache.asset_reviews=cache.asset_reviews||{};
   if(typeof cache.asset_reviews!=='object'||Array.isArray(cache.asset_reviews)||Object.values(cache.asset_reviews).some(r=>!r||typeof r!=='object'||typeof r.done!=='boolean'||!Number.isSafeInteger(r.failures)||r.failures<0))throw new Error('Invalid saved asset review frontier.');
@@ -764,7 +771,7 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
     cache=cache||{schema_version:1,wallet:input.wallet.toLowerCase(),chain_id:n.chain_id,bond:n.mintclub_bond_address.toLowerCase(),block_number:block.toString(),block_hash:snapshot.hash,requests:{},asset_pools:{},nodes:{}};save();
     cache.asset_reviews=cache.asset_reviews||{};
     if(typeof cache.asset_reviews!=='object'||Array.isArray(cache.asset_reviews)||Object.values(cache.asset_reviews).some(r=>!r||typeof r!=='object'||typeof r.done!=='boolean'||!Number.isSafeInteger(r.failures)||r.failures<0))throw new Error('Invalid saved asset review frontier.');
-    let assetDeadline=deadline;
+    let assetDeadline=deadline,assetAdvanced=false;
     const queryKey=args=>crypto.createHash('sha256').update(h.serialize({...args,blockNumber:block})).digest('hex');
     const deferred=new Map();
     const read=async args=>{
@@ -829,15 +836,23 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
       if(!cache.asset_pools[key]){flush();cache.asset_pools[key]=await routePools(input.market_chain_names?.[n.chain_id],address,assetDeadline);save(true);}
       const catalog=cache.asset_pools[key];
       if(catalog.unknown)quotes.push({status:'unknown',reason:catalog.unknown});
+      if(!catalog.pools.length)return quotes;
       const shadow={chain_id:n.chain_id,token_address:address,token_type:'ERC20',wallet_balance_raw:amount,
         balance_block_number:block,balance_block_hash:snapshot.hash,quantity_basis:'Prior amount-specific route output, not an observed wallet holding.',dex_pools:structuredClone(catalog.pools)};
       const identity=crypto.createHash('sha256').update(h.serialize([address.toLowerCase(),amount])).digest('hex');
-      const [verified]=await dexChain(n,[shadow],{file:path.join(path.dirname(outputPath),`route-market-checkpoint-${n.chain_id}-${identity}.json`),wallet:input.wallet,deadline:assetDeadline,representative});
+      const marketFile=path.join(path.dirname(outputPath),`route-market-checkpoint-${n.chain_id}-${identity}.json`);
+      const facts=()=>{
+        if(!fs.existsSync(marketFile))return 0;
+        const saved=JSON.parse(fs.readFileSync(marketFile));
+        return Object.keys(saved.requests||{}).length+(saved.completed_pools||[]).length;
+      };
+      const before=facts();let verified;
+      try{[verified]=await dexChain(n,[shadow],{file:marketFile,wallet:input.wallet,deadline:assetDeadline,representative});}
+      finally{if(facts()>before)assetAdvanced=true;}
       if(verified.market_pending)throw new MarketBudget();
       for(const pool of verified.dex_pools)quotes.push(pool.cashout_quote||{status:'unknown',reason:'Pool adapter or quote unavailable.'});
       return quotes;
     };
-    let retryPending=false;
     const attemptsKey=rootOnly?'root_attempts':'route_attempts';
     cache[attemptsKey]=cache[attemptsKey]||{};
     if(typeof cache[attemptsKey]!=='object'||Array.isArray(cache[attemptsKey])||Object.values(cache[attemptsKey]).some(n=>!Number.isSafeInteger(n)||n<0))throw new Error('Invalid route attempt checkpoint.');
@@ -863,32 +878,38 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
         if(!restoreReviewed(token))throw new Error('Saved representative holding changed.');
         progress();continue;
       }
-      if(representative&&!rootOnly&&token.market_pending){token.cashout_pending=true;retryPending=true;continue;}
+      if(representative&&!rootOnly&&token.market_pending){token.cashout_pending=true;continue;}
       if(Date.now()>=deadline)throw new MarketBudget();
       // Three root reads or four intermediate reads must fit the shared
       // two-second family lane while two chains are active. Keep the overall
       // deadline authoritative and retain incomplete work at a turn boundary.
-      assetDeadline=Math.min(deadline,Date.now()+18000);
+      const assetStarted=Date.now();assetDeadline=Math.min(deadline,assetStarted+18000);assetAdvanced=false;
       cache[attemptsKey][key]=(cache[attemptsKey][key]||0)+1;save();
-      let state;const expandedBefore=cache.nodes[key]?.expanded||0;
+      const requestsBefore=Object.keys(cache.requests).length;
+      let state;const expandedBefore=cache.nodes[key]?.expanded||0,routesBefore=cache.nodes[key]?.routes?.length||0,rootsBefore=cache.nodes[key]?.root_quotes?.length||0;
       try{state=await expandRoutes(token,quoteAsset,{state:cache.nodes[key],rootOnly,representative,maxNodes:representative?4:32,maxBranches:representative?1:4,maxSteps:2,save:state=>{cache.nodes[key]=state;save();}});}
       catch(error){if(error.code!=='market_budget')throw error;
-        token.cashout_pending=true;retryPending=true;state=cache.nodes[key];
+        token.cashout_pending=true;state=cache.nodes[key];
         if(!state)continue;
       }
-      token.liquidation_routes=state.routes;token.liquidation_unknown_routes=state.unknown;
-      if(representative&&!rootOnly&&(state.root_retry_pending||state.pending.length&&state.expanded===expandedBefore)&&Date.now()<assetDeadline){
+      const advanced=assetAdvanced||Object.keys(cache.requests).length>requestsBefore||state.expanded>expandedBefore||state.routes.length>routesBefore||(state.root_quotes?.length||0)>rootsBefore;
+      const retryAdmitted=Date.now()<assetDeadline||assetDeadline-assetStarted>=18000;
+      if(representative&&!rootOnly&&(state.root_retry_pending||state.pending.length)&&!advanced&&retryAdmitted){
+        // A full asset timeout is an attempted check, not an infinite pause.
+        // Short global slices and successful RPC prefixes still resume.
         review.failures++;
-        if(review.failures>=2){state.root_retry_pending=false;state.pending=[];state.unknown=[...new Set([...state.unknown,'Representative redemption unavailable after bounded attempts. Other routes remain unknown.'])];save();}
+        if(review.failures>=2){state.root_retry_pending=false;state.pending=[];state.unknown=[...new Set([...state.unknown,'Representative redemption unavailable after bounded attempts. Other routes remain unknown.'])];}
+        save();
       }
+      token.liquidation_routes=state.routes;token.liquidation_unknown_routes=state.unknown;
       if(representative&&!rootOnly&&!state.pending.length&&!state.root_retry_pending){
         review.done=true;token.asset_review={scope:'representative_v1',status:representativeQuote(token)?'quoted':'unknown'};save();
       }
-      if(state.pending.length||state.root_retry_pending){token.cashout_pending=true;retryPending=true;}else delete token.cashout_pending;
+      if(state.pending.length||state.root_retry_pending){token.cashout_pending=true;}else delete token.cashout_pending;
       progress();
     }
     progress(true);
-    return {tokens,market_pending:retryPending};
+    return {tokens,market_pending:tokens.some(t=>t.cashout_pending)};
   }catch(error){
     const pending=error.code==='market_budget';
     for(const token of tokens){const state=cache?.nodes?.[token.token_address.toLowerCase()+':'+token.token_type];

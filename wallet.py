@@ -693,9 +693,13 @@ def continuation_checkpoint(folder, discovered, market_pending):
             if 'pool_attempts' in saved:progress[path.name]['pools_attempted']=sorted(saved['pool_attempts'])
     # Only successful evidence counts. Strip observation timestamps recursively
     # so a failed retry cannot disguise a stalled frontier as new work.
-    def stable(value):
-        if isinstance(value,dict):return {k:stable(v) for k,v in value.items() if k not in ('observed_at','started_at','rpc_routes','balance_observed_at','error','failures')}
-        if isinstance(value,list):return [stable(v) for v in value]
+    def stable(value,key=None):
+        if isinstance(value,dict):return {k:stable(v,k) for k,v in value.items() if k not in ('observed_at','started_at','rpc_routes','balance_observed_at','error','failures')}
+        if isinstance(value,list):
+            # Diagnostic repetition/order is not a new provider fact. Keep
+            # ordered route legs and pending work unchanged.
+            if key in ('unknown','unknown_routes') and all(isinstance(v,str) for v in value):return sorted(set(value))
+            return [stable(v) for v in value]
         return value
     encoded=json.dumps(stable(progress),sort_keys=True,separators=(',',':')).encode()
     waiting=not market_pending and pending and all(s.get('discovery_status')=='throttled' for s in pending)

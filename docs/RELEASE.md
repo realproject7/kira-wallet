@@ -1,9 +1,29 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.9.1**.
+Published npm release: **1.5.0**. Prepared candidate: **1.9.2**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.9.2
+
+A final intermediate sell-route check could repeat indefinitely. Full asset
+budgets did not consume the retry limit, and repeated diagnostic strings
+changed the continuation fingerprint without adding provider evidence.
+
+Diagnostic messages are now bounded and normalized for continuation detection.
+A full 18-second asset budget without new facts counts toward the two-attempt
+limit, and every attempt is persisted. Short global slices and newly saved RPC
+or pool facts retain their resumable frontier. Exhausted checks finish unknown,
+never as a zero balance or a zero-value quote. Empty cached pool catalogs skip
+unnecessary nested pool verification. Completed amount-specific v2 checkpoints
+survive upgrades except Base assets affected by the v4 adapter correction.
+
+Regressions cover duplicate diagnostics, persisted deadline failures, short
+slices, successful intermediate prefixes, terminal pending flags, and selective
+checkpoint migration. Existing quotes and wallet records remain intact.
+Review not selected. Earlier frozen archives remain preserved; registry
+publication is operator-only.
 
 ## Candidate 1.9.1
 

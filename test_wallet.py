@@ -95,6 +95,23 @@ class WalletPipelineTests(unittest.TestCase):
             third=wallet.continuation_checkpoint(folder,discovery,True)
             self.assertNotEqual(first['fingerprint'],third['fingerprint']);self.assertEqual(third['not_before'],0)
 
+    def test_repeated_route_diagnostics_do_not_disguise_a_stalled_frontier(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder=Path(temp);path=folder/'cashout-checkpoint-1.json'
+            checkpoint={'nodes':{'token':{'expanded':1,'pending':[{'address':'first'},{'address':'second'}],
+                        'unknown':['Read unavailable','No qualified route'],'observed_at':'first'}},
+                        'requests':{},'asset_reviews':{'token':{'done':False,'failures':0}}}
+            wallet.atomic(path,checkpoint);first=wallet.continuation_checkpoint(folder,[],True)
+            checkpoint['nodes']['token']['unknown']=['No qualified route','Read unavailable']*200
+            checkpoint['nodes']['token']['observed_at']='later';checkpoint['asset_reviews']['token']['failures']=20
+            wallet.atomic(path,checkpoint);retry=wallet.continuation_checkpoint(folder,[],True)
+            self.assertEqual(first['fingerprint'],retry['fingerprint'])
+            checkpoint['requests']['new-successful-read']={'result':'7'};wallet.atomic(path,checkpoint)
+            progress=wallet.continuation_checkpoint(folder,[],True)
+            self.assertNotEqual(retry['fingerprint'],progress['fingerprint'])
+            checkpoint['nodes']['token']['pending'].reverse();wallet.atomic(path,checkpoint)
+            self.assertNotEqual(progress['fingerprint'],wallet.continuation_checkpoint(folder,[],True)['fingerprint'])
+
     def test_inventory_resume_preserves_old_scope_and_rejects_policy_changes(self):
         self.assertEqual(wallet.inventory_policy(),'full_registry')
         self.assertEqual(wallet.inventory_policy('full'),'full_registry')

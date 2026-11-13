@@ -129,6 +129,11 @@ test('market pipeline pins quotes to holdings and reuses the durable quote after
   const fresh={...token,dex_pools:[{pool:poolAddress,venue:'uniswap',version_labels:['v2'],source_url:'https://example.com/pool'}]};
   const resumed=await dexChain({chain_id:1},[fresh],{file,wallet});
   assert.equal(reads,before);assert.deepEqual(resumed[0].dex_pools[0].cashout_quote,first[0].dex_pools[0].cashout_quote);
+  saved.quote_schema_version=2;saved.asset_reviews={[TOKEN.toLowerCase()+':ERC20']:{done:true,failures:0}};fs.writeFileSync(file,JSON.stringify(saved));
+  const upgraded=await dexChain({chain_id:1},[{...fresh,dex_pools:structuredClone(fresh.dex_pools)}],{file,wallet,representative:true});
+  assert.equal(reads,before);assert.deepEqual(upgraded[0].dex_pools[0].cashout_quote,first[0].dex_pools[0].cashout_quote);
+  assert(JSON.parse(fs.readFileSync(file)).asset_reviews[TOKEN.toLowerCase()+':ERC20'].done);
+
  }finally{Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
 });
 
@@ -197,5 +202,12 @@ test('representative verification selects the liquid V4 market before a dust add
   assert.equal(token.dex_pools[0].cashout_quote,undefined);const before=reads;
   const [resumed]=await dexChain({chain_id:8453},[structuredClone(input)],{file,wallet:'0x'+'6'.repeat(40),representative:true,fullOnly:true});
   assert.equal(reads,before);assert.equal(resumed.dex_pools.find(p=>p.pool===id).cashout_quote.output_amount,'1');
+  const legacy=JSON.parse(fs.readFileSync(file));legacy.quote_schema_version=2;
+  legacy.asset_reviews[TOKEN.toLowerCase()+':ERC20']={done:true,failures:0,pool:input.dex_pools[0].pool};
+  legacy.completed_pools=[TOKEN.toLowerCase()+':'+input.dex_pools[0].pool];fs.writeFileSync(file,JSON.stringify(legacy));
+  const [upgraded]=await dexChain({chain_id:8453},[structuredClone(input)],{file,wallet:'0x'+'6'.repeat(40),representative:true,fullOnly:true});
+  assert.equal(upgraded.dex_pools.find(p=>p.pool===id).cashout_quote.output_amount,'1');
+  assert.equal(JSON.parse(fs.readFileSync(file)).asset_reviews[TOKEN.toLowerCase()+':ERC20'].pool,id);
+
  }finally{Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
 });

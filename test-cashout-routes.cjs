@@ -228,3 +228,16 @@ for(const errorName of ['HttpRequestError','RpcSchedulingTimeout'])test('failed 
   assert.equal(count,4);assert.equal(result.market_pending,false);assert(result.tokens.every(t=>t.liquidation_routes.length===1));
  }finally{Object.assign(h,originals);fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('repeated failed route diagnostics stay unique on disk and after legacy resume',async()=>{
+ const held={...token(),dex_pools:[],mintclub_membership_status:'verified'};
+ const failed=async()=>[{status:'unknown',reason:'Synthetic source unavailable.',retryable:true,failure_kind:'transport'}];
+ let state=await expandRoutes(held,failed);
+ state.unknown.push(...Array(400).fill('Synthetic source unavailable.'));
+ let saves=0;
+ for(let turn=0;turn<4;turn++){
+  state=await expandRoutes(held,failed,{state:structuredClone(state),save:s=>{saves++;assert.equal(s.unknown.length,new Set(s.unknown).size);}});
+  assert(state.pending.length);assert.equal(state.routes.length,0);assert(state.unknown.length<=3);
+ }
+ assert(saves>0);
+});

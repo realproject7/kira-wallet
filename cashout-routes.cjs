@@ -51,7 +51,8 @@ function representativeQuote(token, routes=token.liquidation_routes||[]) {
   return seedQuotes(token).find(q=>validLeg(q,token.token_address,holding,block,hash)&&terminal(token.chain_id,q.output_address))||null;
 }
 
-async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNodes=32,maxBranches=4,maxSteps=Infinity,rootOnly=false,representative=false}={}) {
+async function expandRoutes(token,quoteAsset,{state,save:saveState=()=>{},maxLegs=4,maxNodes=32,maxBranches=4,maxSteps=Infinity,rootOnly=false,representative=false}={}) {
+  const save=value=>{value.unknown=[...new Set(value.unknown)];saveState(value);};
   const holding=integer(token.wallet_balance_raw),block=String(token.balance_block_number),hash=token.balance_block_hash;
   if(!holding||!address(token.token_address)||!/^0x[0-9a-fA-F]{64}$/.test(hash||''))throw new Error('Pinned route holding unavailable');
   const identity=JSON.stringify([token.chain_id,token.token_address.toLowerCase(),token.token_type,holding.toString(),block,hash]);
