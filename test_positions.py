@@ -122,6 +122,41 @@ class PositionApplicationTests(unittest.TestCase):
         self.assertNotIn(known['job_id'],[j['job_id'] for j in batch['jobs']])
         self.assertEqual(self.app.jobs.get(baseline['job_id'])['state'],'queued')
 
+    def recovery_hint(self,job,used=1,fingerprint='a'*64):
+        value={'fingerprint':fingerprint,'not_before':0,'position_recheck':{'chain_id':4663,'slices_used':used}}
+        atomic(self.root/job['checkpoint']/'continuation.json',value)
+        job['continuation']={'fingerprint':'a'*64,'not_before':0,'unchanged_turns':0};self.app.jobs.save(job)
+        return value
+
+    def test_worker_runs_holdings_then_a_short_recovery_before_ordinary_position_turns(self):
+        first=self.job();recovering=self.job(B,'recover-position-state')
+        self.recovery_hint(recovering)
+        baseline=self.app.submit({'schema_version':1,'operation':'wallet.refresh','input':{'wallet':A},'idempotency_key':'holdings-before-recovery-burst'},launch=False)
+        order=[]
+        def execute(job,*args):order.append(job['job_id']);return {'status':'completed'}
+        with patch.object(self.app.jobs,'execute',side_effect=execute):self.app.jobs.worker()
+        self.assertEqual(order,[baseline['job_id'],recovering['job_id'],first['job_id']])
+        self.assertTrue(all(self.app.jobs.get(key)['state']=='succeeded' for key in order))
+
+    def test_recovery_priority_ends_after_four_slices_and_cannot_use_stale_hints(self):
+        ordinary=self.job();recovering=self.job(B,'bounded-recovery-priority')
+        self.recovery_hint(recovering,used=4)
+        self.assertLess(self.app.jobs.research_order(ordinary),self.app.jobs.research_order(recovering))
+        self.recovery_hint(recovering,fingerprint='b'*64)
+        self.assertTrue(self.app.jobs.research_order(recovering)[1])
+        self.recovery_hint(recovering);recovering['continuation']['unchanged_turns']=1
+        self.assertTrue(self.app.jobs.research_order(recovering)[1])
+
+    def test_progressing_recovery_can_continue_immediately_but_keeps_the_stall_guard(self):
+        job=self.job();self.recovery_hint(job);job.pop('continuation')
+        with patch('kira_jobs.time.time',return_value=1000):
+            self.app.jobs.queue_continuation(job,JobError('research_pending','More saved checks remain'))
+            self.assertEqual(job['continuation']['not_before'],1000)
+            self.app.jobs.queue_continuation(job,JobError('research_pending','More saved checks remain'))
+            self.assertEqual(job['continuation']['not_before'],1002)
+            for _ in range(2):self.app.jobs.queue_continuation(job,JobError('research_pending','More saved checks remain'))
+        self.assertEqual(job['state'],'interrupted');self.assertEqual(job['stage'],'research_stalled')
+
     def test_exclusion_applies_to_staked_receipt_even_without_a_loose_balance(self):
         p=position(receipt={'address':RECEIPT,'custody':'mintclub-staking'})
         job=self.job();job['attempt']=1;publish(self.root,job,self.state([p]))

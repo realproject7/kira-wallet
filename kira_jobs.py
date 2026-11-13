@@ -113,6 +113,16 @@ def atomic(path, value):
 def read(path):
     return json.loads(Path(path).read_text())
 
+def position_recheck_hint(saved):
+    hint=saved.get('position_recheck') if isinstance(saved,dict) else None
+    return (saved.get('fingerprint') if isinstance(hint,dict) and set(hint)=={'chain_id','slices_used'}
+            and type(hint['chain_id']) is int and hint['chain_id']>0
+            and type(hint['slices_used']) is int and 0<=hint['slices_used']<4 else None)
+
+@lru_cache(maxsize=256)
+def cached_position_recheck(path, version):
+    return position_recheck_hint(read(path))
+
 @lru_cache(maxsize=64)
 def published_asset_progress(path, version):
     """Project final classifications without rewriting historical progress events."""
@@ -940,13 +950,25 @@ class JobStore:
             return
         prior=job.get('continuation',{})
         unchanged=prior.get('unchanged_turns',0)+1 if prior.get('fingerprint')==saved['fingerprint'] else 0
+        delay=0 if job['operation']=='positions.refresh' and unchanged==0 and position_recheck_hint(saved)==saved['fingerprint'] else min(60,2**unchanged)
         job['continuation']={'fingerprint':saved['fingerprint'],'unchanged_turns':unchanged,
-                             'not_before':max(saved['not_before'],int(time.time())+min(60,2**unchanged))}
+                             'not_before':max(saved['not_before'],int(time.time())+delay)}
         if unchanged>=3:
             job.update(state='interrupted',stage='research_stalled',errors=[{'code':'no_progress',
                        'message':'Three continuation attempts made no new progress. Saved evidence is intact; unresolved reads remain unknown. Resume explicitly after checking the source.'}])
         else:
             job.update(state='queued',stage='waiting' if saved['not_before']>time.time() else 'queued',errors=[])
+
+    def research_order(self, job):
+        heavy=job.get('analysis_phase')=='enrichment' or job['operation']=='positions.refresh'
+        urgent=False
+        if job['operation']=='positions.refresh' and job['state']=='queued' and job.get('continuation',{}).get('unchanged_turns')==0:
+            path=self.root/job['checkpoint']/'continuation.json'
+            try:
+                stat=path.stat();fingerprint=cached_position_recheck(str(path),(stat.st_mtime_ns,stat.st_size,stat.st_ino))
+                urgent=fingerprint is not None and fingerprint==job['continuation']['fingerprint']
+            except (OSError,ValueError,TypeError):pass
+        return heavy,not urgent,job['updated_at'] if heavy else job['created_at']
 
     def worker(self, startup_fd=None):
         with (self.root / '.job-worker.lock').open('a') as lease:
@@ -963,7 +985,7 @@ class JobStore:
                 writer = (self.root / '.analysis.lock').open('a')
                 fcntl.flock(writer, fcntl.LOCK_EX)
                 with self.locked():
-                    queued = sorted((self.get(p.stem) for p in self.jobs.glob('*.json')), key=lambda j: (j.get('analysis_phase')=='enrichment' or j['operation']=='positions.refresh',j['updated_at'] if j.get('analysis_phase')=='enrichment' or j['operation']=='positions.refresh' else j['created_at']))
+                    queued = sorted((self.get(p.stem) for p in self.jobs.glob('*.json')), key=self.research_order)
                     job = next((j for j in queued if j['state']=='queued' and j.get('continuation',{}).get('not_before',0)<=time.time()), None)
                     waiting=any(j['state']=='queued' for j in queued)
                     if not job:

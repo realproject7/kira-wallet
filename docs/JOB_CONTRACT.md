@@ -352,3 +352,9 @@ yield to holdings/settings work and share bounded metadata caches. Missing,
 unsupported, timed-out or throttled ownership/quantity reads remain unknown.
 Position blocks and price references keep independent clocks. Position NAV is
 separate from wallet-token sell quotes and from unclaimed fees or rewards.
+
+A progressing platform chain recovery may request up to four priority slices per
+job through a private, fingerprint-bound checkpoint hint. Holdings, price and
+settings work still runs first. Slice budgets and the single writer are unchanged.
+Stale or exhausted hints do not affect order, and unchanged progress keeps the
+normal retry backoff and stall guard.

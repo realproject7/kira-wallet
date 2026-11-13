@@ -112,7 +112,10 @@ def main():
     if not checkpoint.is_file():raise ValueError('Position reader stopped before saving a slice')
     state=json.loads(checkpoint.read_text());publish(root,job,state)
     if not state.get('complete'):
-        atomic(folder/'continuation.json',{'fingerprint':digest({'cursor':state['cursor'],'tasks':len(state['tasks']),'positions':len(state['positions']),'blocks':state['blocks']}),'not_before':0})
+        continuation={'fingerprint':digest({'cursor':state['cursor'],'tasks':len(state['tasks']),'positions':len(state['positions']),'blocks':state['blocks']}),'not_before':0}
+        if state.get('rechecking_chain') and state.get('chain_recheck_version',{}).get(str(state['rechecking_chain']))==2 and state.get('recheck_slices',0)<4:
+            continuation['position_recheck']={'chain_id':state['rechecking_chain'],'slices_used':state.get('recheck_slices',0)}
+        atomic(folder/'continuation.json',continuation)
         print(json.dumps({'stage':'research_paused'}),flush=True)
 
 

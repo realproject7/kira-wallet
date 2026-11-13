@@ -88,6 +88,25 @@ test('ordinary transport errors and recent method failures keep their original p
   const result=await finish(h);assert.equal(result.blocks[cid].number,'1');assert.equal(result.pin_rechecks[cid],undefined);
  }
 });
+test('pre-burst historical failures get one fresh recovery without waiting for stale pending tasks',async()=>{
+ const cid=4663,h=harness({kind:'nft-count',manager:MANAGER},()=>0n,{cid});h.input.discover=false;
+ h.state.cursor=1;h.state.pin_rechecks={[cid]:1};h.state.rechecking_chain=cid;
+ h.state.blocks[cid]={number:'1',hash:'0x'+'b'.repeat(64),observed_at:'1970-01-01T00:00:00Z'};
+ h.state.tasks.push({kind:'nft-count',scope:cid+':pending',chain_id:cid,manager:MANAGER});
+ h.state.failed_tasks=[{index:0,scope:cid+':test',kind:'nft-count',reason:'historical_state'}];
+ let contexts=0;h.io.context=async(_cid,saved)=>{contexts++;assert.equal(saved,undefined);return {block:{number:'100',hash:'0x'+'a'.repeat(64),observed_at:new Date().toISOString()}};};
+ const s=await finish(h);assert.equal(s.pin_rechecks[cid],2);assert.equal(s.chain_recheck_version[cid],2);assert.equal(contexts,1);
+ s.failed_tasks.push({index:0,scope:cid+':test',kind:'nft-count',reason:'historical_state'});
+ await finish(h);assert.equal(s.pin_rechecks[cid],2);assert.equal(s.pin_recheck_history.length,1);assert.equal(contexts,1);
+});
+test('the recovery priority budget does not reset when another chain is rebuilt',async()=>{
+ const cid=4663,h=harness({kind:'nft-count',manager:MANAGER},()=>0n,{cid});h.input.discover=false;
+ h.input.networks.push({chain_id:1,environment:'mainnet'});h.state.recheck_slices=4;h.state.cursor=2;
+ h.state.tasks.push({kind:'nft-count',scope:'1:test',chain_id:1,manager:MANAGER});
+ for(const chain of [cid,1])h.state.blocks[chain]={number:'1',hash:'0x'+'b'.repeat(64),observed_at:'1970-01-01T00:00:00Z'};
+ h.state.failed_tasks=[{index:0,scope:cid+':test',kind:'nft-count',reason:'historical_state'},{index:1,scope:'1:test',kind:'nft-count',reason:'historical_state'}];
+ const s=await finish(h);assert.ok(s.recheck_slices>=6);assert.equal(s.pin_rechecks[cid],1);assert.equal(s.pin_rechecks[1],1);
+});
 test('Uniswap, Pancake and Aero NFTs use owner, factory and pinned liquidity',async()=>{
  for(const [platform,type,version] of [['uniswap','v3','v3'],['pancakeswap','v3','v3'],['aerodrome','cl','legacy-slipstream'],['aerodrome','cl','aero-cl']]){
   const h=harness({kind:'nft',ids:['1'],manager:MANAGER,factory:FACTORY,platform,type,version},c=>nftResolve(c));

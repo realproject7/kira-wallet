@@ -115,22 +115,25 @@ class Reader{
   // Rebuild that chain once, at a new pin, instead of mixing block epochs or
   // repeatedly issuing reads against state the provider has already pruned.
   const pending=this.state.tasks.slice(this.state.cursor);
-  if(this.state.rechecking_chain&&pending.some(t=>t.chain_id===this.state.rechecking_chain))return;
-  delete this.state.rechecking_chain;
-  const retries=this.state.pin_rechecks ||= {},registryRetries=this.state.gauge_registry_rechecks ||= {};
-  const failed=(this.state.failed_tasks||[]).find(f=>{
+  const retries=this.state.pin_rechecks ||= {},registryRetries=this.state.gauge_registry_rechecks ||= {},versions=this.state.chain_recheck_version ||= {};
+  const candidates=(this.state.failed_tasks||[]).filter(f=>{
    if(f.replaced_by_recheck)return false;
    const cid=Number(f.scope.split(':')[0]),block=this.state.blocks[cid];
    const task=this.state.tasks[f.index],registryFix=!f.replaced_by_recheck&&!registryRetries[cid]&&f.kind==='aero-directory'&&f.function==='gauge'&&
     protocols.aero.some(p=>p.chain_id===cid&&key(p.factory)===key(task?.factory)&&valid(p.registry));
-   return block&&this.input.networks.some(n=>n.chain_id===cid&&n.environment==='mainnet')&&(registryFix||!retries[cid]&&
+   return block&&this.input.networks.some(n=>n.chain_id===cid&&n.environment==='mainnet')&&(registryFix||(!retries[cid]||versions[cid]!==2)&&
     (f.reason==='historical_state'||f.reason==='method'&&Date.now()-Date.parse(block.observed_at)>300000));
   });
+  const failed=candidates.find(f=>Number(f.scope.split(':')[0])===this.state.rechecking_chain)||candidates[0];
+  if(this.state.rechecking_chain&&pending.some(t=>t.chain_id===this.state.rechecking_chain)&&
+    (!failed||Number(failed.scope.split(':')[0])!==this.state.rechecking_chain))return;
+  delete this.state.rechecking_chain;
   if(!failed)return;
   const cid=Number(failed.scope.split(':')[0]),prefix=cid+':',old=this.state.blocks[cid];
   if(this.state.cursor+pending.filter(t=>t.chain_id!==cid).length>=MAX_TASKS)return;
   const registryFix=failed.kind==='aero-directory'&&failed.function==='gauge';
-  if(registryFix)registryRetries[cid]=1;else retries[cid]=1;
+  if(registryFix)registryRetries[cid]=1;else retries[cid]=(retries[cid]||0)+1;
+  versions[cid]=2;
   this.state.rechecking_chain=cid;this.state.complete=false;
   (this.state.pin_recheck_history ||= []).push({chain_id:cid,previous_block:old.number,previous_hash:old.hash,reason:registryFix?'gauge_registry':'historical_state'});
   for(const f of this.state.failed_tasks)if(f.scope.startsWith(prefix))f.replaced_by_recheck=true;
@@ -380,6 +383,7 @@ class Reader{
  }
  async run(save){
   this.recheckUnavailableChain();
+  if(this.state.rechecking_chain&&this.state.chain_recheck_version?.[this.state.rechecking_chain]===2)this.state.recheck_slices=(this.state.recheck_slices||0)+1;
   let completed=0,lastSave=Date.now(),lastPositions=Object.keys(this.state.positions).length;
   while(this.state.cursor<this.state.tasks.length&&completed<32){
    // Read known balances and emit useful records before expensive registry sweeps.

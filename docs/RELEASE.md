@@ -1,9 +1,23 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.11.8**.
+Published npm release: **1.5.0**. Prepared candidate: **1.11.9**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.11.9
+
+A short chain recovery may need several bounded passes. Its first four passes
+can continue ahead of ordinary deep research, so a large wallet queue does not
+age the fresh block out of a non-archive RPC again. Holdings, prices and settings
+retain higher priority. Each pass still uses the same writer, task, time and RPC
+limits. Progressing recovery can continue immediately; unchanged work keeps its
+backoff and stall guard. The persisted hint must match the continuation fingerprint
+and expires after four slices across the job, rather than resetting for each
+chain. Earlier recoveries that encountered another pruned state receive one
+migration to this bounded scheduling mode. Other evidence and prior epochs stay
+preserved. Tests execute the actual worker ordering, reject stale/exhausted hints,
+and verify migration and unchanged-work stopping. Review not selected.
 
 ## Candidate 1.11.8
 
