@@ -1,9 +1,12 @@
 'use strict';
 // Read-only, amount-specific pool quotes. These do not simulate token transfers.
 const {parseAbi,formatUnits,encodeAbiParameters,keccak256,zeroAddress}=require('viem');
+const dex=require('./dex-adapters.cjs');
 const v3Abi=parseAbi(['function quoteExactInputSingle((address tokenIn,address tokenOut,uint256 amountIn,uint24 fee,uint160 sqrtPriceLimitX96) params) returns (uint256 amountOut,uint160 sqrtPriceX96After,uint32 initializedTicksCrossed,uint256 gasEstimate)']);
 const v4Abi=parseAbi(['function quoteExactInputSingle(((address currency0,address currency1,uint24 fee,int24 tickSpacing,address hooks) poolKey,bool zeroForOne,uint128 exactAmount,bytes hookData) params) returns(uint256 amountOut,uint256 gasEstimate)']);
 const aeroAbi=parseAbi(['function getAmountOut(uint256 amountIn,address tokenIn) view returns (uint256)']);
+const metaAbi=parseAbi(['function quoteExactInputSingleV2(address pool,address tokenIn,uint256 amountIn) view returns(uint256 amountOut)',
+  'function quoteExactInputSingleV3(address pool,address tokenIn,uint256 amountIn,uint160 sqrtPriceLimitX96) returns(uint256 amountOut,uint160 sqrtPriceX96After,uint32 initializedTicksCrossed)']);
 const address=value=>typeof value==='string'&&/^0x[0-9a-fA-F]{40}$/.test(value);
 const integer=value=>{try{if(!/^[0-9]+$/.test(String(value)))return null;return BigInt(value);}catch{return null;}};
 
@@ -26,10 +29,10 @@ function v4KeyId(key) {
     [key.currency0,key.currency1,key.fee,key.tickSpacing,key.hooks]));
 }
 
-function v2AmountOut(amount,reserveIn,reserveOut) {
-  if(amount<=0n||reserveIn<=0n||reserveOut<=0n)throw new Error('Pool quote input or reserves unavailable');
-  const withFee=amount*997n;
-  return withFee*reserveOut/(reserveIn*1000n+withFee);
+function v2AmountOut(amount,reserveIn,reserveOut,feeBps=30) {
+  if(amount<=0n||reserveIn<=0n||reserveOut<=0n||!Number.isInteger(feeBps)||feeBps<0||feeBps>=10000)throw new Error('Pool quote input, reserves or fee unavailable');
+  const withFee=amount*BigInt(10000-feeBps);
+  return withFee*reserveOut/(reserveIn*10000n+withFee);
 }
 function inputAmounts(balance) {
   // A full-input quote can revert because of a pool's limits. Smaller inputs
@@ -59,7 +62,8 @@ async function quotePool(client,network,token,pool,block,blockHash,deployments,{
   if(!address(measured.quote_token)||measured.quote_token.toLowerCase()!==output.toLowerCase()||!Number.isInteger(measured.quote_decimals)||measured.quote_decimals<0||measured.quote_decimals>255)
     return unknown('Output token metadata unavailable');
   const canonical=protocol=>deployments.find(d=>d.chainId===network.chain_id&&d.protocol===protocol&&d.contract===(protocol==='v2'?'UniswapV2Factory':'UniswapV3Factory')&&d.address.toLowerCase()===state.factory?.toLowerCase());
-  const quoter=deployments.find(d=>d.chainId===network.chain_id&&d.protocol==='v3'&&d.contract==='QuoterV2'&&d.status==='active');
+  const extra=dex.adapter(network.chain_id,pool,state.factory);
+  const quoter=extra?.type==='v3'?{address:extra.quoter}:deployments.find(d=>d.chainId===network.chain_id&&d.protocol==='v3'&&d.contract==='QuoterV2'&&d.status==='active');
   let kind,quote,request,decode,inputIsMaximum=false,v4Quoter=null;
   if(isV4){
     const key=state.pool_key,find=name=>deployments.find(d=>d.chainId===network.chain_id&&d.protocol==='v4'&&d.contract===name&&d.status==='active');
@@ -70,8 +74,20 @@ async function quotePool(client,network,token,pool,block,blockHash,deployments,{
     kind='uniswap_v4_quoter';
     request=amount=>({address:v4Quoter.address,abi:v4Abi,functionName:'quoteExactInputSingle',args:[{poolKey:key,zeroForOne:is0,exactAmount:amount,hookData:'0x'}]});
     decode=result=>result[0];
-  }else if(canonical('v3')&&quoter&&Number.isInteger(state.fee)&&state.fee>=0&&state.fee<1_000_000) {
-    kind='uniswap_v3_quoter';
+  }else if(extra?.type==='basic'||extra?.type==='cl'){
+    if(!address(extra.quoter)||balance>=(1n<<255n))return unknown('Official Aero quoter and bounded input required');
+    kind=extra.kind;
+    request=amount=>({address:extra.quoter,abi:metaAbi,functionName:extra.type==='cl'?'quoteExactInputSingleV3':'quoteExactInputSingleV2',
+      args:extra.type==='cl'?[pool.pool,token.token_address,amount,0n]:[pool.pool,token.token_address,amount]});
+    decode=result=>{
+      if(extra.type==='basic')return result;
+      const after=integer(result[1]);
+      inputIsMaximum=after===null||after<=4295128740n||after>=1461446703485210103287273052203988822378723970341n;
+      if(fullOnly&&inputIsMaximum)throw Error('Full input consumption is not established at the pool price limit');
+      return result[0];
+    };
+  }else if((canonical('v3')||extra?.type==='v3')&&quoter&&Number.isInteger(state.fee)&&state.fee>=0&&state.fee<1_000_000) {
+    kind=extra?.kind||'uniswap_v3_quoter';
     request=amount=>({address:quoter.address,abi:v3Abi,functionName:'quoteExactInputSingle',args:[{tokenIn:token.token_address,tokenOut:output,amountIn:amount,fee:state.fee,sqrtPriceLimitX96:0n}]});
     decode=result=>{
       // QuoterV2's default limit is MIN_SQRT_RATIO+1 / MAX_SQRT_RATIO-1
@@ -85,10 +101,10 @@ async function quotePool(client,network,token,pool,block,blockHash,deployments,{
     kind='aerodrome_pool';
     request=amount=>({address:pool.pool,abi:aeroAbi,functionName:'getAmountOut',args:[amount,token.token_address]});
     decode=result=>result;
-  }else if(canonical('v2')&&Array.isArray(state.getReserves)) {
+  }else if((canonical('v2')||extra?.type==='v2')&&Array.isArray(state.getReserves)) {
     const reserveIn=integer(state.getReserves[is0?0:1]),reserveOut=integer(state.getReserves[is0?1:0]);
     if(!reserveIn||!reserveOut)return unknown('Pool reserves unavailable');
-    kind='uniswap_v2_reserves';quote=async amount=>v2AmountOut(amount,reserveIn,reserveOut);
+    kind=extra?.kind||'uniswap_v2_reserves';quote=async amount=>v2AmountOut(amount,reserveIn,reserveOut,extra?.fee_bps??30);
   }else return unknown('Quote adapter unavailable for this verified pool');
   if(request)quote=async amount=>decode(await client.readContract({...request(amount),blockNumber:block}));
   const amounts=fullOnly?[balance]:inputAmounts(balance);let failures=0,buffer=[];
@@ -116,7 +132,7 @@ async function quotePool(client,network,token,pool,block,blockHash,deployments,{
       holding_amount_raw:balance.toString(),output_amount_raw:result.toString(),output_amount:formatUnits(result,measured.quote_decimals),
       input_address:token.token_address.toLowerCase(),pool:pool.pool,output_address:output.toLowerCase(),output_symbol:measured.quote_symbol,
       output_decimals:measured.quote_decimals,block_number:String(block),block_hash:blockHash,
-      observed_at:new Date().toISOString(),...(v4Quoter?{quoter:v4Quoter.address,full_input_verified:true}:{}),route_fees_included:true,price_impact_included:true,gas_included:false,
+      observed_at:new Date().toISOString(),...(v4Quoter?{quoter:v4Quoter.address,full_input_verified:true}:{}),...(extra?.venue==='aero'?{quoter:extra.quoter,fee_context:'Read-only quote with RPC default caller and priority fee. Execution-time MEV tax and account discounts may differ.'}:{}),route_fees_included:true,price_impact_included:true,gas_included:false,
       execution_verified:false,transfer_tax_included:false,partial_input:amount<balance||inputIsMaximum,source_url:pool.source_url};
   }
   return unknown(failures?'Pool quote failed; smaller-input and other routes remain unknown':'Sampled inputs returned zero; other routes remain unknown');

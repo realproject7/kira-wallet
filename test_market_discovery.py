@@ -8,6 +8,22 @@ from market_records import collected_markets,merge_pools
 from test_market_records import V3,V4
 
 class MarketDiscoveryTests(unittest.TestCase):
+    def test_ordinary_factory_supplement_is_bounded_and_prefers_indexed_depth(self):
+        import json
+        from types import SimpleNamespace
+        tokens=[{'chain_id':56,'token_type':'ERC20','token_address':'0x'+format(i+1,'040x'),'dex_pools':[]} for i in range(100)]
+        tokens[-1]['dex_pools']=[{'reported_liquidity':{'usd':1000000}}]
+        calls=[]
+        def run(args,**kwargs):
+            payload=json.loads(Path(args[2]).read_text());calls.append(payload)
+            Path(args[3]).write_text(json.dumps({'status':'checked','markets':[]}))
+            return SimpleNamespace(returncode=0)
+        with tempfile.TemporaryDirectory() as folder,patch('market_discovery.subprocess.run',run):
+            result=discover({'tokens':tokens,'coverage':[{'chain_id':56,'environment':'mainnet'}]},Path(folder),fetch=lambda *a,**k:self.fail('Ordinary holdings do not add Uniswap API requests'))
+        self.assertEqual(len(calls),1);self.assertEqual(len(calls[0]['tokens']),12)
+        self.assertEqual(calls[0]['tokens'][0],tokens[-1]);self.assertEqual(result['factory_ordinary_deferred'],88)
+        self.assertLessEqual(calls[0]['budget_ms'],60000)
+
     def test_official_pools_keep_ids_fees_and_native_members_without_creating_prices(self):
         address='0x'+'1'*40
         _,aliases=uniswap_query([{'chain_id':8453,'token_address':address}])

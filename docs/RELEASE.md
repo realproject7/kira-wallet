@@ -1,9 +1,38 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.9.2**.
+Published npm release: **1.5.0**. Prepared candidate: **1.9.3**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.9.3
+
+BNB Chain pools indexed under PancakeSwap were visible but excluded by the
+sell-quote adapter allowlist. PancakeSwap V2 and V3 now verify their official
+factory mappings at the holding block. V2 uses its 0.25% fee; V3 uses Pancake's
+own QuoterV2 and fee tier. Infinity and StableSwap remain unsupported.
+
+The upgraded Aero Basic and Slipstream factories are separate from legacy
+Aerodrome. The catalog records official deployment sources and revisions for
+Base, Ethereum, OP Mainnet, Arbitrum, Robinhood and Ink. Basic pools use the
+official Metaquoter with total contextual fees and its pause/registry checks.
+Slipstream verifies signed tick spacing and quotes its exact pool through that
+Metaquoter. Price-limit outputs cannot count as full-input estimates. Dynamic
+fees are included in the read context; execution-time priority-fee MEV tax,
+caller discounts, gas and transfer restrictions can change actual proceeds.
+
+Discovery adds bounded common-quote factory checks, with at most 12 additional
+ordinary holdings per invocation and a shared maximum 60-second discovery
+budget. Quotes retain the 12-asset, 20-second limit, quantity recheck, negative
+cache and explicit refresh trigger. Views launch no provider work. Unknown
+outputs remain unknown. Earlier frozen packages and wallet history are kept.
+
+Sources: [Pancake V2 deployments](https://developer.pancakeswap.finance/contracts/v2/addresses),
+[Pancake V3 deployments](https://developer.pancakeswap.finance/contracts/v3/addresses),
+[Aero Basic deployments](https://github.com/dromos-labs/metadex-public/tree/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses),
+[Aero Slipstream deployments](https://github.com/dromos-labs/metadex-slipstream-public/tree/f99f2095918cab69eafeffa2c3d0a8762de737b7/deployment-addresses),
+and [Metaquoter interface](https://github.com/dromos-labs/metadex-slipstream-public/blob/f99f2095918cab69eafeffa2c3d0a8762de737b7/contracts/periphery/interfaces/IMetaquoter.sol).
+Review not selected. Registry publication is operator-only.
 
 ## Candidate 1.9.2
 

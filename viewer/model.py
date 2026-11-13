@@ -218,7 +218,10 @@ def project_wallet(entry, snapshot, root=ROOT, images=None, *, market=None):
         if t.get('mintclub'):links.append({'label':'Mint Club','url':t['mintclub']['source_url']})
         found={}; market_pools=[]
         for pool in t.get('dex_pools',[]):
-            venue=pool['venue'].lower(); label_venue='Uniswap' if 'uniswap' in venue else 'Aerodrome' if 'aerodrome' in venue else venue.replace('-',' ').title()
+            venue=pool['venue'].lower()
+            label_venue=('Aero' if venue in ('aero','aero-slipstream') or (pool.get('factory_discovery') or {}).get('venue')=='aero' or str((pool.get('factory_measurement') or {}).get('adapter','')).startswith('aero_')
+                         else 'PancakeSwap' if venue.startswith('pancakeswap') else 'Uniswap' if 'uniswap' in venue
+                         else 'Aerodrome' if 'aerodrome' in venue else venue.replace('-',' ').title())
             weight=(pool.get('reported_liquidity') or {}).get('usd',0)
             measured=pool.get('factory_measurement') or {}
             if not weight and measured.get('quote_balance'):

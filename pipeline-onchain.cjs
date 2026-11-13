@@ -6,6 +6,7 @@ const h = require('./onchain.cjs');
 const {mintclubUrl}=require('./market-links.cjs');
 const v = h.viem;
 const {quotePool,v4Key}=require('./cashout-quotes.cjs');
+const dex=require('./dex-adapters.cjs');
 const {expandRoutes,terminal,validLeg,seedQuotes,representativeQuote,nativeCurrency}=require('./cashout-routes.cjs');
 const MULTICALL = '0xcA11bde05977b3631167028862bE2a173976CA11';
 const erc20 = v.parseAbi([
@@ -18,7 +19,9 @@ const erc1155 = v.parseAbi(['function balanceOf(address,uint256) view returns (u
 const poolAbi = v.parseAbi([
   'function factory() view returns (address)', 'function token0() view returns (address)',
   'function token1() view returns (address)', 'function liquidity() view returns (uint128)',
-  'function getReserves() view returns (uint112,uint112,uint32)',
+  'function getReserves() view returns (uint256,uint256,uint256)',
+  'function getPool(address,address) view returns (address)',
+  'function getPool(address,address,int24) view returns (address)',
   'function getSlot0(bytes32) view returns (uint160,int24,uint24,uint24)',
   'function getLiquidity(bytes32) view returns (uint128)',
   'function getPool(address,address,uint24) view returns (address)',
@@ -461,16 +464,16 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
   const pinned=tokens.find(t=>t.balance_block_hash&&t.balance_block_number!=null);
   const holdingBlock=pinned?{block_number:String(pinned.balance_block_number),block_hash:pinned.balance_block_hash}:null;
   const client=await boundedMarket(connect(n),deadline),snapshot=await boundedMarket(h.snapshotBlock(client,cache||holdingBlock),deadline),block=snapshot.number;
-  cache=cache||{wallet:wallet.toLowerCase(),chain_id:n.chain_id,fingerprint,block_number:block.toString(),block_hash:snapshot.hash,requests:{},completed_pools:[],tokens:cacheEncode(tokens),quote_schema_version:3};
-  // V2 quotes are already amount-specific. Revisit only assets affected by
-  // the new Base v4 adapter; preserve other completed reviews across upgrades.
-  if(cache.quote_schema_version!==3){
-    if(cache.quote_schema_version===2){
-      const affected=new Set([...tokens,...cacheDecode(cache.tokens)].filter(t=>n.chain_id===8453&&(t.dex_pools||[]).some(p=>p.pool?.length===66)).map(t=>t.token_address.toLowerCase()));
+  cache=cache||{wallet:wallet.toLowerCase(),chain_id:n.chain_id,fingerprint,block_number:block.toString(),block_hash:snapshot.hash,requests:{},completed_pools:[],tokens:cacheEncode(tokens),quote_schema_version:4};
+  // Preserve completed amount-specific evidence. Revisit only assets whose
+  // available adapters changed in the v4 or extended-venue upgrade.
+  if(cache.quote_schema_version!==4){
+    if([2,3].includes(cache.quote_schema_version)){
+      const affected=new Set([...tokens,...cacheDecode(cache.tokens)].filter(t=>(t.dex_pools||[]).some(p=>dex.supported(n.chain_id,p)||cache.quote_schema_version===2&&n.chain_id===8453&&p.pool?.length===66)).map(t=>t.token_address.toLowerCase()));
       cache.completed_pools=cache.completed_pools.filter(key=>!affected.has(key.split(':')[0]));
       for(const key of Object.keys(cache.asset_reviews||{}))if(affected.has(key.split(':')[0]))delete cache.asset_reviews[key];
     }else{cache.completed_pools=[];cache.asset_reviews={};}
-    cache.quote_schema_version=3;
+    cache.quote_schema_version=4;
   }
   cache.pool_attempts=cache.pool_attempts||{};
   cache.asset_reviews=cache.asset_reviews||{};
@@ -530,7 +533,7 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
     });
     for(const t of tokens)t.factory_discovery={candidate_count:queries.filter(q=>q.t===t).length,errors:queries.filter((q,i)=>q.t===t&&found[i].status==='failure').length,block_number:block};
   }
-  const supported=t=>t.dex_pools.filter(p=>['uniswap','aerodrome'].includes(p.venue));
+  const supported=t=>t.dex_pools.filter(p=>p.venue==='uniswap'||p.venue==='aerodrome'&&n.chain_id===8453||dex.supported(n.chain_id,p));
   if(representative)for(const t of tokens){
     const key=assetKey(t),review=cache.asset_reviews[key]||{done:false,failures:0};cache.asset_reviews[key]=review;
     // A funded curve prefix may still need an intermediate quote. Give that
@@ -589,15 +592,24 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
     };
     const value=q=>{const raw=cache.requests[requestKey('readContract',{...q,blockNumber:block})];return raw===undefined?undefined:cacheDecode(raw);};
     const plan=poolQueue.filter(({p})=>p.pool.length===42);
-    const state=p=>Object.fromEntries(['factory','token0','token1',p.version_labels?.includes('v3')?'liquidity':'getReserves'].map(functionName=>[functionName,value({address:p.pool,abi:poolAbi,functionName})]));
-    const recognized=s=>typeof s.factory==='string'&&(deployments.some(d=>d.chainId===n.chain_id&&d.contract.toLowerCase().includes('factory')&&d.address.toLowerCase()===s.factory.toLowerCase())||n.chain_id===8453&&s.factory.toLowerCase()==='0x420dd381b31aef6683db6b902084cb0ffece40da');
-    await warm(plan.flatMap(({t,p})=>['factory','token0','token1',p.version_labels?.includes('v3')?'liquidity':'getReserves'].map(functionName=>owned(t,{address:p.pool,abi:poolAbi,functionName}))));
-    const parameter=p=>p.version_labels?.includes('v3')?{address:p.pool,abi:v.parseAbi(['function fee() view returns (uint24)']),functionName:'fee'}:p.venue==='aerodrome'?{address:p.pool,abi:v.parseAbi(['function stable() view returns (bool)']),functionName:'stable'}:null;
+    const state=p=>Object.fromEntries(['factory','token0','token1',dex.concentrated(p)?'liquidity':'getReserves'].map(functionName=>[functionName,value({address:p.pool,abi:poolAbi,functionName})]));
+    const recognized=s=>typeof s.factory==='string'&&(deployments.some(d=>d.chainId===n.chain_id&&d.contract.toLowerCase().includes('factory')&&d.address.toLowerCase()===s.factory.toLowerCase())||dex.records.some(d=>d.chain_id===n.chain_id&&d.factory.toLowerCase()===s.factory.toLowerCase())||n.chain_id===8453&&s.factory.toLowerCase()==='0x420dd381b31aef6683db6b902084cb0ffece40da');
+    await warm(plan.flatMap(({t,p})=>(p.venue==='uniswap'?['factory','token0','token1',dex.concentrated(p)?'liquidity':'getReserves']:['factory','token0','token1']).map(functionName=>owned(t,{address:p.pool,abi:poolAbi,functionName}))));
+    for(const {p} of plan){const a=dex.adapter(n.chain_id,p,state(p).factory);if(a){p.version_labels=(p.version_labels||[]).filter(v=>!['v2','v3','slipstream','cl'].includes(v));p.version_labels.push(['v3','cl'].includes(a.type)?'v3':'v2');}}
+    await warm(plan.filter(({p})=>p.venue!=='uniswap').map(({t,p})=>owned(t,{address:p.pool,abi:poolAbi,functionName:dex.concentrated(p)?'liquidity':'getReserves'})));
+
+    const parameter=p=>{
+      const a=dex.adapter(n.chain_id,p,state(p).factory);
+      if(a?.type==='cl')return {address:p.pool,abi:v.parseAbi(['function tickSpacing() view returns (int24)']),functionName:'tickSpacing'};
+      if(a?.type==='basic')return null;
+      return dex.concentrated(p)?{address:p.pool,abi:v.parseAbi(['function fee() view returns (uint24)']),functionName:'fee'}:p.venue==='aerodrome'?{address:p.pool,abi:v.parseAbi(['function stable() view returns (bool)']),functionName:'stable'}:null;
+    };
     await warm(plan.filter(({p})=>recognized(state(p))).map(({t,p})=>owned(t,parameter(p))).filter(Boolean));
     const membership=p=>{
       const s=state(p),q=parameter(p),param=q?value(q):null;
       if(!recognized(s)||!s.token0||!s.token1||q&&param===undefined)return null;
-      return {address:s.factory,abi:poolAbi,functionName:p.version_labels?.includes('v3')||p.venue==='aerodrome'?'getPool':'getPair',args:q?[s.token0,s.token1,param]:[s.token0,s.token1]};
+      const a=dex.adapter(n.chain_id,p,s.factory);
+      return {address:s.factory,abi:a?.type==='cl'?v.parseAbi(['function getPool(address,address,int24) view returns(address)']):poolAbi,functionName:q||a?.type==='basic'?'getPool':'getPair',args:q?[s.token0,s.token1,param]:[s.token0,s.token1]};
     };
     await warm(plan.map(({t,p})=>owned(t,membership(p))).filter(Boolean));
     await warm(plan.flatMap(({t,p})=>{
@@ -607,7 +619,7 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
     }));
   }
   for(const {t,p} of poolQueue) {
-    if(!['uniswap','aerodrome'].includes(p.venue))continue;
+    if(!supported(t).includes(p))continue;
     if(representative&&done(t)){emitProgress(n,'pool_checks',++poolChecked,poolTotal);continue;}
     const identity=poolKey(t,p);
     if(cache.completed_pools.includes(identity)){if(representative)cache.asset_reviews[assetKey(t)].done=true;emitProgress(n,'pool_checks',++poolChecked,poolTotal);continue;}
@@ -635,17 +647,31 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
         if(p.cashout_quote.status==='unknown'&&p.cashout_quote.reason.startsWith('Pool quote failed'))retry=true;
         continue;
       }
-      const names=['factory','token0','token1',p.version_labels?.includes('v3')?'liquidity':'getReserves'];
+      let baseState=null;
+      if(p.venue!=='uniswap'){
+        const names=['factory','token0','token1',dex.concentrated(p)?'liquidity':'getReserves'],rows=await calls(c,names.map(functionName=>({address:p.pool,abi:poolAbi,functionName})),block);
+        if(rows.slice(0,3).some(r=>r.status==='failure'))retry=true;
+        baseState=Object.fromEntries(rows.flatMap((r,i)=>r.status==='success'?[[names[i],r.result]]:[]));
+        const a=dex.adapter(n.chain_id,p,baseState.factory);
+        if(a){p.version_labels=(p.version_labels||[]).filter(v=>!['v2','v3','slipstream','cl'].includes(v));p.version_labels.push(['v3','cl'].includes(a.type)?'v3':'v2');}
+      }
+      const stateName=dex.concentrated(p)?'liquidity':'getReserves';
+      const names=baseState?(baseState[stateName]===undefined?[stateName]:[]):['factory','token0','token1',stateName];
       const r=await calls(c,names.map(functionName=>({address:p.pool,abi:poolAbi,functionName})),block);
       if(r.some(x=>x.status==='failure'))retry=true;
-      const state={};r.forEach((x,i)=>{if(x.status==='success')state[names[i]]=x.result;});
-      const factory=state.factory;
-      const recognized=typeof factory==='string' && (deployments.some(d=>d.chainId===n.chain_id&&d.contract.toLowerCase().includes('factory')&&d.address.toLowerCase()===factory.toLowerCase()) ||
+      const state={...baseState};r.forEach((x,i)=>{if(x.status==='success')state[names[i]]=x.result;});
+      const factory=state.factory,extra=dex.adapter(n.chain_id,p,factory);
+      const recognized=extra||typeof factory==='string' && (deployments.some(d=>d.chainId===n.chain_id&&d.contract.toLowerCase().includes('factory')&&d.address.toLowerCase()===factory.toLowerCase()) ||
         (n.chain_id===8453&&p.venue==='aerodrome'&&factory.toLowerCase()==='0x420dd381b31aef6683db6b902084cb0ffece40da'));
       let membership=false;
       if(recognized&&state.token0&&state.token1) {
         let check;
-        if(p.version_labels?.includes('v3')) {
+        if(extra?.type==='cl'){
+          const tickSpacing=await c.readContract({address:p.pool,abi:v.parseAbi(['function tickSpacing() view returns(int24)']),functionName:'tickSpacing',blockNumber:block});state.tick_spacing=tickSpacing;
+          check={address:factory,abi:v.parseAbi(['function getPool(address,address,int24) view returns(address)']),functionName:'getPool',args:[state.token0,state.token1,tickSpacing]};
+        }else if(extra?.type==='basic'){
+          check={address:factory,abi:poolAbi,functionName:'getPool',args:[state.token0,state.token1]};
+        }else if(dex.concentrated(p)) {
           const fee=await c.readContract({address:p.pool,abi:v.parseAbi(['function fee() view returns (uint24)']),functionName:'fee',blockNumber:block});state.fee=fee;
           check={address:factory,abi:poolAbi,functionName:'getPool',args:[state.token0,state.token1,fee]};
         } else if(p.venue==='aerodrome') {
@@ -657,7 +683,7 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
       p.rpc_verification={verification:membership?'official_factory_verified':'unverified',block_number:block,observed_at:stamp(),state};
       const identity=[state.token0,state.token1].some(a=>a?.toLowerCase()===t.token_address.toLowerCase());
       const active=membership&&identity&&(state.liquidity>0n || (state.getReserves?.[0]>0n&&state.getReserves?.[1]>0n));
-      p.factory_measurement={factory_verified:membership,active_liquidity_verified:!!active,state};
+      p.factory_measurement={factory_verified:membership,active_liquidity_verified:!!active,...(extra?{adapter:extra.kind,adapter_source:extra.source}:{}),state};
       if(membership&&identity) {
         const quote=[state.token0,state.token1].find(a=>a.toLowerCase()!==t.token_address.toLowerCase());
         const q=await calls(c,[{address:quote,abi:erc20,functionName:'balanceOf',args:[p.pool]},{address:quote,abi:erc20,functionName:'decimals'},{address:quote,abi:erc20,functionName:'symbol'}],block);

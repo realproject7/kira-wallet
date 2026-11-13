@@ -18,7 +18,8 @@ CACHE_SECONDS = 600
 FAILURE_SECONDS = 120
 V4_CHAINS = {d['chainId'] for d in json.loads((Path(__file__).parent/'sources/uniswap-deployments.json').read_text())['records']
              if d.get('protocol') == 'v4' and d.get('contract') == 'V4Quoter' and d.get('status') == 'active' and d.get('fullInputChecked') is True}
-KINDS = ('uniswap_v2_reserves', 'uniswap_v3_quoter', 'uniswap_v4_quoter', 'aerodrome_pool')
+DEX_ADAPTERS = json.loads((Path(__file__).parent/'sources/dex-adapters.json').read_text())['records']
+KINDS = ('uniswap_v2_reserves', 'uniswap_v3_quoter', 'uniswap_v4_quoter', 'aerodrome_pool', 'pancakeswap_v2_reserves', 'pancakeswap_v3_quoter', 'aero_pool', 'aero_cl_quoter')
 
 
 def identity(token):
@@ -33,6 +34,12 @@ def eligible(token, environments):
 
 
 def supported(pool, chain_id=None):
+    venue=str(pool.get('venue','')).lower();labels=pool.get('version_labels',[])
+    if ADDRESS.fullmatch(str(pool.get('pool',''))):
+        if venue in ('pancakeswap','pancakeswap-v2','pancakeswap-v3'):
+            return chain_id==56 and any(v in labels for v in ('v2','v3')) and not any('infinity' in v.lower() or 'stable' in v.lower() for v in labels)
+        if venue in ('aero','aero-slipstream','aerodrome','aerodrome-slipstream'):
+            return any(r['chain_id']==chain_id and r['venue']=='aero' for r in DEX_ADAPTERS)
     if (chain_id in V4_CHAINS and pool.get('venue') == 'uniswap' and 'v4' in pool.get('version_labels', [])
             and HASH.fullmatch(str(pool.get('pool', '')))):
         return True
@@ -66,7 +73,7 @@ def candidates(snapshot, market):
             continue
         pools = []
         for pool in merge_pools(token.get('dex_pools', []), markets.get(identity(token), [])):
-            if not supported(pool, token['chain_id']) or pool.get('venue') == 'aerodrome' and token['chain_id'] != 8453:
+            if not supported(pool, token['chain_id']):
                 continue
             pair = {str(c.get('address', '')).lower() for c in pool.get('paired_tokens', [])}
             address = token['token_address'].lower()

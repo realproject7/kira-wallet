@@ -33,6 +33,25 @@ def fixture():
 
 
 class SellQuoteTests(unittest.TestCase):
+    def test_extended_venues_use_chain_bound_candidates_and_full_input_guards(self):
+        for venue,kind,chain in [('pancakeswap','pancakeswap_v2_reserves',56),('pancakeswap','pancakeswap_v3_quoter',56),('aero','aero_pool',8453),('aero','aero_cl_quoter',8453),('aerodrome-slipstream','aero_cl_quoter',1)]:
+            with self.subTest(kind=kind,chain=chain):
+                snapshot,market,row=fixture();token=snapshot['tokens'][0];pool=market['markets'][0]['pools'][0]
+                token['chain_id']=chain;snapshot['coverage'][0]['chain_id']=chain
+                output='0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c' if chain==56 else OUTPUT if chain==8453 else '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
+                pool.update(venue=venue,version_labels=['v3'] if 'quoter' in kind else ['v2'],paired_tokens=[{'address':TOKEN},{'address':output}])
+                market['markets'][0]['id']=f'{chain}:{TOKEN}';market['tokens'][0].update(chain_id=chain,address=output)
+                self.assertEqual(len(candidates(snapshot,market)),1)
+                row.update(chain_id=chain);row['quote'].update(kind=kind,output_address=output,input_amount_is_maximum=False)
+                market['sell_quotes']={'version':1,'wallet_address':WALLET,'records':[row]}
+                result=classify_with_cache(token,market,wallet_address=WALLET)
+                self.assertEqual(result['quotes'][0]['kind'],kind);self.assertFalse(result['quotes'][0]['partial_input'])
+                if 'quoter' in kind:
+                    row['quote']['input_amount_is_maximum']=True
+                    self.assertTrue(classify_with_cache(token,market,wallet_address=WALLET)['quotes'][0]['partial_input'])
+        snapshot,market,_=fixture();market['markets'][0]['pools'][0].update(venue='pancakeswap',version_labels=['v3'])
+        self.assertEqual(candidates(snapshot,market),[])
+
     def test_largest_supported_terminal_pool_includes_base_v4(self):
         snapshot, market, row = fixture()
         pools = market['markets'][0]['pools']

@@ -1,9 +1,9 @@
 # Kira release status
 
 Updated: 2026-11-13. The operator published Kira 1.5.0. This branch prepares
-1.9.2 in PR #62: balance-aware sell-analysis reuse, immediate name edits,
+1.9.3 in PR #62: balance-aware sell-analysis reuse, immediate name edits,
 bounded worker admission, wallet search and folders, and a consistent local
-workspace design, including corrected main-pool sell quotes on Base and bounded sell-route retries. Previous snapshots and frozen archives remain preserved.
+workspace design, including corrected main-pool sell quotes on Base bounded sell-route retries, PancakeSwap BNB quotes and upgraded Aero pools. Previous snapshots and frozen archives remain preserved.
 Earlier plans and reports preserve historical evidence, not active release gates.
 
 ## Completed release scope

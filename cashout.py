@@ -70,7 +70,7 @@ def valid_path(token, quote, block, block_hash):
                 output.lower() in seen or str(leg.get('block_number'))!=block or leg.get('block_hash')!=block_hash or
                 leg.get('route_fees_included') is not True or leg.get('price_impact_included') is not True or
                 leg.get('gas_included') is not False or not leg.get('observed_at') or
-                leg.get('kind') not in ('mintclub_burn','uniswap_v2_reserves','uniswap_v3_quoter','uniswap_v4_quoter','aerodrome_pool')):return False
+                leg.get('kind') not in ('mintclub_burn','uniswap_v2_reserves','uniswap_v3_quoter','uniswap_v4_quoter','aerodrome_pool','pancakeswap_v2_reserves','pancakeswap_v3_quoter','aero_pool','aero_cl_quoter')):return False
         with localcontext() as context:
             context.prec=800
             if decimal(leg.get('output_amount'))!=out/(Decimal(10)**decimals):return False
@@ -90,7 +90,7 @@ def full_input_established(quote):
     legs=quote['legs'] if quote.get('kind')=='liquidation_path' else [quote]
     return all(decimal(leg.get('input_amount_raw'))==decimal(leg.get('holding_amount_raw'))
                and leg.get('partial_input') is not True
-               and (leg.get('kind') not in ('uniswap_v3_quoter','uniswap_v4_quoter') or leg.get('input_amount_is_maximum') is False)
+               and (leg.get('kind') not in ('uniswap_v3_quoter','uniswap_v4_quoter','pancakeswap_v3_quoter','aero_cl_quoter') or leg.get('input_amount_is_maximum') is False)
                and (leg.get('kind')!='uniswap_v4_quoter' or leg.get('full_input_verified') is True)
                for leg in legs)
 
@@ -158,7 +158,7 @@ def classify(token, market, *, environment='mainnet'):
                                  'quoted_output_usd': format(proceeds, 'f'), 'qualifies': proceeds >= Decimal('1'),
                                  'block_number': block, 'block_hash': block_hash, 'observed_at': quote['observed_at'],
                                  'output_price': price, 'partial_input': not full_input_established(quote),
-                                 **({k:quote[k] for k in ('pool','quoter','full_input_verified') if k in quote}),
+                                 **({k:quote[k] for k in ('pool','quoter','full_input_verified','fee_context') if k in quote}),
                                  'transfer_tax_included': quote.get('transfer_tax_included'),
                                  **({'legs':quote['legs']} if quote.get('kind')=='liquidation_path' else {}),
                                  'execution_verified': False, 'gas_included': False})

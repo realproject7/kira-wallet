@@ -102,10 +102,19 @@ def discover(snapshot, folder, *, deadline=None, fetch=None, factories=True):
             'scope':'Official indexed pools and bounded common-quote factory checks. Not proof that undiscovered pools do not exist.',
             'status':'partial' if any(v!='checked' for v in statuses.values()) or len(statuses)<3*sum(t['chain_id'] in CHAINS for t in tokens) else 'checked'}
     wallet.atomic(path,result)
-    if factories and tokens and time.monotonic()<deadline:
+    # Bound new common-quote checks for ordinary holdings. Indexed depth orders
+    # this supplement; it does not establish a price or a sellable balance.
+    extra=[t for t in snapshot['tokens'] if not t.get('mintclub') and t.get('token_type','ERC20')=='ERC20' and t['chain_id'] in active]
+    def depth(t):
+        from market_records import number
+        return max((number((p.get('reported_liquidity') or {}).get('usd')) or 0 for p in t.get('dex_pools',[])),default=0)
+    extra.sort(key=depth,reverse=True)
+    factory_tokens=tokens+extra[:12]
+    result['factory_ordinary_limit']=12;result['factory_ordinary_deferred']=max(0,len(extra)-12)
+    if factories and factory_tokens and time.monotonic()<deadline:
         input_path=folder/'factory-market-input.json';output_path=folder/'factory-markets.json'
         networks=json.loads((Path(__file__).parent/'networks.json').read_text())['networks']
-        wallet.atomic(input_path,{'tokens':tokens,'networks':networks,'budget_ms':max(1,int((deadline-time.monotonic())*1000))})
+        wallet.atomic(input_path,{'tokens':factory_tokens,'networks':networks,'budget_ms':max(1,int((deadline-time.monotonic())*1000))})
         try:
             process=subprocess.run(['node',str(Path(__file__).with_name('market-discovery.cjs')),str(input_path),str(output_path)],capture_output=True,timeout=max(1,deadline-time.monotonic()+2))
             if process.returncode!=0:result['factory_status']='unavailable'
