@@ -19,7 +19,7 @@ Kira supplies wallet tools and a full-window
 management app. Your agent host manages its own conversations, models, files and
 approvals. Kira does not launch a model CLI or require a model login.
 
-Published npm release: **1.5.0**. This source prepares **1.11.7**.
+Published npm release: **1.5.0**. This source prepares **1.11.8**.
 [Release notes](docs/RELEASE.md) ·
 [Implementation status and follow-ups](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_NEXT_STEPS.md).
 

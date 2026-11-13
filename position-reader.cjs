@@ -119,6 +119,7 @@ class Reader{
   delete this.state.rechecking_chain;
   const retries=this.state.pin_rechecks ||= {},registryRetries=this.state.gauge_registry_rechecks ||= {};
   const failed=(this.state.failed_tasks||[]).find(f=>{
+   if(f.replaced_by_recheck)return false;
    const cid=Number(f.scope.split(':')[0]),block=this.state.blocks[cid];
    const task=this.state.tasks[f.index],registryFix=!f.replaced_by_recheck&&!registryRetries[cid]&&f.kind==='aero-directory'&&f.function==='gauge'&&
     protocols.aero.some(p=>p.chain_id===cid&&key(p.factory)===key(task?.factory)&&valid(p.registry));

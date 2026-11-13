@@ -1,9 +1,17 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.11.7**.
+Published npm release: **1.5.0**. Prepared candidate: **1.11.8**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.11.8
+
+Superseded failures remain audit history and cannot trigger another chain rebuild.
+A regression covers an aged method failure already replaced by the gauge-registry
+migration, keeping recovery bounded across source upgrades. Source pointers retain
+the catalog's structured URL/revision format. Review not selected. Previous
+archives and research progress remain preserved.
 
 ## Candidate 1.11.7
 

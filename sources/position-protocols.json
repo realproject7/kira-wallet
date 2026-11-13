@@ -28,8 +28,14 @@
       "url": "https://github.com/velodrome-finance/sugar",
       "revision": "23c575219769fcf8b9199a6e38736f02338755ad"
     },
-    "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/V3/src/interfaces/factories/IFactoryRegistry.sol",
-    "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/V3/src/interfaces/pools/IPool.sol"
+    {
+      "url": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/V3/src/interfaces/factories/IFactoryRegistry.sol",
+      "revision": "2ce1816b20948c26a2eec52419c9eccac3857136"
+    },
+    {
+      "url": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/V3/src/interfaces/pools/IPool.sol",
+      "revision": "2ce1816b20948c26a2eec52419c9eccac3857136"
+    }
   ],
   "lptoken": [
     {

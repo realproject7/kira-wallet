@@ -191,6 +191,15 @@ test('legacy new-Aero gauge accessor failures receive one compatible chain rebui
  assert.equal(s.pin_recheck_history[0].reason,'gauge_registry');assert.equal(s.failed_tasks[0].replaced_by_recheck,true);
  assert.equal(s.pin_rechecks['4663'],undefined);assert.equal(s.complete,true);
 });
+test('superseded method failures cannot revive an already replaced chain epoch',async()=>{
+ const a=config.aero.find(a=>a.chain_id===4663&&a.version==='aero-basic');
+ const h=harness({...a,kind:'aero-directory',start:0,end:1},()=>0n,{cid:4663});
+ h.state.cursor=1;h.state.blocks['4663']={number:'1',hash:'0x'+'b'.repeat(64),observed_at:'1970-01-01T00:00:00Z'};
+ h.state.gauge_registry_rechecks={'4663':1};
+ h.state.failed_tasks=[{index:0,scope:'4663:test',kind:'aero-directory',function:'gauge',reason:'method',replaced_by_recheck:true}];
+ const s=await finish(h);assert.equal(s.blocks['4663'].number,'1');assert.equal(s.pin_rechecks['4663'],undefined);
+ assert.equal(s.pin_recheck_history,undefined);assert.equal(s.complete,true);
+});
 test('known-claim refresh does not enqueue whole-pool or farm discovery',async()=>{
  const h=harness({kind:'seed'},c=>c.functionName==='poolCount'?0n:c.functionName==='balanceOf'?0n:tokenCalls(c));
  h.input.discover=false;const result=await finish(h);
