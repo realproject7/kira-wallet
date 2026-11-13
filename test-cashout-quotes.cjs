@@ -159,3 +159,43 @@ test('a failed market pool cannot repeatedly starve an unread qualifying pool af
   assert(JSON.parse(fs.readFileSync(file)).completed_pools.includes(TOKEN.toLowerCase()+':'+good));
  }finally{Date.now=now;Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('V4 keys require an exact pool ID; quotes use the reviewed full-input quoter',async()=>{
+ const {v4Key,v4KeyId}=require('./cashout-quotes.cjs'),{zeroAddress}=require('viem');
+ const {token,pool,deployments}=fixture();const key={currency0:TOKEN,currency1:OUTPUT,fee:10000,tickSpacing:100,hooks:zeroAddress};
+ pool.pool=v4KeyId(key);pool.paired_tokens=[{address:OUTPUT},{address:TOKEN}];pool.rpc_verification={verification:'initialized_at_official_v4_state_view',state_view:FACTORY};
+ pool.factory_measurement.state={token0:TOKEN,token1:OUTPUT,pool_key:key,pool_manager:FACTORY};
+ deployments.push(...['PoolManager','StateView','V4Quoter'].map(contract=>({chainId:1,protocol:'v4',contract,address:contract==='V4Quoter'?QUOTER:FACTORY,status:'active',fullInputChecked:true})));
+ assert.deepEqual(v4Key(pool,10000),key);assert.equal(v4Key(pool,3000),null);
+ assert.equal(v4Key({...pool,pool:v4KeyId({...key,hooks:QUOTER})},10000),null);
+ let reads=0;const client={readContract:async q=>{reads++;assert.equal(q.address,QUOTER);assert.equal(q.blockNumber,7n);assert.deepEqual(q.args[0],{poolKey:key,zeroForOne:true,exactAmount:100n,hookData:'0x'});return [123n,40000n];}};
+ const quote=await quotePool(client,{chain_id:1},token,pool,7n,HASH,deployments,{fullOnly:true});
+ assert.equal(reads,1);assert.equal(quote.kind,'uniswap_v4_quoter');assert.equal(quote.output_amount,'123');assert.equal(quote.partial_input,false);assert.equal(quote.full_input_verified,true);
+ for(const mutate of [p=>{p.factory_measurement.state.pool_key.tickSpacing=60;},p=>{p.rpc_verification.state_view=OUTPUT;},p=>{p.factory_measurement.state.pool_manager=OUTPUT;}]){
+  const bad=structuredClone(pool);mutate(bad);assert.equal((await quotePool(client,{chain_id:1},token,bad,7n,HASH,deployments,{fullOnly:true})).status,'unknown');
+ }
+ const outdated=structuredClone(deployments);outdated.find(d=>d.protocol==='v4'&&d.contract==='V4Quoter').fullInputChecked=false;
+ assert.equal((await quotePool(client,{chain_id:1},token,pool,7n,HASH,outdated)).status,'unknown');
+ token.wallet_balance_raw=String(1n<<127n);assert.equal((await quotePool(client,{chain_id:1},token,pool,7n,HASH,deployments)).status,'unknown');assert.equal(reads,1);
+});
+
+test('representative verification selects the liquid V4 market before a dust address pool',async()=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{zeroAddress}=require('viem');
+ const h=require('./onchain.cjs'),{dexChain}=require('./pipeline-onchain.cjs'),{v4KeyId}=require('./cashout-quotes.cjs');
+ const original={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock},root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-v4-market-'));
+ try{
+  let reads=0;const deployed=require('./sources/uniswap-deployments.json').records,quoter=deployed.find(d=>d.chainId===8453&&d.contract==='V4Quoter').address;
+  const key={currency0:zeroAddress,currency1:TOKEN,fee:10000,tickSpacing:200,hooks:zeroAddress},id=v4KeyId(key);
+  const client={getChainId:async()=>8453,multicall:async({contracts,blockNumber})=>{reads++;assert.equal(blockNumber,7n);return contracts.map(q=>({status:'success',result:q.functionName==='getSlot0'?[2n**96n,0,0,10000]:10000n}));},
+   readContract:async q=>{reads++;assert.equal(q.address,quoter);assert.equal(q.blockNumber,7n);assert.equal(q.args[0].zeroForOne,false);return [10n**18n,50000n];}};
+  h.endpoints=()=>['synthetic'];h.client=()=>client;h.snapshotBlock=async()=>({number:7n,hash:HASH});
+  const input={chain_id:8453,token_address:TOKEN,token_type:'ERC20',wallet_balance_raw:'100',balance_block_number:'7',balance_block_hash:HASH,dex_pools:[
+   {pool:'0x'+'5'.repeat(40),venue:'aerodrome',reported_liquidity:{usd:4},paired_tokens:[{address:TOKEN},{address:OUTPUT}]},
+   {pool:id,venue:'uniswap',version_labels:['v4'],reported_liquidity:{usd:500000},paired_tokens:[{address:TOKEN},{address:zeroAddress}],source_url:'https://example.com/pool'}]};
+  const file=path.join(root,'market.json'),[token]=await dexChain({chain_id:8453},[structuredClone(input)],{file,wallet:'0x'+'6'.repeat(40),representative:true,fullOnly:true});
+  const pool=token.dex_pools.find(p=>p.pool===id);assert.equal(pool.cashout_quote.kind,'uniswap_v4_quoter');assert.equal(pool.cashout_quote.output_symbol,'ETH');assert.equal(pool.cashout_quote.output_amount,'1');
+  assert.equal(token.dex_pools[0].cashout_quote,undefined);const before=reads;
+  const [resumed]=await dexChain({chain_id:8453},[structuredClone(input)],{file,wallet:'0x'+'6'.repeat(40),representative:true,fullOnly:true});
+  assert.equal(reads,before);assert.equal(resumed.dex_pools.find(p=>p.pool===id).cashout_quote.output_amount,'1');
+ }finally{Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
+});

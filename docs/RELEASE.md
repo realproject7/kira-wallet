@@ -1,9 +1,41 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.9.0**.
+Published npm release: **1.5.0**. Prepared candidate: **1.9.1**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.9.1
+
+Representative pool selection previously preferred address-based pools over v4
+pool IDs. Quick quotes also excluded v4 entirely. A liquid v4 market could
+therefore be skipped in favor of a tiny alternate pool, severely understating
+sell proceeds. Selection now prioritizes terminal outputs and recorded liquidity
+without favoring the pool address format.
+
+The Base adapter validates an initialized pool against the official StateView,
+recovers a hookless static-fee key only when its fields hash exactly to the pool
+ID, and uses the reviewed V4Quoter at the same block as the holding proof.
+The deployed quoter's verified source rejects incomplete input consumption.
+The bounded local key search adds no discovery requests. Other chains,
+unresolved keys and hooks remain unquoted. Native output uses the saved native
+price for that chain, preserving its independent observation time. Quotes remain
+indicative, gas-excluded and execution-unverified.
+
+A valid quote from a tiny alternate route stays visible with a Limited routes
+label when a much larger known market remains unquoted. A newer balance proof
+that differs from the saved quantity invalidates the old full-balance quote and
+asks for holdings refresh. Quantity reuse cannot resurrect that invalid quote.
+The quick collector retains its 12-asset and 20-second limits, negative cache,
+exact balance check and read-only calls. No automatic research is added.
+
+References: [official v4 deployments](https://developers.uniswap.org/docs/protocols/v4/deployments),
+[PoolId hashing](https://github.com/Uniswap/v4-core/blob/main/src/types/PoolId.sol),
+and the Base quoter's [verified deployed sources](https://sourcify.dev/server/v2/contract/8453/0xE1A6C5803e3c44368b171BD680c7D32dfc92CA47?fields=sources).
+Regression coverage includes a liquid v4 market beside a dust alternate pool,
+key/direction/pin validation, native output prices, old-quoter rejection,
+checkpoint reuse and stale-quantity invalidation. Review not selected.
+Earlier frozen archives remain preserved; registry publication is operator-only.
 
 ## Candidate 1.9.0
 

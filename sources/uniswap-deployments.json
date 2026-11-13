@@ -1301,14 +1301,18 @@
       "contract": "V4Quoter",
       "chain": "Base",
       "chainId": 8453,
-      "address": "0x0d5e0F971ED27FBfF6c2837bf31316121532048D",
+      "address": "0xE1A6C5803e3c44368b171BD680c7D32dfc92CA47",
       "tier": "labs-supported",
-      "sourceRepo": "https://github.com/Uniswap/v4-core",
-      "sourceRef": "a60641e",
+      "sourceRepo": "https://github.com/Uniswap/v4-periphery",
+      "sourceRef": "verified-deployment-2026-11-13",
       "sourceCodeUrl": "https://github.com/Uniswap/v4-periphery/blob/main/src/lens/V4Quoter.sol",
-      "explorerUrl": "https://basescan.org/address/0x0d5e0F971ED27FBfF6c2837bf31316121532048D",
+      "explorerUrl": "https://basescan.org/address/0xE1A6C5803e3c44368b171BD680c7D32dfc92CA47",
       "env": "mainnet",
-      "status": "active"
+      "status": "active",
+      "fullInputChecked": true,
+      "verifiedOn": "2026-11-13",
+      "verificationSource": "https://sourcify.dev/server/v2/contract/8453/0xE1A6C5803e3c44368b171BD680c7D32dfc92CA47?fields=sources",
+      "deploymentSource": "https://developers.uniswap.org/docs/protocols/v4/deployments"
     },
     {
       "id": "v4-v4quoter-bnb-chain",

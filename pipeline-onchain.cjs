@@ -5,8 +5,8 @@ const crypto = require('crypto');
 const h = require('./onchain.cjs');
 const {mintclubUrl}=require('./market-links.cjs');
 const v = h.viem;
-const {quotePool}=require('./cashout-quotes.cjs');
-const {expandRoutes,terminal,validLeg,seedQuotes,representativeQuote}=require('./cashout-routes.cjs');
+const {quotePool,v4Key}=require('./cashout-quotes.cjs');
+const {expandRoutes,terminal,validLeg,seedQuotes,representativeQuote,nativeCurrency}=require('./cashout-routes.cjs');
 const MULTICALL = '0xcA11bde05977b3631167028862bE2a173976CA11';
 const erc20 = v.parseAbi([
   'function balanceOf(address) view returns (uint256)',
@@ -461,10 +461,10 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
   const pinned=tokens.find(t=>t.balance_block_hash&&t.balance_block_number!=null);
   const holdingBlock=pinned?{block_number:String(pinned.balance_block_number),block_hash:pinned.balance_block_hash}:null;
   const client=await boundedMarket(connect(n),deadline),snapshot=await boundedMarket(h.snapshotBlock(client,cache||holdingBlock),deadline),block=snapshot.number;
-  cache=cache||{wallet:wallet.toLowerCase(),chain_id:n.chain_id,fingerprint,block_number:block.toString(),block_hash:snapshot.hash,requests:{},completed_pools:[],tokens:cacheEncode(tokens),quote_schema_version:2};
+  cache=cache||{wallet:wallet.toLowerCase(),chain_id:n.chain_id,fingerprint,block_number:block.toString(),block_hash:snapshot.hash,requests:{},completed_pools:[],tokens:cacheEncode(tokens),quote_schema_version:3};
   // Legacy completed pool checks predate amount-specific quotes. Preserve their
   // cached reads and fixed block, but revisit the pools to record quote status.
-  if(cache.quote_schema_version!==2){cache.completed_pools=[];cache.quote_schema_version=2;}
+  if(cache.quote_schema_version!==3){cache.completed_pools=[];cache.asset_reviews={};cache.quote_schema_version=3;}
   cache.pool_attempts=cache.pool_attempts||{};
   cache.asset_reviews=cache.asset_reviews||{};
   if(typeof cache.asset_reviews!=='object'||Array.isArray(cache.asset_reviews)||Object.values(cache.asset_reviews).some(r=>!r||typeof r!=='object'||typeof r.done!=='boolean'||!Number.isSafeInteger(r.failures)||r.failures<0))throw new Error('Invalid saved asset review frontier.');
@@ -532,7 +532,9 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
     const pools=supported(t);
     if(!pools.length&&t.dex_discovery_status!=='pending'){review.done=true;review.reason='No supported indexed pool. Other factories and venues remain unsearched.';}
     if(!review.pool&&pools.length){
-      const score=p=>Number(p.pool.length===42)*2+Number((p.paired_tokens||[]).some(a=>a.address.toLowerCase()!==t.token_address.toLowerCase()&&terminal(n.chain_id,a.address)));
+      const v4Enabled=deployments.some(d=>d.chainId===n.chain_id&&d.protocol==='v4'&&d.contract==='V4Quoter'&&d.status==='active'&&d.fullInputChecked===true);
+      // Compare liquidity within adapters this network can actually quote.
+      const score=p=>Number(p.pool.length===42||p.pool.length===66&&v4Enabled)*2+Number((p.paired_tokens||[]).some(a=>a.address.toLowerCase()!==t.token_address.toLowerCase()&&terminal(n.chain_id,a.address)));
       review.pool=[...pools].sort((a,b)=>score(b)-score(a)||Number(b.reported_liquidity?.usd||0)-Number(a.reported_liquidity?.usd||0)||a.pool.toLowerCase().localeCompare(b.pool.toLowerCase()))[0].pool.toLowerCase();
     }
   }
@@ -613,6 +615,17 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
         if(r.some(x=>x.status==='failure'))retry=true;
         p.rpc_verification={verification:r[0].status==='success'&&r[0].result[0]>0n?'initialized_at_official_v4_state_view':'unverified',block_number:block,observed_at:stamp(),state_view:sv};
         if(r[1].status==='success')p.factory_measurement={active_liquidity_verified:r[1].result>0n,state:{liquidity:r[1].result}};
+        const key=r[0].status==='success'?v4Key(p,r[0].result[3]):null;
+        if(!key){p.cashout_quote={status:'unknown',reason:'V4 pool key or hooks unsupported; other pools do not establish its exit value.'};continue;}
+        const output=key.currency0===t.token_address.toLowerCase()?key.currency1:key.currency0;
+        if(![key.currency0,key.currency1].includes(t.token_address.toLowerCase()))continue;
+        const native=nativeCurrency(n.chain_id);
+        const metadata=output===v.zeroAddress&&native?[{status:'success',result:native.decimals},{status:'success',result:native.symbol}]:await calls(c,[{address:output,abi:erc20,functionName:'decimals'},{address:output,abi:erc20,functionName:'symbol'}],block);
+        if(metadata.some(x=>x.status==='failure')){retry=true;continue;}
+        Object.assign(p.factory_measurement,{quote_token:output,quote_decimals:metadata[0].result,quote_symbol:metadata[1].result,
+          state:{...p.factory_measurement.state,token0:key.currency0,token1:key.currency1,pool_key:key,pool_manager:deployment(n.chain_id,'v4','PoolManager')}});
+        p.cashout_quote=await quotePool(c,n,t,p,block,snapshot.hash,deployments,{batchRead:contracts=>calls(c,contracts,block),fullOnly});
+        if(p.cashout_quote.status==='unknown'&&p.cashout_quote.reason.startsWith('Pool quote failed'))retry=true;
         continue;
       }
       const names=['factory','token0','token1',p.version_labels?.includes('v3')?'liquidity':'getReserves'];

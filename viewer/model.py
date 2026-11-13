@@ -85,6 +85,8 @@ def sell_out_estimate(quote, eligibility, reserve_price):
     the received reserve token, not a subsequent sale of that reserve. The quote
     and the USD reference keep their independent clocks.
     """
+    if eligibility.get('balance_changed'):
+        return None
     routes = [q for q in eligibility.get('quotes', [])
               if q.get('partial_input') is False and number(q.get('quoted_output_usd')) is not None
               and number((checked_price(q.get('output_price')) or {}).get('usd')) is not None]
@@ -261,6 +263,19 @@ def project_wallet(entry, snapshot, root=ROOT, images=None, *, market=None):
             reserve_price = price_for(parent) if parent else checked_price(prices.get(key), legacy_pools.get(key, []))
         asset['sell_out'] = sell_out_estimate(quote, asset['cashout_eligibility'], reserve_price)
         estimate = asset['sell_out']
+        if estimate and estimate.get('valuation') == 'terminal_reference':
+            quoted_pool = estimate.get('pool') or next(iter(estimate.get('legs') or [{}])).get('pool')
+            markets = asset['market_pools']
+            largest = max(markets, key=lambda p: p.get('liquidity_usd') or 0, default=None)
+            selected = next((p for p in markets if str(p.get('pool')).lower() == str(quoted_pool).lower()), None)
+            # Keep a valid observed quote, but distinguish a tiny alternate
+            # route from an exit that covers the known main market.
+            if (largest and selected and (largest.get('liquidity_usd') or 0) >= MIN_PRICE_LIQUIDITY_USD
+                    and (selected.get('liquidity_usd') or 0) * 10 < largest['liquidity_usd']
+                    and not any((q.get('pool') or next(iter(q.get('legs') or [{}])).get('pool')) == largest['pool']
+                                for q in asset['cashout_eligibility'].get('quotes', []) if q.get('partial_input') is False)):
+                estimate['route_coverage'] = {'status': 'limited', 'unquoted_pool': largest['pool'],
+                    'reason': 'A larger known pool has no full-balance quote. This is a limited-route observation, not a market-wide exit value.'}
         if estimate and not estimate.get('output_symbol'):
             output_token = by_address.get((token['chain_id'], estimate['output_address']))
             if output_token: estimate['output_symbol'] = output_token['symbol']

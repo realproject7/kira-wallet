@@ -132,6 +132,9 @@ assert.match(context.sellSummary({value_usd:null,quoted_count:0,position_count:3
 assert.match(context.sellOutValue({id:'fixture',environment:'testnet',sell_out:{value_usd:999,output_amount:'1',output_symbol:'TEST'}}),/>—</);
 assert.match(context.explorerLink({symbol:'Example',chain_id:8453,links:[{label:'Explorer',url:'https://basescan.org/token/fixture'}]}),/explorers\/etherscan.png/);
 assert.match(context.explorerLink({symbol:'Example',chain_id:8453,links:[{label:'Explorer',url:'https://basescan.org/token/fixture'}]}),/>BaseScan/);
+const limitedValue=context.sellOutValue({id:'fixture',sell_out:{value_usd:2,output_amount:'0.001',output_symbol:'ETH',route_coverage:{status:'limited',reason:'A larger known pool is unquoted.'}}});
+assert.match(limitedValue,/≈ \$2/);assert.match(limitedValue,/Limited routes/);assert.match(limitedValue,/A larger known pool is unquoted/);
+assert.match(context.sellSummary({value_usd:2,missing_count:1,limited_count:1}),/1 limited routes/);
 console.log('Compact wallet rows distinguish saved reserve value, missing quotes, zero and testnets.');
 
 const workspaceSource=fs.readFileSync('viewer/static/workspace.js','utf8');

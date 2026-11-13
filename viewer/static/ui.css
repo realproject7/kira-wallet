@@ -353,3 +353,5 @@ input:focus-visible,textarea:focus-visible { outline:3px solid #ac92c44d; outlin
   #open-wallet>span { display:none; }
   .sidebar #open-wallet { width:44px; padding:0; justify-content:center; }
 }
+
+.route-limited { color:#876327; }

@@ -244,6 +244,33 @@ class ViewerTests(unittest.TestCase):
         self.assertEqual(native['price']['observed_at'],stamp)
         self.assertEqual(native['sell_out_reference']['observed_at'],stamp)
 
+    def test_newer_balance_change_invalidates_even_a_saved_burn_value(self):
+        self.assertIsNone(model.sell_out_estimate({'output_amount':'100'},{'balance_changed':True},{'usd':2000}))
+
+    def test_larger_unquoted_market_is_labeled_without_erasing_a_valid_quote(self):
+        token=self.snapshot['tokens'][0]
+        address=token['token_address'];hash='0x'+'a'*64;small='0x'+'4'*40;large='0x'+'5'*64;weth='0x4200000000000000000000000000000000000006';zero='0x'+'0'*40
+        token.update(wallet_balance='100',wallet_balance_raw='100',balance_block_number='7',balance_block_hash=hash,mintclub=None)
+        quote={'status':'quoted','kind':'aerodrome_pool','pool':small,'input_address':address,'input_amount_raw':'100','holding_amount_raw':'100',
+            'output_address':weth,'output_amount':'0.001','output_amount_raw':'1000000000000000','output_symbol':'WETH','output_decimals':18,
+            'block_number':'7','block_hash':hash,'observed_at':'2026-10-03T00:00:00Z','route_fees_included':True,'price_impact_included':True,'gas_included':False,'partial_input':False}
+        token['dex_pools']=[{'pool':small,'venue':'aerodrome','paired_tokens':[{'address':address},{'address':weth}],'reported_liquidity':{'usd':4},'source_url':'https://example.com/tiny','cashout_quote':quote},
+            {'pool':large,'venue':'uniswap','version_labels':['v4'],'paired_tokens':[{'address':address},{'address':zero}],'reported_liquidity':{'usd':500000},'source_url':'https://example.com/main'}]
+        market={'tokens':[{'chain_id':8453,'address':weth,'usd':2000,'quality':'estimated','basis':'DEX market','liquidity_usd':1000000,'source':'https://example.com/weth','observed_at':'2026-10-03T00:00:00Z'}],
+            'native_usd':{'ETH':{'usd':2000,'basis':'Market index','source':'https://example.com/native','observed_at':'2026-10-02T00:00:00Z'}}}
+        before=deepcopy(self.snapshot)
+        asset=next(a for a in model.project_wallet(self.entry,self.snapshot,self.root,market=market)['assets'] if a['address']==address)
+        self.assertEqual(asset['sell_out']['value_usd'],2)
+        self.assertEqual(asset['sell_out']['route_coverage']['status'],'limited')
+        self.assertEqual(model.summarize_sell_out([asset])['limited_count'],1)
+        self.assertEqual(self.snapshot,before)
+        token['dex_pools'][1]['cashout_quote']={**quote,'kind':'uniswap_v4_quoter','pool':large,'output_address':zero,'output_symbol':'ETH','output_amount':'4','output_amount_raw':'4000000000000000000','input_amount_is_maximum':False,'full_input_verified':True}
+        asset=next(a for a in model.project_wallet(self.entry,self.snapshot,self.root,market=market)['assets'] if a['address']==address)
+        self.assertEqual(asset['sell_out']['value_usd'],8000)
+        self.assertNotIn('route_coverage',asset['sell_out'])
+        self.assertEqual(asset['sell_out']['output_symbol'],'ETH')
+        self.assertEqual(asset['sell_out']['output_price']['observed_at'],'2026-10-02T00:00:00Z')
+
     def test_exit_proceeds_use_full_burn_not_spot_price(self):
         self.quoted_token()
         asset=next(t for t in model.project_wallet(self.entry,self.snapshot,self.root)['assets'] if t['symbol']=='CHICKEN')

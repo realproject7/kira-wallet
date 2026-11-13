@@ -163,7 +163,7 @@ def reuse_estimates(wallet, old_wallet, current, previous, summary):
         matched.difference_update(identity for identity,count in Counter(f'{key[0]}:{key[1]}' for key in positions).items() if count>1)
     for asset in wallet['assets']:
         prior = old.get(asset['id'])
-        if not prior or asset['id'] not in matched or asset.get('is_native') or asset.get('quantity_retained'):
+        if not prior or asset['id'] not in matched or asset.get('is_native') or asset.get('quantity_retained') or (asset.get('cashout_eligibility') or {}).get('balance_changed'):
             continue
         # A newly saved quote wins. Unavailable old routes remain unknown too.
         if asset.get('sell_out') or not prior.get('sell_out'):

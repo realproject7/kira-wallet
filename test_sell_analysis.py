@@ -1,5 +1,6 @@
 """Saved quantity reuse and admission safety. All fixtures are offline."""
 from copy import deepcopy
+from decimal import Decimal
 import json
 import socket
 import unittest
@@ -52,6 +53,13 @@ class SellAnalysisTests(JobFixtures, unittest.TestCase):
 
     def edit(self, change):
         path=self.root/'snapshots/current/results.json';value=json.loads(path.read_text());change(value);atomic(path,value)
+
+    def test_a_new_balance_mismatch_cannot_resurrect_a_reused_sell_quote(self):
+        identity=(8453,TOKEN,'ERC20','0');position={'positions':{identity:('100',Decimal('100'))},'uncertain':set()}
+        wallet={'assets':[{'id':'8453:'+TOKEN,'sell_out':None,'cashout_eligibility':{'balance_changed':True}}]}
+        prior={'assets':[{'id':'8453:'+TOKEN,'sell_out':{'value_usd':2}}]}
+        reuse_estimates(wallet,prior,position,position,{})
+        self.assertIsNone(wallet['assets'][0]['sell_out'])
 
     def test_price_block_time_and_decimal_format_do_not_require_analysis(self):
         child=self.saved_analysis();entry,_=self.refreshed()

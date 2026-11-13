@@ -16,7 +16,9 @@ LIMIT = 12
 BUDGET_MS = 20000
 CACHE_SECONDS = 600
 FAILURE_SECONDS = 120
-KINDS = ('uniswap_v2_reserves', 'uniswap_v3_quoter', 'aerodrome_pool')
+V4_CHAINS = {d['chainId'] for d in json.loads((Path(__file__).parent/'sources/uniswap-deployments.json').read_text())['records']
+             if d.get('protocol') == 'v4' and d.get('contract') == 'V4Quoter' and d.get('status') == 'active' and d.get('fullInputChecked') is True}
+KINDS = ('uniswap_v2_reserves', 'uniswap_v3_quoter', 'uniswap_v4_quoter', 'aerodrome_pool')
 
 
 def identity(token):
@@ -30,7 +32,10 @@ def eligible(token, environments):
             and not token.get('balance_evidence_retained') and not token.get('metadata_evidence_retained'))
 
 
-def supported(pool):
+def supported(pool, chain_id=None):
+    if (chain_id in V4_CHAINS and pool.get('venue') == 'uniswap' and 'v4' in pool.get('version_labels', [])
+            and HASH.fullmatch(str(pool.get('pool', '')))):
+        return True
     return (ADDRESS.fullmatch(str(pool.get('pool', ''))) and
             (pool.get('venue') == 'uniswap' and any(v in pool.get('version_labels', []) for v in ('v2', 'v3'))
              or pool.get('venue') == 'aerodrome' and not any(v in pool.get('version_labels', []) for v in ('v3', 'slipstream'))))
@@ -61,7 +66,7 @@ def candidates(snapshot, market):
             continue
         pools = []
         for pool in merge_pools(token.get('dex_pools', []), markets.get(identity(token), [])):
-            if not supported(pool) or pool.get('venue') == 'aerodrome' and token['chain_id'] != 8453:
+            if not supported(pool, token['chain_id']) or pool.get('venue') == 'aerodrome' and token['chain_id'] != 8453:
                 continue
             pair = {str(c.get('address', '')).lower() for c in pool.get('paired_tokens', [])}
             address = token['token_address'].lower()
@@ -140,12 +145,21 @@ def classify_with_cache(token, market, *, wallet_address, environment='mainnet')
             or not eligible(token, {token['chain_id']: environment})):
         return result
     row = next((r for r in cache.get('records', []) if matching(r, token)), None)
-    if not row or row.get('status') != 'quoted' or not row.get('balance_observed_at'):
+    if not row or not row.get('balance_observed_at'):
+        return result
+    observed = str(row.get('observed_wallet_balance_raw', ''))
+    if (row.get('status') == 'unknown' and observed.isdigit() and 0 <= int(observed) < 2**256
+            and observed != token['wallet_balance_raw'] and HASH.fullmatch(str(row.get('balance_block_hash', '')))
+            and str(row.get('balance_block_number', '')).isdigit()):
+        result.update(quotes=[], status='unknown', balance_changed=True,
+                      reason='A newer on-chain balance differs from the saved holding. Refresh holdings before using a full-balance sell estimate.')
+        return result
+    if row.get('status') != 'quoted':
         return result
     quote = row.get('quote') or {}
     if (quote.get('kind') not in KINDS or quote.get('input_address') != token['token_address'].lower()
             or quote.get('input_amount_raw') != token['wallet_balance_raw'] or quote.get('partial_input') is not False
-            or not ADDRESS.fullmatch(str(row.get('pool', ''))) or quote.get('pool', '').lower() != row['pool'].lower()
+            or not (HASH if quote.get('kind') == 'uniswap_v4_quoter' else ADDRESS).fullmatch(str(row.get('pool', ''))) or quote.get('pool', '').lower() != row['pool'].lower()
             or not HASH.fullmatch(str(row.get('balance_block_hash', '')))):
         return result
     fresh = {**token, 'balance_block_number': row.get('balance_block_number'), 'balance_block_hash': row['balance_block_hash'],

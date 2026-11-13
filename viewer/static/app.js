@@ -294,24 +294,25 @@ function saleValue(a){return a.sell_out_summary?a.sell_out_summary.value_usd:(a.
 function sellSummary(summary){
   if(!summary)return '';
   const missing=summary.missing_count,refs=summary.reference_count||0;
-  return `<span class="summary-label">Sell-out estimate sum</span><strong class="sell-summary-value">${summary.value_usd==null?'—':'≈ '+money(summary.value_usd)}</strong><span class="estimate-badges">${refs?'<span>'+refs+' spot references</span>':''}${missing?'<span class="estimate-missing">'+missing+' missing</span>':''}</span><details class="estimate-about"><summary>Independent estimates · Gas excluded</summary><p>${refs?'Includes native/stable market references. ':''}Sum of independent saved estimates, not a combined exit quote. Shared liquidity may change combined proceeds. Missing estimates remain unknown.</p></details>`;
+  return `<span class="summary-label">Sell-out estimate sum</span><strong class="sell-summary-value">${summary.value_usd==null?'—':'≈ '+money(summary.value_usd)}</strong><span class="estimate-badges">${refs?'<span>'+refs+' spot references</span>':''}${missing?'<span class="estimate-missing">'+missing+' missing</span>':''}${summary.limited_count?'<span class="estimate-missing">'+summary.limited_count+' limited routes</span>':''}</span><details class="estimate-about"><summary>Independent estimates · Gas excluded</summary><p>${refs?'Includes native/stable market references. ':''}Sum of independent saved estimates, not a combined exit quote. Shared liquidity may change combined proceeds. Missing estimates remain unknown.</p></details>`;
 }
 function sellOutNote(a){
+  if(a.cashout_eligibility?.balance_changed)return a.cashout_eligibility.reason;
   if(a.environment==='testnet')return 'Testnet assets have no USD sale estimate.';
   if(a.archived)return 'Archived holdings have no current sale estimate.';
-  if(a.wallet_count>1&&a.sell_out_summary){const s=a.sell_out_summary;return s.quoted_count+' position quotes; '+(s.reference_count||0)+' market references; '+s.missing_count+' missing. Sum of independent estimates, not a combined exit quote. Shared liquidity may change proceeds. Gas excluded.';}
+  if(a.wallet_count>1&&a.sell_out_summary){const s=a.sell_out_summary;return (s.limited_count?s.limited_count+' positions have limited route coverage. ':'')+s.quoted_count+' position quotes; '+(s.reference_count||0)+' market references; '+s.missing_count+' missing. Sum of independent estimates, not a combined exit quote. Shared liquidity may change proceeds. Gas excluded.';}
   if(a.wallet_count>1)return 'Compare estimates by wallet. Separate quotes may use the same liquidity and cannot be added together.';
   const q=a.sell_out;
   if(q?.value_usd==null&&a.sell_out_reference){const r=a.sell_out_reference;return 'Spot reference for a recognized '+(r.kind==='native_market_reference'?'native asset':'stablecoin')+'. Uses its saved market value, not a simulated sale or a $1 peg. Gas, fees and slippage excluded. Price '+stamp(r.observed_at)+'.';}
   if(!q)return 'No full-balance sale quote saved. This is unknown, not zero.';
   const output=quantity(q.output_amount)+' '+(q.output_symbol||shortAddress(q.output_address));
   const basis=q.valuation==='reserve_reference'?'Value of the '+output+' received from Mint Club. Selling that token to USD is not quoted.':'Saved full-balance route output: '+output+'.';
-  return basis+' Gas excluded. Execution is not verified. Quote '+stamp(q.observed_at)+(q.output_price?.observed_at?'; output price '+stamp(q.output_price.observed_at):'; output USD price unavailable')+'.';
+  return (q.route_coverage?.reason?q.route_coverage.reason+' ':'')+basis+' Gas excluded. Execution is not verified. Quote '+stamp(q.observed_at)+(q.output_price?.observed_at?'; output price '+stamp(q.output_price.observed_at):'; output USD price unavailable')+'.';
 }
 function sellOutValue(a,linked=true){
-  const q=a.sell_out, note=sellOutNote(a), value=a.environment==='testnet'||a.archived?null:(a.sell_out_summary?a.sell_out_summary.value_usd:(q?.value_usd??a.sell_out_reference?.value_usd)),byWallet=a.wallet_count>1&&!a.sell_out_summary;
+  const q=a.sell_out, limited=q?.route_coverage?.status==='limited', note=sellOutNote(a), value=a.environment==='testnet'||a.archived?null:(a.sell_out_summary?a.sell_out_summary.value_usd:(q?.value_usd??a.sell_out_reference?.value_usd)),byWallet=a.wallet_count>1&&!a.sell_out_summary;
   const label=byWallet?'By wallet':value==null?'Unknown':money(value);
-  return `<${linked?'a':'span'} class="sell-out-value ${value==null?'unpriced':''}" ${linked?`href="${tokenHref(a.id)}"`:''} title="${escapeHTML(note)}" aria-label="Sell-out estimate: ${escapeHTML(label)}. ${escapeHTML(note)}">${byWallet?'By wallet':value==null?'—':'≈ '+money(value)}</${linked?'a':'span'}>${(a.sell_out_summary?.reference_count>0||a.sell_out_reference&&q?.value_usd==null||a.sell_out_summary?.missing_count>0)?`<span class="price-basis">${a.sell_out_summary?.reference_count>0||a.sell_out_reference&&q?.value_usd==null?'Spot ref.':''}${a.sell_out_summary?.missing_count>0?(a.sell_out_summary?.reference_count>0?' · ':'')+a.sell_out_summary.missing_count+' missing':''}</span>`:''}`;
+  return `<${linked?'a':'span'} class="sell-out-value ${value==null?'unpriced':''}" ${linked?`href="${tokenHref(a.id)}"`:''} title="${escapeHTML(note)}" aria-label="Sell-out estimate: ${escapeHTML(label)}. ${escapeHTML(note)}">${byWallet?'By wallet':value==null?'—':'≈ '+money(value)}</${linked?'a':'span'}>${(a.sell_out_summary?.reference_count>0||a.sell_out_reference&&q?.value_usd==null||a.sell_out_summary?.missing_count>0)?`<span class="price-basis">${a.sell_out_summary?.reference_count>0||a.sell_out_reference&&q?.value_usd==null?'Spot ref.':''}${a.sell_out_summary?.missing_count>0?(a.sell_out_summary?.reference_count>0?' · ':'')+a.sell_out_summary.missing_count+' missing':''}</span>`:''}${limited||a.sell_out_summary?.limited_count?'<span class="price-basis route-limited">Limited routes</span>':''}${a.cashout_eligibility?.balance_changed?'<span class="price-basis route-limited">Refresh holdings</span>':''}`;
 }
 function assetRow(a){
   const p=a.price;

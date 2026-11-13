@@ -4,7 +4,10 @@
 const {formatUnits}=require('viem');
 const catalog=require('./sources/known-tokens.json').tokens;
 const terminalAssets=new Set(catalog.filter(t=>['USDC','USDC.e','USDT','USDT0','DAI','WETH','WBNB','WAVAX','WMATIC'].includes(t.symbol)).map(t=>t.chain_id+':'+t.address.toLowerCase()));
-const terminal=(chain,address)=>terminalAssets.has(chain+':'+address.toLowerCase());
+const nativeChains=new Set(require('./networks.json').networks.filter(n=>n.environment==='mainnet').map(n=>n.chain_id));
+const chainCurrencies=new Map(Object.values(require('viem/chains')).filter(n=>n?.nativeCurrency).map(n=>[n.id,n.nativeCurrency]));
+const nativeCurrency=chain=>nativeChains.has(chain)?chainCurrencies.get(chain):null;
+const terminal=(chain,address)=>address.toLowerCase()==='0x'+'0'.repeat(40)?!!nativeCurrency(chain):terminalAssets.has(chain+':'+address.toLowerCase());
 const address=value=>typeof value==='string'&&/^0x[0-9a-fA-F]{40}$/.test(value);
 const integer=value=>{try{if(!/^(0|[1-9][0-9]{0,77})$/.test(String(value)))return null;const n=BigInt(value);return n<2n**256n?n:null;}catch{return null;}};
 
@@ -120,4 +123,4 @@ async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNod
   }
   return state;
 }
-module.exports={terminal,validLeg,seedQuotes,representativeQuote,expandRoutes};
+module.exports={nativeCurrency,terminal,validLeg,seedQuotes,representativeQuote,expandRoutes};

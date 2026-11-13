@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import re
 from market_records import checked_price
+from native_assets import NATIVE_ASSETS
 
 CRITERIA = {'version': 2, 'minimum_quoted_usd': '1', 'mintclub_redemption_included': True,
             'gas_included': False, 'execution_verified': False,
@@ -32,10 +33,15 @@ def output_price(chain_id, address, market):
     """Resolve the output asset's USD reference, never a nested curve spot."""
     if not isinstance(address, str) or not ADDRESS.fullmatch(address):
         return None
-    if (chain_id, address.lower()) not in TERMINAL_ASSETS:
+    native = NATIVE_ASSETS.get(chain_id) if address.lower() == '0x'+'0'*40 else None
+    if native:
+        row = market.get('native_usd', {}).get(native[0])
+        rows = [{**row, 'quality': row.get('quality', 'estimated'), 'symbol': native[0]}] if isinstance(row, dict) else []
+    else:
+        rows = [p for p in market.get('tokens', []) if p.get('chain_id') == chain_id
+                and isinstance(p.get('address'), str) and p['address'].lower() == address.lower()]
+    if not native and (chain_id, address.lower()) not in TERMINAL_ASSETS:
         return None
-    rows = [p for p in market.get('tokens', []) if p.get('chain_id') == chain_id
-            and isinstance(p.get('address'), str) and p['address'].lower() == address.lower()]
     for row in rows:
         row = checked_price(row)
         price = decimal(row.get('usd'))
@@ -64,7 +70,7 @@ def valid_path(token, quote, block, block_hash):
                 output.lower() in seen or str(leg.get('block_number'))!=block or leg.get('block_hash')!=block_hash or
                 leg.get('route_fees_included') is not True or leg.get('price_impact_included') is not True or
                 leg.get('gas_included') is not False or not leg.get('observed_at') or
-                leg.get('kind') not in ('mintclub_burn','uniswap_v2_reserves','uniswap_v3_quoter','aerodrome_pool')):return False
+                leg.get('kind') not in ('mintclub_burn','uniswap_v2_reserves','uniswap_v3_quoter','uniswap_v4_quoter','aerodrome_pool')):return False
         with localcontext() as context:
             context.prec=800
             if decimal(leg.get('output_amount'))!=out/(Decimal(10)**decimals):return False
@@ -72,7 +78,7 @@ def valid_path(token, quote, block, block_hash):
         if leg['kind']=='mintclub_burn':
             backing=decimal(leg.get('reserve_balance_raw'))
             if leg.get('funded') is not True or backing is None or out>backing:return False
-        elif not isinstance(leg.get('pool'),str) or not ADDRESS.fullmatch(leg['pool']) or leg['pool'].lower() in pools:return False
+        elif not isinstance(leg.get('pool'),str) or not (HASH if leg['kind']=='uniswap_v4_quoter' else ADDRESS).fullmatch(leg['pool']) or leg['pool'].lower() in pools:return False
         if leg.get('pool'):pools.add(leg['pool'].lower())
         seen.add(output.lower());address=output;available=out
     return (str(quote.get('output_address')).lower()==address.lower() and decimal(quote.get('output_amount_raw'))==available
@@ -84,7 +90,8 @@ def full_input_established(quote):
     legs=quote['legs'] if quote.get('kind')=='liquidation_path' else [quote]
     return all(decimal(leg.get('input_amount_raw'))==decimal(leg.get('holding_amount_raw'))
                and leg.get('partial_input') is not True
-               and (leg.get('kind')!='uniswap_v3_quoter' or leg.get('input_amount_is_maximum') is False)
+               and (leg.get('kind') not in ('uniswap_v3_quoter','uniswap_v4_quoter') or leg.get('input_amount_is_maximum') is False)
+               and (leg.get('kind')!='uniswap_v4_quoter' or leg.get('full_input_verified') is True)
                for leg in legs)
 
 
@@ -151,6 +158,7 @@ def classify(token, market, *, environment='mainnet'):
                                  'quoted_output_usd': format(proceeds, 'f'), 'qualifies': proceeds >= Decimal('1'),
                                  'block_number': block, 'block_hash': block_hash, 'observed_at': quote['observed_at'],
                                  'output_price': price, 'partial_input': not full_input_established(quote),
+                                 **({k:quote[k] for k in ('pool','quoter','full_input_verified') if k in quote}),
                                  'transfer_tax_included': quote.get('transfer_tax_included'),
                                  **({'legs':quote['legs']} if quote.get('kind')=='liquidation_path' else {}),
                                  'execution_verified': False, 'gas_included': False})
