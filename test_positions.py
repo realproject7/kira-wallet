@@ -132,6 +132,7 @@ class PositionApplicationTests(unittest.TestCase):
     def test_retired_networks_are_not_reintroduced_by_platform_scans(self):
         job=self.job();inp=prepare(self.root,job)
         self.assertFalse({5112,54176,666666666}&{n['chain_id'] for n in inp['networks']})
+        self.assertTrue(inp['inventory_coverage'])
 
     def test_partial_results_keep_prior_claims_and_completed_empty_removes_them(self):
         job=self.job();job['attempt']=1;publish(self.root,job,self.state([position()]))
@@ -140,6 +141,13 @@ class PositionApplicationTests(unittest.TestCase):
         saved=publish(self.root,job,partial);self.assertTrue(saved['positions'][0]['retained'])
         saved=publish(self.root,job,self.state());self.assertEqual(saved['positions'],[])
         self.assertEqual(self.app.views.positions()['matched_count'],0)
+
+    def test_checked_empty_claim_retires_even_when_another_claim_in_its_scope_fails(self):
+        job=self.job();job['attempt']=1;publish(self.root,job,self.state([position('closed'),position('unverified')]))
+        partial=self.state(coverage={'8453:uniswap':{'id':'8453:uniswap','status':'partial','errors':1}},absent_positions=['closed'])
+        saved=publish(self.root,job,partial)
+        self.assertEqual([p['id'] for p in saved['positions']],['unverified'])
+        self.assertTrue(saved['positions'][0]['retained'])
 
     def test_progress_publication_is_visible_and_final_receipt_recovers(self):
         job=self.job();job['attempt']=1

@@ -59,6 +59,7 @@ class SliceEnd extends Error{}
 class Reader{
  constructor(input,state,io,shared={}){
   this.input=input;this.io=io;this.shared=shared;this.contexts=new Map();this.started=Date.now();this.reads=0;
+  this.priorIds=new Set((input.known_positions||[]).map(p=>p.id));
   this.maxReads=Math.min(input.max_reads||48,48);this.budget=Math.min(input.budget_ms||25000,30000);
   this.state=state||{schema_version:1,wallet:key(input.wallet),tasks:[],cursor:0,positions:{},coverage:{},blocks:{},done:0};
   if(this.state.schema_version!==1||this.state.wallet!==key(input.wallet)||!Array.isArray(this.state.tasks)||this.state.tasks.length>MAX_TASKS)throw Error('Position checkpoint identity mismatch');
@@ -98,11 +99,22 @@ class Reader{
  put(t,row){
   if(Object.keys(this.state.positions).length>=MAX_POSITIONS&&!this.state.positions[row.id])throw Error('Position result limit reached');
   const block=this.state.blocks[t.chain_id];this.state.positions[row.id]={...row,...(t.audit?{audit:{...t.audit}}:{}),scope:t.scope,chain_id:t.chain_id,observed_at:block.observed_at,block_number:block.number,block_hash:block.hash};
+  if(this.state.absent_positions)this.state.absent_positions=this.state.absent_positions.filter(id=>id!==row.id);
+ }
+ absent(...ids){
+  const rows=this.state.absent_positions ||= [];
+  for(const id of ids)if(this.priorIds.has(id)&&!this.state.positions[id]&&!rows.includes(id))rows.push(id);
+ }
+ absentStake(t,poolId){
+  const suffix=':'+key(t.address)+':'+poolId;
+  this.absent(...(this.input.known_positions||[]).filter(p=>p.chain_id===t.chain_id&&p.id.endsWith(suffix)).map(p=>p.id));
  }
  async handle(t){
   this.scope(t);const cid=t.chain_id;
   if(t.kind==='seed'){
    await this.context(cid);
+   const inventory=this.input.inventory_coverage?.find(c=>c.chain_id===cid);
+   if(inventory&&inventory.status!=='checked')this.state.coverage[cid+':wallet-token-inventory']={id:cid+':wallet-token-inventory',chain_id:cid,status:'partial',errors:0,message:'Wallet token discovery was incomplete. Undiscovered ERC20 LP or vault receipts may be missing.'};
    for(const m of managers(cid)){
     this.enqueue({...t,...m,kind:'nft-count',scope:cid+':'+m.platform+':'+key(m.manager)});
     if(m.farm)this.enqueue({...t,...m,kind:'nft-count',inventory_address:m.farm,scope:cid+':'+m.platform+':farm:'+key(m.farm)});
@@ -130,7 +142,7 @@ class Reader{
   }
   if(t.kind==='factory'){
    const d=protocols.factory_nft,values=await this.multi(t,[spec(d.address,'balanceOf',[this.input.wallet,0n]),spec(d.address,'navPerNFT')]);
-   const count=BigInt(this.good(values[0]));if(!count)return;
+   const count=BigInt(this.good(values[0]));if(!count){this.absent('1:'+key(d.address)+':0');return;}
    const amount=count*BigInt(this.good(values[1]));
    t.audit={kind:'factory-nav',quantity:String(count),nav_per_nft_raw:String(values[1].result)};
    this.put(t,{id:'1:'+key(d.address)+':0',platform:'factory',protocol:'factory',version:'ERC-1155',label:'Factory NFT',quantity:String(count),receipt:{address:key(d.address),custody:'wallet',balance_raw:String(count),standard:'ERC1155',token_id:'0'},assets:await this.assets(t,[d.underlying],[amount]),source_url:'https://hunt.town/factory',exit_note:'NAV before the 5% burn fee; gas excluded.'});return;
@@ -145,7 +157,7 @@ class Reader{
    const values=await this.multi(t,[spec(t.vault,'factory'),spec(t.vault,'target'),spec(t.vault,'counter'),spec(t.vault,'balanceOf',[this.input.wallet])]);
    const factory=this.good(values[0]);const configured=protocols.lptoken.find(p=>p.chain_id===cid&&key(p.factory)===key(factory));
    if(!configured||!await this.read(t,spec(factory,'isVault',[t.vault])))throw Error('Unverified LP vault');
-   const shares=t.shares===undefined?BigInt(this.good(values[3])):BigInt(t.shares);if(!shares)return;
+   const shares=t.shares===undefined?BigInt(this.good(values[3])):BigInt(t.shares);if(!shares){this.absent(cid+':'+key(t.vault)+':'+(t.stake_id||'wallet'));return;}
    const amounts=await this.read(t,spec(t.vault,'claimForShares',[shares]));
    t.audit={kind:'vault-claim',shares_raw:String(shares),claim_raw:amounts.map(String)};
    this.put(t,{id:cid+':'+key(t.vault)+':'+(t.stake_id||'wallet'),platform:'lptoken',protocol:'uniswap',version:'v4 vault',label:'lpTOKEN liquidity',assets:await this.assets(t,[this.good(values[1]),this.good(values[2])],amounts),receipt:{address:key(t.vault),balance_raw:String(shares),custody:t.stake_id?'mintclub-staking':'wallet'},custody_platform:t.stake_id?'mintclub-staking':null,source_url:'https://lptoken.fun/markets',exit_note:'NAV includes accrued vault assets; redemption terms and gas are separate.'});return;
@@ -164,7 +176,9 @@ class Reader{
     t.version==='legacy-basic'?await this.read(t,spec(t.factory,'getPool',[a,b,await this.read(t,spec(t.pool,'stable'))])):
     await this.read(t,spec(t.factory,'getPool',[a,b]));
    if(key(canonical)!==key(t.pool))throw Error('Pool is not canonical for this factory');
+   if(!balance)this.absent(cid+':'+key(t.pool)+':wallet');
    if(t.gauge&&key(t.gauge)!==ZERO)staked=BigInt(await this.read(t,spec(t.gauge,'balanceOf',[this.input.wallet])));
+   if(t.gauge&&key(t.gauge)!==ZERO&&!staked)this.absent(cid+':'+key(t.pool)+':gauge');
    for(const [custody,quantity] of [['wallet',balance],['gauge',staked],['farm',BigInt(t.farm_shares||0)]]){
     if(!quantity)continue;const reserves=this.good(r[4]),amounts=math.shareAmounts(quantity,this.good(r[3]),[reserves[0],reserves[1]]);
     t.audit={kind:'pool-share',shares_raw:String(quantity),supply_raw:String(r[3].result),reserves_raw:[String(reserves[0]),String(reserves[1])]};
@@ -177,7 +191,10 @@ class Reader{
   }
   if(t.kind==='farm-scan'){
    const ids=Array.from({length:t.end-t.start},(_,i)=>BigInt(t.start+i)),rows=await this.multi(t,ids.map(id=>spec(t.address,'userInfo',[id,this.input.wallet])));
-   for(let i=0;i<ids.length;i++)if(BigInt(this.good(rows[i])[0]))this.enqueue({...t,kind:'farm',pool_id:String(ids[i]),farm_shares:String(rows[i].result[0])});return;
+   for(let i=0;i<ids.length;i++){
+    if(BigInt(this.good(rows[i])[0]))this.enqueue({...t,kind:'farm',pool_id:String(ids[i]),farm_shares:String(rows[i].result[0])});
+    else this.absent(...(this.input.known_positions||[]).filter(p=>p.chain_id===cid&&p.farm&&key(p.farm)===key(t.address)&&String(p.pool_id)===String(ids[i])).map(p=>p.id));
+   }return;
   }
   if(t.kind==='farm'){
    const pool=await this.read(t,spec(t.address,'lpToken',[BigInt(t.pool_id)]));
@@ -185,7 +202,8 @@ class Reader{
   }
   if(t.kind==='farm-known'){
    const p=await this.read(t,spec(t.address,'userInfo',[BigInt(t.pool_id),this.input.wallet]));
-   if(BigInt(p[0]))this.enqueue({...t,kind:'farm',farm_shares:String(p[0])});return;
+   if(BigInt(p[0]))this.enqueue({...t,kind:'farm',farm_shares:String(p[0])});
+   else this.absent(...(this.input.known_positions||[]).filter(p=>p.chain_id===cid&&p.farm&&key(p.farm)===key(t.address)&&String(p.pool_id)===String(t.pool_id)).map(p=>p.id));return;
   }
   if(t.kind==='stake-count'){
    const count=Number(await this.read(t,spec(t.address,'poolCount',[],stakeAbi))),end=Math.min(count,t.end??count);
@@ -194,7 +212,10 @@ class Reader{
   }
   if(t.kind==='stake-scan'){
    const ids=Array.from({length:t.end-t.start},(_,i)=>BigInt(t.start+i));const rows=await this.multi(t,ids.map(id=>spec(t.address,'userPoolStake',[this.input.wallet,id],stakeAbi)));
-   for(let i=0;i<ids.length;i++)if(BigInt(this.good(rows[i])[0])>0n)this.enqueue({...t,kind:'stake',pool_id:String(ids[i]),shares:String(rows[i].result[0])});return;
+   for(let i=0;i<ids.length;i++){
+    if(BigInt(this.good(rows[i])[0])>0n)this.enqueue({...t,kind:'stake',pool_id:String(ids[i]),shares:String(rows[i].result[0])});
+    else this.absentStake(t,String(ids[i]));
+   }return;
   }
   if(t.kind==='stake'){
    const p=await this.read(t,spec(t.address,'pools',[BigInt(t.pool_id)],stakeAbi));const token=p.stakingToken??p[0];
@@ -232,11 +253,11 @@ class Reader{
    for(let i=0;i<t.ids.length;i++){
     const owner=rows[i*2]?.status==='success'?key(rows[i*2].result):null;
     if(!owner&&rows[i*2]?.reason!=='contract')throw Error('NFT ownership unavailable');
-    if(owner!==key(this.input.wallet)&&owner!==key(t.gauge||t.inventory_address||ZERO))continue;
-    if(t.gauge&&owner===key(t.gauge)&&await this.read(t,spec(t.gauge,'stakedContains',[this.input.wallet,BigInt(t.ids[i])]))!==true)continue;
+    if(owner!==key(this.input.wallet)&&owner!==key(t.gauge||t.inventory_address||ZERO)){this.absent(cid+':'+key(t.manager)+':'+t.ids[i]);continue;}
+    if(t.gauge&&owner===key(t.gauge)&&await this.read(t,spec(t.gauge,'stakedContains',[this.input.wallet,BigInt(t.ids[i])]))!==true){this.absent(cid+':'+key(t.manager)+':'+t.ids[i]);continue;}
     if(t.inventory_address){const farmPosition=await this.read(t,spec(t.inventory_address,'userPositionInfos',[BigInt(t.ids[i])]));if(key(farmPosition[6])!==key(this.input.wallet))throw Error('Farm beneficiary mismatch');}
     if(owner===key(this.input.wallet)||t.inventory_address&&owner===key(t.inventory_address))(this.state.nft_owned ||= {})[t.scope+':'+t.ids[i]]=true;
-    const p=this.good(rows[i*2+1]);if(!BigInt(p[7]))continue;
+    const p=this.good(rows[i*2+1]);if(!BigInt(p[7])){this.absent(cid+':'+key(t.manager)+':'+t.ids[i]);continue;}
     const pool=await this.read(t,spec(t.factory,'getPool',[p[2],p[3],Number(p[4])],t.type==='cl'?v.parseAbi(['function getPool(address,address,int24) view returns(address)']):abi));
     if(key(pool)===ZERO||t.pool&&key(pool)!==key(t.pool))throw Error('NFT pool identity mismatch');
     const price=await this.read(t,spec(pool,'slot0',[],t.type==='cl'?v.parseAbi(['function slot0() view returns(uint160,int24,uint16,uint16,uint16,bool)']):abi));
@@ -310,12 +331,12 @@ class Reader{
   const rows=await this.multi(t,t.ids.flatMap(id=>[spec(t.manager,'ownerOf',[BigInt(id)]),spec(t.manager,'getPoolAndPositionInfo',[BigInt(id)]),spec(t.manager,'getPositionLiquidity',[BigInt(id)])]));
   for(let i=0;i<t.ids.length;i++){
    if(rows[i*3]?.status!=='success'){
-    if(rows[i*3]?.reason==='contract')continue;
+    if(rows[i*3]?.reason==='contract'){this.absent(t.chain_id+':'+key(t.manager)+':'+t.ids[i]);continue;}
     throw Error('V4 NFT ownership unavailable');
    }
-   if(key(rows[i*3].result)!==key(this.input.wallet))continue;
+   if(key(rows[i*3].result)!==key(this.input.wallet)){this.absent(t.chain_id+':'+key(t.manager)+':'+t.ids[i]);continue;}
    (this.state.nft_owned ||= {})[t.scope+':'+t.ids[i]]=true;
-   const [k,info]=this.good(rows[i*3+1]),l=BigInt(this.good(rows[i*3+2]));if(!l)continue;
+   const [k,info]=this.good(rows[i*3+1]),l=BigInt(this.good(rows[i*3+2]));if(!l){this.absent(t.chain_id+':'+key(t.manager)+':'+t.ids[i]);continue;}
    const pool=v.keccak256(v.encodeAbiParameters([{type:'address'},{type:'address'},{type:'uint24'},{type:'int24'},{type:'address'}],[k.currency0,k.currency1,k.fee,k.tickSpacing,k.hooks]));
    if((BigInt(pool)>>56n)!==(BigInt(info)>>56n))throw Error('V4 pool identity mismatch');
    const price=await this.read(t,spec(t.view,'getSlot0',[pool])),ticks=math.v4Ticks(info),amounts=math.liquidityAmounts(l,price[0],...ticks);
@@ -332,7 +353,9 @@ class Reader{
    if(best!==this.state.cursor)[this.state.tasks[best],this.state.tasks[this.state.cursor]]=[this.state.tasks[this.state.cursor],this.state.tasks[best]];
    const task=this.state.tasks[this.state.cursor],tail=this.state.tasks.length;
    try{await this.handle(task);}
-   catch(error){if(error instanceof SliceEnd){this.state.tasks.length=tail;break;}const c=this.scope(task);c.status='partial';c.errors++;c.failed_step=task.kind;if(error.read_function)c.failed_function=error.read_function;if(error.reason)c.reason=error.reason;c.message='Some position reads were unavailable. Missing amounts remain unknown.';}
+   catch(error){if(error instanceof SliceEnd){this.state.tasks.length=tail;break;}const c=this.scope(task);c.status='partial';c.errors++;c.failed_step=task.kind;if(error.read_function)c.failed_function=error.read_function;if(error.reason)c.reason=error.reason;c.message='Some position reads were unavailable. Missing amounts remain unknown.';
+    (this.state.failed_tasks ||= []).push({index:this.state.cursor,scope:task.scope,kind:task.kind,...(error.read_function?{function:error.read_function}:{}),reason:error.reason||'unknown'});
+   }
    this.state.cursor++;this.state.done++;completed++;
    const count=Object.keys(this.state.positions).length;
    if(completed%4===0||count!==lastPositions||Date.now()-lastSave>=1000){save(this.state,this.shared);lastSave=Date.now();lastPositions=count;}

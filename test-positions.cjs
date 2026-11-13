@@ -120,3 +120,19 @@ test('chains without a supported pair factory do not probe every wallet token as
  let factoryReads=0;const h=harness({kind:'seed'},c=>{if(c.functionName==='factory')factoryReads++;return 0n;},{cid:109});
  h.input.tokens=[{chain_id:109,address:T0,symbol:'SAMPLE'}];await finish(h);assert.equal(factoryReads,0);assert.ok(!h.state.tasks.some(t=>t.kind==='pair-discover'));
 });
+
+test('checked-zero staking claims retire independently of another pool RPC failure',async()=>{
+ const direct='8453:'+FACTORY+':0',nested='8453:'+VAULT+':'+FACTORY+':0',unknown='8453:'+FACTORY+':1';
+ const h=harness({kind:'stake-scan',address:FACTORY,start:0,end:2},c=>{if(c.args[1]===0n)return [0n,0n,0n,0n];throw Error('source down');});
+ h.input.known_positions=[direct,nested,unknown].map(id=>({id,chain_id:8453}));
+ const s=await finish(h);assert.equal(s.coverage['8453:test'].status,'partial');assert.deepEqual(new Set(s.absent_positions),new Set([direct,nested]));
+});
+test('an NFT transferred away is retired while unrelated ownership remains unknown',async()=>{
+ const gone='8453:'+MANAGER+':1',unknown='8453:'+MANAGER+':2';
+ const h=harness({kind:'nft',type:'v4',manager:MANAGER,view:FACTORY,ids:['1','2']},c=>{if(c.functionName==='ownerOf'&&c.args[0]===1n)return T0;throw Error('source down');});
+ h.input.known_positions=[{id:gone},{id:unknown}];const s=await finish(h);assert.equal(s.coverage['8453:test'].status,'partial');assert.deepEqual(s.absent_positions,[gone]);
+});
+test('incomplete holdings discovery cannot become complete LP inventory coverage',async()=>{
+ const h=harness({kind:'seed'},()=>0n,{cid:109});h.input.inventory_coverage=[{chain_id:109,status:'partial'}];
+ const s=await finish(h);assert.equal(s.coverage['109:wallet-token-inventory'].status,'partial');assert.match(s.coverage['109:wallet-token-inventory'].message,/receipts may be missing/);
+});

@@ -25,7 +25,7 @@ def previous(root, address):
 def prepare(root, job):
     address=job['input']['wallet'];registry=json.loads((root/'wallets.json').read_text())
     wallet=next(w for w in registry['wallets'] if w['address_key']==address)
-    latest=wallet.get('latest_snapshot') or {};tokens={}
+    latest=wallet.get('latest_snapshot') or {};tokens={};snapshot={}
     if latest.get('result'):
         path=(root/latest['result']).resolve()
         if not path.is_relative_to((root/'snapshots').resolve()):raise ValueError('Invalid holdings reference')
@@ -44,7 +44,14 @@ def prepare(root, job):
     from chain_lifecycle import retired
     native={cid:(row[0],18) for cid,row in NATIVE_ASSETS.items()}
     native.update({5042:('USDC',6),99901:('HYPE',18),57073:('ETH',18)})
+    inventory=[]
+    for n in networks:
+        c=next((c for c in snapshot.get('coverage',[]) if c['chain_id']==n['chain_id']),{})
+        complete=(c.get('general_erc20_discovery')=='indexer_checked' and c.get('rpc_status')=='available'
+                  and not c.get('candidate_balance_errors') and not any(t.get('balance_evidence_retained') for t in snapshot.get('tokens',[]) if t.get('chain_id')==n['chain_id']))
+        inventory.append({'chain_id':n['chain_id'],'status':'checked' if complete else 'partial'})
     return {'wallet':address,'networks':[{**n,'native_symbol':native.get(n['chain_id'],('Unknown',None))[0],'native_decimals':native.get(n['chain_id'],('Unknown',None))[1]} for n in networks if n['environment']=='mainnet' and not retired(n['chain_id'])],
+            'inventory_coverage':inventory,
             'tokens':list(tokens.values()),'discover':job['input'].get('discover',True),
             'known_positions':[{k:p.get(k) for k in ('id','scope','chain_id','platform','protocol','version','manager','token_id','pool','factory','gauge','farm','pool_id')} for p in (old or {}).get('positions',[])],
             'max_reads':48,'budget_ms':25000}
@@ -53,11 +60,12 @@ def prepare(root, job):
 def projection(state, old, *, completed, job):
     positions=deepcopy(state['positions']);coverage=deepcopy(state['coverage'])
     pending={t['scope'] for t in state['tasks'][state['cursor']:]}
+    absent=set(state.get('absent_positions',[]))
     for scope in pending:
         coverage.setdefault(scope,{'id':scope,'chain_id':int(scope.split(':')[0]),'errors':0})['status']='pending'
     for p in (old or {}).get('positions',[]):
         scope=p['scope']
-        if p['id'] not in positions and (not completed or coverage.get(scope,{}).get('status')!='checked'):
+        if p['id'] not in positions and p['id'] not in absent and (not completed or coverage.get(scope,{}).get('status')!='checked'):
             positions[p['id']]={**p,'retained':True}
     rows=list(positions.values());rows.sort(key=lambda p:p['id'])
     return {'schema_version':1,'wallet':state['wallet'],'job_id':job['job_id'],'requested_at':job['created_at'],

@@ -1,9 +1,21 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.11.3**.
+Published npm release: **1.5.0**. Prepared candidate: **1.11.4**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.11.4
+
+A verified zero balance, closed liquidity position or changed NFT owner retires
+that specific prior claim even when another read in its source fails. Unknown
+claims still retain earlier evidence. The checkpoint records failed task indices
+and safe error categories for bounded follow-up verification. Incomplete holdings
+discovery remains an explicit LP/vault inventory gap, even when the attempted
+contract reads succeed. Tests separate a
+checked-empty pool from an unavailable pool in the same staking contract, and a
+transferred NFT from an unresolved owner read. No extra provider calls are added.
+Review not selected; earlier archives remain immutable.
 
 ## Candidate 1.11.3
 
