@@ -1,9 +1,20 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.11.2**.
+Published npm release: **1.5.0**. Prepared candidate: **1.11.3**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.11.3
+
+Staking evidence links use Mint Club's supported network-name routes. Earlier
+numeric routes are normalized in saved-data views. Excluded positions retain
+their project name and artwork when absent from allocation groups. Platform scan
+buttons also inspect the merged job list, including queued work present in recent
+history rather than the small active-job summary. Unsupported pair factories no
+longer cause unnecessary per-token LP probes. These changes add no provider work
+to page reads. Desktop and 320px synthetic acceptance verifies exclusions, artwork
+and no horizontal overflow. Review not selected.
 
 ## Candidate 1.11.2
 

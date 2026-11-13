@@ -60,6 +60,11 @@ class PositionAccountingTests(unittest.TestCase):
         self.assertEqual(allocation([w])['known_value_usd'],10)
         self.assertEqual(allocation([w])['position_count'],0)
 
+    def test_prior_staking_records_get_a_valid_project_route_without_provider_work(self):
+        p=valued(position('8453:'+RECEIPT+':38',platform='mintclub-staking'),{})
+        self.assertEqual(p['source_url'],'https://mint.club/staking/base/38')
+        self.assertEqual(p['pool_id'],'38')
+
     def test_token_scope_counts_only_its_underlying(self):
         p=position();p['assets'].append({'address':RECEIPT,'amount':'50','symbol':'OTHER'})
         w=wallet();w['positions']=[valued(p,{'8453:'+TOKEN:PRICE,'8453:'+RECEIPT:{**PRICE,'usd':1}})]

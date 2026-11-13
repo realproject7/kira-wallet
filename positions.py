@@ -7,6 +7,8 @@ from decimal import Decimal, InvalidOperation, localcontext
 import json
 from pathlib import Path
 
+_STAKING_SLUGS=json.loads((Path(__file__).resolve().parent/'sources/position-protocols.json').read_text()).get('mintclub_staking_url_slugs',{})
+
 PLATFORMS = {
     'wallet': ('Wallet tokens', '#8a7aaf', None, None),
     'lptoken': ('lpTOKEN.fun', '#df6249', 'lptoken.png', 'https://lptoken.fun'),
@@ -19,6 +21,8 @@ PLATFORMS = {
     'mintclub-staking': ('Mint Club Staking', '#30876c', 'mintclub.png', 'https://mint.club/staking'),
 }
 
+
+PLATFORM_INFO={key:{'id':key,'name':row[0],'logo':'/venues/'+row[2] if row[2] else None} for key,row in PLATFORMS.items()}
 
 def decimal(value):
     if isinstance(value, bool) or value is None:return None
@@ -43,7 +47,10 @@ def prices(wallets):
 
 
 def valued(row, price_map):
-    row=dict(row);assets=[]
+    row=dict(row);assets=[];row['platform_info']=PLATFORM_INFO.get(row.get('platform'))
+    if row.get('platform')=='mintclub-staking':
+        slug=_STAKING_SLUGS.get(str(row['chain_id']));pool_id=str(row.get('pool_id') or row.get('id','').rsplit(':',1)[-1])
+        if slug and pool_id.isdigit():row['pool_id']=pool_id;row['source_url']='https://mint.club/staking/'+slug+'/'+pool_id
     for asset in row.get('assets',[]):
         asset=dict(asset);p=price_map.get(str(row['chain_id'])+':'+asset['address'].lower());amount=decimal(asset.get('amount'))
         value=decimal((p or {}).get('usd'))

@@ -41,3 +41,8 @@ test('mixed saved and unchecked wallets preserve per-wallet default discovery at
  await h.context.capitalTest.refresh(false);assert.equal(submitted[0].op,'portfolio.positionsRefresh');assert.equal('discover' in submitted[0].input,false);
  await h.context.capitalTest.refresh(true);assert.equal(submitted[1].input.discover,true);
 });
+
+test('queued platform scans in the merged job list disable duplicate global discovery',async()=>{
+ const h=harness();h.context.localSession.controls=true;h.context.jobList=[{operation:'positions.refresh',state:'queued',input:{wallet:h.context.state.wallets[0].key}}];
+ h.render();await tick();assert.match(h.host.innerHTML,/Platform scans in progress/);assert.match(h.host.innerHTML,/class="quiet-button capital-refresh" disabled/);
+});

@@ -418,5 +418,23 @@
       "version": "MasterChef V2",
       "source": "https://docs.pancakeswap.finance/welcome-to-pancakeswap/how-to-guides/v3-v2-migration/migrate-your-stakings/masterchef-v2"
     }
-  ]
+  ],
+  "mintclub_staking_url_slugs": {
+    "1": "ethereum",
+    "10": "optimism",
+    "56": "bnbchain",
+    "137": "polygon",
+    "8453": "base",
+    "42161": "arbitrum",
+    "43114": "avalanche",
+    "81457": "blast",
+    "7560": "cyber",
+    "130": "unichain",
+    "4663": "robinhood",
+    "8217": "kaia",
+    "109": "shibarium",
+    "33139": "apechain",
+    "177": "hashkey",
+    "7777777": "zora"
+  }
 }

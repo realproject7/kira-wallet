@@ -51,7 +51,7 @@ test('Mint Club staking finds principal without requiring loose-token ownership'
  const address=config.mintclub_staking.find(p=>p.chain_id===8453&&p.version==='V1_2').address;
  const h=harness({kind:'stake',address,pool_id:'37',shares:String(100n*10n**18n),version:'V1_2'},c=>{
   if(c.functionName==='pools')return {stakingToken:T0,isStakingTokenERC20:true};if(c.functionName==='isVault')return false;return tokenCalls(c);
- });const rows=Object.values((await finish(h)).positions);assert.equal(rows[0].platform,'mintclub-staking');assert.equal(rows[0].assets[0].amount,'100');
+ });const rows=Object.values((await finish(h)).positions);assert.equal(rows[0].platform,'mintclub-staking');assert.equal(rows[0].assets[0].amount,'100');assert.equal(rows[0].source_url,'https://mint.club/staking/base/37');assert.equal(rows[0].pool_id,'37');
  const nft=harness({kind:'stake',address,pool_id:'38',shares:'2',version:'V1_2'},()=>({stakingToken:T0,isStakingTokenERC20:false}));assert.equal(Object.values((await finish(nft)).positions)[0].assets[0].amount,'2');
 });
 test('Uniswap, Pancake and Aero NFTs use owner, factory and pinned liquidity',async()=>{
@@ -115,4 +115,8 @@ test('known-claim refresh does not enqueue whole-pool or farm discovery',async()
  h.input.discover=false;const result=await finish(h);
  assert.ok(!result.tasks.some(t=>['aero-count','aero-sugar','aero-directory','farm-count','farm-scan'].includes(t.kind)));
  assert.equal(result.coverage['8453:new-position-discovery'].status,'not_requested');
+});
+test('chains without a supported pair factory do not probe every wallet token as an LP',async()=>{
+ let factoryReads=0;const h=harness({kind:'seed'},c=>{if(c.functionName==='factory')factoryReads++;return 0n;},{cid:109});
+ h.input.tokens=[{chain_id:109,address:T0,symbol:'SAMPLE'}];await finish(h);assert.equal(factoryReads,0);assert.ok(!h.state.tasks.some(t=>t.kind==='pair-discover'));
 });
