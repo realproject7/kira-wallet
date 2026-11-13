@@ -33,7 +33,7 @@ def signal_process_group(pgid, sig):
         if status.returncode or not valid or any(int(row[0])==pgid and not row[1].startswith('Z') for row in rows):raise
 
 State = Literal['queued', 'running', 'interrupted', 'succeeded', 'partial', 'failed', 'cancelled']
-Operation = Literal['wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv','settings.h402']
+Operation = Literal['wallet.add','wallet.refresh','positions.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv','settings.h402']
 TERMINAL = {'succeeded', 'partial', 'failed', 'cancelled', 'interrupted'}
 # Web history uses the groups. Agents may also filter by an exact state they read on a job.
 STATE_FILTERS = {'all': None, 'active': {'queued','running'}, 'succeeded': {'succeeded','partial'},
@@ -169,13 +169,14 @@ class JobStore:
         if not isinstance(job,dict) or type(job.get('schema_version')) is not int or job.get('schema_version') != 1: raise JobError('unsupported_version', 'Unsupported persisted job version.')
         required={'schema_version','job_id','operation','input','state','attempt','sequence','result','previous_result','key_hash','request_hash','created_at','updated_at','cancel_requested','checkpoint','stage','events','errors','chains'}
         optional={'raw_hash','control_receipts','control_raw','provider_configuration','started_at','analysis_phase','parent_job_id','continuation_id','continuation','scan_policy','progress_observed_at','asset_progress'}
-        if required-set(job) or set(job)-required-optional or job['job_id']!=job_id or job['checkpoint']!='snapshots/jobs/'+job_id or not isinstance(job['operation'],str) or job['operation'] not in {'wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv','settings.h402'} or not isinstance(job['state'],str) or job['state'] not in TERMINAL|{'queued','running'} or any(type(job[k]) is not int or job[k]<0 for k in ('attempt','sequence')) or type(job['cancel_requested']) is not bool or not isinstance(job['input'],dict) or any(not isinstance(job[k],list) for k in ('events','errors')) or not isinstance(job['chains'],dict):
+        if required-set(job) or set(job)-required-optional or job['job_id']!=job_id or job['checkpoint']!='snapshots/jobs/'+job_id or not isinstance(job['operation'],str) or job['operation'] not in {'wallet.add','wallet.refresh','prices.refresh','positions.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv','settings.h402'} or not isinstance(job['state'],str) or job['state'] not in TERMINAL|{'queued','running'} or any(type(job[k]) is not int or job[k]<0 for k in ('attempt','sequence')) or type(job['cancel_requested']) is not bool or not isinstance(job['input'],dict) or any(not isinstance(job[k],list) for k in ('events','errors')) or not isinstance(job['chains'],dict):
             raise JobError('invalid_envelope','Persisted job validation failed. Preserve the file for recovery.')
         names={'wallet.add':['address','tag'],'wallet.refresh':['wallet'],'prices.refresh':['wallet'],'wallet.setTags':['wallet','tags'],
-            'settings.rpc':['mode','chains','allow_public_fallback'],'settings.discovery':['provider','key_env'],'settings.provider':['provider','key_env'],'settings.importEnv':['import_id','key_env'],'settings.h402':['enabled']}[job['operation']]
+            'settings.rpc':['mode','chains','allow_public_fallback'],'settings.discovery':['provider','key_env'],'settings.provider':['provider','key_env'],'settings.importEnv':['import_id','key_env'],'settings.h402':['enabled'],'positions.refresh':['wallet','discover']}[job['operation']]
         if job['operation']=='settings.rpc' and 'priority' in job['input']:names=names+['priority']
         if job['operation']=='settings.discovery' and 'explorers' in job['input']:names=names+['explorers']
         fields(job['input'],names)
+        if job['operation']=='positions.refresh' and type(job['input']['discover']) is not bool:raise JobError('invalid_envelope','Invalid position discovery mode.')
         if job['operation']=='settings.h402' and type(job['input']['enabled']) is not bool:raise JobError('invalid_envelope','Invalid h402 preference.')
         if 'analysis_phase' in job and job['analysis_phase'] not in ('baseline','enrichment'):raise JobError('invalid_envelope','Invalid analysis phase.')
         if 'scan_policy' in job and job['scan_policy'] not in ('optional_depth_v1','alchemy_inventory_v1'):raise JobError('invalid_envelope','Invalid scan policy.')
@@ -256,7 +257,7 @@ class JobStore:
         with self.locked():
             names={w['address_key']:' '.join(w.get('tags',[])) for w in read(self.root/'wallets.json').get('wallets',[])} if query else {}
             labels={'wallet.add':'wallet lookup add wallet holdings','wallet.refresh':'holdings refresh refresh holdings',
-                    'prices.refresh':'price refresh refresh prices','wallet.setTags':'wallet names',
+                    'positions.refresh':'platform positions liquidity staking DeFi refresh','prices.refresh':'price refresh refresh prices','wallet.setTags':'wallet names',
                     'settings.rpc':'RPC settings','settings.discovery':'token discovery','settings.provider':'data provider connection',
                     'settings.importEnv':'local connection setup','settings.h402':'h402 preference'}
             rows=[]
@@ -302,8 +303,13 @@ class JobStore:
         return matches[0]
 
     def normalize(self, operation, value):
-        if operation in {'wallet.add','wallet.refresh','prices.refresh','job.deepen'}:
+        if operation in {'wallet.add','wallet.refresh','prices.refresh','positions.refresh','job.deepen'}:
             self.require_connection()
+        if operation=='positions.refresh':
+            if not isinstance(value,dict) or set(value)-{'wallet','discover'} or 'wallet' not in value or 'discover' in value and type(value['discover']) is not bool:raise JobError('invalid_input','Use a registered wallet and optional discover boolean.')
+            wallet=self.wallet(value['wallet']);index=self.root/'positions/index.json'
+            known=index.exists() and wallet['address_key'] in read(index).get('wallets',{})
+            return {'wallet':wallet['address_key'],'discover':value.get('discover',not known)}
         if operation == 'settings.h402':
             fields(value,['enabled'])
             if type(value['enabled']) is not bool:raise JobError('invalid_settings','Choose whether to enable h402 tools.')
@@ -351,7 +357,7 @@ class JobStore:
             address = validate_address(value['address'])
             if address.lower() in read(self.root/'wallets.json').get('removed_wallets',{}):raise JobError('wallet_removed','This wallet was removed. Restore it in Manage wallets to keep its saved research.')
             return {'address': address, 'tag': value['tag']}
-        if operation in {'wallet.refresh', 'prices.refresh', 'wallet.setTags'}:
+        if operation in {'wallet.refresh', 'prices.refresh', 'positions.refresh', 'wallet.setTags'}:
             fields(value, ['wallet', 'tags'] if operation == 'wallet.setTags' else ['wallet'])
             wallet = self.wallet(value['wallet'])
             if operation == 'prices.refresh' and not wallet.get('latest_snapshot'):
@@ -394,7 +400,7 @@ class JobStore:
         return self.submit({'schema_version':1,'operation':'settings.importEnv','input':{'import_id':identity,'key_env':key_env},'idempotency_key':identity})
 
     def admit_wallet(self, job):
-        if job['operation']=='prices.refresh' and job['input']['wallet'].lower() in read(self.root/'wallets.json').get('removed_wallets',{}):raise JobError('wallet_removed','Restore this wallet in Manage wallets before refreshing prices.')
+        if job['operation'] in ('prices.refresh','positions.refresh') and job['input']['wallet'].lower() in read(self.root/'wallets.json').get('removed_wallets',{}):raise JobError('wallet_removed','Restore this wallet in Manage wallets before refreshing research.')
         if job['operation'] not in ('wallet.add','wallet.refresh'):return job
         from wallet import register, registry_locked
         with registry_locked(self.root):
@@ -498,6 +504,9 @@ class JobStore:
                 job.setdefault('control_receipts',{})[key_hash]=fingerprint
                 job.setdefault('control_raw',{})[key_hash]=raw_hash
                 self.save(job)
+            elif operation=='positions.refresh' and any(j['operation']==operation and j['state'] in ('queued','running') and j['input']['wallet']==value['wallet'] and (j['input']['discover'] or not value['discover']) for j in self.summaries()):
+                job=self.get(next(j['job_id'] for j in self.summaries() if j['operation']==operation and j['state'] in ('queued','running') and j['input']['wallet']==value['wallet'] and (j['input']['discover'] or not value['discover'])))
+                job.setdefault('control_receipts',{})[key_hash]=fingerprint;job.setdefault('control_raw',{})[key_hash]=raw_hash;self.save(job)
             else:
                 job=self.new_job(operation,value,key_hash,fingerprint,raw_hash,phase,parent)
             self.admit_wallet(job)
@@ -656,6 +665,13 @@ class JobStore:
         return sorted(rows, key=lambda r: (r['compiled_at'] or '',r['snapshot_id']))
 
     def publication(self, job):
+        if job['operation']=='positions.refresh':
+            folder=self.root/job['checkpoint'];receipt=folder/'positions-publication.json'
+            if receipt.exists():return read(receipt)
+            index=self.root/'positions/index.json';saved=folder/'positions.json'
+            if index.exists() and saved.exists() and (read(index).get('wallets',{}).get(job['input']['wallet']) or {}).get('path')==str(saved.relative_to(self.root)):
+                value=read(saved);result={'status':'completed' if value['status']=='checked' else 'partial','positions_snapshot':str(saved.relative_to(self.root)),'position_count':len(value['positions']),'coverage_gaps':sum(c['status']!='checked' for c in value['coverage'])};atomic(receipt,result);return result
+            return None
         if job['operation'].startswith('settings.') or job['operation']=='wallet.setTags':
             receipt=self.jobs/'results'/(job['job_id']+'.json')
             return read(receipt) if receipt.exists() else None
@@ -741,7 +757,7 @@ class JobStore:
                 job['events'][-1]['context']={'phase':event['phase'],'attempt':job['attempt']}
                 if event['phase']=='markets':job['events'][-1]['context']['operation']='price_requests'
                 job['progress_observed_at']=job['events'][-1]['observed_at']
-            if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets','reserves','history','market_discovery','factory_queries','pool_checks','cashout_routes','mintclub_membership','asset_review','asset_inventory'):
+            if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets','reserves','history','market_discovery','factory_queries','pool_checks','cashout_routes','mintclub_membership','asset_review','asset_inventory','positions'):
                 context={'operation':event['operation'],'chain_id':counts.get('chain_id'),'attempt':job['attempt']}
                 if event['operation']=='asset_inventory':
                     prior=job.setdefault('asset_progress',{}).setdefault(str(event['chain_id']),{'total':0,'checked':0,'quoted':0,'unknown':0})
@@ -804,6 +820,7 @@ class JobStore:
         return
 
     def engine_command(self, job):
+        if job['operation']=='positions.refresh':return [sys.executable,str(ASSETS/'position_worker.py'),'--wallet',job['input']['wallet']]
         if job['operation'] == 'prices.refresh':
             command = [sys.executable, str(ASSETS / 'viewer/refresh_prices.py'), '--wallet', job['input']['wallet']]
         else:
@@ -873,7 +890,7 @@ class JobStore:
             while child.poll() is None:
                 if self.get(job['job_id'])['cancel_requested']:
                     cancelled = True; stop_child(); break
-                if job.get('analysis_phase')=='enrichment' and time.monotonic()>=next_check:
+                if (job.get('analysis_phase')=='enrichment' or job['operation']=='positions.refresh') and time.monotonic()>=next_check:
                     next_check=time.monotonic()+2
                     if any(j['state']=='queued' and (j.get('analysis_phase')=='baseline' or j['operation']=='prices.refresh' or j['operation'].startswith('settings.')) for j in self.list()):
                         yielded=True;stop_child();break
@@ -909,7 +926,7 @@ class JobStore:
     def queue_continuation(self, job, error):
         """Only explicit slice boundaries resume automatically, with bounded stalls."""
         path=self.root/job['checkpoint']/'continuation.json'
-        if job.get('analysis_phase')!='enrichment' or not path.is_file():
+        if (job.get('analysis_phase')!='enrichment' and job['operation']!='positions.refresh') or not path.is_file():
             job.update(state='interrupted',stage='market_paused' if error.code=='market_budget' else 'research_paused',
                        errors=[{'code':error.code,'message':str(error)}])
             return
@@ -946,7 +963,7 @@ class JobStore:
                 writer = (self.root / '.analysis.lock').open('a')
                 fcntl.flock(writer, fcntl.LOCK_EX)
                 with self.locked():
-                    queued = sorted((self.get(p.stem) for p in self.jobs.glob('*.json')), key=lambda j: (j.get('analysis_phase')=='enrichment',j['updated_at'] if j.get('analysis_phase')=='enrichment' else j['created_at']))
+                    queued = sorted((self.get(p.stem) for p in self.jobs.glob('*.json')), key=lambda j: (j.get('analysis_phase')=='enrichment' or j['operation']=='positions.refresh',j['updated_at'] if j.get('analysis_phase')=='enrichment' or j['operation']=='positions.refresh' else j['created_at']))
                     job = next((j for j in queued if j['state']=='queued' and j.get('continuation',{}).get('not_before',0)<=time.time()), None)
                     waiting=any(j['state']=='queued' for j in queued)
                     if not job:

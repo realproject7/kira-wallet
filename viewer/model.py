@@ -369,10 +369,15 @@ def project_wallet(entry, snapshot, root=ROOT, images=None, *, market=None):
 
 def dashboard(wallets):
     """Sum direct mainnet positions, without adding pool liquidity or curve backing."""
+    from positions import allocation
     chains={};assets={};positions=[]
     for wallet in wallets:
         wallet['sell_out_summary']=summarize_sell_out(wallet['assets'])
         names={c['id']:c['name'] for c in wallet['chains']}
+        for p in wallet.get('positions',[]):
+            chain=chains.setdefault(p['chain_id'],{'id':p['chain_id'],'name':names.get(p['chain_id'],str(p['chain_id'])),
+                'position_count':0,'wallet_keys':set(),'values':[],'unpriced_count':0})
+            chain['wallet_keys'].add(wallet['key'])
         for asset in wallet['assets']:
             if asset.get('environment')!='mainnet':continue
             positions.append(asset)
@@ -392,11 +397,12 @@ def dashboard(wallets):
         row['wallet_count']=len(row.pop('wallet_keys'));row.pop('values')
         return row
     network_rows=sorted((finish(c) for c in chains.values()),key=lambda c:c['value_usd'] or 0,reverse=True)
+    for row in network_rows:row['capital_allocation']=allocation(wallets,chain_id=row['id'])
     asset_rows=sorted((finish(a) for a in assets.values()),key=lambda a:a['value_usd'] or 0,reverse=True)
     for asset in asset_rows:asset['chain_name']=chains[asset['chain_id']]['name']
     values=[a['value_usd'] for a in positions if included(a) and a['value_usd'] is not None]
     dates=[w['prices_at'] for w in wallets if w.get('prices_at')]
-    return {'asset_policy_summary':policy_summary(positions),'sell_out_summary':summarize_sell_out(positions),'known_value_usd':sum(values) if values else None,'wallet_count':len(wallets),
+    return {'capital_allocation':allocation(wallets),'asset_policy_summary':policy_summary(positions),'sell_out_summary':summarize_sell_out(positions),'known_value_usd':sum(values) if values else None,'wallet_count':len(wallets),
         'analysed_wallet_count':sum(bool(w.get('analysed_at')) for w in wallets),
         'position_count':len(positions),'unique_asset_count':len({a['id'] for a in positions}),'chain_count':len(chains),
         'priced_count':len(values),'unpriced_count':sum(included(a) and a['value_usd'] is None for a in positions),
@@ -443,6 +449,8 @@ def load_state(root=ROOT, *, include_details=True, encode=True, wallet_cache=Non
         for key in list(wallet_cache):
             if key[0] not in registered:del wallet_cache[key]
     apply_policy(wallets, root)
+    from positions import attach
+    attach(root,wallets)
     from kira_wallets import management
     state={'wallet_management':management(registry),'wallets':wallets,'currency':'USD','dashboard':dashboard(wallets),
            'details':project_details(wallets,root) if include_details else {'tokens':[], 'networks':[]}}

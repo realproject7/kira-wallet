@@ -327,3 +327,28 @@ The durable plan fixes wallet selection before admission. Each selected wallet
 uses a deterministic child request key so retries recover partially admitted
 plans. Active-wallet admission is checked under the existing job lock. Reads and
 page loads do not create plans. Sample and read-only modes reject writes.
+
+
+## Protocol position research
+
+`positions.refresh` normalizes `{wallet, discover}` for a registered wallet.
+The optional request `discover` defaults to true only before a saved position
+record exists. A repeat refresh defaults to known claims and current direct
+inventory; explicit `discover: true` sweeps supported pool/farm catalogs.
+`portfolio.positionsRefresh` accepts an optional folder and discovery choice.
+Duplicate requests coalesce when an active scan covers the requested mode. A
+known-only scan cannot satisfy a subsequently requested full discovery.
+
+Position jobs do not replace `latest_snapshot` or `research_generation` for
+holdings. Immutable per-pass/final records live under the job checkpoint;
+`positions/index.json` publishes the latest active registration's record.
+A receipt recovers an index commit interrupted before the final receipt write.
+An older request cannot replace newer position research. Failed scopes retain
+older claims explicitly; a checked empty scope can retire its previous claims.
+Known refresh records the omitted broad discovery as not requested.
+
+Short slices use the shared worker and writer lease, coalesce checkpoint writes,
+yield to holdings/settings work and share bounded metadata caches. Missing,
+unsupported, timed-out or throttled ownership/quantity reads remain unknown.
+Position blocks and price references keep independent clocks. Position NAV is
+separate from wallet-token sell quotes and from unclaimed fees or rewards.

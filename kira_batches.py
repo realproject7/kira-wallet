@@ -2,7 +2,7 @@
 import json
 from kira_jobs import JobError, atomic, digest, fields
 
-OPERATIONS = {'portfolio.refresh', 'portfolio.analyzeSell'}
+OPERATIONS = {'portfolio.refresh', 'portfolio.analyzeSell', 'portfolio.positionsRefresh'}
 
 
 def submit_batch(store, request):
@@ -13,8 +13,9 @@ def submit_batch(store, request):
     if operation not in OPERATIONS:
         raise JobError('unsupported_operation', 'Choose a portfolio research action.')
     value=request['input']
-    if not isinstance(value,dict) or set(value)-{'folder_id'} or 'folder_id' in value and not isinstance(value['folder_id'],str):
+    if not isinstance(value,dict) or set(value)-{'folder_id','discover'} or 'folder_id' in value and not isinstance(value['folder_id'],str):
         raise JobError('invalid_input','Use an optional saved folder ID for portfolio research.')
+    if 'discover' in value and (operation!='portfolio.positionsRefresh' or type(value['discover']) is not bool):raise JobError('invalid_input','Use a boolean discovery mode only for platform scans.')
     key = request['idempotency_key']
     if not isinstance(key, str) or not 8 <= len(key) <= 200:
         raise JobError('invalid_key', 'Supply an idempotency key of 8 to 200 characters.')
@@ -43,6 +44,9 @@ def submit_batch(store, request):
                 reason = None
                 if any(j['state'] in ('queued', 'running') and j['operation'] in ('wallet.add', 'wallet.refresh', 'prices.refresh') for j in related):
                     reason = 'already_running'
+                elif operation == 'portfolio.positionsRefresh':
+                    if any(j['state'] in ('queued','running') and j['operation']=='positions.refresh' for j in related):reason='already_running'
+                    else:items.append({'wallet':address,'operation':'positions.refresh','input':{'wallet':address,**({'discover':value['discover']} if 'discover' in value else {})}})
                 elif operation == 'portfolio.refresh':
                     blocked=next((j for j in related if j['job_id']==wallet.get('research_generation')
                         and j.get('analysis_phase')=='baseline' and j['state']=='failed' and not j.get('result')

@@ -24,6 +24,22 @@ networks, with explicit coverage gaps. These records do not establish complete
 DeFi positions, debts, perp accounts, prediction-market positions, deployable
 capital or total net worth. A receipt token is not a decoded underlying position.
 
+When `positions_read` is available, read it alongside direct holdings. It returns
+saved LP, vault, NFT-backed and staking claims plus exclusive platform allocation.
+Follow `next_offset`; filter by wallet, folder, chain, token or platform ID. The
+allocation describes the selected scope before a platform list filter. Source
+coverage, amounts, price timestamps and retained observations remain explicit.
+Do not add an LP receipt to the same underlying claim, or Aeromax to its backing
+Aerodrome position again. NAV is not a sell-out quote or complete net worth.
+
+`positions_refresh` explicitly starts sequential read-only collection. The first
+scan discovers positions; subsequent default refreshes recheck saved claims and
+current wallet inventory. Pass `discover: true` to find new pool/farm deposits.
+Full discovery can span thousands of old pools and take much longer. Read the
+job and source gaps; do not retry a broad scan just because a view is opened.
+`portfolio_positions_refresh` applies the same operation to all wallets or a
+folder. No signing, strategy execution or payment is involved.
+
 When the installed catalogue exposes folder tools, read `folders_list` and
 `folder_overview` for a folder-scoped request. `portfolio_read` accepts `folder_id` for bounded wallet pages.
 The browser's `ui_context` can include the selected `folder_id`. Folder reads

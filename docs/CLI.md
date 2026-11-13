@@ -422,3 +422,29 @@ kira describe wallets_restore --json
 `query`. These operations never delete snapshot files, modify keys, or start
 provider work. An already removed address must be restored before adding or
 refreshing it. This preserves its earlier names and research.
+
+
+## Protocol positions and platform allocation
+
+`positions_read` returns saved LP, vault, NFT-backed and staking claims. It accepts
+optional `wallet`, `folder_id`, `chain_id`, `token_id`, `platform`, `offset` and
+`limit` (at most 100). Allocation percentages use known, non-overlapping recorded
+value in the selected wallet/folder/token/network, before the platform list filter.
+Unknown amounts and incomplete discovery remain explicit. Position NAV, pending
+rewards and executable sell estimates are separate concepts.
+
+```sh
+kira describe positions_read --json
+kira call positions_read --arguments '{"wallet":"Savings","limit":25}' --json
+kira call positions_refresh --arguments '{"wallet":"Savings","idempotency_key":"refresh-savings-platforms"}' --json
+kira call portfolio_positions_refresh --arguments '{"folder_id":"FOLDER_ID","discover":true,"idempotency_key":"find-folder-platforms"}' --json
+```
+
+The first scan discovers positions. Later refreshes default to saved-claim and
+wallet-inventory checks. `discover: true` additionally sweeps supported pool and
+farm registries for new deposits. Legacy Aerodrome has over 30,000 pools; broad
+initial discovery can be slow even with batched reads. Explicit full discovery
+is kept separate from ordinary refresh. Jobs share the existing sequential writer,
+short resumable slices, pause/resume, duplicate coalescing and bounded retries.
+Opening any page or reading saved claims launches no provider work. Use Activity
+to monitor source progress; financial unknowns never establish a zero holding.

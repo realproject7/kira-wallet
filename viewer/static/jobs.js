@@ -7,7 +7,7 @@ const pendingActions=new Set();
 const scanBusyJobs=new Set();
 let scanAnnouncement='';
 let observedResearchStates=new Map();
-const jobLabels={'wallet.add':'Wallet research','wallet.refresh':'Holdings refresh','prices.refresh':'Price refresh','wallet.setTags':'Wallet names','settings.rpc':'RPC settings','settings.discovery':'Token discovery','settings.provider':'Data provider connection','settings.importEnv':'Local connection setup','settings.h402':'h402 preference'};
+const jobLabels={'wallet.add':'Wallet research','wallet.refresh':'Holdings refresh','positions.refresh':'Platform positions','prices.refresh':'Price refresh','wallet.setTags':'Wallet names','settings.rpc':'RPC settings','settings.discovery':'Token discovery','settings.provider':'Data provider connection','settings.importEnv':'Local connection setup','settings.h402':'h402 preference'};
 const stageLabels={queued:'Waiting to start',starting:'Opening saved evidence',registered:'Wallet registered',discovery:'Token discovery',chain:'Checking on-chain holdings',onchain_progress:'Reading on-chain records',first_evidence:'First results available',dex_discovery:'Checking markets',token_images:'Preparing token artwork',published:'Evidence saved',failed:'Research stopped',stopped:'Research stopped',interrupted:'Ready for recovery'};
 function researchStage(event) {
   if(event.stage==='price_refresh')return ({native:'Checking native asset prices',markets:'Checking market prices',index:'Checking indexed prices',curves:'Checking curve prices',discovery:'Finding additional markets',reserves:'Checking reserve prices',quotes:'Checking sale estimates',artwork:'Updating token artwork',saving:'Saving price observations'})[event.context?.phase]||'Refreshing prices';
@@ -15,7 +15,7 @@ function researchStage(event) {
   if(event.stage==='research_paused')return 'Partial results saved · research continues';
   const label=stageLabels[event.stage]||event.stage;
   if(event.stage!=='onchain_progress')return label;
-  const operations={balances:'Checking token balances',registry:'Discovering Mint Club tokens',metadata:'Reading token details',curves:'Checking curve backing',markets:'Checking markets',reserves:'Checking reserve prices',mintclub_membership:'Checking Mint Club membership',history:'Discovering transfer history',market_discovery:'Finding token markets',factory_queries:'Finding pools',pool_checks:'Verifying pools',cashout_routes:'Checking sell estimates',asset_review:'Saving asset checks'};
+  const operations={positions:'Checking platform positions',balances:'Checking token balances',registry:'Discovering Mint Club tokens',metadata:'Reading token details',curves:'Checking curve backing',markets:'Checking markets',reserves:'Checking reserve prices',mintclub_membership:'Checking Mint Club membership',history:'Discovering transfer history',market_discovery:'Finding token markets',factory_queries:'Finding pools',pool_checks:'Verifying pools',cashout_routes:'Checking sell estimates',asset_review:'Saving asset checks'};
   const counts=event.counts||{},context=event.context||{};
   const chain=(typeof state==='undefined'?[]:state?.wallets||[]).flatMap(w=>w.chains||[]).find(c=>c.id===context.chain_id);
   return (context.operation==='asset_inventory'?'Saving discovered asset counts':operations[context.operation]||label)+(context.chain_id?' · '+(chain?.name||'network '+context.chain_id):'')+(context.provider==='etherscan_keyless_erc1155_id0'?' · ERC1155 ID0':'');
@@ -42,7 +42,8 @@ function sellAnalysisNote(job){
 }
 function jobControls(job) {
   if(!localSession?.controls||state?.demo)return '';
-  if(KiraView.active(job))return scanButton('cancel',job.job_id,job.cancel_requested?(job.scan_policy?'Pausing…':'Stopping…'):job.scan_policy?'Pause scan':'Stop',false,job.cancel_requested);
+  const resumable=job.scan_policy||job.operation==='positions.refresh';
+  if(KiraView.active(job))return scanButton('cancel',job.job_id,job.cancel_requested?(resumable?'Pausing…':'Stopping…'):resumable?'Pause scan':'Stop',false,job.cancel_requested);
   const key=String(job.input.wallet||job.input.address||'').toLowerCase(),wallet=state?.wallets.find(w=>w.key===key)||{key},session=KiraView.researchSession(jobList,wallet);
   if(session?.job.job_id===job.job_id&&session.action)return scanButton(session.action,job.job_id,session.actionLabel,session.action==='deepen');
   if(!['wallet.add','wallet.refresh'].includes(job.operation)&&['interrupted','failed','cancelled'].includes(job.state))return scanButton('resume',job.job_id,'Resume saved work');
@@ -113,6 +114,7 @@ async function submitOperation(operation,input,{refresh=true}={}){
 function refreshControlState(){
   const enabled=localSession?.controls===true;
   if(typeof renderPortfolioActions==='function')renderPortfolioActions();
+  if(typeof CapitalUI!=='undefined')CapitalUI.render();
   $('research-controls').hidden=!enabled;$('empty-add-wallet').hidden=!enabled;$('wallet-actions').hidden=!enabled;
   $('wallet-secondary-actions').hidden=!enabled;
   $('wallet-tools').hidden=!enabled&&!currentWallet()?.report_url;

@@ -47,7 +47,7 @@ def private_values(extra_roots=()):
 def check(path, body, identifiers, secrets):
     reasons = []
     name = Path(path).name
-    if path in ('wallets.json', 'session.json', '.ui-context.json', 'viewer-process.json', 'token-policy.json', '.token-policy.lock', 'wallet-folders.json', '.job-launch.lock') or path.startswith(('.folder-actions/', '.wallet-actions/', '.token-actions/', 'snapshots/', 'conversations/', 'cache/', 'jobs/', 'kira-agent-workspaces/', '.agent-history/', 'site/.vercel/', '.kira-ows-requests/', '.ows/')) or path.endswith(('.env', '.log', '.tgz')) or name.startswith(('.env', '.kira.')) or (name.startswith('.kira') and name.endswith('.json')):
+    if path in ('wallets.json', 'session.json', '.ui-context.json', 'viewer-process.json', 'token-policy.json', '.token-policy.lock', 'wallet-folders.json', '.job-launch.lock') or path.startswith(('.folder-actions/', '.wallet-actions/', '.token-actions/', 'positions/', 'snapshots/', 'conversations/', 'cache/', 'jobs/', 'kira-agent-workspaces/', '.agent-history/', 'site/.vercel/', '.kira-ows-requests/', '.ows/')) or path.endswith(('.env', '.log', '.tgz')) or name.startswith(('.env', '.kira.')) or (name.startswith('.kira') and name.endswith('.json')):
         reasons.append('private runtime file')
     if b'\x00' in body:
         return reasons  # Images need a separate visual review.

@@ -13,7 +13,11 @@ to read tools. Unknown tool names return a nonzero exit and a structured error
 with `--json`.
 
 `kira info --json` and `workspace_status` report `data_scope`: saved direct EVM
-holdings are not a complete DeFi position inventory or net-worth statement.
+holdings and supported protocol claims are not a complete DeFi inventory or
+net-worth statement. `positions_read` supplies bounded saved claims and platform
+allocation; explicit `positions_refresh` / `portfolio_positions_refresh` collect
+new evidence. Default repeat refreshes recheck saved claims. Use `discover: true`
+for broader new-deposit discovery.
 The host agent can use the registered addresses and exact asset identities with
 its own browser, APIs and code tools to investigate lending, LPs, perps and
 prediction markets. External findings and calculated scenarios must remain

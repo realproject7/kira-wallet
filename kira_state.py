@@ -2,6 +2,7 @@
 from __future__ import annotations
 import hashlib
 import json
+import re
 from pathlib import Path
 import sys
 import threading
@@ -98,7 +99,7 @@ class StateCache:
             current = signature(registry)
             if current != self.registry_signature or not self.paths:
                 value = json.loads(registry.read_text())
-                paths = {registry, self.root / 'networks.json', self.root / 'cache/token-images.json', self.root / 'token-policy.json', self.root / 'wallet-folders.json'}
+                paths = {registry, self.root / 'networks.json', self.root / 'cache/token-images.json', self.root / 'token-policy.json', self.root / 'wallet-folders.json',self.root/'positions/index.json'}
                 folders=[]
                 for entry in value.get('wallets', []):
                     latest = entry.get('latest_snapshot') or {}
@@ -164,7 +165,7 @@ class StateCache:
         wallets=[]
         for wallet in state['wallets']:
             mainnet=[a for a in wallet['assets'] if a.get('environment')=='mainnet']
-            wallets.append({**wallet,'assets':[],'asset_count':len(wallet['assets']),
+            wallets.append({**wallet,'assets':[],'positions':[],'asset_count':len(wallet['assets']),
                             'mainnet_asset_count':len(mainnet),
                             'mainnet_unpriced_count':sum(a.get('value_usd') is None for a in mainnet)})
         networks=[{k:v for k,v in n.items() if k not in ('wallets','token_ids')} for n in state['details']['networks']]
@@ -197,7 +198,7 @@ class StateCache:
             state = self.refresh()
             key = JobStore(self.root).wallet(selector)['address_key']
             wallet = next(w for w in state['wallets'] if w['key'] == key)
-            return {**wallet, **page(filter_assets(wallet['assets'], **filters), offset, limit),
+            return {**wallet, 'positions':[], **page(filter_assets(wallet['assets'], **filters), offset, limit),
                     'asset_count': len(wallet['assets']), 'data_revision': self.revision}
 
     def holdings(self, offset=0, limit=100, *, folder_id=None, **filters):
@@ -205,6 +206,19 @@ class StateCache:
             tokens = self.scoped(folder_id)['details']['tokens']
             return {**page(filter_assets(tokens, **filters), offset, limit),
                     'asset_count': len(tokens), 'data_revision': self.revision}
+
+    def positions(self, wallet=None, folder_id=None, token_id=None, chain_id=None, platform=None, offset=0, limit=50):
+        from positions import read_positions
+        from kira_jobs import JobStore
+        with self.lock:
+            wallets=self.scoped(folder_id)['wallets']
+            if wallet:
+                key=JobStore(self.root).wallet(wallet)['address_key'];wallets=[w for w in wallets if w['key']==key]
+            if token_id and (not isinstance(token_id,str) or not re.fullmatch(r'[1-9][0-9]*:(?:native|0x[0-9a-fA-F]{40})',token_id)):raise JobError('invalid_token','Use a chain and contract identity.')
+            if chain_id is not None and (type(chain_id) is not int or chain_id<1):raise JobError('invalid_chain','Use a positive chain ID.')
+            from positions import PLATFORMS
+            if platform is not None and platform not in PLATFORMS:raise JobError('invalid_platform','Choose a recorded platform ID.')
+            return {**read_positions(self.root,wallets,offset,limit,token_id=token_id.lower() if token_id else None,chain_id=chain_id,platform=platform),'data_revision':self.revision}
 
     def token(self, chain_id, address, *, folder_id=None):
         from kira_jobs import ADDRESS
@@ -216,6 +230,11 @@ class StateCache:
         with self.lock:
             state = self.scoped(folder_id)
             token = next((t for t in state['details']['tokens'] if t['id'] == identity), None)
+            if token is None:
+                a=next((a for w in state['wallets'] for p in w.get('positions',[]) if p['chain_id']==chain_id for a in p['assets'] if a['address'].lower()==address),None)
+                if a:
+                    networks=json.loads((self.root/'networks.json').read_text())['networks'];name=next((n.get('name',n['network']) for n in networks if n['chain_id']==chain_id),str(chain_id))
+                    token={'id':identity,'chain_id':chain_id,'address':None if address=='native' else address,'is_native':address=='native','symbol':a['symbol'],'name':a['symbol'],'balance':'0','value_usd':None,'wallet_count':0,'unpriced_count':0,'environment':'mainnet','network':{'id':chain_id,'name':name},'balance_times':{},'price_times':{},'market_pools':[],'links':[]}
             if token is None:raise JobError('not_found', 'No saved token evidence. Missing data is unknown.')
             rows = []
             for wallet in state['wallets']:
@@ -226,7 +245,8 @@ class StateCache:
                              'price_observed_at': (asset.get('price') or {}).get('observed_at') if asset else None,
                              'status': 'Held' if asset else 'No holding recorded' if coverage == 'Researched' else 'Unknown'})
             market=next((t for t in self.refresh()['details']['tokens'] if t['id']==identity),token)
-            return {**token,'market_pools':market.get('market_pools',[]),'links':market.get('links',[]),'curve_reserve':market.get('curve_reserve'),
+            from positions import allocation
+            return {**token,'capital_allocation':allocation(state['wallets'],token_id=identity),'market_pools':market.get('market_pools',[]),'links':market.get('links',[]),'curve_reserve':market.get('curve_reserve'),
                     'market_scope':'workspace', 'wallets': rows, 'data_revision': self.revision}
 
     def network(self, chain_id, *, folder_id=None):
@@ -234,4 +254,5 @@ class StateCache:
         with self.lock:
             row = next((n for n in self.scoped(folder_id)['details']['networks'] if n['id'] == chain_id), None)
             if row is None:raise JobError('not_found', 'No recorded network evidence.')
-            return {**{k: v for k, v in row.items() if k != 'token_ids'},'data_revision':self.revision}
+            from positions import allocation
+            return {**{k: v for k, v in row.items() if k != 'token_ids'},'capital_allocation':allocation(self.scoped(folder_id)['wallets'],chain_id=chain_id),'data_revision':self.revision}

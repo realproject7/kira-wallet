@@ -1,9 +1,54 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.10.0**.
+Published npm release: **1.5.0**. Prepared candidate: **1.11.0**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.11.0
+
+Kira records read-only protocol positions alongside direct holdings. Supported
+paths cover verified lpTOKEN vault shares, Hunt Factory NFT HUNT backing,
+Aeromax-attributed Aero positions, Uniswap V2/V3/V4, legacy/new Aerodrome basic
+and concentrated pools and gauges, PancakeSwap V2/V3 LPs and configured farms,
+and Mint Club staking including older deployment windows. Mint Club bonding-curve
+tokens are classified from existing saved ownership rather than adding shared
+curve reserves. Unsupported custodians, ALM wrappers, lending/debt, Infinity,
+unclaimed fees/rewards and complete exit proceeds remain outside this inventory.
+
+Home, folder, wallet, network and token views show exclusive known-value platform
+allocation. LP receipts and decoded underlying assets count once; Aeromax is an
+exclusive application label for an Aerodrome claim, not an additional deposit.
+Token allocation includes only that underlying's portion. Cards retain quantity,
+block, source, position and price clocks; missing prices remain unknown. Official
+product artwork identifies the platforms. The bar uses SVG presentation attributes
+without weakening the existing content security policy. Platform selection filters
+the bounded position list while the allocation retains its stated portfolio scope.
+
+The first explicit scan discovers new positions. Subsequent default refreshes
+recheck recorded claims and wallet inventory, avoiding another full old-pool sweep.
+Find new positions requests full discovery explicitly. Base legacy pool counts
+observed during acceptance were 30,002 basic and 3,684 CL pools. The official Sugar
+reader groups up to 128 old pools; empty pages do not end discovery. The two pools
+beyond Sugar's 30,000-iteration boundary use bounded direct reads. Other deployment
+catalogs and calls are versioned with their official sources.
+
+Position jobs share the sequential research writer, coalesce duplicate requests,
+yield to holdings/settings work, persist partial evidence and stop stalled retries.
+Each slice limits logical RPC batches to 48, direct multicalls to 32 contracts,
+tasks to 32 and a soft 25-second budget with a 50-second worker timeout. Cached
+metadata is shared across wallets, capped, and written only when changed at the
+slice boundary. Checkpoints coalesce small updates. Views and folder changes make
+no provider calls. RPC batching does not guarantee a specific provider-unit cost;
+large initial discovery can still take substantial time. Pause and resume remain
+available without discarding saved results.
+
+Validation includes exact CL/share math, custody and beneficiary checks, canonical
+factory/pool verification, V4 packed identity, receipt deduplication, token/folder
+scope, partial/empty distinction, durable recovery, refresh/discovery separation,
+30,002-pool pagination and 100-wallet/15,000-claim saved-view scale. Review not
+selected. Earlier archives and operator wallet data remain preserved. Registry
+publication is operator-only.
 
 ## Candidate 1.10.0
 

@@ -53,7 +53,7 @@
     const last = job.events?.at(-1)?.observed_at || job.updated_at;
     const quiet = job.state === 'running' && now - Date.parse(last) > 60000;
     return {
-      label: job.cancel_requested && active(job) ? (job.scan_policy?'Pausing':'Stopping') : job.scan_policy&&job.state==='cancelled'?'Paused':job.scan_policy&&job.analysis_phase==='baseline'&&['partial','succeeded'].includes(job.state)?'Holdings saved':job.scan_policy&&job.analysis_phase==='enrichment'&&['partial','succeeded'].includes(job.state)?'Sell analysis saved':labels[job.state] || 'Unknown',
+      label: job.cancel_requested && active(job) ? (job.scan_policy||job.operation==='positions.refresh'?'Pausing':'Stopping') : (job.scan_policy||job.operation==='positions.refresh')&&job.state==='cancelled'?'Paused':job.scan_policy&&job.analysis_phase==='baseline'&&['partial','succeeded'].includes(job.state)?'Holdings saved':job.scan_policy&&job.analysis_phase==='enrichment'&&['partial','succeeded'].includes(job.state)?'Sell analysis saved':labels[job.state] || 'Unknown',
       active: active(job), spinner: connected && job.state === 'running', quiet,
       elapsed: Number.isFinite(elapsed) ? elapsed : null,
       timerLabel: job.state === 'queued' ? 'Waiting' : job.started_at ? job.attempt>1?(job.scan_policy?(active(job)?'Current pass':'Last pass'):'Attempt elapsed'):'Elapsed' : active(job)?'Since request':'Request duration',

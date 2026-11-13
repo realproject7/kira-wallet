@@ -49,7 +49,7 @@ def main():
         cli=str(temp/'installation/bin/kira');data=str(temp/'portfolio')
         assert run([cli,'--version']).strip()==json.loads((installed/'package.json').read_text())['version']
         catalog=json.loads(run([cli,'--data-dir',data,'describe','--json']))
-        assert {'wallets_removed','wallets_remove','wallets_restore','folders_list','folder_overview','folder_create','folder_set_members','settings_h402','portfolio_holdings_refresh','portfolio_sell_routes_analyze'} <= {tool['name'] for tool in catalog['tools']}
+        assert {'positions_read','positions_refresh','portfolio_positions_refresh','wallets_removed','wallets_remove','wallets_restore','folders_list','folder_overview','folder_create','folder_set_members','settings_h402','portfolio_holdings_refresh','portfolio_sell_routes_analyze'} <= {tool['name'] for tool in catalog['tools']}
         assert not Path(data).exists(),'Tool discovery created a workspace.'
         info=json.loads(run([cli,'--data-dir',data,'info','--json']))
         assert info['capabilities']['headless'] and not info['capabilities']['model_runtime']
@@ -66,20 +66,23 @@ def main():
             assert state['paged'] and state['wallets'][0]['assets']==[]
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/wallet?wallet=Demo%20wallet') as response:assert len(json.load(response)['assets'])==1
             assert json.loads(run([cli,'--data-dir',data,'call','holdings_query','--arguments','{"mode":"aggregate"}','--json']))['scanned_position_count']==1
+            with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/positions?limit=25') as response:
+                positions=json.load(response);assert positions['matched_count']==0 and positions['allocation']['known_value_usd']==125
+            assert json.loads(run([cli,'--data-dir',data,'call','positions_read','--arguments','{}','--json']))['matched_count']==0
             assert state['demo'] is True and len(state['wallets'])==1 and state['dashboard']['known_value_usd']==125
             first=json.loads(run([cli,'--data-dir',data,'status']))
             run([cli,'--data-dir',data,'start','--port',str(port),'--read-only','--no-open'])
             assert json.loads(run([cli,'--data-dir',data,'status']))==first
             run([cli,'--data-dir',data,'start','--port',str(port),'--no-open'],expected=1)
             run([cli,'--data-dir',str(temp/'other-portfolio'),'start','--port',str(port),'--no-open'],expected=1)
-            for path in ['/.kira.local.json','/wallets.json','/wallet-folders.json','/.folder-actions/receipt.json','/.wallet-actions/receipt.json','/.rpc.env']:
+            for path in ['/.kira.local.json','/wallets.json','/wallet-folders.json','/.folder-actions/receipt.json','/.wallet-actions/receipt.json','/.rpc.env','/positions/index.json']:
                 try:urllib.request.urlopen(f'http://127.0.0.1:{port}'+path)
                 except urllib.error.HTTPError as error:assert error.code==404;error.close()
                 else:raise AssertionError('Private file was exposed.')
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/kira-logo.png') as response:assert response.headers['Content-Type']=='image/png'
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/ows-logo.svg') as response:
                 assert response.headers['Content-Type']=='image/svg+xml' and b'<svg' in response.read()
-            for asset in ['ui.css','alchemy-guide.js','wallet-management.js','folders.js','folders-model.js','folders.css','explorers/etherscan.png','venues/mintclub.png','venues/uniswap.svg','venues/aerodrome.svg','selects.js','ows.js','watching.js','watching-model.js','workspace.js','workspace-model.js','workspace.css','integrations.js','portfolio.js']:
+            for asset in ['capital.js','capital.css','venues/lptoken.png','venues/factory.jpg','venues/aeromax.png','venues/pancakeswap.png','ui.css','alchemy-guide.js','wallet-management.js','folders.js','folders-model.js','folders.css','explorers/etherscan.png','venues/mintclub.png','venues/uniswap.svg','venues/aerodrome.svg','selects.js','ows.js','watching.js','watching-model.js','workspace.js','workspace-model.js','workspace.css','integrations.js','portfolio.js']:
                 with urllib.request.urlopen(f'http://127.0.0.1:{port}/'+asset) as response:assert response.status==200 and len(response.read())>100
             transcript='\n'.join(json.dumps(item) for item in [
                 {'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-06-18'}},

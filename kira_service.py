@@ -51,6 +51,8 @@ READ_TOOLS += [tool('network_read','Read saved network allocation and coverage.'
                tool('settings_read','Read configuration references without credential values.'),
                tool('ui_context','Read the wallet, token or network selected in the local web app.')]
 MUTATIONS={
+    'positions_refresh':('positions.refresh',{'wallet':STRING,'discover':{'type':'boolean'}}),
+    'portfolio_positions_refresh':('portfolio.positionsRefresh',{'folder_id':FOLDER_ID,'discover':{'type':'boolean'}}),
     'portfolio_holdings_refresh':('portfolio.refresh',{'folder_id':FOLDER_ID}),
     'portfolio_sell_routes_analyze':('portfolio.analyzeSell',{'folder_id':FOLDER_ID}),
     'settings_h402':('settings.h402',{'enabled':{'type':'boolean'}}),
@@ -80,11 +82,15 @@ WALLET_ACTIONS={name:(operation,{'wallets':{'type':'array','items':WALLET_ADDRES
 MUTATIONS.update(WALLET_ACTIONS)
 READ_TOOLS.append(tool('wallets_removed','Read a bounded page of removed registrations and the wallet revision. Names and saved research can be restored without providers.',
                        {'offset':INTEGER,'limit':{'type':'integer','minimum':1,'maximum':100},'query':{'type':'string','maxLength':200}},required=[]))
+READ_TOOLS.append(tool('positions_read','Read saved protocol positions and exclusive platform allocation. Amounts are principal/NAV, not sell proceeds. Reads never start discovery.',
+    {'wallet':STRING,'folder_id':FOLDER_ID,'token_id':STRING,'platform':STRING,'chain_id':{'type':'integer','minimum':1},'offset':INTEGER,'limit':{'type':'integer','minimum':1,'maximum':100}},required=[]))
 WRITE_TOOLS=[tool(name,'Submit '+operation+' as a durable local job. Returns a receipt, not a completed result.',
-    {**props,'idempotency_key':{'type':'string','minLength':8,'maxLength':200}},required=[k for k in props if k not in ('priority','explorers') and not (name.startswith('portfolio_') and k=='folder_id') and not (k=='expected_revision' and name not in ('folder_set_members',*WALLET_ACTIONS))]+['idempotency_key'],write=True)
+    {**props,'idempotency_key':{'type':'string','minLength':8,'maxLength':200}},required=[k for k in props if k not in ('priority','explorers','discover') and not (name.startswith('portfolio_') and k=='folder_id') and not (k=='expected_revision' and name not in ('folder_set_members',*WALLET_ACTIONS))]+['idempotency_key'],write=True)
     for name,(operation,props) in MUTATIONS.items()]
 
 for descriptor in WRITE_TOOLS:
+    if descriptor['name'] in ('positions_refresh','portfolio_positions_refresh'):
+        descriptor['description']='Collect read-only LP/vault/NFT/staking claims through the sequential queue. Supported paths include lpTOKEN, Hunt Factory, Aeromax/Aerodrome, Uniswap V2/V3/V4, PancakeSwap V2/V3 and Mint Club staking. First scans discover positions; repeat defaults recheck known claims. discover=true explicitly sweeps for new pool/farm deposits and can take much longer. Returns job receipts, not a complete net worth or executable exit quote.'
     if descriptor['name'] in WALLET_ACTIONS:
         descriptor['description']='Immediately remove or restore 1 to 1,000 selected registrations. Removed wallets leave portfolio totals. Saved research, names, folders and keys remain available for restoration. Read wallets_removed for expected_revision; active research must be paused first. No provider work or worker launch.'
         descriptor['annotations'].update(openWorldHint=False,destructiveHint=descriptor['name']=='wallets_remove')
@@ -100,8 +106,8 @@ for descriptor in WRITE_TOOLS:
         descriptor['description']='Queue research for all registered wallets or one explicit folder using existing per-wallet jobs. Folder membership is captured at admission; retries retain that target set. Returns a durable batch receipt with jobs, skipped wallets and errors. Inspect each job for completion.'
 
 DATA_SCOPE = {
-    'inventory': 'Recorded direct holdings on configured EVM networks; coverage may be partial.',
-    'includes': ['native_balances', 'discovered_token_balances', 'price_references', 'saved_history'],
+    'inventory': 'Recorded direct holdings and explicitly collected protocol positions on configured EVM networks; coverage may be partial.',
+    'includes': ['native_balances', 'discovered_token_balances', 'price_references', 'saved_history', 'recorded_protocol_positions', 'platform_allocation'],
     'not_established': ['complete_defi_positions', 'liabilities', 'perp_positions', 'prediction_market_positions', 'deployable_capital', 'complete_net_worth'],
     'freshness': 'Read balance, price and quote timestamps and coverage in each result. Missing is unknown, not zero.',
     'analysis': 'The host agent supplies external research, code execution and interpretation. Saved reads never refresh providers.'
@@ -171,9 +177,9 @@ class Application:
         if registry.get('demo'):
             if operation in ('job.resume','job.deepen') and isinstance(request.get('input'),dict):
                 operation=self.jobs.get(request['input'].get('job_id'))['operation']
-            if operation in ('wallet.add','wallet.refresh','prices.refresh','portfolio.refresh','portfolio.analyzeSell'):
+            if operation in ('wallet.add','wallet.refresh','prices.refresh','positions.refresh','portfolio.refresh','portfolio.analyzeSell','portfolio.positionsRefresh'):
                 raise JobError('demo_read_only','Sample portfolios never contact research providers.')
-        if operation in ('portfolio.refresh','portfolio.analyzeSell'):
+        if operation in ('portfolio.refresh','portfolio.analyzeSell','portfolio.positionsRefresh'):
             from kira_batches import submit_batch
             result=submit_batch(self.jobs,request)
             if launch and any(j['state']=='queued' for j in result['jobs']):self.jobs.launch()
@@ -212,6 +218,7 @@ class Application:
             try:return json.loads((self.root/'.ui-context.json').read_text())
             except FileNotFoundError:return {'view':None,'note':'No web selection has been recorded.'}
         if name=='network_read':return self.views.network(arguments['chain_id'])
+        if name=='positions_read':return self.views.positions(**arguments)
         if name=='job_list':return self.jobs.page(**arguments)
         if name=='job_read':return self.jobs.get(arguments['job_id'])
         if name=='portfolio_read':
