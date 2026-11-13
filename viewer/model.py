@@ -252,6 +252,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None, *, market=None):
             'exit_route': 'mintclub_burn' if t.get('mintclub') else 'dex_unquoted' if t.get('dex_liquidity_found') or any(pool_has_liquidity(pool) for pool in t.get('dex_pools',[])) else 'unverified',
             'image_url':safe_image(t.get('indexer_image_url')) or image_for(images,t['chain_id'],t['token_address'],mint=bool(t.get('mintclub'))),
             'curve_reserve': {'amount':market_token.get('curve_reserve',t['mintclub']['reserve_balance']),'symbol':t['mintclub']['reserve_symbol'],'address':t['mintclub']['reserve_token'],
+                'observed_at':market_token.get('observed_at') if 'curve_reserve' in market_token else t['mintclub'].get('observed_at'),
                 'image_url':image_for(images,t['chain_id'],t['mintclub']['reserve_token'])} if t.get('mintclub') else None})
         if t.get('mintclub'):
             mint=t['mintclub']
@@ -442,7 +443,8 @@ def load_state(root=ROOT, *, include_details=True, encode=True, wallet_cache=Non
         for key in list(wallet_cache):
             if key[0] not in registered:del wallet_cache[key]
     apply_policy(wallets, root)
-    state={'wallets':wallets,'currency':'USD','dashboard':dashboard(wallets),
+    from kira_wallets import management
+    state={'wallet_management':management(registry),'wallets':wallets,'currency':'USD','dashboard':dashboard(wallets),
            'details':project_details(wallets,root) if include_details else {'tokens':[], 'networks':[]}}
     if registry.get('demo') is True:state['demo']=True
     if not encode:return state,None,None

@@ -225,7 +225,9 @@ class StateCache:
                              'balance_observed_at': asset.get('balance_observed_at') if asset else None,
                              'price_observed_at': (asset.get('price') or {}).get('observed_at') if asset else None,
                              'status': 'Held' if asset else 'No holding recorded' if coverage == 'Researched' else 'Unknown'})
-            return {**token, 'wallets': rows, 'data_revision': self.revision}
+            market=next((t for t in self.refresh()['details']['tokens'] if t['id']==identity),token)
+            return {**token,'market_pools':market.get('market_pools',[]),'links':market.get('links',[]),'curve_reserve':market.get('curve_reserve'),
+                    'market_scope':'workspace', 'wallets': rows, 'data_revision': self.revision}
 
     def network(self, chain_id, *, folder_id=None):
         if type(chain_id) is not int or chain_id < 1:raise JobError('invalid_chain', 'Expected a positive chain ID.')

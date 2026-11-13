@@ -32,7 +32,8 @@ def load(root):
 
 
 def key_used(root,key_hash):
-    return (Path(root)/'.folder-actions'/(key_hash+'.json')).exists() or (load(root).get('last_action') or {}).get('key_hash')==key_hash
+    from kira_wallets import key_used as wallet_key_used
+    return wallet_key_used(root,key_hash) or (Path(root)/'.folder-actions'/(key_hash+'.json')).exists() or (load(root).get('last_action') or {}).get('key_hash')==key_hash
 
 
 def catalog(root,wallets=None):
@@ -68,7 +69,8 @@ def action(store,request):
     if not isinstance(key,str) or not 8<=len(key)<=200:raise JobError('invalid_key','Supply an idempotency key of 8 to 200 characters.')
     root=store.root;key_hash=digest(key);fingerprint=digest({'operation':operation,'input':args})
     receipt=root/'.folder-actions'/(key_hash+'.json')
-    if any((root/folder/(key_hash+'.json')).exists() for folder in ('jobs/requests','jobs/batches','.token-actions')) or any(j['key_hash']==key_hash or key_hash in (j.get('control_receipts') or {}) for j in store.summaries()):
+    from kira_wallets import key_used as wallet_key_used
+    if wallet_key_used(root,key_hash) or any((root/folder/(key_hash+'.json')).exists() for folder in ('jobs/requests','jobs/batches','.token-actions')) or any(j['key_hash']==key_hash or key_hash in (j.get('control_receipts') or {}) for j in store.summaries()):
         raise JobError('idempotency_conflict','This request key belongs to another operation.')
     saved=load(root)
     # A state commit carries its receipt. Recover it before a later edit can

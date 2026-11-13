@@ -88,6 +88,8 @@ def project_details(wallets, root, *, include_wallets=True):
         token['sell_out_reference'] = assets[0].get('sell_out_reference') if len(assets) == 1 else None
         links = {(link['label'], link['url']): link for a in assets for link in a['links']}
         token['links'] = list(links.values())
+        curves=[a['curve_reserve'] for a in assets if a.get('curve_reserve')]
+        if curves:token['curve_reserve']=max(curves,key=lambda c:c.get('observed_at') or '')
         pools={}
         for asset in assets:
             for pool in asset.get('market_pools',[]):

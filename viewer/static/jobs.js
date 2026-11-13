@@ -102,6 +102,7 @@ async function submitOperation(operation,input,{refresh=true}={}){
   try{
     const result=await localAPI('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schema_version:1,operation,input,idempotency_key:key})});
     sessionStorage.removeItem(storageKey);
+    if(operation==='wallet.remove'||operation==='wallet.restore'){if(refresh)await pollWorkspace();return result;}
     if(operation.startsWith('folder.')){if(refresh)await pollWorkspace();return result;}
     if(operation.startsWith('token.')){if(refresh)await pollWorkspace();return result;}
     const scanMessage=operation==='job.deepen'?(['succeeded','partial'].includes(result.state)?'Holdings unchanged. Saved sell estimates retained.':'Sell estimate update queued. Your holdings stay available.'):operation==='job.resume'?'Scan queued to resume from saved work.':operation==='job.cancel'?'Pause requested. Saved results stay available.':null;

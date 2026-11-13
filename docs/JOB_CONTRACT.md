@@ -13,6 +13,14 @@ Supported operations are `wallet.add` (address, exact tag), `wallet.refresh`
 Read operations are `job.read`, `job.list`, `snapshot.read`, and
 `snapshots.compare`. The portfolio projection retains its existing schema.
 
+`wallet.remove` and `wallet.restore` are immediate local actions rather than
+research jobs. Both require 1 to 1,000 unique wallet addresses and the current
+`expected_revision` from wallet management. Removal preserves registration
+metadata, saved research, folder assignments and keys for recovery. A stale
+revision or queued/running work on any selected wallet rejects the whole action.
+Removed registrations cannot be added or refreshed until restored. Receipts
+share the job idempotency namespace and never restart provider work.
+
 Inputs reject unknown fields and invalid identifiers. Wallet selectors resolve
 to a unique registered address before persistence. Ambiguous tags fail.
 Idempotency keys are private, bounded strings. Persist only their SHA-256 hash.

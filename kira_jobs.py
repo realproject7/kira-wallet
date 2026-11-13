@@ -349,6 +349,7 @@ class JobStore:
             # Validate mixed-case checksums with the existing engine contract.
             from wallet import validate_address
             address = validate_address(value['address'])
+            if address.lower() in read(self.root/'wallets.json').get('removed_wallets',{}):raise JobError('wallet_removed','This wallet was removed. Restore it in Manage wallets to keep its saved research.')
             return {'address': address, 'tag': value['tag']}
         if operation in {'wallet.refresh', 'prices.refresh', 'wallet.setTags'}:
             fields(value, ['wallet', 'tags'] if operation == 'wallet.setTags' else ['wallet'])
@@ -393,12 +394,14 @@ class JobStore:
         return self.submit({'schema_version':1,'operation':'settings.importEnv','input':{'import_id':identity,'key_env':key_env},'idempotency_key':identity})
 
     def admit_wallet(self, job):
+        if job['operation']=='prices.refresh' and job['input']['wallet'].lower() in read(self.root/'wallets.json').get('removed_wallets',{}):raise JobError('wallet_removed','Restore this wallet in Manage wallets before refreshing prices.')
         if job['operation'] not in ('wallet.add','wallet.refresh'):return job
         from wallet import register, registry_locked
         with registry_locked(self.root):
             registry=read(self.root/'wallets.json')
             admissions=registry.setdefault('wallet_admissions',{})
             address=job['input'].get('address') or job['input'].get('wallet')
+            if address.lower() in registry.get('removed_wallets',{}):raise JobError('wallet_removed','This wallet was removed. Restore it in Manage wallets before starting research.')
             entry=next((w for w in registry['wallets'] if w['address_key']==address.lower()),None)
             if job['job_id'] not in admissions:
                 legacy_done=not job.get('analysis_phase') and (job['state']!='queued' or job['attempt']>0) and entry is not None

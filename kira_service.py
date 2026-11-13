@@ -75,11 +75,19 @@ FOLDER_ACTIONS={
     'folder_assign':('folder.assign',{'folder_id':FOLDER_ID,'wallets':{'type':'array','items':WALLET_ADDRESS,'minItems':1,'maxItems':1000},'expected_revision':INTEGER}),
     'folder_set_members':('folder.setMembers',{'folder_id':FOLDER_ID,'wallets':{'type':'array','items':WALLET_ADDRESS,'maxItems':1000},'expected_revision':INTEGER})}
 MUTATIONS.update(FOLDER_ACTIONS)
+WALLET_ACTIONS={name:(operation,{'wallets':{'type':'array','items':WALLET_ADDRESS,'minItems':1,'maxItems':1000},'expected_revision':{'type':'string','pattern':'^[0-9a-f]{64}$'}})
+                for name,operation in [('wallets_remove','wallet.remove'),('wallets_restore','wallet.restore')]}
+MUTATIONS.update(WALLET_ACTIONS)
+READ_TOOLS.append(tool('wallets_removed','Read a bounded page of removed registrations and the wallet revision. Names and saved research can be restored without providers.',
+                       {'offset':INTEGER,'limit':{'type':'integer','minimum':1,'maximum':100},'query':{'type':'string','maxLength':200}},required=[]))
 WRITE_TOOLS=[tool(name,'Submit '+operation+' as a durable local job. Returns a receipt, not a completed result.',
-    {**props,'idempotency_key':{'type':'string','minLength':8,'maxLength':200}},required=[k for k in props if k not in ('priority','explorers') and not (name.startswith('portfolio_') and k=='folder_id') and not (k=='expected_revision' and name!='folder_set_members')]+['idempotency_key'],write=True)
+    {**props,'idempotency_key':{'type':'string','minLength':8,'maxLength':200}},required=[k for k in props if k not in ('priority','explorers') and not (name.startswith('portfolio_') and k=='folder_id') and not (k=='expected_revision' and name not in ('folder_set_members',*WALLET_ACTIONS))]+['idempotency_key'],write=True)
     for name,(operation,props) in MUTATIONS.items()]
 
 for descriptor in WRITE_TOOLS:
+    if descriptor['name'] in WALLET_ACTIONS:
+        descriptor['description']='Immediately remove or restore 1 to 1,000 selected registrations. Removed wallets leave portfolio totals. Saved research, names, folders and keys remain available for restoration. Read wallets_removed for expected_revision; active research must be paused first. No provider work or worker launch.'
+        descriptor['annotations'].update(openWorldHint=False,destructiveHint=descriptor['name']=='wallets_remove')
     if descriptor['name'] in FOLDER_ACTIONS:
         descriptor['description']='Apply '+FOLDER_ACTIONS[descriptor['name']][0]+' immediately to local organization metadata. Wallet names, snapshots and keys are preserved. One folder per wallet; unfiled removes membership. setMembers replaces that folder membership; expected_revision prevents stale form overwrites. No research or worker launch.'
         descriptor['annotations']['openWorldHint']=False
@@ -146,6 +154,9 @@ class Application:
     def submit(self,request,*,launch=True):
         registry=json.loads((self.root/'wallets.json').read_text())
         operation=request.get('operation') if isinstance(request,dict) else None
+        if operation in ('wallet.remove','wallet.restore'):
+            from kira_wallets import action
+            with self.jobs.locked():return action(self.jobs,request)
         if operation in {row[0] for row in FOLDER_ACTIONS.values()}:
             from kira_folders import action
             with self.jobs.locked():return action(self.jobs,request)
@@ -190,6 +201,9 @@ class Application:
                     'integrations':{'h402':h402_status(load_config())},
                     'capabilities':{'headless':True,'manual_refresh':True,'web_controls':True,'model_runtime':False}}
         if name=='settings_read':return self.settings()
+        if name=='wallets_removed':
+            from kira_wallets import removed_page
+            return removed_page(self.root,**arguments)
         if name=='folders_list':
             from kira_folders import catalog
             return catalog(self.root)

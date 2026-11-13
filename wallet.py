@@ -93,6 +93,7 @@ def validate_address(address):
 
 def register(registry, address, tag):
     key = address.lower()
+    if key in registry.get('removed_wallets',{}):raise ValueError('Wallet removed from Kira. Restore it in Manage wallets before starting research.')
     wallet = next((w for w in registry['wallets'] if w['address_key']==key), None)
     if wallet is None:
         wallet = {'address':address,'address_key':key,'tags':[],'registered_at':h.now()}
@@ -401,6 +402,7 @@ def publish_snapshot(wallet, folder, result):
     relative=str(folder.relative_to(ROOT))
     with registry_locked(ROOT):
         registry=read(ROOT/'wallets.json')
+        if wallet['address_key'] in registry.get('removed_wallets',{}):raise ValueError('Wallet removed from Kira. Publication cannot restore it.')
         entry=next(w for w in registry['wallets'] if w['address_key']==wallet['address_key'])
         generation=os.environ.get('KIRA_RESEARCH_GENERATION')
         job_id=os.environ.get('KIRA_JOB_ID')

@@ -1,9 +1,47 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.9.3**.
+Published npm release: **1.5.0**. Prepared candidate: **1.10.0**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.10.0
+
+Manage wallets reuses the folder organizer's search, range selection, page
+selection and select-all-matches controls. Selected registrations can be removed
+in one reviewed action of up to 1,000 wallets. The confirmation lists every
+selected address with bounded pages. Removed wallets leave wallet lists and
+portfolio/folder totals. Removed wallets opens a searchable, paged recovery list
+that restores names, saved research and available previous folder membership.
+A wallet's action menu also offers removal.
+
+Removal is recoverable registration metadata, not file or key destruction.
+Selected wallets with queued or running work must be paused before removal;
+unrelated scans continue. The shared admission and registry locks, optimistic
+revision checks, atomic registry commit and durable receipts prevent partial
+selection updates or replaying obsolete removals. Old add receipts and engine
+publication cannot resurrect a removed registration. Viewing recovery records
+and restoring wallets require no providers or research worker. CLI and optional
+MCP expose the same typed actions; browser writes retain session/origin guards.
+
+Token pages show saved liquidity pools directly below the summary and risk
+controls. Cards show pair, venue/version/fee, recorded liquidity, source link and
+observation time. Bonding-curve backing has its own units and label. The view
+uses four cards per page, retains unknown values and adds no discovery requests.
+Pools are unioned from saved workspace records for the same chain/contract;
+folder balances and wallet counts remain scoped to their members. Shared market
+funds never enter wallet totals. Testnet liquidity is not displayed as USD.
+
+Regression coverage includes recoverable bulk removal, active-job exclusion,
+crash/replay recovery, cross-operation keys, stale and concurrent writes,
+1,000-wallet actions, bounded recovery pages, full-input metadata preservation,
+global market/folder balance separation, unsafe links and paged market cards.
+`npm test` passes 352 root and 80 viewer Python tests plus 48 JavaScript suites
+and syntax checks. Browser acceptance removes and restores 110 synthetic wallets
+across pages, preserves names, folder membership and research, and checks paged
+pool cards plus 390px and 320px layouts. Actual registrations are not removed.
+Review not selected. Earlier packages and local wallet data remain preserved.
+Registry publication is operator-only.
 
 ## Candidate 1.9.3
 

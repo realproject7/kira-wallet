@@ -117,7 +117,7 @@ class Handler(BaseHTTPRequestHandler):
                 elif path=='/api/network':result=app.views.network(integer('chain_id'),folder_id=text('folder_id'))
                 else:result=app.views.holdings(integer('offset',0),integer('limit',100),folder_id=text('folder_id'),**filters())
                 self.json(result);return
-            if path.startswith('/api/jobs') or path in ('/api/job-history','/api/onboarding','/api/snapshots','/api/snapshot','/api/compare','/api/settings','/api/ows'):
+            if path.startswith('/api/jobs') or path in ('/api/job-history','/api/onboarding','/api/snapshots','/api/snapshot','/api/compare','/api/settings','/api/ows','/api/removed-wallets'):
                 if not self.authenticated():return
                 app=self.application()
                 if path=='/api/jobs':result=app.jobs.page(integer('offset',0),integer('limit',50))['jobs']
@@ -131,6 +131,9 @@ class Handler(BaseHTTPRequestHandler):
                     from onboarding import readiness
                     result=readiness()
                 elif path=='/api/settings':result=app.settings()
+                elif path=='/api/removed-wallets':
+                    from kira_wallets import removed_page
+                    result=removed_page(app.root,integer('offset',0),integer('limit',50),text('query',''))
                 else:self.send_error(404);return
                 self.json(result);return
             if path.startswith('/api/report/'):
@@ -140,7 +143,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not entry or not entry.get('latest_snapshot',{}).get('report'):self.send_error(404);return
                 body=within(ROOT,entry['latest_snapshot']['report']).read_bytes()
                 self.respond(body,'text/plain; charset=utf-8');return
-            files={**{f'/explorers/{name}':f'explorers/{name}' for name in ('etherscan.png',)},**{f'/venues/{name}':f'venues/{name}' for name in ('mintclub.png','uniswap.svg','aerodrome.svg')},'/alchemy-guide.html':'alchemy-guide.html','/alchemy-guide.css':'alchemy-guide.css','/alchemy-guide.js':'alchemy-guide.js','/alchemy-create-app.png':'alchemy-create-app.png','/':'index.html','/index.html':'index.html','/app.js':'app.js','/activity.js':'activity.js','/activity.css':'activity.css','/workspace-design.css':'workspace-design.css','/workspace-design.js':'workspace-design.js','/folders-model.js':'folders-model.js','/folders.js':'folders.js','/folders.css':'folders.css','/ui.css':'ui.css','/jobs.js':'jobs.js','/portfolio.js':'portfolio.js','/token-visibility.js':'token-visibility.js','/token-visibility.css':'token-visibility.css','/workspace.js':'workspace.js','/workspace-model.js':'workspace-model.js','/workspace.css':'workspace.css','/ows.js':'ows.js','/selects.js':'selects.js','/integrations.js':'integrations.js','/report.js':'report.js','/report.css':'report.css','/watching.js':'watching.js','/watching-model.js':'watching-model.js','/style.css':'style.css','/favicon.svg':'favicon.svg','/kira-logo.png':'kira-logo.png','/ows-logo.svg':'ows-logo.svg'}
+            files={**{f'/explorers/{name}':f'explorers/{name}' for name in ('etherscan.png',)},**{f'/venues/{name}':f'venues/{name}' for name in ('mintclub.png','uniswap.svg','aerodrome.svg')},'/alchemy-guide.html':'alchemy-guide.html','/alchemy-guide.css':'alchemy-guide.css','/alchemy-guide.js':'alchemy-guide.js','/alchemy-create-app.png':'alchemy-create-app.png','/':'index.html','/index.html':'index.html','/app.js':'app.js','/activity.js':'activity.js','/activity.css':'activity.css','/workspace-design.css':'workspace-design.css','/workspace-design.js':'workspace-design.js','/folders-model.js':'folders-model.js','/folders.js':'folders.js','/wallet-management.js':'wallet-management.js','/folders.css':'folders.css','/ui.css':'ui.css','/jobs.js':'jobs.js','/portfolio.js':'portfolio.js','/token-visibility.js':'token-visibility.js','/token-visibility.css':'token-visibility.css','/workspace.js':'workspace.js','/workspace-model.js':'workspace-model.js','/workspace.css':'workspace.css','/ows.js':'ows.js','/selects.js':'selects.js','/integrations.js':'integrations.js','/report.js':'report.js','/report.css':'report.css','/watching.js':'watching.js','/watching-model.js':'watching-model.js','/style.css':'style.css','/favicon.svg':'favicon.svg','/kira-logo.png':'kira-logo.png','/ows-logo.svg':'ows-logo.svg'}
             if path not in files:self.send_error(404);return
             file=STATIC/files[path]
             content={'html':'text/html; charset=utf-8','js':'text/javascript; charset=utf-8','css':'text/css; charset=utf-8','svg':'image/svg+xml','png':'image/png'}[file.suffix[1:]]

@@ -398,3 +398,27 @@ status filtering, independent of the requested page. `job_list` also accepts
 failed/interrupted work counts as needing attention. The browser keeps stage
 logs and technical identifiers in task details, with the existing recovery
 operations and no automatic provider calls.
+
+
+## Remove and restore registered wallets
+
+Use Manage wallets in the web app to select multiple saved wallets, then Remove.
+The confirmation reviews the exact selected addresses. Removed wallets leave
+portfolio totals while their research and local keys stay intact. Open Removed
+wallets in the manager to restore selected registrations without research.
+Pause selected wallets' queued/running work in Activity before removal.
+
+CLI and optional MCP use the same immediate local operations:
+
+```sh
+kira call wallets_removed --arguments '{}' --json
+kira describe wallets_remove --json
+kira describe wallets_restore --json
+```
+
+`wallets_remove` and `wallets_restore` take 1–1,000 unique public addresses in
+`wallets`, the current `expected_revision` from `wallets_removed`, and an
+`idempotency_key`. Recovery reads accept `offset`, `limit` (at most 100) and
+`query`. These operations never delete snapshot files, modify keys, or start
+provider work. An already removed address must be restored before adding or
+refreshing it. This preserves its earlier names and research.

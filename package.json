@@ -1,6 +1,6 @@
 {
   "name": "kira-wallet",
-  "version": "1.9.3",
+  "version": "1.10.0",
   "description": "Local wallet research for your agent session and a human-controlled web workspace.",
   "license": "MIT",
   "private": false,
@@ -122,10 +122,12 @@
     "kira_archive.py",
     "skills/kira-wallet",
     "dex-adapters.cjs",
-    "sources/dex-adapters.json"
+    "sources/dex-adapters.json",
+    "kira_wallets.py",
+    "viewer/static/wallet-management.js"
   ],
   "scripts": {
-    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node test-onchain-continuation.cjs && node test-asset-review.cjs && node test-dex-adapters.cjs && node test-cashout-quotes.cjs && node test-cashout-routes.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node test-scan-ux.cjs && node test-activity-ui.cjs && node --check viewer/static/activity.js && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js && node test-watching.cjs && node test-watching-ui.cjs && node --check viewer/static/watching.js && node --check viewer/static/watching-model.js && node --check viewer/static/report.js && node test-report-ui.cjs && node test-holdings-ui.cjs && node test-portfolio-ui.cjs && node test-token-visibility.cjs && node --check viewer/static/token-visibility.js && node --check viewer/static/portfolio.js && node test-folders-ui.cjs && node --check viewer/static/folders.js && node --check viewer/static/folders-model.js && node test-workspace-design.cjs && node --check viewer/static/workspace-design.js && node test-settings-ui.cjs && node test-integrations-ui.cjs && node --check viewer/static/integrations.js && node test-rpc-fallback.cjs && node test-ows.cjs && node test-ows-ui.cjs && node --check viewer/static/ows.js && node --check viewer/static/selects.js && node --check viewer/static/alchemy-guide.js && node --check site/demo.js && node test-rpc-pool.cjs && node test-zero-verification.cjs && node test-market-discovery.cjs && node test-sell-quotes.cjs && node test-external-ui.cjs && node test-refresh-curve-prices.cjs"
+    "test": "python3 -m unittest discover -s . -p 'test_*.py' && python3 -m unittest discover -s viewer -p 'test_*.py' && node test-onchain.cjs && node test-onchain-continuation.cjs && node test-asset-review.cjs && node test-dex-adapters.cjs && node test-cashout-quotes.cjs && node test-cashout-routes.cjs && node --check viewer/static/app.js && node --check viewer/static/jobs.js && node test-workspace.cjs && node test-scan-ux.cjs && node test-activity-ui.cjs && node --check viewer/static/activity.js && node --check viewer/static/workspace.js && node --check viewer/static/workspace-model.js && node test-watching.cjs && node test-watching-ui.cjs && node --check viewer/static/watching.js && node --check viewer/static/watching-model.js && node --check viewer/static/report.js && node test-report-ui.cjs && node test-holdings-ui.cjs && node test-portfolio-ui.cjs && node test-token-visibility.cjs && node --check viewer/static/token-visibility.js && node --check viewer/static/portfolio.js && node test-token-markets-ui.cjs && node test-folders-ui.cjs && node --check viewer/static/wallet-management.js && node --check viewer/static/folders.js && node --check viewer/static/folders-model.js && node test-workspace-design.cjs && node --check viewer/static/workspace-design.js && node test-settings-ui.cjs && node test-integrations-ui.cjs && node --check viewer/static/integrations.js && node test-rpc-fallback.cjs && node test-ows.cjs && node test-ows-ui.cjs && node --check viewer/static/ows.js && node --check viewer/static/selects.js && node --check viewer/static/alchemy-guide.js && node --check site/demo.js && node test-rpc-pool.cjs && node test-zero-verification.cjs && node test-market-discovery.cjs && node test-sell-quotes.cjs && node test-external-ui.cjs && node test-refresh-curve-prices.cjs"
   },
   "dependencies": {
     "viem": "2.57.2"
