@@ -149,6 +149,17 @@ class PositionApplicationTests(unittest.TestCase):
         self.assertEqual([p['id'] for p in saved['positions']],['unverified'])
         self.assertTrue(saved['positions'][0]['retained'])
 
+    def test_chain_repin_keeps_earlier_claim_dated_until_the_fresh_check_finishes(self):
+        job=self.job();job['attempt']=1;publish(self.root,job,self.state([position()]))
+        pending=self.state(complete=False,tasks=[{'scope':'8453:discovery','chain_id':8453}],
+                           coverage={},blocks={'8453':{'number':'200','hash':'0x'+'b'*64}})
+        saved=publish(self.root,job,pending)
+        self.assertTrue(saved['positions'][0]['retained'])
+        self.assertEqual(saved['positions'][0]['block_number'],'100')
+        self.assertEqual(saved['blocks']['8453']['number'],'200')
+        saved=publish(self.root,job,self.state())
+        self.assertEqual(saved['positions'],[])
+
     def test_progress_publication_is_visible_and_final_receipt_recovers(self):
         job=self.job();job['attempt']=1
         state=self.state([position()],complete=False,tasks=[{'scope':'8453:uniswap','chain_id':8453}],cursor=0)

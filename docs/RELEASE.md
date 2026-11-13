@@ -1,9 +1,23 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.11.5**.
+Published npm release: **1.5.0**. Prepared candidate: **1.11.6**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.11.6
+
+Long multi-wallet queues can outlive an RPC's historical-state window. A pruned
+chain is rechecked once at a fresh block, with its earlier claim observations
+retained and dated until fresh checks finish. The retry rebuilds that chain's
+inventory, ownership counters and negative evidence without mixing block epochs.
+Other chains and prior snapshot files stay intact. That chain takes priority
+within its normal bounded slices; ordinary transport errors and recent generic
+method failures do not repin. A still-unavailable source stays partial after the
+single retry. Legacy aged method failures also receive this bounded recovery.
+Live diagnosis distinguished a successful fresh hash-pinned read from an
+unavailable older state. The writer, request and slice limits remain unchanged.
+Review not selected; previous archives remain immutable.
 
 ## Candidate 1.11.5
 

@@ -54,6 +54,40 @@ test('Mint Club staking finds principal without requiring loose-token ownership'
  });const rows=Object.values((await finish(h)).positions);assert.equal(rows[0].platform,'mintclub-staking');assert.equal(rows[0].assets[0].amount,'100');assert.equal(rows[0].source_url,'https://mint.club/staking/base/37');assert.equal(rows[0].pool_id,'37');
  const nft=harness({kind:'stake',address,pool_id:'38',shares:'2',version:'V1_2'},()=>({stakingToken:T0,isStakingTokenERC20:false}));assert.equal(Object.values((await finish(nft)).positions)[0].assets[0].amount,'2');
 });
+test('pruned chain state is rebuilt once at a fresh pin without mixing epochs',async()=>{
+ const cid=4663,h=harness({kind:'nft-count',manager:MANAGER},c=>c.functionName==='balanceOf'||c.functionName==='poolCount'?0n:tokenCalls(c),{cid});
+ h.input.discover=false;h.state.cursor=1;h.state.done=1;h.state.complete=true;
+ h.state.blocks[cid]={number:'1',hash:'0x'+'b'.repeat(64),observed_at:'1970-01-01T00:00:00Z'};
+ h.state.coverage[cid+':test']={id:cid+':test',chain_id:cid,status:'partial',errors:1};
+ h.state.failed_tasks=[{index:0,scope:cid+':test',kind:'nft-count',reason:'method'}];
+ h.state.positions.old={id:'old',chain_id:cid};h.state.positions.other={id:'other',chain_id:1};
+ h.state.absent_positions=[cid+':old','1:other'];h.state.nft_expected={[cid+':old']:'1','1:other':'0'};
+ h.state.nft_owned={[cid+':old:9']:true};
+ let contexts=0;h.io.context=async(_cid,saved)=>{contexts++;assert.equal(saved,undefined);assert.equal(h.state.complete,false);return {block:{number:'100',hash:'0x'+'a'.repeat(64),observed_at:new Date().toISOString()}};};
+ const result=await finish(h);
+ assert.equal(contexts,1);assert.equal(result.pin_rechecks[cid],1);assert.equal(result.blocks[cid].number,'100');
+ assert.equal(result.positions.old,undefined);assert.deepEqual(result.positions.other,{id:'other',chain_id:1});
+ assert.deepEqual(result.absent_positions,['1:other']);assert.equal(result.nft_expected[cid+':old'],undefined);
+ assert.equal(result.coverage[cid+':test'],undefined);assert.equal(result.failed_tasks[0].replaced_by_recheck,true);
+ assert.equal(result.pin_recheck_history[0].previous_block,'1');assert.equal(result.rechecking_chain,undefined);
+ assert.ok(h.metrics().maxActive<=1);assert.ok(result.last_slice_reads<=48);
+});
+test('a fresh-chain retry stays bounded when the provider still cannot read state',async()=>{
+ const cid=4663,h=harness({kind:'nft-count',manager:MANAGER},()=>0n,{cid});h.input.discover=false;
+ h.io.multi=async(_c,calls)=>calls.map(call=>({status:'failure',function:call.functionName,reason:'historical_state'}));
+ const result=await finish(h);
+ assert.equal(result.pin_rechecks[cid],1);assert.equal(result.pin_recheck_history.length,1);
+ assert.equal(result.complete,true);assert.ok(Object.values(result.coverage).some(c=>c.status==='partial'));
+ assert.ok(result.failed_tasks.some(f=>!f.replaced_by_recheck));
+});
+test('ordinary transport errors and recent method failures keep their original pin',async()=>{
+ for(const [reason,date] of [['transport','1970-01-01T00:00:00Z'],['method',new Date().toISOString()]]){
+  const cid=4663,h=harness({kind:'nft-count',manager:MANAGER},()=>0n,{cid});
+  h.state.blocks[cid]={number:'1',hash:'0x'+'b'.repeat(64),observed_at:date};h.state.cursor=1;
+  h.state.failed_tasks=[{index:0,scope:cid+':test',kind:'nft-count',reason}];
+  const result=await finish(h);assert.equal(result.blocks[cid].number,'1');assert.equal(result.pin_rechecks[cid],undefined);
+ }
+});
 test('Uniswap, Pancake and Aero NFTs use owner, factory and pinned liquidity',async()=>{
  for(const [platform,type,version] of [['uniswap','v3','v3'],['pancakeswap','v3','v3'],['aerodrome','cl','legacy-slipstream'],['aerodrome','cl','aero-cl']]){
   const h=harness({kind:'nft',ids:['1'],manager:MANAGER,factory:FACTORY,platform,type,version},c=>nftResolve(c));

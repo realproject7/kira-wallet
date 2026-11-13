@@ -109,6 +109,32 @@ class Reader{
   const suffix=':'+key(t.address)+':'+poolId;
   this.absent(...(this.input.known_positions||[]).filter(p=>p.chain_id===t.chain_id&&p.id.endsWith(suffix)).map(p=>p.id));
  }
+ recheckUnavailableChain(){
+  // A long portfolio queue can outlive a public RPC's state-retention window.
+  // Rebuild that chain once, at a new pin, instead of mixing block epochs or
+  // repeatedly issuing reads against state the provider has already pruned.
+  const pending=this.state.tasks.slice(this.state.cursor);
+  if(this.state.rechecking_chain&&pending.some(t=>t.chain_id===this.state.rechecking_chain))return;
+  delete this.state.rechecking_chain;
+  const retries=this.state.pin_rechecks ||= {};
+  const failed=(this.state.failed_tasks||[]).find(f=>{
+   const cid=Number(f.scope.split(':')[0]),block=this.state.blocks[cid];
+   return !retries[cid]&&block&&this.input.networks.some(n=>n.chain_id===cid&&n.environment==='mainnet')&&
+    (f.reason==='historical_state'||f.reason==='method'&&Date.now()-Date.parse(block.observed_at)>300000);
+  });
+  if(!failed)return;
+  const cid=Number(failed.scope.split(':')[0]),prefix=cid+':',old=this.state.blocks[cid];
+  if(this.state.cursor+pending.filter(t=>t.chain_id!==cid).length>=MAX_TASKS)return;
+  retries[cid]=1;this.state.rechecking_chain=cid;this.state.complete=false;
+  (this.state.pin_recheck_history ||= []).push({chain_id:cid,previous_block:old.number,previous_hash:old.hash});
+  for(const f of this.state.failed_tasks)if(f.scope.startsWith(prefix))f.replaced_by_recheck=true;
+  for(const [id,p] of Object.entries(this.state.positions))if(p.chain_id===cid)delete this.state.positions[id];
+  for(const field of ['coverage','nft_expected','nft_owned'])for(const id of Object.keys(this.state[field]||{}))if(id.startsWith(prefix))delete this.state[field][id];
+  this.state.absent_positions=(this.state.absent_positions||[]).filter(id=>!id.startsWith(prefix));
+  this.state.tasks=[...this.state.tasks.slice(0,this.state.cursor),...pending.filter(t=>t.chain_id!==cid)];
+  delete this.state.blocks[cid];this.contexts.delete(cid);
+  this.enqueue({kind:'seed',chain_id:cid,scope:prefix+'discovery'});
+ }
  async handle(t){
   this.scope(t);const cid=t.chain_id;
   if(t.kind==='seed'){
@@ -345,10 +371,11 @@ class Reader{
   }
  }
  async run(save){
+  this.recheckUnavailableChain();
   let completed=0,lastSave=Date.now(),lastPositions=Object.keys(this.state.positions).length;
   while(this.state.cursor<this.state.tasks.length&&completed<32){
    // Read known balances and emit useful records before expensive registry sweeps.
-   const priority=t=>t.kind==='aero-sugar'||t.version?.startsWith('legacy-')&&['aero-directory','gauge-basic','gauge-cl'].includes(t.kind)?3:['aero-directory','gauge-basic','gauge-cl','farm-scan'].includes(t.kind)?2:['aero-count','farm-count'].includes(t.kind)?1:0;
+   const priority=t=>t.chain_id===this.state.rechecking_chain?-1:t.kind==='aero-sugar'||t.version?.startsWith('legacy-')&&['aero-directory','gauge-basic','gauge-cl'].includes(t.kind)?3:['aero-directory','gauge-basic','gauge-cl','farm-scan'].includes(t.kind)?2:['aero-count','farm-count'].includes(t.kind)?1:0;
    let best=this.state.cursor;for(let i=best+1;i<this.state.tasks.length;i++)if(priority(this.state.tasks[i])<priority(this.state.tasks[best]))best=i;
    if(best!==this.state.cursor)[this.state.tasks[best],this.state.tasks[this.state.cursor]]=[this.state.tasks[this.state.cursor],this.state.tasks[best]];
    const task=this.state.tasks[this.state.cursor],tail=this.state.tasks.length;
@@ -365,6 +392,7 @@ class Reader{
    if(completed%4===0||count!==lastPositions||Date.now()-lastSave>=1000){save(this.state,this.shared);lastSave=Date.now();lastPositions=count;}
    this.io.progress?.({stage:'onchain_progress',operation:'positions',chain_id:task.chain_id,checked:this.state.cursor,total:this.state.tasks.length});
   }
+  this.recheckUnavailableChain();
   this.state.complete=this.state.cursor===this.state.tasks.length;this.state.last_slice_reads=this.reads;
   if(this.state.complete)for(const [scope,expected] of Object.entries(this.state.nft_expected||{})){
    const found=Object.keys(this.state.nft_owned||{}).filter(id=>id.startsWith(scope+':')).length;
@@ -380,7 +408,8 @@ function realIO(){
   async multi(context,calls){const r=await context.c.multicall({contracts:calls,blockNumber:BigInt(context.block.number),batchSize:0,multicallAddress:'0xcA11bde05977b3631167028862bE2a173976CA11'});return r.map((x,index)=>{
    if(x.status==='success')return {status:'success',result:x.result};
    let contract=false;for(let e=x.error,depth=0;e&&depth<8;e=e.cause,depth++)if(/ContractFunctionReverted|ContractFunctionZeroData|AbiDecoding/.test(e.name||''))contract=true;
-   return {status:'failure',function:calls[index].functionName,reason:contract?'contract':require('./rpc-pool.cjs').classify(x.error)};
+   let historical=false;for(let e=x.error,depth=0;e&&depth<8;e=e.cause,depth++)if(/historical state|missing trie|header not found/i.test(e.shortMessage||e.message||''))historical=true;
+   return {status:'failure',function:calls[index].functionName,reason:contract?'contract':historical?'historical_state':require('./rpc-pool.cjs').classify(x.error)};
   });},
   transfers(context,args){return context.c.request({method:'alchemy_getAssetTransfers',params:[args]});},
   async aeromax(ids){
