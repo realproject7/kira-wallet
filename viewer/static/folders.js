@@ -30,7 +30,7 @@ const FolderUI=(()=>{
     if(selectedView==='home'){
       document.title=scope?label(scope)+' · Kira Wallet':'Home · Kira Wallet';
       $('home-heading').querySelector('h1').textContent=scope?label(scope):'Your portfolio';
-      $('home-description').textContent=scope?'Saved balances and estimates for the wallets in this folder.':'Saved balances, prices and coverage. Refresh when you need a new observation.';
+      $('home-description').textContent=scope?'Saved balances for this folder.':'Your saved balances, in one place.';
       if(scope){$('home-empty').hidden=true;$('setup-path').hidden=true;$('home-summary').hidden=!view();}
     }
     const current=typeof currentWallet==='function'?currentWallet():null;

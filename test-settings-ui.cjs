@@ -11,6 +11,7 @@ vm.runInContext(source.slice(source.indexOf('function renderConnectionForm()'),s
 vm.runInContext(source.slice(source.indexOf('async function openDataConnections('),source.indexOf('async function saveConnectionSetting(')),ctx);
 vm.runInContext(source.slice(source.indexOf('async function saveConnectionSetting('),source.indexOf("$('open-settings').addEventListener")),ctx);
 vm.runInContext(source.slice(source.indexOf("$('provider-recheck').addEventListener"),source.indexOf("$('settings-refresh').addEventListener")),ctx);
+vm.runInContext(source.slice(source.indexOf("$('settings-dialog').addEventListener('close'"),source.indexOf("$('provider-recheck').addEventListener")),ctx);
 function reset(){el('provider-recheck').disabled=false;ctx.connectionConfig=structuredClone(old);el('settings-dialog').open=true;el('data-provider').value='alchemy';el('discovery-key').value='ALCHEMY_API_KEY';el('rpc-mode').value='public';el('rpc-priority').value='public_first';el('rpc-references').value='';el('rpc-custom-only').checked=false;el('new-wallet-address').value='untouched-wallet-draft';}
 (async()=>{
  reset();el('data-provider').value='public';await el('provider-recheck').click();
@@ -41,5 +42,13 @@ function reset(){el('provider-recheck').disabled=false;ctx.connectionConfig=stru
  assert.equal(el('provider-recheck').disabled,true);await el('provider-recheck').click();assert.equal(openingReads,1);
  resolveOpening(old);await opening;assert.equal(el('provider-recheck').disabled,false);
  assert.equal(ctx.connectionConfig.discovery.provider,'none');
+ el('workspace-settings-dialog').open=true;
+ el('rpc-references').value='8453 UNSAVED_RPC';
+ ctx.openWorkspaceSettings=()=>{throw new Error('Closing the connection modal must not reload workspace settings.');};
+ const revision=ctx.connectionRevision;
+ el('settings-dialog').close();
+ assert.equal(ctx.connectionRevision,revision+1);
+ assert.equal(el('rpc-references').value,'8453 UNSAVED_RPC');
+ assert.match(el('workspace-data-summary').textContent,/Alchemy connection required/);
  console.log('Connection recheck reconciles imported references and preserves user edits.');
 })().catch(e=>{console.error(e);process.exitCode=1;});

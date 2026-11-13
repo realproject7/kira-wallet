@@ -8,7 +8,7 @@ var TokenVisibility = (()=>{
     const id=++notice,node=$('policy-undo');clearTimeout(timer);node.hidden=false;node.innerHTML='';
     const text=document.createElement('span');text.textContent=message;node.append(text);
     const undo=document.createElement('button');undo.type='button';undo.className='undo-button';undo.textContent='Undo';
-    const close=document.createElement('button');close.type='button';close.className='undo-close';close.setAttribute('aria-label','Dismiss notification');close.textContent='×';
+    const close=document.createElement('button');close.type='button';close.className='undo-close';close.setAttribute('aria-label','Dismiss notification');close.setAttribute('data-ui-icon','close');
     node.append(undo,close);
     const expire=()=>{clearTimeout(timer);timer=setTimeout(()=>{if(id===notice)dismiss();},10000);};
     node.onmouseenter=()=>clearTimeout(timer);node.onmouseleave=expire;node.onfocusin=()=>clearTimeout(timer);node.onfocusout=expire;

@@ -36,4 +36,4 @@ const jobsSource=fs.readFileSync('viewer/static/jobs.js','utf8');
 vm.runInContext(jobsSource.slice(jobsSource.indexOf('function renderActiveWork(){'),jobsSource.indexOf('async function loadActivity(){')),activity);
 activity.renderActiveWork();
 assert.equal(($('active-work').innerHTML.match(/class="active-work-row"/g)||[]).length,1);
-assert.match($('active-work').innerHTML,/running/);assert.match($('active-work').innerHTML,/View 2 more wallet jobs/);
+assert.match($('active-work').innerHTML,/running/);assert.match($('active-work').innerHTML,/All tasks \(3\)/);

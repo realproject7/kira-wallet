@@ -2,6 +2,18 @@
 // Presentation helpers only. Reads and navigation never submit research.
 let networkPanelKey=null,networkPanel='tokens';
 const workspaceDisclosures=new Map();
+function workspaceIcon(name){
+  const paths={check:'<path d="m5 12 4 4L19 6"/>',clock:'<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>',chart:'<path d="M4 20V10m8 10V4m8 16v-8"/>',warning:'<path d="M12 3 2 21h20zM12 9v5m0 3v.5"/>',chevron:'<path d="m8 5 7 7-7 7"/>'};
+  return '<svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">'+(paths[name]||paths.chart)+'</svg>';
+}
+function coverageVisual(chains,compact=false){
+  const rows=(chains||[]).filter(c=>c.environment==='mainnet'&&c.lifecycle?.status!=='retired');
+  const checked=c=>c.complete&&(c.rpc_available===true||c.rpc_status==='available')&&!(typeof KiraView!=='undefined'&&KiraView.coverageGap(c));
+  const status=c=>checked(c)?'checked':c.rpc_pending?'pending':'gap';
+  const label=c=>checked(c)?'Checked':c.rpc_pending?'Not checked yet':'Needs review';
+  if(compact)return '<span class="coverage-meter" role="img" aria-label="'+rows.filter(checked).length+' of '+rows.length+' mainnets checked">'+rows.map(c=>'<span data-status="'+status(c)+'" title="'+escapeHTML(c.name+': '+label(c))+'"></span>').join('')+'</span>';
+  return rows.map(c=>'<div class="coverage-network" data-status="'+status(c)+'">'+workspaceIcon(checked(c)?'check':c.rpc_pending?'clock':'warning')+'<div><strong>'+escapeHTML(c.name)+'</strong><small>'+label(c)+'</small></div></div>').join('');
+}
 function matchingWallets(wallets,query=''){
   const text=String(query||'').trim().toLocaleLowerCase();
   return text?wallets.filter(w=>[w.name,w.address,w.key,...(w.tags||[])].some(v=>String(v||'').toLocaleLowerCase().includes(text))):wallets;
@@ -68,6 +80,7 @@ function initWorkspaceDesign(){
   $('detail-view').addEventListener('click',event=>{const button=event.target.closest('[data-network-panel]');if(button)setNetworkPanel(button.dataset.networkPanel);});
   $('detail-view').addEventListener('keydown',event=>moveSectionTab(event,'[data-network-panel]',['tokens','wallets'],setNetworkPanel));
   $('catalog-clear').addEventListener('click',clearCatalogFilters);
+  $('rpc-mode').addEventListener('change',()=>{if($('rpc-mode').value==='custom')$('rpc-reference-details').open=true;});
   document.addEventListener('click',async event=>{
     const button=event.target.closest('[data-copy-record],[data-copy-command]');if(!button)return;
     const value=button.dataset.copyRecord||button.dataset.copyCommand;

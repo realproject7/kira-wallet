@@ -55,7 +55,7 @@ function renderWatching() {
   $('wallet-manual-mode').setAttribute('aria-pressed', String(!browser));
   $('wallet-browser-mode').setAttribute('aria-pressed', String(browser));
   $('wallet-browser-panel').hidden = !!submission || !browser;
-  $('wallet-dialog-title').textContent = submission ? 'Watching wallet request' : browser && current.selected ? 'Review your Watching wallet' : 'Add a Watching wallet';
+  $('wallet-dialog-title').textContent = submission ? 'Wallet request' : browser && current.selected ? 'Review wallet' : 'Add wallet';
   $('wallet-dialog').classList.toggle('is-review', !!submission || browser && !!current.selected);
   $('wallet-intro').hidden = !!submission || browser && !!current.selected;
   $('wallet-address-field').hidden = browser;

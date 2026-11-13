@@ -8,10 +8,10 @@ const KiraSelect=(()=>{
     const chain=option?.dataset.chainId&&typeof state!=='undefined'?state?.details?.networks.find(c=>String(c.id)===option.dataset.chainId):null;
     return `<span class="select-option-label">${chain?chainIcon(chain):''}<span>${escapeHTML(option?.textContent||'Choose')}</span></span>`;
   }
-  function refresh(){prune();for(const entry of entries.values()){const option=entry.select.selectedOptions[0];entry.label.innerHTML=optionLabel(option);entry.button.disabled=entry.select.disabled;}bindImages();}
+  function refresh(){prune();for(const entry of entries.values()){const option=entry.select.selectedOptions[0];entry.label.innerHTML=optionLabel(option);entry.button.disabled=entry.select.disabled;entry.button.title=option?.textContent||'';}bindImages();}
   function focusOption(index){if(!opened)return;const options=[...opened.popup.querySelectorAll('[role="option"]')];if(!options.length)return;opened.index=(index+options.length)%options.length;for(const [i,node] of options.entries())node.classList.toggle('highlighted',i===opened.index);const node=options[opened.index];opened.button.setAttribute('aria-activedescendant',node.id);node.scrollIntoView({block:'nearest'});}
   function open(entry){close();refresh();opened=entry;const options=[...entry.select.options].filter(o=>!o.disabled);
-    entry.popup.innerHTML=options.map((o,i)=>`<div role="option" id="${entry.select.id}-option-${i}" aria-selected="${String(o.selected)}" data-value="${escapeHTML(o.value)}">${optionLabel(o)}<span aria-hidden="true">${o.selected?'✓':''}</span></div>`).join('');
+    entry.popup.innerHTML=options.map((o,i)=>`<div role="option" id="${entry.select.id}-option-${i}" aria-selected="${String(o.selected)}" data-value="${escapeHTML(o.value)}">${optionLabel(o)}<span class="select-check" aria-hidden="true">${o.selected?'<svg viewBox="0 0 24 24" fill="none"><path d="m5 12 4 4L19 6"/></svg>':''}</span></div>`).join('');
     (entry.select.closest('dialog')||document.body).append(entry.popup);entry.popup.hidden=false;entry.button.setAttribute('aria-expanded','true');
     const rect=entry.button.getBoundingClientRect(),height=Math.min(280,entry.popup.scrollHeight),below=innerHeight-rect.bottom-10;
     entry.popup.style.width=Math.min(Math.max(rect.width,240),innerWidth-20)+'px';entry.popup.style.left=Math.max(10,Math.min(rect.left,innerWidth-entry.popup.offsetWidth-10))+'px';
@@ -22,7 +22,7 @@ const KiraSelect=(()=>{
   function enhance(){prune();for(const select of document.querySelectorAll('select')){
     if(entries.has(select)||!select.id||select.hidden)continue;
     const wrapper=document.createElement('div');wrapper.className='kira-select';select.before(wrapper);wrapper.append(select);select.classList.add('custom-select-source');select.tabIndex=-1;select.setAttribute('aria-hidden','true');
-    const label=document.createElement('span'),button=document.createElement('button');button.type='button';button.className='kira-select-trigger';button.setAttribute('role','combobox');button.setAttribute('aria-haspopup','listbox');button.setAttribute('aria-expanded','false');button.setAttribute('aria-label',select.closest('label')?.querySelector('span')?.textContent||select.closest('label')?.childNodes[0]?.textContent?.trim()||'Choose an option');
+    const label=document.createElement('span'),button=document.createElement('button');button.type='button';button.className='kira-select-trigger';button.setAttribute('role','combobox');button.setAttribute('aria-haspopup','listbox');button.setAttribute('aria-expanded','false');button.setAttribute('aria-label',select.getAttribute('aria-label')||select.closest('label')?.querySelector('span')?.textContent||select.closest('label')?.childNodes[0]?.textContent?.trim()||'Choose an option');
     button.append(label);button.insertAdjacentHTML('beforeend','<svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>');wrapper.append(button);
     const popup=document.createElement('div');popup.className='kira-select-popup';popup.id=select.id+'-listbox';popup.setAttribute('role','listbox');popup.setAttribute('aria-label',button.getAttribute('aria-label'));popup.hidden=true;document.body.append(popup);button.setAttribute('aria-controls',popup.id);
     const entry={select,label,button,popup,index:0};entries.set(select,entry);

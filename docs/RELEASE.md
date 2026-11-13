@@ -1,9 +1,44 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.8.1**.
+Published npm release: **1.5.0**. Prepared candidate: **1.9.0**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.9.0
+
+The local workspace shares a readable system-font scale, with 17px body text,
+15px controls, 13–14px supporting text and responsive headings. Consistent SVG
+icons, 44px controls, aligned chevrons and selection marks replace mismatched
+button geometry. Mobile navigation and current-work summaries use less space.
+No external fonts or design dependencies are added.
+
+Home, wallet, token and network summaries emphasize values and visual status.
+Sell estimates retain missing counts, market-reference labels and expandable
+liquidity/gas context. Network coverage uses individual status tiles and a
+compact meter. A complete discovery response with failed RPC reads remains
+marked for review rather than shown as a completed balance check.
+
+Activity adds visual status summaries above its existing filters and task
+history. Settings show the current connection first, with network references
+and optional agent tools in separate tabs. Closing connection guidance no
+longer reloads and discards unsaved network edits. Token filters put advanced
+choices in a disclosure. Wallet addition starts with public address or browser
+wallet; local wallet options expand separately. History, comparison, names,
+search and folder dialogs share the same spacing and controls.
+
+The Alchemy guide uses a three-step layout with a fixed command-copy action.
+API keys still enter only through the private terminal prompt. Viewing saved
+records, opening settings and changing folders never start provider research.
+Financial calculations, source timestamps and unknown values are preserved.
+
+References: Lazyweb's public [banking balance and transaction patterns](https://design.lazyweb.com/blog/banking-home-balance-and-transaction-states)
+and Apple's [typography guidance](https://developer.apple.com/design/human-interface-guidelines/typography).
+The scale is adapted for Kira, not claimed as a measurement of apple.com.
+Authenticated Lazyweb search and Agentic Search finalization were unavailable;
+no private research resource is claimed. Browser acceptance uses isolated empty
+and 110-wallet fixtures, including 320px and 390px layouts. Review not selected.
+Earlier frozen candidates remain preserved. Registry publication is operator-only.
 
 ## Candidate 1.8.1
 

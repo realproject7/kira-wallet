@@ -65,7 +65,7 @@ function renderWalletScan() {
     return `${working?`<p><strong>${escapeHTML(jobStage(job))}</strong> · <span data-job-timer="${escapeHTML(job.job_id)}">${KiraView.jobTimeText(job,Date.now(),jobsConnected)}</span></p>${progress.count?`<p>${escapeHTML(progress.count)}</p>`:''}${progress.total&&!progress.cumulative?`<progress value="${progress.checked}" max="${progress.total}" aria-label="${escapeHTML(progress.count)}"></progress>`:''}${progress.eta?`<p data-job-estimate="${escapeHTML(job.job_id)}">${escapeHTML(progress.eta)}</p>`:''}`:''}${progress.assets?`<p>${escapeHTML(assetProgressText(progress))}</p>`:''}`;
   };
   const secondary=disconnected?'Connection lost':pending?jobStage(lookup.job):wallet.analysed_at?'Saved '+stamp(wallet.analysed_at):'';
-  card.innerHTML=`<div class="wallet-status-row"><details class="wallet-status-details" ${detailsOpen?'open':''}><summary id="wallet-scan-title"><span class="wallet-status-label"><span class="wallet-status-dot ${pending&&jobsConnected?'is-working':''}" data-mode="${status.mode}" aria-hidden="true"></span><span class="status-prefix">Holdings</span>${escapeHTML(status.label)}</span><span class="status-chevron" aria-hidden="true">⌄</span></summary><div class="wallet-status-body">
+  card.innerHTML=`<div class="wallet-status-row"><details class="wallet-status-details" ${detailsOpen?'open':''}><summary id="wallet-scan-title"><span class="wallet-status-label"><span class="wallet-status-dot ${pending&&jobsConnected?'is-working':''}" data-mode="${status.mode}" aria-hidden="true"></span><span class="status-prefix">Holdings</span>${escapeHTML(status.label)}</span><span class="status-chevron" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24" fill="none"><path d="m7 10 5 5 5-5"/></svg></span></summary><div class="wallet-status-body">
     <p>${escapeHTML(status.description)}</p>${progressHTML(lookup?.job)}
     ${disconnected?'<p>Connection lost. This is the last recorded status. Actions are available after reconnecting.</p>':''}
     ${wallet.analysed_at?'<p>See network coverage below for missing checks.</p>':''}
@@ -79,10 +79,12 @@ function renderWalletScan() {
   const action=canWrite&&session?.action?scanButton(session.action,job.job_id,session.actionLabel,optional,working&&job.cancel_requested):'';
   const analysisTitle=showDeep?session.title:saved?.status==='changed'?'Holdings changed':showSaved?'Saved sell estimates':'Calculate sell estimates';
   const analysisDescription=showDeep?session.description:saved?.status==='changed'?saved.changed_count+' recorded position'+(saved.changed_count===1?'':'s')+' changed. Update estimates for the new quantities. Matching positions keep their dated estimates.':['holdings_pending','holdings_required'].includes(saved?.status)?'Saved estimates stay available while holdings are checked.':saved?.status==='unverified'?'Some quantities could not be verified. Matching positions keep their saved estimates. Refresh holdings to resolve the gaps.':showSaved?'Recorded quantities match the last analysis. Saved estimates are retained; market conditions may have changed.':'Optional sale and redemption estimates for your saved holdings.';
-  analysis.innerHTML=optional||showDeep||showSaved?`<div class="analysis-card-heading"><div class="analysis-copy"><div class="analysis-title-row"><h2 id="wallet-analysis-title" tabindex="-1">${escapeHTML(analysisTitle)}</h2>${optional?'<span class="analysis-optional">Optional analysis</span>':''}</div><p>${escapeHTML(analysisDescription)}</p>${showSaved?`<p class="form-note">Last sell analysis <time datetime="${escapeHTML(saved.last_analyzed_at)}" title="${escapeHTML(saved.last_analyzed_at)}">${stamp(saved.last_analyzed_at)}</time> · Saved observation, excludes gas</p>`:''}</div>${action?`<div class="analysis-card-action">${action}</div>`:''}</div>
+  const shortDescription=showDeep?session.description:saved?.status==='changed'?saved.changed_count+' recorded positions changed.':saved?.status==='unverified'?'Some quantities are still unverified.':showSaved?'Your saved estimates are available.':'Estimate selling the balances you already saved.';
+  const analysisIcon=typeof workspaceIcon==='function'?workspaceIcon(showSaved&&saved.status==='current'?'check':saved?.status==='changed'?'warning':'chart'):'';
+  analysis.innerHTML=optional||showDeep||showSaved?`<div class="analysis-card-heading"><div class="analysis-heading-copy"><span class="analysis-status-icon">${analysisIcon}</span><div class="analysis-copy"><div class="analysis-title-row"><h2 id="wallet-analysis-title" tabindex="-1">${escapeHTML(analysisTitle)}</h2>${optional?'<span class="analysis-optional">Optional analysis</span>':''}</div><p>${escapeHTML(shortDescription)}</p>${showSaved?`<p class="form-note">Last sell analysis <time datetime="${escapeHTML(saved.last_analyzed_at)}" title="${escapeHTML(saved.last_analyzed_at)}">${stamp(saved.last_analyzed_at)}</time> · Gas excluded</p>`:''}</div></div>${action?`<div class="analysis-card-action">${action}</div>`:''}</div>
     ${deep?`<div class="analysis-progress">${session.failure?`<p class="status-failure">${escapeHTML(session.failure)}</p>`:''}${progressHTML(job)}</div>`:''}
     ${disconnected?'<p class="analysis-connection">Connection lost. Actions are available after reconnecting.</p>':''}
-    <div class="analysis-card-footer"><details class="analysis-explainer" ${aboutOpen?'open':''}><summary id="analysis-explainer-toggle">About sell-route analysis</summary><p>Checks additional sale and redemption routes for your full balances. This is optional and can take time. It does not look for more tokens or execute trades. Estimates exclude gas and do not guarantee execution or the best price. You can pause and resume.</p></details><a class="text-link" href="#/activity">Activity ↗</a></div>`:'';
+    <div class="analysis-card-footer"><details class="analysis-explainer" ${aboutOpen?'open':''}><summary id="analysis-explainer-toggle">About sell-route analysis</summary><p>${escapeHTML(analysisDescription)}</p><p>Checks additional sale and redemption routes for your full balances. This is optional and can take time. It does not look for more tokens or execute trades. Estimates exclude gas and do not guarantee execution or the best price. You can pause and resume.</p></details><a class="text-link" href="#/activity">Activity ↗</a></div>`:'';
   if(focused){const next=focused.job?[...card.querySelectorAll('[data-job-id]'),...analysis.querySelectorAll('[data-job-id]')].find(el=>el.dataset.jobId===focused.job):focused.id&&$(focused.id);(next||$('wallet-scan-title')).focus({preventScroll:true});}
   const announcement=wallet.key+':'+status.mode+':'+(deep?session.mode:'')+':'+disconnected;
   if(announcement!==scanAnnouncement){scanAnnouncement=announcement;$('scan-announcement').textContent=[status.label,deep&&session.title,session?.failure,disconnected&&'Connection lost'].filter(Boolean).join('. ');}
@@ -161,7 +163,7 @@ function renderActiveWork(){
     const name=state?.wallets.find(w=>w.key===String(job.input?.wallet||job.input?.address||'').toLowerCase())?.name||job.input?.tag||jobLabels[job.operation]||'Research';
     const p=KiraView.jobPresentation(job,Date.now(),jobsConnected);
     return '<div class="active-work-row"><a href="#/activity"><span>'+ (p.spinner?'<span class="spinner" aria-hidden="true"></span>':'')+'<strong>'+escapeHTML(name)+'</strong> · '+escapeHTML(jobStage(job))+'</span><small data-job-timer="'+escapeHTML(job.job_id)+'">'+escapeHTML(KiraView.jobTimeText(job))+'</small></a><div class="job-actions">'+jobControls(job)+'</div></div>';
-  }).join('')+(all.length>1?'<a class="text-link" href="#/activity">View '+(all.length-1)+' more wallet jobs in Activity ↗</a>':'');
+  }).join('')+(all.length>1?'<a class="text-link" href="#/activity">All tasks ('+all.length+') ↗</a>':'');
 }
 async function loadActivity(){
   if(!localSession?.controls)return;
@@ -269,10 +271,11 @@ function connectionSummary(config) {
 function renderConnectionForm() {
   const available=connectionReadiness?.local_key_available===true&&$('discovery-key').value===connectionConfig?.discovery.key_env;
   const connected=available&&connectionReadiness?.discovery_key_available===true;
+  $('settings-title').textContent=connected?'Alchemy connection':'Connect Alchemy';
   $('provider-save').disabled=settingSaving||!available;
   $('provider-save').textContent=connected?'Done':'Connect Alchemy';
   $('settings-done').hidden=connected;
-  $('provider-key-status').textContent=connected?'Alchemy is connected. Holdings lookups will confirm access on each network.':available?'Local key found. Connect it to start.':'Run the command above, then check the connection.';
+  $('provider-key-status').textContent=connected?'Key ready on this computer. Network access is checked during research.':available?'Local key found. Connect it to start.':'Run the command in your terminal, then check the connection.';
   $('settings-refresh').hidden=!connectionWallet||!connected;
   $('settings-refresh').disabled=settingSaving||jobList.some(j=>KiraView.active(j)&&j.input?.wallet===connectionWallet);
 }
@@ -287,7 +290,7 @@ function loadRpcSettings(config){
   const rpc=config.rpc||{};
   rpcNetworks=config.rpc_networks||[];
   rpcRows=Object.entries(rpc.chains||{}).map(([chain_id,entry])=>({chain_id:Number(chain_id),url_env:entry.url_env||''}));
-  $('rpc-mode').value=rpc.mode||'public';$('rpc-priority').value=rpc.priority||'public_first';$('rpc-fallback').checked=rpc.allow_public_fallback!==false;
+  $('rpc-mode').value=rpc.mode||'public';$('rpc-reference-details').open=$('rpc-mode').value==='custom';$('rpc-priority').value=rpc.priority||'public_first';$('rpc-fallback').checked=rpc.allow_public_fallback!==false;
   $('rpc-network').innerHTML=rpcNetworks.map(network=>'<option value="'+network.chain_id+'">'+escapeHTML(network.name)+'</option>').join('');
   $('rpc-reference').value='';renderRpcRows();rpcLoaded=true;$('rpc-fields').disabled=false;
 }
@@ -343,7 +346,7 @@ async function openDataConnections(advanced = false, recommend = false, walletKe
   try {
     const [config, readiness] = await Promise.all([localAPI('/api/settings'), localAPI('/api/onboarding')]);
     if (revision !== connectionRevision || !$('settings-dialog').open) return;
-    connectionConfig = config; connectionReadiness = readiness;
+    connectionConfig = config; connectionReadiness = readiness;$('alchemy-setup-steps').open=!readiness.discovery_key_available;
     $('data-provider').value='alchemy';
     $('discovery-key').value = config.discovery.key_env;
     $('provider-status').textContent = pendingSetting ? 'A saved request is pending. Save again to check its result.' : 'Saved connection: '+connectionSummary(config);
@@ -393,7 +396,12 @@ $('wallet-discovery-settings').addEventListener('click',()=>openDataConnections(
 $('settings-done').addEventListener('click',()=>$('settings-dialog').close());
 $('workspace-settings-dialog').addEventListener('close',()=>{workspaceSettingsRevision++;});
 $('rpc-activity').addEventListener('click',()=>{$('workspace-settings-dialog').close();});
-$('settings-dialog').addEventListener('close',()=>{connectionRevision++; if ($('workspace-settings-dialog').open) openWorkspaceSettings();});
+$('settings-dialog').addEventListener('close',()=>{
+  connectionRevision++;
+  if ($('workspace-settings-dialog').open && connectionConfig) {
+    $('workspace-data-summary').textContent = connectionSummary(connectionConfig);
+  }
+});
 $('provider-recheck').addEventListener('click',async()=>{
   if(settingSaving||!connectionConfig||$('provider-recheck').disabled)return;
   const revision = connectionRevision; $('provider-recheck').disabled = true; $('settings-error').textContent = '';

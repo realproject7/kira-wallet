@@ -40,3 +40,6 @@ $('wallet-cards').querySelectorAll=()=>cards;$('home-wallet-search').value='trea
 assert.deepEqual(cards.map(c=>c.hidden),[true,false,true]);assert.equal($('home-wallet-empty').hidden,true);
 $('home-wallet-search').value='missing';ctx.filterHomeWallets();assert.equal($('home-wallet-empty').hidden,false);assert.equal(reads,1);
 console.log('Workspace navigation preserves drafts, scoped filters, disclosure state and saved-only search.');
+
+const checks=[{name:'Verified',environment:'mainnet',complete:true,rpc_available:true},{name:'Failed RPC',environment:'mainnet',complete:true,rpc_available:false},{name:'Pending',environment:'mainnet',complete:false,rpc_pending:true},{name:'Testnet',environment:'testnet',complete:true,rpc_available:true},{name:'Retired',environment:'mainnet',complete:true,rpc_available:true,lifecycle:{status:'retired'}}];
+const visual=ctx.coverageVisual(checks);assert.match(visual,/data-status="checked"/);assert.match(visual,/Failed RPC[\s\S]*Needs review/);assert.match(visual,/Pending[\s\S]*Not checked yet/);assert.doesNotMatch(visual,/Testnet|Retired/);assert.match(ctx.coverageVisual(checks,true),/1 of 3 mainnets checked/);assert.equal(reads,1,'Coverage graphics only use saved records.');

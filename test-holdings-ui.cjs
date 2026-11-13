@@ -23,7 +23,7 @@ assert.equal(node('total-value').textContent,'—');
 assert.equal(node('visible-count').textContent,0);
 assert.match(node('holdings-filter-note').innerHTML,/3 unpriced holdings are hidden/);
 assert.match(node('empty-h3').textContent,/hidden by the value filter/);
-assert.match(node('coverage-note').textContent,/Token discovery: 0 of 3 mainnets checked/);
+assert.match(node('coverage-note').textContent,/Discovery: 0 of 3/);
 assert.equal(node('discovery-notice').hidden,false);
 assert.match(node('discovery-notice-title').textContent,/Network coverage/);
 context.setupReadiness={discovery_provider:'none',discovery_configured:false,discovery_key_available:false};

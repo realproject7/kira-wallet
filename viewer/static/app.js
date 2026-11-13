@@ -201,7 +201,7 @@ function renderWallet(){
   const mainnets=w.chains.filter(c=>c.environment==='mainnet'&&c.lifecycle?.status!=='retired');
   $('chain-count').textContent=mainnets.filter(c=>c.assets>0).length;
   const coverage=mainnets.filter(c=>c.complete).length;
-  $('coverage-note').textContent='Token discovery: '+coverage+' of '+mainnets.length+' mainnets checked';
+  $('coverage-note').textContent='Discovery: '+coverage+' of '+mainnets.length;if(typeof coverageVisual==='function')$('wallet-coverage-meter').innerHTML=coverageVisual(w.chains,true);
   $('coverage-note').title='Token discovery and on-chain balance checks are separate. See network coverage details for failures.';
   $('sync-label').textContent=w.analysed_at?'Analysis '+stamp(w.analysed_at):'Not checked';
   $('price-time').textContent=w.prices_at?'Prices '+stamp(w.prices_at):'';
@@ -231,7 +231,7 @@ function renderDiscoveryCoverage(w) {
   $('discovery-notice').hidden=!notice;
   if(!notice)return;
   $('discovery-notice-title').textContent=notice.title;
-  $('discovery-notice-text').textContent=notice.message;
+  $('discovery-notice-text').textContent=notice.message;if(typeof coverageVisual==='function')$('discovery-coverage-grid').innerHTML=coverageVisual(w.chains);
   const controls=typeof localSession!=='undefined'&&localSession?.controls===true&&state?.demo!==true;
   $('discovery-settings').hidden=!controls||!(notice.action==='settings'||notice.settings);
   $('discovery-settings').textContent=notice.settingsLabel||'Set up Alchemy';
@@ -293,8 +293,8 @@ function bindImages(){
 function saleValue(a){return a.sell_out_summary?a.sell_out_summary.value_usd:(a.sell_out?.value_usd??a.sell_out_reference?.value_usd);}
 function sellSummary(summary){
   if(!summary)return '';
-  const count=summary.quoted_count,missing=summary.missing_count,refs=summary.reference_count||0;
-  return `<span class="summary-label">Sell-out estimate sum</span><strong class="sell-summary-value">${summary.value_usd==null?'—':'≈ '+money(summary.value_usd)}</strong><span class="valuation-note">${count} quotes${refs?' · '+refs+' spot references':''}${missing?' · '+missing+' missing':''}</span><span class="valuation-note">${refs?'Includes native/stable market references · ':''}Independent estimates · Gas excluded · Shared liquidity may change combined proceeds</span>`;
+  const missing=summary.missing_count,refs=summary.reference_count||0;
+  return `<span class="summary-label">Sell-out estimate sum</span><strong class="sell-summary-value">${summary.value_usd==null?'—':'≈ '+money(summary.value_usd)}</strong><span class="estimate-badges">${refs?'<span>'+refs+' spot references</span>':''}${missing?'<span class="estimate-missing">'+missing+' missing</span>':''}</span><details class="estimate-about"><summary>Independent estimates · Gas excluded</summary><p>${refs?'Includes native/stable market references. ':''}Sum of independent saved estimates, not a combined exit quote. Shared liquidity may change combined proceeds. Missing estimates remain unknown.</p></details>`;
 }
 function sellOutNote(a){
   if(a.environment==='testnet')return 'Testnet assets have no USD sale estimate.';
