@@ -144,6 +144,53 @@ test('legacy Sugar pages cover 30,002 pools without treating empty pages as comp
  });
  const result=await finish(h);assert.equal(pages,235);assert.ok(result.complete);assert.equal(h.metrics().maxActive,1);assert.ok(h.metrics().requests<250);assert.equal(result.coverage['8453:test'].status,'checked');
 });
+test('new Aero Basic and CL gauges come from the canonical FactoryRegistry',async()=>{
+ for(const type of ['basic','cl']){
+  const a=config.aero.find(a=>a.chain_id===8453&&a.version.startsWith('aero-')&&a.type===type);let registryReads=0;
+  const h=harness({...a,kind:'aero-directory',start:0,end:1},c=>{
+   assert.notEqual(c.functionName,'gauge');
+   if(c.functionName==='poolsIndexPaginated')return [{pool:POOL,creationTimestamp:1n}];
+   if(c.functionName==='targetToGauge'){assert.equal(c.address,a.registry.toLowerCase());assert.deepEqual(c.args,[POOL]);registryReads++;return GAUGE;}
+   if(c.functionName==='balanceOf')return c.address===GAUGE?5n*10n**18n:0n;
+   if(c.functionName==='stakedValues')return [1n];
+   if(c.functionName==='factory')return a.factory;
+   if(c.functionName==='token0')return T0;if(c.functionName==='token1')return T1;
+   if(c.functionName==='totalSupply')return 100n*10n**18n;
+   if(c.functionName==='getReserves')return [100n*10n**18n,200n*10n**18n,1n];
+   return nftResolve(c,{owner:GAUGE,factory:a.factory,manager:a.manager});
+  });
+  const s=await finish(h),rows=Object.values(s.positions);assert.equal(registryReads,1);assert.equal(rows.length,1);
+  assert.equal(rows[0].custody_platform,'aerodrome');assert.equal(rows[0].gauge,GAUGE);
+  if(type==='basic'){assert.equal(rows[0].receipt.custody,'gauge');assert.equal(rows[0].assets[0].amount,'5');assert.equal(rows[0].assets[1].amount,'10');}
+ }
+});
+test('a missing new Aero gauge still records loose LP ownership',async()=>{
+ const a=config.aero.find(a=>a.chain_id===8453&&a.version==='aero-basic');
+ const h=harness({...a,kind:'aero-directory',start:0,end:1},c=>{
+  if(c.functionName==='poolsIndexPaginated')return [{pool:POOL,creationTimestamp:1n}];
+  if(c.functionName==='targetToGauge')return v.zeroAddress;
+  if(c.functionName==='balanceOf'){assert.equal(c.address,POOL);return 5n;}
+  if(c.functionName==='factory')return a.factory;if(c.functionName==='getPool')return POOL;
+  if(c.functionName==='token0')return T0;if(c.functionName==='token1')return T1;
+  if(c.functionName==='totalSupply')return 100n;if(c.functionName==='getReserves')return [1000n,2000n,1n];
+  return tokenCalls(c);
+ });const rows=Object.values((await finish(h)).positions);assert.equal(rows.length,1);assert.equal(rows[0].receipt.custody,'wallet');
+});
+test('legacy new-Aero gauge accessor failures receive one compatible chain rebuild',async()=>{
+ const a=config.aero.find(a=>a.chain_id===4663&&a.version==='aero-basic');let registryReads=0;
+ const h=harness({...a,kind:'aero-directory',start:0,end:1},c=>{
+  assert.notEqual(c.functionName,'gauge');
+  if(c.functionName==='balanceOf'||c.functionName==='poolCount')return 0n;
+  if(c.functionName==='poolsIndexLength')return 1n;
+  if(c.functionName==='poolsIndexPaginated')return [{pool:POOL,creationTimestamp:1n}];
+  if(c.functionName==='targetToGauge'){registryReads++;return v.zeroAddress;}
+  throw Error(c.functionName);
+ },{cid:4663});h.state.cursor=1;h.state.blocks['4663']={number:'1',hash:'0x'+'b'.repeat(64),observed_at:'1970-01-01T00:00:00Z'};
+ h.state.failed_tasks=[{index:0,scope:'4663:test',kind:'aero-directory',function:'gauge',reason:'contract'}];
+ const s=await finish(h);assert.equal(s.gauge_registry_rechecks['4663'],1);assert.ok(registryReads>0);
+ assert.equal(s.pin_recheck_history[0].reason,'gauge_registry');assert.equal(s.failed_tasks[0].replaced_by_recheck,true);
+ assert.equal(s.pin_rechecks['4663'],undefined);assert.equal(s.complete,true);
+});
 test('known-claim refresh does not enqueue whole-pool or farm discovery',async()=>{
  const h=harness({kind:'seed'},c=>c.functionName==='poolCount'?0n:c.functionName==='balanceOf'?0n:tokenCalls(c));
  h.input.discover=false;const result=await finish(h);

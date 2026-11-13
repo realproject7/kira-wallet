@@ -19,7 +19,8 @@ const abi=v.parseAbi([
  'function poolsIndexLength() view returns(uint256)',
  'struct PoolData { address pool; uint48 creationTimestamp; }',
  'function poolsIndexPaginated(uint256,uint256) view returns(PoolData[])',
- 'function gauges(address) view returns(address)','function gauge() view returns(address)',
+ 'function gauges(address) view returns(address)',
+ 'function targetToGauge(address) view returns(address)',
  'function stakedValues(address) view returns(uint256[])','function stakedContains(address,uint256) view returns(bool)',
  'function deposits(uint256) view returns(address,uint48,int24,int24)',
  'function isVault(address) view returns(bool)','function target() view returns(address)','function counter() view returns(address)',
@@ -116,17 +117,21 @@ class Reader{
   const pending=this.state.tasks.slice(this.state.cursor);
   if(this.state.rechecking_chain&&pending.some(t=>t.chain_id===this.state.rechecking_chain))return;
   delete this.state.rechecking_chain;
-  const retries=this.state.pin_rechecks ||= {};
+  const retries=this.state.pin_rechecks ||= {},registryRetries=this.state.gauge_registry_rechecks ||= {};
   const failed=(this.state.failed_tasks||[]).find(f=>{
    const cid=Number(f.scope.split(':')[0]),block=this.state.blocks[cid];
-   return !retries[cid]&&block&&this.input.networks.some(n=>n.chain_id===cid&&n.environment==='mainnet')&&
-    (f.reason==='historical_state'||f.reason==='method'&&Date.now()-Date.parse(block.observed_at)>300000);
+   const task=this.state.tasks[f.index],registryFix=!f.replaced_by_recheck&&!registryRetries[cid]&&f.kind==='aero-directory'&&f.function==='gauge'&&
+    protocols.aero.some(p=>p.chain_id===cid&&key(p.factory)===key(task?.factory)&&valid(p.registry));
+   return block&&this.input.networks.some(n=>n.chain_id===cid&&n.environment==='mainnet')&&(registryFix||!retries[cid]&&
+    (f.reason==='historical_state'||f.reason==='method'&&Date.now()-Date.parse(block.observed_at)>300000));
   });
   if(!failed)return;
   const cid=Number(failed.scope.split(':')[0]),prefix=cid+':',old=this.state.blocks[cid];
   if(this.state.cursor+pending.filter(t=>t.chain_id!==cid).length>=MAX_TASKS)return;
-  retries[cid]=1;this.state.rechecking_chain=cid;this.state.complete=false;
-  (this.state.pin_recheck_history ||= []).push({chain_id:cid,previous_block:old.number,previous_hash:old.hash});
+  const registryFix=failed.kind==='aero-directory'&&failed.function==='gauge';
+  if(registryFix)registryRetries[cid]=1;else retries[cid]=1;
+  this.state.rechecking_chain=cid;this.state.complete=false;
+  (this.state.pin_recheck_history ||= []).push({chain_id:cid,previous_block:old.number,previous_hash:old.hash,reason:registryFix?'gauge_registry':'historical_state'});
   for(const f of this.state.failed_tasks)if(f.scope.startsWith(prefix))f.replaced_by_recheck=true;
   for(const [id,p] of Object.entries(this.state.positions))if(p.chain_id===cid)delete this.state.positions[id];
   for(const field of ['coverage','nft_expected','nft_owned'])for(const id of Object.keys(this.state[field]||{}))if(id.startsWith(prefix))delete this.state[field][id];
@@ -336,7 +341,9 @@ class Reader{
      (await this.multi(t,Array.from({length:t.end-t.start},(_,i)=>spec(t.factory,'allPools',[BigInt(t.start+i)])))).map(r=>this.good(r));
     if(addresses.length!==t.end-t.start||addresses.some(a=>!valid(a)||key(a)===ZERO))throw Error('Pool directory is incomplete');cache[cacheKey]=addresses;
    }
-   const rows=await this.multi(t,addresses.map(pool=>modern?spec(pool,'gauge'):spec(t.voter,'gauges',[pool])));
+   const registry=modern?protocols.aero.find(p=>p.chain_id===cid&&key(p.factory)===key(t.factory))?.registry:null;
+   if(modern&&!valid(registry))throw Error('Aero gauge registry is not configured');
+   const rows=await this.multi(t,addresses.map(pool=>modern?spec(registry,'targetToGauge',[pool]):spec(t.voter,'gauges',[pool])));
    const pools=addresses.map((pool,i)=>({pool,gauge:this.good(rows[i])}));
    if(t.type==='cl')this.enqueue({...t,kind:'gauge-cl',pools:pools.filter(p=>key(p.gauge)!==ZERO)});
    else this.enqueue({...t,kind:'gauge-basic',pools});return;

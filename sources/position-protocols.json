@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "verified_on": "2026-11-13",
+  "verified_on": "2026-11-14",
   "sources": [
     {
       "url": "https://lptoken.fun/contracts",
@@ -27,7 +27,9 @@
     {
       "url": "https://github.com/velodrome-finance/sugar",
       "revision": "23c575219769fcf8b9199a6e38736f02338755ad"
-    }
+    },
+    "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/V3/src/interfaces/factories/IFactoryRegistry.sol",
+    "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/V3/src/interfaces/pools/IPool.sol"
   ],
   "lptoken": [
     {
@@ -230,7 +232,9 @@
       "factory": "0x78589E876edcEbdce72ee3436ab3c9AD3a7cEF2D",
       "stable": true,
       "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-base.json",
-      "version": "aero-basic"
+      "version": "aero-basic",
+      "registry": "0x7b2A2c12dC5Ea2a31455952a05031C3E4BB28F3E",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-base.json"
     },
     {
       "chain_id": 8453,
@@ -238,7 +242,9 @@
       "factory": "0x8E6a9FCd1d638CC760Ffba397605Fe3355dE76D2",
       "stable": false,
       "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-base.json",
-      "version": "aero-basic"
+      "version": "aero-basic",
+      "registry": "0x7b2A2c12dC5Ea2a31455952a05031C3E4BB28F3E",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-base.json"
     },
     {
       "chain_id": 8453,
@@ -247,7 +253,9 @@
       "source": "https://github.com/dromos-labs/metadex-slipstream-public/blob/f99f2095918cab69eafeffa2c3d0a8762de737b7/deployment-addresses/cl-base.json",
       "version": "aero-cl",
       "manager": "0x4857DB576eE0e45F10525eC59527BfD10beeC60b",
-      "voter": "0x382409fad8503FbCdbB27A4211551fa03e884078"
+      "voter": "0x382409fad8503FbCdbB27A4211551fa03e884078",
+      "registry": "0x7b2A2c12dC5Ea2a31455952a05031C3E4BB28F3E",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-base.json"
     },
     {
       "chain_id": 1,
@@ -255,7 +263,9 @@
       "factory": "0x78589E876edcEbdce72ee3436ab3c9AD3a7cEF2D",
       "stable": true,
       "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-ethereum.json",
-      "version": "aero-basic"
+      "version": "aero-basic",
+      "registry": "0xdd1705e23762F4D6e44D8C31BD8Ea80c54612239",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-ethereum.json"
     },
     {
       "chain_id": 1,
@@ -263,7 +273,9 @@
       "factory": "0x8E6a9FCd1d638CC760Ffba397605Fe3355dE76D2",
       "stable": false,
       "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-ethereum.json",
-      "version": "aero-basic"
+      "version": "aero-basic",
+      "registry": "0xdd1705e23762F4D6e44D8C31BD8Ea80c54612239",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-ethereum.json"
     },
     {
       "chain_id": 1,
@@ -272,7 +284,9 @@
       "source": "https://github.com/dromos-labs/metadex-slipstream-public/blob/f99f2095918cab69eafeffa2c3d0a8762de737b7/deployment-addresses/cl-ethereum.json",
       "version": "aero-cl",
       "manager": "0x4857DB576eE0e45F10525eC59527BfD10beeC60b",
-      "voter": "0x382409fad8503FbCdbB27A4211551fa03e884078"
+      "voter": "0x382409fad8503FbCdbB27A4211551fa03e884078",
+      "registry": "0xdd1705e23762F4D6e44D8C31BD8Ea80c54612239",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-ethereum.json"
     },
     {
       "chain_id": 10,
@@ -280,7 +294,9 @@
       "factory": "0x78589E876edcEbdce72ee3436ab3c9AD3a7cEF2D",
       "stable": true,
       "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-optimism.json",
-      "version": "aero-basic"
+      "version": "aero-basic",
+      "registry": "0xb6F9705A631CC1C0E8570FFde48882C95E2Df408",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-optimism.json"
     },
     {
       "chain_id": 10,
@@ -288,7 +304,9 @@
       "factory": "0x8E6a9FCd1d638CC760Ffba397605Fe3355dE76D2",
       "stable": false,
       "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-optimism.json",
-      "version": "aero-basic"
+      "version": "aero-basic",
+      "registry": "0xb6F9705A631CC1C0E8570FFde48882C95E2Df408",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-optimism.json"
     },
     {
       "chain_id": 10,
@@ -297,7 +315,9 @@
       "source": "https://github.com/dromos-labs/metadex-slipstream-public/blob/f99f2095918cab69eafeffa2c3d0a8762de737b7/deployment-addresses/cl-optimism.json",
       "version": "aero-cl",
       "manager": "0x4857DB576eE0e45F10525eC59527BfD10beeC60b",
-      "voter": "0x382409fad8503FbCdbB27A4211551fa03e884078"
+      "voter": "0x382409fad8503FbCdbB27A4211551fa03e884078",
+      "registry": "0xb6F9705A631CC1C0E8570FFde48882C95E2Df408",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-optimism.json"
     },
     {
       "chain_id": 42161,
@@ -305,7 +325,9 @@
       "factory": "0x78589E876edcEbdce72ee3436ab3c9AD3a7cEF2D",
       "stable": true,
       "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-arbitrum.json",
-      "version": "aero-basic"
+      "version": "aero-basic",
+      "registry": "0x9E635b2c689fC52201DF7eF1C9FA607c2F58f666",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-arbitrum.json"
     },
     {
       "chain_id": 42161,
@@ -313,7 +335,9 @@
       "factory": "0x8E6a9FCd1d638CC760Ffba397605Fe3355dE76D2",
       "stable": false,
       "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-arbitrum.json",
-      "version": "aero-basic"
+      "version": "aero-basic",
+      "registry": "0x9E635b2c689fC52201DF7eF1C9FA607c2F58f666",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-arbitrum.json"
     },
     {
       "chain_id": 42161,
@@ -322,7 +346,9 @@
       "source": "https://github.com/dromos-labs/metadex-slipstream-public/blob/f99f2095918cab69eafeffa2c3d0a8762de737b7/deployment-addresses/cl-arbitrum.json",
       "version": "aero-cl",
       "manager": "0x4857DB576eE0e45F10525eC59527BfD10beeC60b",
-      "voter": "0x382409fad8503FbCdbB27A4211551fa03e884078"
+      "voter": "0x382409fad8503FbCdbB27A4211551fa03e884078",
+      "registry": "0x9E635b2c689fC52201DF7eF1C9FA607c2F58f666",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-arbitrum.json"
     },
     {
       "chain_id": 4663,
@@ -330,7 +356,9 @@
       "factory": "0x78589E876edcEbdce72ee3436ab3c9AD3a7cEF2D",
       "stable": true,
       "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-robinhood.json",
-      "version": "aero-basic"
+      "version": "aero-basic",
+      "registry": "0xdd1705e23762F4D6e44D8C31BD8Ea80c54612239",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-robinhood.json"
     },
     {
       "chain_id": 4663,
@@ -338,7 +366,9 @@
       "factory": "0x8E6a9FCd1d638CC760Ffba397605Fe3355dE76D2",
       "stable": false,
       "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-robinhood.json",
-      "version": "aero-basic"
+      "version": "aero-basic",
+      "registry": "0xdd1705e23762F4D6e44D8C31BD8Ea80c54612239",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-robinhood.json"
     },
     {
       "chain_id": 4663,
@@ -347,7 +377,9 @@
       "source": "https://github.com/dromos-labs/metadex-slipstream-public/blob/f99f2095918cab69eafeffa2c3d0a8762de737b7/deployment-addresses/cl-robinhood.json",
       "version": "aero-cl",
       "manager": "0x4857DB576eE0e45F10525eC59527BfD10beeC60b",
-      "voter": "0x382409fad8503FbCdbB27A4211551fa03e884078"
+      "voter": "0x382409fad8503FbCdbB27A4211551fa03e884078",
+      "registry": "0xdd1705e23762F4D6e44D8C31BD8Ea80c54612239",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-robinhood.json"
     },
     {
       "chain_id": 57073,
@@ -355,7 +387,9 @@
       "factory": "0x78589E876edcEbdce72ee3436ab3c9AD3a7cEF2D",
       "stable": true,
       "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-ink.json",
-      "version": "aero-basic"
+      "version": "aero-basic",
+      "registry": "0xdd1705e23762F4D6e44D8C31BD8Ea80c54612239",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-ink.json"
     },
     {
       "chain_id": 57073,
@@ -363,7 +397,9 @@
       "factory": "0x8E6a9FCd1d638CC760Ffba397605Fe3355dE76D2",
       "stable": false,
       "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-ink.json",
-      "version": "aero-basic"
+      "version": "aero-basic",
+      "registry": "0xdd1705e23762F4D6e44D8C31BD8Ea80c54612239",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-ink.json"
     },
     {
       "chain_id": 57073,
@@ -372,7 +408,9 @@
       "source": "https://github.com/dromos-labs/metadex-slipstream-public/blob/f99f2095918cab69eafeffa2c3d0a8762de737b7/deployment-addresses/cl-ink.json",
       "version": "aero-cl",
       "manager": "0x4857DB576eE0e45F10525eC59527BfD10beeC60b",
-      "voter": "0x382409fad8503FbCdbB27A4211551fa03e884078"
+      "voter": "0x382409fad8503FbCdbB27A4211551fa03e884078",
+      "registry": "0xdd1705e23762F4D6e44D8C31BD8Ea80c54612239",
+      "registry_source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/leaf-ink.json"
     }
   ],
   "pancakeswap": [

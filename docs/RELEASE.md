@@ -1,9 +1,22 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.11.6**.
+Published npm release: **1.5.0**. Prepared candidate: **1.11.7**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.11.7
+
+Upgraded Aero Basic and CL gauge discovery uses the official per-chain
+FactoryRegistry `targetToGauge(pool)` mapping. New Basic pools do not expose the
+legacy pool-level gauge accessor. Canonical deployment records cover Base,
+Ethereum, OP Mainnet, Arbitrum, Robinhood and Ink. A pool without a gauge still
+has its loose LP balance checked. Affected earlier checkpoints receive one
+compatible chain rebuild at a fresh pin, preserving other chains, task IDs and
+dated prior evidence. Tests verify Basic reserve shares, CL beneficiary ownership,
+zero-gauge loose holdings and migration of the incorrect accessor's failure.
+Legacy Aerodrome continues to use its own voter and Sugar paths. Request and
+writer limits are unchanged. Review not selected; prior archives stay immutable.
 
 ## Candidate 1.11.6
 
