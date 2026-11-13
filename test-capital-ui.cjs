@@ -32,3 +32,12 @@ test('unavailable local records retain explicit errors and a saved-view retry',a
  assert.match(h.host.innerHTML,/Saved records unavailable/);assert.match(h.host.innerHTML,/Retry saved view/);
  h.render();await tick();assert.equal(h.calls.length,1);
 });
+
+test('mixed saved and unchecked wallets preserve per-wallet default discovery at global refresh',async()=>{
+ const testCode=code.replace('return {render};','return {render,refresh};'),submitted=[];
+ const h=harness(),button={disabled:false,closest:()=>({querySelector:()=>({textContent:''})})};
+ h.context.document.querySelector=()=>button;h.context.setupReadiness={discovery_key_available:true};h.context.submitOperation=async(op,input)=>{submitted.push({op,input});return {jobs:[{},{}]};};
+ vm.runInContext(testCode.replace('const CapitalUI=','var CapitalUITest=').replaceAll('globalThis.capital=CapitalUI','globalThis.capitalTest=CapitalUITest'),h.context);
+ await h.context.capitalTest.refresh(false);assert.equal(submitted[0].op,'portfolio.positionsRefresh');assert.equal('discover' in submitted[0].input,false);
+ await h.context.capitalTest.refresh(true);assert.equal(submitted[1].input.discover,true);
+});

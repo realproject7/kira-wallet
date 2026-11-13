@@ -1,11 +1,11 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.11.0**.
+Published npm release: **1.5.0**. Prepared candidate: **1.11.1**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
 
-## Candidate 1.11.0
+## Candidate 1.11.1
 
 Kira records read-only protocol positions alongside direct holdings. Supported
 paths cover verified lpTOKEN vault shares, Hunt Factory NFT HUNT backing,
@@ -27,7 +27,7 @@ the bounded position list while the allocation retains its stated portfolio scop
 
 The first explicit scan discovers new positions. Subsequent default refreshes
 recheck recorded claims and wallet inventory, avoiding another full old-pool sweep.
-Find new positions requests full discovery explicitly. Base legacy pool counts
+Find new positions requests full discovery explicitly. Global refresh preserves each wallet’s default, so unchecked wallets receive initial discovery while previously checked wallets refresh saved claims. The earlier 1.11.0 candidate archive remains frozen. Base legacy pool counts
 observed during acceptance were 30,002 basic and 3,684 CL pools. The official Sugar
 reader groups up to 128 old pools; empty pages do not end discovery. The two pools
 beyond Sugar's 30,000-iteration boundary use bounded direct reads. Other deployment

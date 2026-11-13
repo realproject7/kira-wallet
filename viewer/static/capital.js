@@ -72,7 +72,7 @@ const CapitalUI=(()=>{
   try{
    if(setupReadiness?.discovery_key_available!==true){await openDataConnections();return;}
    const folder=typeof FolderUI!=='undefined'?FolderUI.id:null;
-   const receipt=selectedView==='wallet'?await submitOperation('positions.refresh',{wallet:selectedWallet,discover}):await submitOperation('portfolio.positionsRefresh',{...(folder?{folder_id:folder}:{}),discover});
+   const receipt=selectedView==='wallet'?await submitOperation('positions.refresh',{wallet:selectedWallet,...(discover?{discover:true}:{})}):await submitOperation('portfolio.positionsRefresh',{...(folder?{folder_id:folder}:{}),...(discover?{discover:true}:{})});
    const count=receipt.jobs?.length??1;status.textContent=count+' wallet '+(count===1?'scan':'scans')+' queued. Results appear as each bounded pass is saved. Follow Activity.';
   }catch(error){status.textContent=error.message;}
   finally{button.disabled=false;}
