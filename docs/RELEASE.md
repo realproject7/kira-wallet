@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.12.3**. Prepared candidate: **1.13.0**.
+Published npm release: **1.12.3**. Prepared candidate: **1.13.1**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -9,7 +9,7 @@ Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
 
-## Candidate 1.13.0
+## Candidate 1.13.1
 
 Holdings refreshes make fewer, larger reads. One aggregate read now carries up
 to 1,024 balance calls instead of 128. When a provider refuses a large read,
@@ -23,9 +23,11 @@ Fast refresh is a second button beside the full refresh on Home, a folder's
 Home and each wallet page, with an info button that explains it. It rereads
 the tokens a wallet holds and any token it sent or received since its last
 complete check. On networks with a large Mint Club token list, such as Base
-with over 26,000 tokens, it reads the wallet's transfer events instead of every
-listed token. If the provider cannot return that history, the network is read
-in full. Smaller networks are checked as in a full refresh. Test networks keep
+with over 26,000 tokens, it reads the wallet's transfer history from Alchemy
+instead of every listed token, starting 1,000 blocks before the last check so
+a transfer the index had not listed yet is still found. If that history is
+unavailable, the network is read in full. Node log queries are not used:
+Alchemy's free plan limits them to ten blocks. Smaller networks are checked as in a full refresh. Test networks keep
 their last saved balances. A wallet without a complete saved check is checked
 in full. Each network records how it was checked. The CLI (`kira refresh
 --fast`) and the agent tools (`scope: fast`) offer the same choice.
