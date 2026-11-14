@@ -83,6 +83,7 @@ class NativeMarketTests(unittest.TestCase):
             error=None;real_fdopen=os.fdopen
             with (root/'.analysis.lock').open('a') as lock,\
                  patch.object(research,'ROOT',root),patch.object(research,'fetch',side_effect=fetch),\
+                 patch('kira_config.require_alchemy'),\
                  patch('subprocess.run',side_effect=node_error,return_value=SimpleNamespace(returncode=0,stdout=json.dumps({'tokens':rpc_tokens or [],'errors':[]}))),\
                  patch('curve_pricing.enrich',side_effect=enrich_prices) as enrich,\
                  patch('curve_pricing.index_prices',return_value=indexed or {'tokens':[],'status':'checked'}),\
