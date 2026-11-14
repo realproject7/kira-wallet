@@ -149,5 +149,14 @@ python3 scripts/check-public.py
 
 From source, replace `kira` with `node bin/kira.cjs`.
 [Viewer guide](viewer/README.md) · [Release preparation](docs/RELEASE.md).
+
+To run a privacy check before every push, install the hook once per clone.
+It stops a push whose new commits hold a registered wallet address or name, a
+personal path, a credential or a commit identity that is not a noreply one.
+
+```sh
+cp scripts/pre-push-check.py "$(git rev-parse --git-common-dir)/hooks/pre-push"
+chmod +x "$(git rev-parse --git-common-dir)/hooks/pre-push"
+```
 Original code and Kira character assets use the [MIT license](LICENSE).
 See [third-party notices](THIRD_PARTY_NOTICES.md) for other assets and references.
