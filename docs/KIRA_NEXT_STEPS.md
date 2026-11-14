@@ -1,6 +1,6 @@
 # Kira release status
 
-Updated: 2026-11-14. The operator published Kira 1.12.2. Candidate 1.12.3 makes
+Updated: 2026-11-14. The operator published Kira 1.12.3. It makes
 the All tokens list start with priced tokens as well. 1.12.2 made wallet and
 network lists start with priced holdings, tightened the deployment catalogue
 check and added a pre-push privacy check. It builds on 1.12.1, a
