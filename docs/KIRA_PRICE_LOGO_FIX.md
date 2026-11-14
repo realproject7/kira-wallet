@@ -1,6 +1,6 @@
 # Native price, artwork and unknown-value fix
 
-Issue: [13](https://github.com/realproject7/kira-wallet/issues/13).
+Issue: 13 in the earlier repository.
 
 ## Cause
 

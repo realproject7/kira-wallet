@@ -5,6 +5,10 @@ For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
 
+Pull request and issue numbers up to 63 refer to the earlier repository. It was
+replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
+numbers in this repository start again at 1.
+
 ## Candidate 1.12.1
 
 The web app uses more picture and fewer words. Each summary card draws its
@@ -636,7 +640,7 @@ checks passed. Historical commit-identity findings are tracked separately and
 must not be described as a clean history scan.
 
 The operator published 1.1.0 on October 29, 2026. Its registry archive matches
-the prepared source and all 95 installed members. [PR #59](https://github.com/realproject7/kira-wallet/pull/59)
+the prepared source and all 95 installed members. PR #59 of the earlier repository
 merged at `694c5a5183e4f814d7bb1c43af04a0767dbd3c1e`; the merged tree reproduces
 the archive byte for byte. SHA-256 is
 `ffd6bba877272214470cb51986b4157ea92163cb1433ff3f53ad02dd0860e105`.
@@ -682,7 +686,7 @@ wallet settings and prior jobs were preserved. No active jobs remained at the
 end of acceptance. A terminal partial result records missing provider evidence;
 it does not require an automatic retry.
 
-[PR #56](https://github.com/realproject7/kira-wallet/pull/56) merged on
+PR #56 of the earlier repository merged on
 October 28, 2026 at `fcdb7da4e0cf9303d10635960419bbc379e436d2`.
 The landed tree matches the tested source and frozen package. Subsequent
 documentation and website changes do not replace or rebuild the published

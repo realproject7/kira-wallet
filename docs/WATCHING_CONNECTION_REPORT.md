@@ -1,6 +1,6 @@
 # Watching connection implementation
 
-Status: [draft PR #3](https://github.com/realproject7/kira-wallet/pull/3). Builder
+Status: draft PR #3 of the earlier repository. Builder
 verification and independent source/synthetic review are complete. Final reviewed
 source head: `9f3229f`, based on the reviewed workspace PR #2 at `e0a802a`.
 Operator extension acceptance remains pending. No GitHub approval, merge or
