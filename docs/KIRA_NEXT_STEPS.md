@@ -1,8 +1,9 @@
 # Kira release status
 
-Updated: 2026-11-14. The operator published Kira 1.5.0. Candidate 1.12.2 makes
-wallet and network lists start with priced holdings, tightens the deployment
-catalogue check and adds a pre-push privacy check. It builds on 1.12.1, a
+Updated: 2026-11-14. The operator published Kira 1.12.2. Candidate 1.12.3 makes
+the All tokens list start with priced tokens as well. 1.12.2 made wallet and
+network lists start with priced holdings, tightened the deployment catalogue
+check and added a pre-push privacy check. It builds on 1.12.1, a
 compact, visual-first web app on top of 1.11.9: one summary card per page
 with an allocation donut, wallet faces, ranked rows, one-line holdings, markets
 on token pages, and saved wrapped-token pools for native assets. PR #62 of the
