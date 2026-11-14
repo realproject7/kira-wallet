@@ -13,9 +13,11 @@ def submit_batch(store, request):
     if operation not in OPERATIONS:
         raise JobError('unsupported_operation', 'Choose a portfolio research action.')
     value=request['input']
-    if not isinstance(value,dict) or set(value)-{'folder_id','discover'} or 'folder_id' in value and not isinstance(value['folder_id'],str):
+    if not isinstance(value,dict) or set(value)-{'folder_id','discover','scope'} or 'folder_id' in value and not isinstance(value['folder_id'],str):
         raise JobError('invalid_input','Use an optional saved folder ID for portfolio research.')
     if 'discover' in value and (operation!='portfolio.positionsRefresh' or type(value['discover']) is not bool):raise JobError('invalid_input','Use a boolean discovery mode only for platform scans.')
+    if 'scope' in value and (operation!='portfolio.refresh' or value['scope'] not in ('full','fast')):raise JobError('invalid_input','Use scope full or fast only for a holdings refresh.')
+    fast=value.get('scope')=='fast'
     key = request['idempotency_key']
     if not isinstance(key, str) or not 8 <= len(key) <= 200:
         raise JobError('invalid_key', 'Supply an idempotency key of 8 to 200 characters.')
@@ -54,7 +56,7 @@ def submit_batch(store, request):
                         and j.get('analysis_phase')=='baseline' and j['state']=='failed' and not j.get('result')
                         and any(e.get('code')=='network_scope_changed' for e in j.get('errors',[]))),None)
                     items.append({'wallet':address,'operation':'job.resume','input':{'job_id':blocked['job_id']}} if blocked else
-                                 {'wallet': address, 'operation': 'wallet.refresh', 'input': {'wallet': address}})
+                                 {'wallet': address, 'operation': 'wallet.refresh', 'input': {'wallet': address,**({'scope':'fast'} if fast else {})}})
                 else:
                     baseline = next((j for j in related if j['job_id'] == wallet.get('research_generation')), None)
                     if baseline is None:

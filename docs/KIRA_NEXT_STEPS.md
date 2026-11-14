@@ -1,7 +1,9 @@
 # Kira release status
 
-Updated: 2026-11-14. The operator published Kira 1.12.3. It makes
-the All tokens list start with priced tokens as well. 1.12.2 made wallet and
+Updated: 2026-11-14. The operator published Kira 1.12.3. Candidate 1.13.2 makes
+holdings refreshes read in larger groups and adds Fast refresh, which reads
+Alchemy transfer history instead of the full Mint Club token list on large networks.
+1.12.3 made the All tokens list start with priced tokens as well. 1.12.2 made wallet and
 network lists start with priced holdings, tightened the deployment catalogue
 check and added a pre-push privacy check. It builds on 1.12.1, a
 compact, visual-first web app on top of 1.11.9: one summary card per page

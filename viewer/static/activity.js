@@ -8,7 +8,7 @@ const activityIcons={
   arrow:'<path d="m9 5 7 7-7 7"/>',check:'<path d="m5 12 4 4L19 6"/>',clock:'<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>'
 };
 function activityIcon(kind){return '<svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">'+(activityIcons[kind]||activityIcons.settings)+'</svg>';}
-function activityTask(job){return job.analysis_phase==='enrichment'?'Sell estimates':job.operation==='wallet.add'?'Wallet lookup':job.operation==='wallet.refresh'?'Holdings refresh':job.operation==='prices.refresh'?'Price refresh':jobLabels[job.operation]||'Workspace update';}
+function activityTask(job){return job.analysis_phase==='enrichment'?'Sell estimates':job.operation==='wallet.add'?'Wallet lookup':job.operation==='wallet.refresh'?(job.input?.scope==='fast'?'Fast refresh':'Holdings refresh'):job.operation==='prices.refresh'?'Price refresh':jobLabels[job.operation]||'Workspace update';}
 function activityKind(job){return job.analysis_phase==='enrichment'?'sell':job.operation==='positions.refresh'?'holdings':job.operation==='prices.refresh'?'prices':['wallet.add','wallet.refresh'].includes(job.operation)?'holdings':'settings';}
 function activityWallet(job){const key=String(job.input?.wallet||job.input?.address||'').toLowerCase(),wallet=state?.wallets.find(w=>w.key===key);return {key,wallet,name:wallet?.name||job.input?.tag||(key?shortAddress(key):'Workspace')};}
 function activityBadge(job){

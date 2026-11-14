@@ -30,6 +30,18 @@ const poolAbi = v.parseAbi([
 ]);
 const deployments = JSON.parse(fs.readFileSync(path.join(h.assets, 'sources/uniswap-deployments.json'))).records;
 const stamp = () => new Date().toISOString();
+// One aggregate read carries up to GROUP calls. An endpoint that fails a large
+// aggregate is retried with halves, and the smaller size is kept for this run.
+// MIN_GROUP is the size every endpoint already accepted before.
+const GROUP=1024,MIN_GROUP=128;
+const groupLimits=new WeakMap();
+const groupSize=c=>groupLimits.get(c)||GROUP;
+// Large checkpoints are saved at most every two seconds, and always at the end
+// of a slice. A crash loses at most those reads, which are repeated on resume.
+function saver(file,interval=2000){
+  let last=0;
+  return (data,force=false)=>{if(!force&&Date.now()-last<interval)return;write(file,data);last=Date.now();};
+}
 const endpointIdentity = new WeakMap();
 const emitProgress = (n,operation,checked,total) => console.log(JSON.stringify({stage:'onchain_progress',chain_id:n.chain_id,operation,checked,total}));
 const emitChain = row => console.log(JSON.stringify({stage:'chain',chain_id:row.chain_id,status:row.status,endpoint_index:row.endpoint_index,rpc_endpoint_indices:row.rpc_endpoint_indices,
@@ -57,6 +69,16 @@ async function connect(n, onClient=()=>{}) {
   if(await c.getChainId()!==n.chain_id)throw new Error('RPC chain identity mismatch');
   endpointIdentity.set(c,h.rpcEndpointsUsed(c)[0]??0);return c;
 }
+// Providers word size failures differently: gas allowance, body size or a
+// timeout on a large aggregate. Throttling and local scheduling are not size.
+function retrySmaller(error) {
+  for(let cause=error,depth=0;cause&&depth<10;cause=cause.cause,depth++) {
+    if(cause.status===429||cause.code===429||cause.code==='market_budget')return false;
+    if(['RpcSchedulingTimeout','RpcFamilyCooldown'].includes(cause.name))return false;
+    if(/rate.?limit|too many requests|quota|backpressure|capacity exceeded|cooling down/i.test(cause.shortMessage||cause.message||''))return false;
+  }
+  return true;
+}
 function rpcFailure(error) {
   let sizeLimit=false,transportFailure=false,schedulingFailure=false;
   for(let cause=error,depth=0;cause&&depth<10;cause=cause.cause,depth++) {
@@ -69,17 +91,27 @@ function rpcFailure(error) {
 }
 async function calls(c, contracts, block) {
   if (!contracts.length) return [];
+  // Halve the working size, then read the rest in groups of whatever size works.
+  const smaller=async()=>{
+    groupLimits.set(c,Math.max(MIN_GROUP,Math.min(groupSize(c),Math.ceil(contracts.length/2))));
+    const rows=[];
+    for(let i=0;i<contracts.length;){const part=contracts.slice(i,i+groupSize(c));i+=part.length;rows.push(...await calls(c,part,block));}
+    return rows;
+  };
   try {
     const results=await c.multicall({contracts,blockNumber:block,batchSize:0,multicallAddress:MULTICALL});
     // viem allowFailure also wraps an aggregate RPC failure as per-contract rows.
     if(results.length&&results.every(r=>r.status==='failure')) {
       const limited=results.find(r=>rpcFailure(r.error).sizeLimit);
       if(limited)throw limited.error;
+      // One shared error on every row is the aggregate read failing, not each call reverting.
+      if(contracts.length>MIN_GROUP&&results.every(r=>r.error===results[0].error)&&retrySmaller(results[0].error))return await smaller();
     }
     return results;
   } catch (e) {
     if(e.code==='market_budget')throw e;
     const {sizeLimit,transportFailure}=rpcFailure(e);
+    if(!sizeLimit&&contracts.length>MIN_GROUP&&retrySmaller(e))return await smaller();
     if (!sizeLimit) return contracts.map(()=>({status:'failure',error:e}));
     if (contracts.length > 1) {
       const mid = Math.ceil(contracts.length/2);
@@ -89,11 +121,13 @@ async function calls(c, contracts, block) {
     catch (inner) {if(inner.code==='market_budget')throw inner;return [{status:'failure',error:inner}];}
   }
 }
-async function batches(c, contracts, block, size=128, progress=null) {
-  const plans = [];
-  for (let i=0; i<contracts.length; i+=size) plans.push(contracts.slice(i,i+size));
+async function batches(c, contracts, block, size=null, progress=null) {
+  // Each group takes the size that currently works for this endpoint.
   const results=[];
-  for(const plan of plans){results.push(...await calls(c,plan,block));if(progress)progress(results.length,contracts.length);}
+  for(let i=0;i<contracts.length;){
+    const plan=contracts.slice(i,i+(size||groupSize(c)));i+=plan.length;
+    results.push(...await calls(c,plan,block));if(progress)progress(results.length,contracts.length);
+  }
   return results;
 }
 async function factReads(c,contracts,block,checkpoint,file,n,operation) {
@@ -107,11 +141,14 @@ async function factReads(c,contracts,block,checkpoint,file,n,operation) {
     if(row.status==='success'){checkpoint.facts[key(group[i])]={value:cacheEncode(row.result),observed_at:stamp()};failures.delete(key(group[i]));}
     else failures.set(key(group[i]),row.error);
   });
-  for(let start=0;start<pending.length;start+=128){
-    const group=pending.slice(start,start+128),rows=await calls(c,group,block);
-    capture(group,rows);
-    write(file,checkpoint);checked+=group.length;emitProgress(n,operation,checked,contracts.length);
-  }
+  const save=saver(file);
+  try{
+    for(let start=0,size=groupSize(c);start<pending.length;start+=size,size=groupSize(c)){
+      const group=pending.slice(start,start+size),rows=await calls(c,group,block);
+      capture(group,rows);
+      save(checkpoint);checked+=group.length;emitProgress(n,operation,checked,contracts.length);
+    }
+  }finally{save(checkpoint,true);}
   // Retry only failed facts once in smaller groups. A transient aggregate
   // failure must not permanently strip curve prices from verified holdings.
   const retry=pending.filter(q=>checkpoint.facts[key(q)]===undefined);
@@ -140,8 +177,10 @@ async function balanceReads(c,tokens,wallet,block,checkpoint,file,n,{maxBatches=
   // The bound applies to this slice. Saved successful checks are not charged
   // again; failed checks and previously deferred identities can resume later.
   let verified=0;
-  for(let start=0;start<pending.length&&start/128<maxBatches;start+=128) {
-    const plan=pending.slice(start,start+128);
+  const save=saver(file);
+  try{
+  for(let start=0,used=0,size=groupSize(c);start<pending.length&&used<maxBatches;start+=size,used++,size=groupSize(c)) {
+    const plan=pending.slice(start,start+size);
     const rows=await calls(c,plan.map(t=>({address:t.address,abi:t.token_type==='ERC1155'?erc1155:erc20,
       functionName:'balanceOf',args:t.token_type==='ERC1155'?[wallet,0n]:[wallet]})),block);
     for(const token of plan)checkpoint.balance_attempts[key(token)]=(checkpoint.balance_attempts[key(token)]||0)+1;
@@ -165,8 +204,9 @@ async function balanceReads(c,tokens,wallet,block,checkpoint,file,n,{maxBatches=
       }catch(error){if(error.code==='market_budget')throw error;const evidence=checkpoint.zero_checks[key(token)]||{};checkpoint.zero_checks[key(token)]={...evidence,outcome:evidence.outcome==='conflicting'?'conflicting':'unknown',block_hash:checkpoint.block_hash};rows[i]={status:'failure',error};}
     }
     rows.forEach((r,i)=>{if(r.status==='success'){checkpoint.balances[key(plan[i])]=r.result.toString();checkpoint.balance_times[key(plan[i])]=stamp();}else failures.set(key(plan[i]),r);});
-    write(file,checkpoint);checked+=plan.length;emitProgress(n,'balances',checked,tokens.length);
+    save(checkpoint);checked+=plan.length;emitProgress(n,'balances',checked,tokens.length);
   }
+  }finally{save(checkpoint,true);}
   return tokens.map(t=>checkpoint.balances[key(t)]!==undefined?{status:'success',result:BigInt(checkpoint.balances[key(t)]),observed_at:checkpoint.balance_times[key(t)]||checkpoint.observed_at}:failures.get(key(t))||{status:'pending'});
 }
 async function registry(c, n, block, {file,blockHash,maxBatches=Infinity}={}) {
@@ -206,7 +246,7 @@ async function registry(c, n, block, {file,blockHash,maxBatches=Infinity}={}) {
   const retries=[...failures.keys()].sort((a,b)=>a-b);
   let used=0;
   while(used<maxBatches&&(retries.length||state.next_index<state.count)) {
-    const indices=state.next_index<state.count?Array.from({length:Math.min(128,state.count-state.next_index)},(_,i)=>state.next_index+i):retries.splice(0,128);
+    const size=groupSize(c),indices=state.next_index<state.count?Array.from({length:Math.min(size,state.count-state.next_index)},(_,i)=>state.next_index+i):retries.splice(0,size);
     const addresses=await calls(c,indices.map(i=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'tokens',args:[BigInt(i)]})),block);
     const additions=addresses.map((r,i)=>({index:indices[i],address:r.status==='success'&&v.isAddress(r.result)?r.result:null,
       error:r.status==='success'?null:h.safeError(r.error)}));
@@ -238,8 +278,8 @@ async function mintclubMembership(c,n,tokens,block,checkpoint,file,{maxBatches=I
   const pending=tokens.filter(t=>!checkpoint.mintclub_membership[key(t)])
     .sort((a,b)=>(checkpoint.membership_attempts[key(a)]||0)-(checkpoint.membership_attempts[key(b)]||0));
   const failures=new Map();
-  for(let start=0;start<pending.length&&start/128<maxBatches;start+=128){
-    const plan=pending.slice(start,start+128);
+  for(let start=0,used=0,size=groupSize(c);start<pending.length&&used<maxBatches;start+=size,used++,size=groupSize(c)){
+    const plan=pending.slice(start,start+size);
     const exists=await calls(c,plan.map(t=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'exists',args:[t.address]})),block);
     const registered=plan.filter((t,i)=>exists[i].status==='success'&&exists[i].result===true);
     const decimals=await calls(c,registered.map(t=>({address:t.address,abi:erc20,functionName:'decimals'})),block);
@@ -255,6 +295,79 @@ async function mintclubMembership(c,n,tokens,block,checkpoint,file,{maxBatches=I
     write(file,checkpoint);emitProgress(n,'mintclub_membership',Object.keys(checkpoint.mintclub_membership).length,tokens.length);
   }
   return tokens.map(t=>checkpoint.mintclub_membership[key(t)]?{status:'success',...checkpoint.mintclub_membership[key(t)]}:failures.get(key(t))||{status:'pending'});
+}
+// Fast refresh. A standard token balance changes only through a transfer
+// naming the wallet, so a network whose Mint Club catalogue is large rereads
+// earlier holdings and the tokens Alchemy's transfer history lists since the
+// last complete check. Node log queries are not used: Alchemy's free plan
+// limits them to ten blocks, and public nodes refuse them without an address.
+const FAST_MIN_CATALOGUE=2048,FAST_HISTORY_REQUESTS=24;
+let FAST_FALLBACK_PAUSE=5500;
+function registryCache(n){
+  const file=path.join(h.root,'cache/mintclub-registry',`${n.chain_id}-${String(n.mintclub_bond_address||'').toLowerCase()}.json`);
+  try{
+    const cache=JSON.parse(fs.readFileSync(file));
+    if(cache.chain_id!==n.chain_id||!Array.isArray(cache.entries))return null;
+    return {count:cache.entries.length,byAddress:new Map(cache.entries.filter(t=>t&&v.isAddress(t.address||'')&&['ERC20','ERC1155'].includes(t.token_type))
+      .map(t=>[t.address.toLowerCase()+':'+t.token_type,t]))};
+  }catch{return null;}
+}
+function fastPlan(input,n){
+  const plan=input.fast?.chains?.[String(n.chain_id)];
+  if(!plan||!/^[0-9]+$/.test(String(plan.from_block||''))||!Array.isArray(plan.prior))return null;
+  const cache=registryCache(n);
+  // A small catalogue is read in one or two calls, which costs no more than the history.
+  return cache&&cache.count>FAST_MIN_CATALOGUE?{...plan,cache}:null;
+}
+async function transferHistory(c,wallet,from,to,budget){
+  const moved=new Map();
+  for(const direction of ['fromAddress','toAddress']){
+    let pageKey;
+    do{
+      if(++budget.used>budget.max)throw Object.assign(new Error('Transfer history needs more requests than a fast refresh allows.'),{code:'fast_budget'});
+      const result=await c.request({method:'alchemy_getAssetTransfers',params:[{fromBlock:'0x'+from.toString(16),toBlock:'0x'+to.toString(16),
+        [direction]:wallet,category:['erc20','erc1155'],withMetadata:false,maxCount:'0x3e8',...(pageKey?{pageKey}:{})}]});
+      if(!result||!Array.isArray(result.transfers))throw new Error('Transfer history response was not a list.');
+      for(const transfer of result.transfers){
+        const type=transfer?.category==='erc20'?'ERC20':transfer?.category==='erc1155'?'ERC1155':null,address=transfer?.rawContract?.address;
+        if(type&&v.isAddress(address||''))moved.set(address.toLowerCase()+':'+type,{address:address.toLowerCase(),token_type:type});
+      }
+      pageKey=typeof result.pageKey==='string'&&result.pageKey?result.pageKey:null;
+    }while(pageKey);
+  }
+  return [...moved.values()];
+}
+async function transferDelta(c,n,block,wallet,plan,checkpoint,file,{maxBatches=Infinity}={}){
+  const from=BigInt(plan.from_block);
+  if(from>block+1n)throw new Error('The last complete check is newer than this block.');
+  const saved=checkpoint.fast_delta;let moved,requests=0;
+  if(saved&&saved.from_block===String(plan.from_block)&&saved.to_block===block.toString()&&Array.isArray(saved.moved))({moved,requests}=saved);
+  else{
+    const budget={used:0,max:FAST_HISTORY_REQUESTS};
+    moved=from<=block?await transferHistory(c,wallet,from,block,budget):[];requests=budget.used;
+    checkpoint.fast_delta={from_block:String(plan.from_block),to_block:block.toString(),moved,requests};write(file,checkpoint);
+  }
+  const entries=new Map(),unknown=new Map(),extra=[];
+  for(const t of [...plan.prior,...moved]){
+    if(!t||!v.isAddress(t.address||'')||!['ERC20','ERC1155'].includes(t.token_type))continue;
+    const identity=t.address.toLowerCase()+':'+t.token_type,entry=plan.cache.byAddress.get(identity);
+    if(entry)entries.set(identity,entry);else unknown.set(identity,{address:t.address.toLowerCase(),token_type:t.token_type});
+  }
+  // Tokens newer than the saved catalogue are checked against the bond, like wallet candidates.
+  let membershipErrors=0;
+  if(unknown.size){
+    const tokens=[...unknown.values()],rows=await mintclubMembership(c,n,tokens,block,checkpoint,file,{maxBatches});
+    tokens.forEach((t,i)=>{
+      const row=rows[i];
+      if(row.status!=='success')membershipErrors++;
+      else if(row.registered)entries.set(t.address+':'+t.token_type,{address:t.address,token_type:t.token_type,decimals:row.decimals});
+      else if(t.token_type==='ERC20')extra.push({chain_id:n.chain_id,address:t.address,suspicious_zero_check:true});
+    });
+  }
+  const list=[...entries.values()];
+  return {count:list.length,entries:list,extra,errors:membershipErrors,cache_reused:plan.cache.count,next_index:list.length,deferred:false,pending:membershipErrors>0,
+    method:'transfer_delta',catalogue_count:plan.cache.count,from_block:String(plan.from_block),full_check_block:plan.full_check_block||null,
+    full_checked_at:plan.full_checked_at||null,moved:moved.length,prior:plan.prior.length,log_requests:requests};
 }
 async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}={}) {
   const file = path.join(output,`${baseline?'baseline-':''}chain-${n.chain_id}.json`);
@@ -308,7 +421,16 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
     const firstReads=new Map(initialTokens.map((t,i)=>[t.address.toLowerCase(),initialBalances[i]]));
     let reg;
     try {
-      reg = baseline||market?{count:null,entries:[],errors:0,cache_reused:0}:await registry(c,n,block,{file:path.join(output,`registry-checkpoint-${n.chain_id}.json`),blockHash:snapshot.hash,maxBatches});
+      const fast=baseline||market?null:fastPlan(input,n);
+      if(fast){
+        try{reg=await transferDelta(c,n,block,input.wallet,fast,checkpoint,checkpointFile,{maxBatches});}
+        catch(e){
+          if(e.code==='market_budget')throw e;row.fast_fallback=h.safeError(e);
+          // A failed history read can cool this endpoint for a few seconds. Let it pass before the full walk.
+          await new Promise(resolve=>setTimeout(resolve,FAST_FALLBACK_PAUSE));
+        }
+      }
+      reg = reg || (baseline||market?{count:null,entries:[],errors:0,cache_reused:0}:await registry(c,n,block,{file:path.join(output,`registry-checkpoint-${n.chain_id}.json`),blockHash:snapshot.hash,maxBatches}));
       if(!baseline&&!market){checkpoint.registry=reg;write(checkpointFile,checkpoint);}
     } catch (e) {
       row.registry_error = h.safeError(e);
@@ -319,6 +441,8 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
     for (const t of reg.entries.filter(t => t.address && t.token_type && t.token_type!=='unknown')) {
       plans.set(t.address.toLowerCase(),{...plans.get(t.address.toLowerCase()),...t,registered_mintclub:true});
     }
+    // Moved tokens outside Mint Club are ordinary candidates.
+    for (const t of reg.extra||[]) if(!plans.has(t.address.toLowerCase()))plans.set(t.address.toLowerCase(),{...t,token_type:'ERC20'});
     const tokens = [...plans.values()];
     const remaining=tokens.filter(t=>!firstReads.has(t.address.toLowerCase())||!market&&t.token_type==='ERC1155');
     if(remaining.length)emitProgress(n,'balances',0,remaining.length);
@@ -367,6 +491,9 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
       positive_balances:held.filter(t=>t.registered_mintclub).length,block_number:block,complete:!baseline && !market && reg.errors===0 && checked===reg.count,phase:market?'not_requested':baseline||workPending?'deferred':'checked',enumerated:reg.entries.filter(t=>t.address&&!t.error).length,next_index:reg.next_index??null,
       source:market?'Wallet-history candidates; full registry enumeration not requested.':'On-chain Mint Club bond tokenCount()/tokens(index), then direct wallet balance calls',bond_address:n.mintclub_bond_address};
     row.registry_scan.error_examples=reg.entries.filter(t=>t.error||!t.address).slice(0,5).map(t=>({index:t.index,error:t.error||{message:'Registry address unavailable'}}));
+    if(reg.method==='transfer_delta')Object.assign(row.registry_scan,{method:'transfer_delta',catalogue_count:reg.catalogue_count,from_block:reg.from_block,
+      full_check_block:reg.full_check_block,full_checked_at:reg.full_checked_at,moved:reg.moved,prior:reg.prior,log_requests:reg.log_requests,
+      source:'Fast refresh: Alchemy transfer history for this wallet since the last complete check, then direct balance calls for earlier and moved tokens.'});
     row.balance_errors = errors;
     row.zero_verification=checkpoint.zero_checks||{};
     for (const [heldIndex,t] of held.entries()) {
@@ -946,12 +1073,14 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
     if(pending)save();return {tokens,market_pending:pending};
   }finally{flush();}
 }
-async function scanNetworks(input,output,baseline=false,{maxBatches=4,maxRounds=Infinity,scan=scanChain}={}) {
+async function scanNetworks(input,output,baseline=false,{maxBatches=8,maxRounds=Infinity,scan=scanChain,workers=12}={}) {
   const results=new Map(),lastProgress=new Map(),stalls=new Map();
   let queue=input.networks;
   let rounds=0;
   while(queue.length&&rounds++<maxRounds) {
-    const rows=await parallel(queue,2,n=>scan(input,n,output,baseline,{maxBatches}));
+    // Every network starts at once. Each provider lane keeps its own spacing, so a slow
+    // public network no longer waits for a free worker while Alchemy networks share their lane.
+    const rows=await parallel(queue,workers,n=>scan(input,n,output,baseline,{maxBatches}));
     const next=[];
     rows.forEach((row,i)=>{
       const n=queue[i];results.set(n.chain_id,row);
@@ -998,4 +1127,6 @@ async function main() {
   }else throw new Error('Expected scan or dex mode');
 }
 if(require.main===module)main().catch(e=>{console.error(h.serialize(h.safeError(e)));process.exitCode=1;});
-module.exports={scanNetworks,parallel,calls,registry,connect,scanChain,batches,balanceReads,factReads,mintclubMembership,dexChain,reserveChain,liquidationChain,routePools,boundedMarket,MarketBudget};
+const setGroupSize=(c,size)=>{groupLimits.set(c,size);return c;};
+const setFastFallbackPause=ms=>{FAST_FALLBACK_PAUSE=ms;};
+module.exports={GROUP,MIN_GROUP,setGroupSize,setFastFallbackPause,scanNetworks,parallel,calls,registry,connect,scanChain,batches,balanceReads,factReads,mintclubMembership,dexChain,reserveChain,liquidationChain,routePools,boundedMarket,MarketBudget};

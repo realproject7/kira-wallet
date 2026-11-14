@@ -215,6 +215,7 @@ def main():
     demo=sub.add_parser('demo',help='Open a sample portfolio.');demo.add_argument('--port',type=int,default=8790)
     add=sub.add_parser('add',help='Register a public wallet and run its first holdings lookup.');add.add_argument('address');add.add_argument('--tag',required=True);add.add_argument('--resume')
     refresh=sub.add_parser('refresh',help='Run a new holdings lookup for a wallet.');refresh.add_argument('wallet');refresh.add_argument('--resume')
+    refresh.add_argument('--fast',action='store_true',help='Reread earlier holdings and tokens moved since the last complete check, and keep test networks as last saved.')
     prices=sub.add_parser('prices',help='Refresh prices without changing balances.');prices.add_argument('wallet')
     for mutation in (add,refresh,prices):mutation.add_argument('--idempotency-key');mutation.add_argument('--enqueue',action='store_true')
     jobs=sub.add_parser('jobs',help='List, follow and control durable jobs.');jobsub=jobs.add_subparsers(dest='action',required=True)
@@ -365,7 +366,7 @@ def main():
                 from kira_jobs import JobStore
                 store=JobStore(root)
                 result=app.submit({'schema_version':1,'operation':{'add':'wallet.add','refresh':'wallet.refresh','prices':'prices.refresh'}[args.command],
-                    'input':{'address':args.address,'tag':args.tag} if args.command=='add' else {'wallet':args.wallet},'idempotency_key':args.idempotency_key or str(uuid.uuid4())},launch=args.enqueue or args.json)
+                    'input':{'address':args.address,'tag':args.tag} if args.command=='add' else {'wallet':args.wallet,**({'scope':'fast'} if getattr(args,'fast',False) else {})},'idempotency_key':args.idempotency_key or str(uuid.uuid4())},launch=args.enqueue or args.json)
                 print(json.dumps(result),flush=True)
                 if args.enqueue or args.json:return 0
                 store.worker();result=store.get(result['job_id']);print(json.dumps(result))

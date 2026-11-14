@@ -268,3 +268,28 @@ test('verification transport bypasses result cache and shared pending promises',
  assert.equal(await verifier.request({method:'eth_getBalance',params:[A,'0x7']}),'0x2');
  assert.equal(await regular.request({method:'eth_getBalance',params:[A,'0x7']}),'0x1');assert.equal(count,2);
 });
+test('Alchemy reads may overlap up to the slot count while starts keep their spacing',async()=>{
+ const urls=['https://eth-mainnet.g.alchemy.com/v2/test-key','https://base-mainnet.g.alchemy.com/v2/test-key','https://opt-mainnet.g.alchemy.com/v2/test-key','https://arb-mainnet.g.alchemy.com/v2/test-key','https://polygon-mainnet.g.alchemy.com/v2/test-key'];
+ const chains=[1,8453,10,42161,137];
+ const run=async slots=>{
+  const pool=fresh({alchemyInterval:20,alchemySlots:slots}),starts=[];let inFlight=0,peak=0;
+  const fn=async(url,r)=>{
+   if(r.method==='eth_chainId')return '0x'+chains[urls.indexOf(url)].toString(16);
+   starts.push(Date.now());inFlight++;peak=Math.max(peak,inFlight);
+   await new Promise(resolve=>setTimeout(resolve,80));inFlight--;return '0x7';
+  };
+  chains.forEach((chain,i)=>{pool.state(chain,urls[i],transport(fn),{}).verified=true;});
+  const began=Date.now();
+  await Promise.all(chains.map((chain,i)=>client(pool,[urls[i]],fn,chain).getBlockNumber({cacheTime:0})));
+  for(let i=1;i<starts.length;i++)assert(starts[i]-starts[i-1]>=18,'Starts stay at least one interval apart.');
+  const lane=pool.families.get(pool.states.get('1:'+urls[0]).family);
+  assert.equal(lane.gate.busy,false);assert.equal(lane.slots.busy,false);
+  return {peak,elapsed:Date.now()-began};
+ };
+ const serial=await run(1),overlapped=await run(4);
+ assert.equal(serial.peak,1,'One slot keeps one read in flight, as before.');
+ assert(overlapped.peak>1&&overlapped.peak<=4,'Several slots let slow reads overlap within the cap.');
+ assert(overlapped.elapsed<serial.elapsed,'Overlapping slow reads finish sooner at the same start rate.');
+ const other=fresh({alchemyInterval:20,alchemySlots:4}),state=other.state(1,'https://rpc.example/v2/test-key',transport(async()=> '0x1'),{});
+ assert.equal(other.families.get(state.family).slots.capacity,1,'Other lanes keep one read at a time.');
+});
