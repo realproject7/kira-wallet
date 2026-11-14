@@ -148,8 +148,8 @@ per-wallet queue and share the browser controls' admission rules.
 
 `holdings_refresh` and `portfolio_holdings_refresh` accept an optional `scope`.
 `full` is the default. `fast` rereads the tokens each wallet holds and the tokens
-it sent or received since its last complete check, on networks whose Mint Club
-token list is large, and keeps test networks as last saved. Each network's
+Alchemy's transfer history lists since its last complete check, on networks whose
+Mint Club token list is large, and keeps test networks as last saved. Each network's
 `mintclub_registry_scan` names the method: a fast check has `method:
 transfer_delta`, `from_block` and the last `full_check_block`. A wallet without
 a complete saved check is checked in full.

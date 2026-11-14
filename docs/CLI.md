@@ -228,7 +228,7 @@ kira prices 'Daily wallet' --idempotency-key prices-daily-001 --json
 
 **Fast refresh** rechecks the tokens a wallet holds and any token it sent or
 received since its last full refresh. On networks with a large Mint Club token
-list, such as Base, it reads that transfer history instead of every listed
+list, such as Base, it reads that history from Alchemy instead of every listed
 token. Smaller networks are checked as in a full refresh. Test networks keep
 their last saved balances. A wallet without a saved full refresh is checked in
 full. Use the full refresh for a complete check. Fast refresh is on Home, a

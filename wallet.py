@@ -571,6 +571,9 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
     return result
 
 
+FAST_OVERLAP_BLOCKS=1000
+
+
 def fast_plan(wallet, networks):
     """What a fast refresh may build on: this wallet's latest saved holdings.
 
@@ -600,7 +603,9 @@ def fast_plan(wallet, networks):
         if n.get('environment')!='mainnet' or scan.get('complete') is not True or not re.fullmatch(r'[0-9]{1,20}',str(scan.get('block_number',''))):continue
         prior=[{'address':t['token_address'],'token_type':t['token_type']} for t in row.get('tokens',[])
                if isinstance(t,dict) and t.get('token_type') in ('ERC20','ERC1155') and re.fullmatch(r'0x[0-9a-fA-F]{40}',str(t.get('token_address','')))]
-        plan['chains'][str(cid)]={'from_block':str(int(scan['block_number'])+1),'full_check_block':str(scan.get('full_check_block') or scan['block_number']),
+        # The transfer index can trail the newest blocks, so each window rereads the last
+        # FAST_OVERLAP_BLOCKS blocks of the previous one. A repeated transfer changes nothing.
+        plan['chains'][str(cid)]={'from_block':str(max(0,int(scan['block_number'])+1-FAST_OVERLAP_BLOCKS)),'full_check_block':str(scan.get('full_check_block') or scan['block_number']),
             'full_checked_at':scan.get('full_checked_at') or row.get('observed_at'),'prior':prior}
     return plan
 

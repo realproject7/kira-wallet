@@ -227,19 +227,19 @@ test('one aggregate read carries up to 1024 calls and a failing endpoint is retr
 test('fast refresh reads earlier holdings and moved tokens instead of a large catalogue',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-fast-delta-'));
  const originals={root:h.root,endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock};
- const TRANSFER='0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',SINGLE='0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62';
- const pad=a=>'0x'+'0'.repeat(24)+a.slice(2).toLowerCase(),bond=address(9999),n={chain_id:999,network:'synthetic',mintclub_bond_address:bond};
+ const {setFastFallbackPause}=require('./pipeline-onchain.cjs');setFastFallbackPause(0);
+ const bond=address(9999),n={chain_id:999,network:'synthetic',mintclub_bond_address:bond};
  try{
   h.root=root;h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:100n,hash:HASH});
   // A saved catalogue of 3000 Mint Club tokens, alternating ERC20 and ERC1155.
+  const catalogue=entries=>fs.writeFileSync(path.join(root,'cache/mintclub-registry',`999-${bond.toLowerCase()}.json`),JSON.stringify({chain_id:999,bond_address:bond,entries}));
   fs.mkdirSync(path.join(root,'cache/mintclub-registry'),{recursive:true});
-  fs.writeFileSync(path.join(root,'cache/mintclub-registry',`999-${bond.toLowerCase()}.json`),JSON.stringify({chain_id:999,bond_address:bond,
-   entries:Array.from({length:3000},(_,i)=>({index:i,address:address(i),decimals:i%2?0:18,token_type:i%2?'ERC1155':'ERC20'}))}));
-  const build=({logs,walk=false})=>{
-   const seen={queries:[],balances:new Set(),tokenCount:0};
+  catalogue(Array.from({length:3000},(_,i)=>({index:i,address:address(i),decimals:i%2?0:18,token_type:i%2?'ERC1155':'ERC20'})));
+  const build=({history,walk=false})=>{
+   const seen={queries:[],balances:new Set()};
    const client={getChainId:async()=>999,getBalance:async()=>5n,
-    readContract:async({functionName})=>{if(!walk)throw new Error('The catalogue walk must not run.');seen.tokenCount++;return 3000n;},
-    request:async({method,params})=>{assert.equal(method,'eth_getLogs');seen.queries.push(params[0]);return logs(params[0]);},
+    readContract:async()=>{if(!walk)throw new Error('The catalogue walk must not run.');return 3000n;},
+    request:async({method,params})=>{seen.queries.push({method,...params[0]});return history(method,params[0]);},
     multicall:async({contracts})=>contracts.map(c=>{
      if(c.functionName==='balanceOf'){seen.balances.add(c.address.toLowerCase());return {status:'success',result:c.address.toLowerCase()===address(4)?0n:3n};}
      if(c.functionName==='tokens')return {status:'success',result:address(Number(c.args[0]))};
@@ -252,39 +252,35 @@ test('fast refresh reads earlier holdings and moved tokens instead of a large ca
   };
   const input=extra=>({wallet:WALLET,candidates:[],networks:[n],fast:{chains:{'999':{from_block:'90',full_check_block:'89',full_checked_at:'2026-11-14T00:00:00Z',
    prior:[{address:address(4),token_type:'ERC20'},{address:address(5),token_type:'ERC1155'}],...extra}}}});
-  // Received ERC20 (catalogued), an ERC721 transfer (four topics, ignored), a sent non-Mint Club ERC20, and a received ERC1155.
-  const logs=filter=>{
-   const [first]=filter.topics;
-   if(Array.isArray(first)&&first.length===3)return [{address:address(10),topics:[TRANSFER,pad(address(500)),pad(WALLET)]},{address:address(7777),topics:[TRANSFER,pad(address(1)),pad(WALLET),'0x01']}];
-   if(first===TRANSFER)return [{address:address(8888),topics:[TRANSFER,pad(WALLET),pad(address(2))]}];
-   return [{address:address(11),topics:[SINGLE,pad(WALLET),pad(address(3)),pad(WALLET)]}];
+  // Sent: a non-Mint Club ERC20 (second page). Received: a catalogued ERC20, an ERC1155 and an ERC721 (ignored).
+  const transfer=(category,a)=>({category,rawContract:{address:a}});
+  const history=(method,query)=>{
+   assert.equal(method,'alchemy_getAssetTransfers');assert.deepEqual(query.category,['erc20','erc1155']);
+   if(query.fromAddress)return query.pageKey?{transfers:[transfer('erc20',address(8888))]}:{transfers:[],pageKey:'next'};
+   return {transfers:[transfer('erc20',address(10)),transfer('erc1155',address(11)),transfer('erc721',address(7777))]};
   };
-  let seen=build({logs});
+  let seen=build({history});
   let row=await scanChain(input(),n,path.join(root,'fast'));
-  assert.equal(seen.queries.length,3);assert(seen.queries.every(q=>q.fromBlock==='0x5a'&&q.toBlock==='0x64'));
+  assert.equal(seen.queries.length,3,'Two directions, one of them on two pages.');
+  assert(seen.queries.every(q=>q.fromBlock==='0x5a'&&q.toBlock==='0x64'&&(q.fromAddress===WALLET||q.toAddress===WALLET)));
   assert.deepEqual([...seen.balances].sort(),[address(4),address(5),address(10),address(11),address(8888)].sort(),'Only earlier and moved tokens are read.');
   assert.equal(row.registry_scan.method,'transfer_delta');assert.equal(row.registry_scan.complete,true);
   assert.equal(row.registry_scan.moved,3);assert.equal(row.registry_scan.prior,2);assert.equal(row.registry_scan.catalogue_count,3000);
-  assert.equal(row.registry_scan.from_block,'90');assert.equal(row.registry_scan.full_check_block,'89');
+  assert.equal(row.registry_scan.from_block,'90');assert.equal(row.registry_scan.full_check_block,'89');assert.equal(row.registry_scan.log_requests,3);
   const held=row.tokens.map(t=>t.token_address.toLowerCase()).sort();
   assert.deepEqual(held,[address(5),address(10),address(11),address(8888)].sort(),'A token sold to zero leaves the list.');
   assert.equal(row.tokens.find(t=>t.token_address.toLowerCase()===address(8888)).mintclub_membership_status,undefined);
-  // A provider that limits the block range is asked again in halves.
-  seen=build({logs:filter=>{if(BigInt(filter.toBlock)-BigInt(filter.fromBlock)>4n)throw new Error('block range is too wide');return [];}});
-  row=await scanChain(input(),n,path.join(root,'split'));
-  assert(seen.queries.length>3);assert.equal(row.registry_scan.method,'transfer_delta');assert.equal(row.registry_scan.moved,0);
-  // Unsupported or too long histories fall back to the complete catalogue walk.
-  for(const logs of [()=>{throw new Error('method eth_getLogs does not exist');},filter=>{if(BigInt(filter.toBlock)>BigInt(filter.fromBlock))throw new Error('block range limit');return [];}]){
-   seen=build({logs,walk:true});
-   row=await scanChain(input({from_block:'1'}),n,path.join(root,'walk-'+seen.queries.length+Math.random()));
+  // A provider without the transfer history, or a history too long for the budget, falls back to the full walk.
+  for(const failing of [()=>{throw Object.assign(new Error('Unsupported method: alchemy_getAssetTransfers'),{code:-32601});},()=>({transfers:[],pageKey:'again'})]){
+   seen=build({history:failing,walk:true});
+   row=await scanChain(input(),n,path.join(root,'walk-'+Math.random()));
    assert(row.fast_fallback,'The fallback is recorded.');assert.equal(row.registry_scan.method,undefined);
-   assert(seen.balances.size>=3000,'The complete walk reads every catalogue token.');
+   assert(seen.balances.size>=3000,'The complete walk reads every catalogue token.');assert.equal(row.registry_scan.complete,true);
   }
   // Small catalogues are walked: one or two calls cost no more than the history.
-  fs.writeFileSync(path.join(root,'cache/mintclub-registry',`999-${bond.toLowerCase()}.json`),JSON.stringify({chain_id:999,bond_address:bond,
-   entries:Array.from({length:100},(_,i)=>({index:i,address:address(i),decimals:18,token_type:'ERC20'}))}));
-  seen=build({logs,walk:true});
+  catalogue(Array.from({length:100},(_,i)=>({index:i,address:address(i),decimals:18,token_type:'ERC20'})));
+  seen=build({history,walk:true});
   row=await scanChain(input(),n,path.join(root,'small'));
   assert.equal(seen.queries.length,0);assert.equal(row.registry_scan.method,undefined);
- }finally{Object.assign(h,originals);fs.rmSync(root,{recursive:true,force:true});}
+ }finally{Object.assign(h,originals);setFastFallbackPause(5500);fs.rmSync(root,{recursive:true,force:true});}
 });

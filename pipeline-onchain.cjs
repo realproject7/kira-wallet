@@ -297,12 +297,12 @@ async function mintclubMembership(c,n,tokens,block,checkpoint,file,{maxBatches=I
   return tokens.map(t=>checkpoint.mintclub_membership[key(t)]?{status:'success',...checkpoint.mintclub_membership[key(t)]}:failures.get(key(t))||{status:'pending'});
 }
 // Fast refresh. A standard token balance changes only through a transfer
-// event naming the wallet, so a network whose Mint Club catalogue is large
-// rereads earlier holdings and tokens moved since the last complete check.
-const TRANSFER='0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
-const TRANSFER_SINGLE='0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62';
-const TRANSFER_BATCH='0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb';
-const FAST_MIN_CATALOGUE=2048,FAST_LOG_REQUESTS=24;
+// naming the wallet, so a network whose Mint Club catalogue is large rereads
+// earlier holdings and the tokens Alchemy's transfer history lists since the
+// last complete check. Node log queries are not used: Alchemy's free plan
+// limits them to ten blocks, and public nodes refuse them without an address.
+const FAST_MIN_CATALOGUE=2048,FAST_HISTORY_REQUESTS=24;
+let FAST_FALLBACK_PAUSE=5500;
 function registryCache(n){
   const file=path.join(h.root,'cache/mintclub-registry',`${n.chain_id}-${String(n.mintclub_bond_address||'').toLowerCase()}.json`);
   try{
@@ -316,31 +316,26 @@ function fastPlan(input,n){
   const plan=input.fast?.chains?.[String(n.chain_id)];
   if(!plan||!/^[0-9]+$/.test(String(plan.from_block||''))||!Array.isArray(plan.prior))return null;
   const cache=registryCache(n);
-  // A small catalogue is read in one or two calls, which costs no more than the transfer history.
+  // A small catalogue is read in one or two calls, which costs no more than the history.
   return cache&&cache.count>FAST_MIN_CATALOGUE?{...plan,cache}:null;
 }
-const rangeLimited=error=>{
-  for(let cause=error,depth=0;cause&&depth<10;cause=cause.cause,depth++){
-    if(cause.status===429||cause.code===429)return false;
-    if(/block range|range (?:is )?too|limit|exceed|too (?:many|large|big)|10,?000|response size|timed? ?out/i.test(cause.shortMessage||cause.message||''))return true;
+async function transferHistory(c,wallet,from,to,budget){
+  const moved=new Map();
+  for(const direction of ['fromAddress','toAddress']){
+    let pageKey;
+    do{
+      if(++budget.used>budget.max)throw Object.assign(new Error('Transfer history needs more requests than a fast refresh allows.'),{code:'fast_budget'});
+      const result=await c.request({method:'alchemy_getAssetTransfers',params:[{fromBlock:'0x'+from.toString(16),toBlock:'0x'+to.toString(16),
+        [direction]:wallet,category:['erc20','erc1155'],withMetadata:false,maxCount:'0x3e8',...(pageKey?{pageKey}:{})}]});
+      if(!result||!Array.isArray(result.transfers))throw new Error('Transfer history response was not a list.');
+      for(const transfer of result.transfers){
+        const type=transfer?.category==='erc20'?'ERC20':transfer?.category==='erc1155'?'ERC1155':null,address=transfer?.rawContract?.address;
+        if(type&&v.isAddress(address||''))moved.set(address.toLowerCase()+':'+type,{address:address.toLowerCase(),token_type:type});
+      }
+      pageKey=typeof result.pageKey==='string'&&result.pageKey?result.pageKey:null;
+    }while(pageKey);
   }
-  return false;
-};
-async function transferLogs(c,topics,from,to,budget){
-  const logs=[],ranges=[[from,to]];
-  while(ranges.length){
-    const [start,end]=ranges.shift();
-    if(++budget.used>budget.max)throw Object.assign(new Error('Transfer history needs more requests than a fast refresh allows.'),{code:'fast_budget'});
-    try{
-      const rows=await c.request({method:'eth_getLogs',params:[{fromBlock:'0x'+start.toString(16),toBlock:'0x'+end.toString(16),topics}]});
-      if(!Array.isArray(rows))throw new Error('Transfer history response was not a list.');
-      logs.push(...rows);
-    }catch(error){
-      if(end>start&&rangeLimited(error)){const mid=start+(end-start)/2n;ranges.unshift([start,mid],[mid+1n,end]);continue;}
-      throw error;
-    }
-  }
-  return logs;
+  return [...moved.values()];
 }
 async function transferDelta(c,n,block,wallet,plan,checkpoint,file,{maxBatches=Infinity}={}){
   const from=BigInt(plan.from_block);
@@ -348,15 +343,8 @@ async function transferDelta(c,n,block,wallet,plan,checkpoint,file,{maxBatches=I
   const saved=checkpoint.fast_delta;let moved,requests=0;
   if(saved&&saved.from_block===String(plan.from_block)&&saved.to_block===block.toString()&&Array.isArray(saved.moved))({moved,requests}=saved);
   else{
-    const topic='0x'+'0'.repeat(24)+wallet.slice(2).toLowerCase(),budget={used:0,max:FAST_LOG_REQUESTS},found=new Map();
-    // ERC20 in (and ERC1155 out), ERC20 out, ERC1155 in. ERC721 transfers carry four topics and are skipped.
-    const queries=[[[TRANSFER,TRANSFER_SINGLE,TRANSFER_BATCH],null,topic],[TRANSFER,topic],[[TRANSFER_SINGLE,TRANSFER_BATCH],null,null,topic]];
-    if(from<=block)for(const topics of queries)for(const log of await transferLogs(c,topics,from,block,budget)){
-      const kind=String(log?.topics?.[0]||'').toLowerCase();
-      const type=kind===TRANSFER&&log.topics.length===3?'ERC20':kind===TRANSFER_SINGLE||kind===TRANSFER_BATCH?'ERC1155':null;
-      if(type&&v.isAddress(log.address||''))found.set(log.address.toLowerCase()+':'+type,{address:log.address.toLowerCase(),token_type:type});
-    }
-    moved=[...found.values()];requests=budget.used;
+    const budget={used:0,max:FAST_HISTORY_REQUESTS};
+    moved=from<=block?await transferHistory(c,wallet,from,block,budget):[];requests=budget.used;
     checkpoint.fast_delta={from_block:String(plan.from_block),to_block:block.toString(),moved,requests};write(file,checkpoint);
   }
   const entries=new Map(),unknown=new Map(),extra=[];
@@ -436,7 +424,11 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
       const fast=baseline||market?null:fastPlan(input,n);
       if(fast){
         try{reg=await transferDelta(c,n,block,input.wallet,fast,checkpoint,checkpointFile,{maxBatches});}
-        catch(e){if(e.code==='market_budget')throw e;row.fast_fallback=h.safeError(e);}
+        catch(e){
+          if(e.code==='market_budget')throw e;row.fast_fallback=h.safeError(e);
+          // A failed history read can cool this endpoint for a few seconds. Let it pass before the full walk.
+          await new Promise(resolve=>setTimeout(resolve,FAST_FALLBACK_PAUSE));
+        }
       }
       reg = reg || (baseline||market?{count:null,entries:[],errors:0,cache_reused:0}:await registry(c,n,block,{file:path.join(output,`registry-checkpoint-${n.chain_id}.json`),blockHash:snapshot.hash,maxBatches}));
       if(!baseline&&!market){checkpoint.registry=reg;write(checkpointFile,checkpoint);}
@@ -501,7 +493,7 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
     row.registry_scan.error_examples=reg.entries.filter(t=>t.error||!t.address).slice(0,5).map(t=>({index:t.index,error:t.error||{message:'Registry address unavailable'}}));
     if(reg.method==='transfer_delta')Object.assign(row.registry_scan,{method:'transfer_delta',catalogue_count:reg.catalogue_count,from_block:reg.from_block,
       full_check_block:reg.full_check_block,full_checked_at:reg.full_checked_at,moved:reg.moved,prior:reg.prior,log_requests:reg.log_requests,
-      source:'Fast refresh: transfer events naming this wallet since the last complete check, then direct balance calls for earlier and moved tokens.'});
+      source:'Fast refresh: Alchemy transfer history for this wallet since the last complete check, then direct balance calls for earlier and moved tokens.'});
     row.balance_errors = errors;
     row.zero_verification=checkpoint.zero_checks||{};
     for (const [heldIndex,t] of held.entries()) {
@@ -1135,4 +1127,5 @@ async function main() {
 }
 if(require.main===module)main().catch(e=>{console.error(h.serialize(h.safeError(e)));process.exitCode=1;});
 const setGroupSize=(c,size)=>{groupLimits.set(c,size);return c;};
-module.exports={GROUP,MIN_GROUP,setGroupSize,scanNetworks,parallel,calls,registry,connect,scanChain,batches,balanceReads,factReads,mintclubMembership,dexChain,reserveChain,liquidationChain,routePools,boundedMarket,MarketBudget};
+const setFastFallbackPause=ms=>{FAST_FALLBACK_PAUSE=ms;};
+module.exports={GROUP,MIN_GROUP,setGroupSize,setFastFallbackPause,scanNetworks,parallel,calls,registry,connect,scanChain,batches,balanceReads,factReads,mintclubMembership,dexChain,reserveChain,liquidationChain,routePools,boundedMarket,MarketBudget};

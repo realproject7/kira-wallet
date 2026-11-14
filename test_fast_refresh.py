@@ -50,10 +50,11 @@ class FastRefreshTests(unittest.TestCase):
     def test_plan_reads_history_after_a_complete_check_and_keeps_test_networks(self):
         held = [{'token_address': TOKEN, 'token_type': 'ERC20'}, {'token_address': NFT, 'token_type': 'ERC1155'},
                 {'token_address': 'not-an-address', 'token_type': 'ERC20'}, {'token_address': OTHER, 'token_type': 'ERC721'}]
-        entry = self.saved([self.row(8453, tokens=held), self.row(10, complete=False), self.row(84532)])
+        entry = self.saved([self.row(8453, block='5000', tokens=held), self.row(10, complete=False), self.row(84532)])
         with patch.object(wallet, 'ROOT', self.root):
             plan = wallet.fast_plan(entry, NETWORKS)
-        self.assertEqual(plan['chains']['8453'], {'from_block': '101', 'full_check_block': '100', 'full_checked_at': '2026-11-14T01:00:00Z',
+        # The window starts 1,000 blocks before the saved check, for transfers the index had not listed yet.
+        self.assertEqual(plan['chains']['8453'], {'from_block': '4001', 'full_check_block': '5000', 'full_checked_at': '2026-11-14T01:00:00Z',
                                                   'prior': [{'address': TOKEN, 'token_type': 'ERC20'}, {'address': NFT, 'token_type': 'ERC1155'}]})
         self.assertNotIn('10', plan['chains'], 'An incomplete saved check is read in full.')
         self.assertEqual(set(plan['retained']), {84532}, 'Only saved test networks are kept.')
@@ -64,7 +65,7 @@ class FastRefreshTests(unittest.TestCase):
         entry = self.saved([self.row(8453, block='200', method='transfer_delta', full_check_block='100', full_checked_at='2026-11-01T00:00:00Z')])
         with patch.object(wallet, 'ROOT', self.root):
             chain = wallet.fast_plan(entry, NETWORKS)['chains']['8453']
-        self.assertEqual((chain['from_block'], chain['full_check_block'], chain['full_checked_at']), ('201', '100', '2026-11-01T00:00:00Z'))
+        self.assertEqual((chain['from_block'], chain['full_check_block'], chain['full_checked_at']), ('0', '100', '2026-11-01T00:00:00Z'), 'Early blocks start at zero.')
 
     def test_no_saved_holdings_or_another_wallet_means_a_full_check(self):
         with patch.object(wallet, 'ROOT', self.root):
@@ -96,7 +97,7 @@ class FastRefreshTests(unittest.TestCase):
                 patch.object(wallet, 'prior_candidates', return_value=[]), patch.object(wallet, 'run_node', side_effect=scan), patch.object(wallet, 'initial_result', side_effect=result):
             wallet.research_holdings(entry, folder, NETWORKS[:3], scope='fast')
         self.assertEqual(sorted(call.args[1]['chain_id'] for call in discover.call_args_list), [10, 8453], 'Kept networks need no discovery.')
-        self.assertEqual(seen['networks'], [8453, 10]); self.assertEqual(seen['fast']['chains']['8453']['from_block'], '101')
+        self.assertEqual(seen['networks'], [8453, 10]); self.assertEqual(seen['fast']['chains']['8453']['from_block'], '0')
         self.assertEqual([c['chain_id'] for c in captured['chains']], [8453, 10, 84532])
         self.assertEqual(captured['chains'][2]['retained_from'], 'snapshots/fixture/previous')
         self.assertEqual(captured['pipeline'], {'refresh_scope': 'fast', 'retained_networks': [84532]})
