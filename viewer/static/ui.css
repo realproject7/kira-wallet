@@ -39,24 +39,18 @@ input[type=checkbox],input[type=radio] { width:18px; height:18px; accent-color:v
 input:focus-visible,textarea:focus-visible { outline:3px solid #ac92c44d; outline-offset:2px; }
 .form-note,.detail-note,.valuation-note,.stat-note,.price-basis,.section-note { font-size:var(--text-caption); line-height:1.55; color:var(--secondary); }
 .summary-label { font-size:var(--text-secondary); line-height:1.45; color:var(--secondary); }
-.home-summary,.portfolio-summary,.detail-metrics { padding:28px; border-radius:18px; gap:28px; }
-.home-summary .total-value,.portfolio-summary .total-value,.detail-metrics .valuation .total-value { font-size:3rem; line-height:1.1; letter-spacing:-.04em; font-weight:600; overflow-wrap:anywhere; }
-.home-summary .sell-summary-value,.portfolio-summary .sell-summary-value,.detail-metrics .sell-summary-value { font-size:2.5rem; line-height:1.15; letter-spacing:-.035em; overflow-wrap:anywhere; }
-.home-summary .valuation-note,.portfolio-summary .valuation-note,.detail-metrics .valuation-note,.home-stats .stat-note { font-size:var(--text-caption); line-height:1.5; }
-.summary-stat strong,.home-stats .summary-stat strong,.detail-metrics .summary-stat strong { font-size:1.75rem; line-height:1.2; }
+.home-summary { padding:28px; border-radius:18px; gap:28px; }
+.home-summary .total-value { font-size:3rem; line-height:1.1; letter-spacing:-.04em; font-weight:600; overflow-wrap:anywhere; }
+.home-summary .sell-summary-value { font-size:2.5rem; line-height:1.15; letter-spacing:-.035em; overflow-wrap:anywhere; }
+.home-summary .valuation-note { font-size:var(--text-caption); line-height:1.5; }
+
 .estimate-badges { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:12px; }
 .estimate-badges>span { display:inline-flex; align-items:center; gap:5px; padding:4px 8px; border-radius:6px; background:#f3eef8; color:#73617f; font-size:var(--text-caption); line-height:1.4; }
 .estimate-badges .estimate-missing { background:#faf2e5; color:#876327; }
-.estimate-about { margin-top:8px; font-size:var(--text-caption); color:var(--secondary); }
-.estimate-about summary { display:inline-flex; align-items:center; gap:6px; min-height:36px; cursor:pointer; list-style:none; }
-.estimate-about summary::-webkit-details-marker { display:none; }
-.estimate-about p { font-size:var(--text-caption); line-height:1.6; margin:6px 0 0; max-width:40em; }
-.wallet-card-value { font-size:1.75rem; letter-spacing:-.025em; }
-.wallet-card-meta,.network-row-meta { font-size:var(--text-caption); line-height:1.5; }
-.wallet-card { padding:20px; }
+
 .token-table td,.symbol,.amount,.token-price,.token-value { font-size:var(--text-ui); line-height:1.45; }
 .token-table th { font-size:var(--text-caption); line-height:1.4; padding-block:15px; }
-.token-description,.price-basis,.market-link,.native-label { font-size:var(--text-caption); line-height:1.5; }
+.token-description,.price-basis { font-size:var(--text-caption); line-height:1.5; }
 .token-description,.price-basis { color:var(--secondary); }
 .token-table td { padding-block:18px; }
 .coin-icon { width:36px; height:36px; }
@@ -86,24 +80,17 @@ input:focus-visible,textarea:focus-visible { outline:3px solid #ac92c44d; outlin
 .coverage-network small { display:block; font-size:var(--text-caption); color:var(--secondary); margin-top:3px; }
 .coverage-network>.ui-icon { color:#9b7b48; width:18px; height:18px; }
 .coverage-network[data-status=checked]>.ui-icon { color:#6d8a76; }
-.home-coverage-summary { display:grid; grid-template-columns:1fr auto; align-items:center; gap:8px 24px; padding:20px; border-radius:14px; }
-.home-coverage-summary>strong { font-size:var(--text-ui); }
-.home-coverage-summary>p { grid-column:1; margin:0; font-size:var(--text-secondary); }
-.home-coverage-summary>.discovery-actions { grid-column:2; grid-row:1/3; margin:0; }
+
 .wallet-analysis { padding:22px; border-radius:16px; }
-.analysis-card-heading { gap:24px; align-items:center; }
-.analysis-title-row h2 { font-size:1.25rem; }
-.analysis-copy>p { font-size:var(--text-ui); line-height:1.5; margin:8px 0 0; max-width:42em; }
+
 .analysis-status-icon { display:flex; align-items:center; justify-content:center; width:44px; height:44px; flex:none; border-radius:12px; background:#e9def2; color:var(--accent); }
-.analysis-heading-copy { display:flex; align-items:flex-start; gap:14px; min-width:0; }
-.analysis-card-footer { gap:16px; margin-top:16px; }
+
 .analysis-explainer { max-width:48em; }
 .analysis-explainer p { font-size:var(--text-secondary); line-height:1.6; }
 .status-chevron .ui-icon { width:14px; height:14px; }
-.record-address,.wallet-address { font-size:var(--text-secondary); line-height:1.5; }
+.wallet-address { font-size:var(--text-secondary); line-height:1.5; }
 .record-risk>summary,.record-reference>summary,.other-wallets>summary { min-height:52px; padding:16px 20px; font-size:var(--text-ui); }
-.account-card { font-size:var(--text-ui); }
-.detail-accounts .account-card { padding:22px; }
+
 .activity-heading { margin-bottom:28px; }
 .activity-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin:0 0 28px; }
 .activity-summary>button { display:flex; align-items:center; gap:14px; padding:20px; border:1px solid var(--line); border-radius:14px; text-align:left; color:var(--ink); background:#fff; }
@@ -183,7 +170,7 @@ input:focus-visible,textarea:focus-visible { outline:3px solid #ac92c44d; outlin
 .organizer-wallet-search input[type=search] { min-height:44px; }
 .organizer-footer { gap:14px; }
 .organizer-table-heading { min-height:44px; }
-.organizer-sidebar-note { font-size:var(--text-caption); }
+
 .folder-name-dialog { width:min(440px,calc(100% - 40px)); }
 .wallet-finder { width:min(720px,calc(100% - 40px)); }
 .finder-results strong { font-size:var(--text-ui); }
@@ -193,7 +180,7 @@ input:focus-visible,textarea:focus-visible { outline:3px solid #ac92c44d; outlin
 @media(max-width:1250px) {
   .token-catalog-controls { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
   .token-catalog-controls .catalog-search { grid-column:1/-1; }
-  .portfolio-summary,.detail-metrics { gap:22px; }
+  
 }
 @media(max-width:980px) { .content { padding:28px 24px; } .sidebar .brand { font-size:21px; } }
 @media(max-width:640px) {
@@ -203,21 +190,21 @@ input:focus-visible,textarea:focus-visible { outline:3px solid #ac92c44d; outlin
   .topbar { min-height:64px; padding:12px 18px; gap:8px; flex-wrap:wrap; }
   .sync-status { flex-basis:100%; justify-content:flex-end; }
   .workspace-tabs { padding-inline:18px; gap:22px; }
-  .home-summary,.portfolio-summary,.detail-metrics { padding:22px; gap:22px; }
-  .home-summary .total-value,.portfolio-summary .total-value,.detail-metrics .valuation .total-value { font-size:2.5rem; }
-  .home-summary .sell-summary-value,.portfolio-summary .sell-summary-value,.detail-metrics .sell-summary-value { font-size:2.125rem; }
-  .home-stats .summary-stat { gap:6px; }
-  .home-stats .stat-note { font-size:var(--text-caption); }
-  .summary-stat strong,.home-stats .summary-stat strong { font-size:1.625rem; }
-  .home-coverage-summary { grid-template-columns:1fr; padding:18px; }
-  .home-coverage-summary>.discovery-actions { grid-column:1; grid-row:auto; margin-top:6px; }
-  .analysis-card-heading { align-items:flex-start; flex-direction:column; gap:16px; }
+  .home-summary { padding:22px; gap:22px; }
+  .home-summary .total-value { font-size:2.5rem; }
+  .home-summary .sell-summary-value { font-size:2.125rem; }
+  
+  
+  
+  
+  
+  
   .analysis-card-action,.analysis-card-action>button { width:100%; }
-  .analysis-heading-copy { gap:12px; }
-  .analysis-copy>p { font-size:var(--text-secondary); }
+  
+  
   .wallet-analysis { padding:20px; }
-  .analysis-title-row { flex-wrap:wrap; }
-  .analysis-card-footer { align-items:flex-start; }
+  
+  
   .token-catalog-controls { gap:12px; }
   .catalog-extra-fields { align-items:stretch; flex-direction:column; gap:18px; }
   .catalog-extra-fields>label { width:100%; min-width:0; }
@@ -225,7 +212,7 @@ input:focus-visible,textarea:focus-visible { outline:3px solid #ac92c44d; outlin
   .catalog-meta { gap:10px; flex-wrap:wrap; }
   .token-table td,.amount,.token-price,.token-value,.symbol { font-size:var(--text-ui); }
   .token-table td .mobile-label { font-size:var(--text-caption); }
-  .token-description,.price-basis,.market-link { font-size:var(--text-caption); }
+  .token-description,.price-basis { font-size:var(--text-caption); }
   .activity-summary { gap:8px; margin-bottom:24px; }
   .activity-summary>button { padding:16px 12px; gap:8px; flex-direction:column; align-items:flex-start; }
   .activity-summary .summary-icon { width:32px; height:32px; border-radius:9px; }
@@ -341,7 +328,7 @@ input:focus-visible,textarea:focus-visible { outline:3px solid #ac92c44d; outlin
 .catalog-extra[open]>summary::after,.activity-log[open]>summary::after,.activity-technical[open]>summary::after { transform:rotate(-90deg); }
 .activity-log>summary,.activity-technical>summary { display:flex; align-items:center; gap:8px; list-style:none; }
 .activity-log>summary::-webkit-details-marker,.activity-technical>summary::-webkit-details-marker { display:none; }
-#home-view:has(#home-heading[hidden]) .portfolio-scope-bar { display:none; }
+
 .coverage-toggle::after { content:""; display:block; width:16px; height:16px; background:currentColor; mask:var(--chevron-mask) center/contain no-repeat; transform:rotate(90deg); }
 .coverage-summary details[open] .coverage-toggle::after { content:""; transform:rotate(-90deg); }
 @media(max-width:980px) {

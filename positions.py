@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 _STAKING_SLUGS=json.loads((Path(__file__).resolve().parent/'sources/position-protocols.json').read_text()).get('mintclub_staking_url_slugs',{})
+_KNOWN_SYMBOLS={str(t['chain_id'])+':'+t['address'].lower():t['symbol'] for t in json.loads((Path(__file__).resolve().parent/'sources/known-tokens.json').read_text())['tokens']}
 
 PLATFORMS = {
     'wallet': ('Wallet tokens', '#8a7aaf', None, None),
@@ -46,11 +47,16 @@ def prices(wallets):
     return result
 
 
-def valued(row, price_map):
+def valued(row, price_map, symbols=None):
     row=dict(row);assets=[];row['platform_info']=PLATFORM_INFO.get(row.get('platform'))
     if row.get('platform')=='mintclub-staking':
         slug=_STAKING_SLUGS.get(str(row['chain_id']));pool_id=str(row.get('pool_id') or row.get('id','').rsplit(':',1)[-1])
         if slug and pool_id.isdigit():row['pool_id']=pool_id;row['source_url']='https://mint.club/staking/'+slug+'/'+pool_id
+        # Two pools can hold the same token and amount. The reward token tells them apart.
+        reward=row.get('reward_token')
+        if isinstance(reward,str) and len(reward)==42 and reward.startswith('0x'):
+            identity=str(row['chain_id'])+':'+reward.lower()
+            row['reward']={'address':reward.lower(),'symbol':(symbols or {}).get(identity) or _KNOWN_SYMBOLS.get(identity)}
     for asset in row.get('assets',[]):
         asset=dict(asset);p=price_map.get(str(row['chain_id'])+':'+asset['address'].lower());amount=decimal(asset.get('amount'))
         value=decimal((p or {}).get('usd'))
@@ -67,6 +73,7 @@ def attach(root, wallets):
     root=Path(root);path=root/'positions/index.json'
     index=json.loads(path.read_text()) if path.is_file() else {'wallets':{}}
     price_map=prices(wallets)
+    symbols={a['id']:a['symbol'] for w in wallets for a in w.get('assets',[]) if isinstance(a.get('symbol'),str) and a.get('address')}
     from asset_policy import included, load
     from chain_lifecycle import retired
     excluded={a['id'] for w in wallets for a in w.get('assets',[]) if not included(a)}
@@ -79,7 +86,7 @@ def attach(root, wallets):
                 try:saved=json.loads(candidate.read_text())
                 except (OSError,ValueError):pass
         if saved and saved.get('wallet')==wallet['key'] and saved.get('schema_version')==1:
-            wallet['positions']=[valued(p,price_map) for p in saved.get('positions',[]) if p.get('platform') in PLATFORMS][:5000]
+            wallet['positions']=[valued(p,price_map,symbols) for p in saved.get('positions',[]) if p.get('platform') in PLATFORMS][:5000]
             for p in wallet['positions']:
                 receipt=(p.get('receipt') or {}).get('address','').lower()
                 p['included_in_totals']=str(p['chain_id'])+':'+receipt not in excluded and not retired(p['chain_id'])

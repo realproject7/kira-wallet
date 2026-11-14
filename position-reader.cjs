@@ -254,10 +254,10 @@ class Reader{
   }
   if(t.kind==='stake'){
    const p=await this.read(t,spec(t.address,'pools',[BigInt(t.pool_id)],stakeAbi));const token=p.stakingToken??p[0];
-   const erc20=p.isStakingTokenERC20??p[1];
+   const erc20=p.isStakingTokenERC20??p[1],reward=p.rewardToken??p[2];
    const lp=protocols.lptoken.find(p=>p.chain_id===cid);
    if(erc20&&lp&&await this.read(t,spec(lp.factory,'isVault',[token]))){this.enqueue({...t,...lp,kind:'vault',vault:token,stake_id:key(t.address)+':'+t.pool_id});return;}
-   this.put(t,{id:cid+':'+key(t.address)+':'+t.pool_id,platform:'mintclub-staking',protocol:'mintclub-staking',version:t.version,pool_id:t.pool_id,label:'Staking pool #'+t.pool_id,assets:await this.assets({...t,erc1155:!erc20},[token],[BigInt(t.shares)]),source_url:protocols.mintclub_staking_url_slugs[cid]?'https://mint.club/staking/'+protocols.mintclub_staking_url_slugs[cid]+'/'+t.pool_id:'https://mint.club/staking',exit_note:'Staked principal; pending rewards are excluded.'});return;
+   this.put(t,{id:cid+':'+key(t.address)+':'+t.pool_id,platform:'mintclub-staking',protocol:'mintclub-staking',version:t.version,pool_id:t.pool_id,label:'Staking pool #'+t.pool_id,...(valid(reward)&&key(reward)!==ZERO?{reward_token:key(reward)}:{}),assets:await this.assets({...t,erc1155:!erc20},[token],[BigInt(t.shares)]),source_url:protocols.mintclub_staking_url_slugs[cid]?'https://mint.club/staking/'+protocols.mintclub_staking_url_slugs[cid]+'/'+t.pool_id:'https://mint.club/staking',exit_note:'Staked principal; pending rewards are excluded.'});return;
   }
   if(t.kind==='nft-count'){
    const count=BigInt(await this.read(t,spec(t.inventory_address||t.manager,'balanceOf',[this.input.wallet])));

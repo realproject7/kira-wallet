@@ -701,6 +701,30 @@ class ViewerTests(unittest.TestCase):
                     self.assertIn(b'<svg',r.read())
             finally:app.shutdown();app.server_close();thread.join()
 
+    def test_page_load_burst_keeps_every_static_file(self):
+        # A page load opens dozens of short connections at once. Each one must
+        # be accepted, or the page loses a script or a stylesheet.
+        self.assertGreaterEqual(server.LocalServer.request_queue_size,64)
+        self.assertIn("server=LocalServer(('127.0.0.1',args.port),Handler)",Path(server.__file__).read_text())
+        with patch.object(server,'ROOT',self.root):
+            app=server.LocalServer(('127.0.0.1',0),server.Handler)
+            thread=threading.Thread(target=app.serve_forever,daemon=True);thread.start()
+            base=f'http://127.0.0.1:{app.server_port}';failures=[];lock=threading.Lock()
+            paths=['/style.css','/ui.css','/compact.css','/capital.css','/app.js','/jobs.js','/capital.js','/folders.js']
+            def read(path):
+                try:
+                    with urllib.request.urlopen(base+path,timeout=20) as response:
+                        if response.status!=200 or len(response.read())<100:raise OSError('short response')
+                except OSError as error:
+                    with lock:failures.append(path+': '+str(error))
+            try:
+                for _ in range(2):
+                    workers=[threading.Thread(target=read,args=(paths[index%len(paths)],)) for index in range(48)]
+                    for worker in workers:worker.start()
+                    for worker in workers:worker.join()
+                self.assertEqual(failures,[])
+            finally:app.shutdown();app.server_close();thread.join()
+
 def fixture_snapshot():
     """Synthetic positions. Never load the operator portfolio into release tests."""
     stamp='2026-10-03T00:00:00Z';weth='0x4200000000000000000000000000000000000006'

@@ -13,7 +13,7 @@ from asset_policy import STATUSES
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'viewer'))
 from model import load_state, within, dashboard
-from details import project_details, wallet_identity, coverage_for, coverage_status
+from details import project_details, wallet_identity, coverage_for, coverage_status, native_markets
 
 
 def signature(path):
@@ -244,9 +244,14 @@ class StateCache:
                              'balance_observed_at': asset.get('balance_observed_at') if asset else None,
                              'price_observed_at': (asset.get('price') or {}).get('observed_at') if asset else None,
                              'status': 'Held' if asset else 'No holding recorded' if coverage == 'Researched' else 'Unknown'})
-            market=next((t for t in self.refresh()['details']['tokens'] if t['id']==identity),token)
+            recorded=self.refresh()['details']['tokens'];market=next((t for t in recorded if t['id']==identity),token)
+            pools=market.get('market_pools',[]);via=None
+            if address=='native' and not pools:
+                # BNB or ETH has no contract of its own. Show the saved pools of its wrapped token.
+                catalog=json.loads((Path(__file__).resolve().parent/'sources/known-tokens.json').read_text())['tokens']
+                pools,via=native_markets(chain_id,recorded,catalog)
             from positions import allocation
-            return {**token,'capital_allocation':allocation(state['wallets'],token_id=identity),'market_pools':market.get('market_pools',[]),'links':market.get('links',[]),'curve_reserve':market.get('curve_reserve'),
+            return {**token,'capital_allocation':allocation(state['wallets'],token_id=identity),'market_pools':pools,'market_via':via,'links':market.get('links',[]),'curve_reserve':market.get('curve_reserve'),
                     'market_scope':'workspace', 'wallets': rows, 'data_revision': self.revision}
 
     def network(self, chain_id, *, folder_id=None):

@@ -1,9 +1,82 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.11.9**.
+Published npm release: **1.5.0**. Prepared candidate: **1.12.1**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.12.1
+
+The web app uses more picture and fewer words. Each summary card draws its
+allocation as a donut with the largest share in the middle. A bar under the
+sell-out estimate shows how much of the wallet token value it reaches. Every
+wallet has a small face drawn from its address, so wallets can be told apart
+at a glance in the sidebar, lists and headers. Position rows show the token
+pair's artwork. Market rows draw each pool's size against the largest one. The
+token page shows the recorded price, and the All tokens table shows chain
+artwork.
+
+A native asset such as BNB or ETH now shows markets. It has no contract, so no
+pool was recorded under it and its page said none existed. The page now lists
+the saved pools of its wrapped token, such as WBNB, and direct pairs. Pools
+saved under another token count only when their other side is a catalogued
+token, so an unknown token's reported liquidity cannot stand in for the native
+market. No chain read is added.
+
+Two Mint Club staking pools that hold the same token and amount looked like
+one position shown twice. A direct read confirmed they are separate pools.
+Each row now shows its pool number. New position scans also record the pool's
+reward token from the pool read they already make, and the row names it.
+Earlier saved claims show the reward after their next position refresh.
+
+A browser check of every page and dialog looked for content that leaves its
+card, cut text, overlapping items and sideways scrolling at eleven widths from
+320 to 2560 px. It found and fixed a legend that left its chart at 1280 px.
+
+A second pass looked for text pressed into a column too narrow for one word.
+Position rows now answer to the width of their own list instead of the window,
+so they stay readable beside the sidebar and in a narrow window. On a phone a
+wallet name, a holder name and the token search each keep their own line, the
+wallet address is cut with an ellipsis next to its copy button, and a large
+pool shows a short liquidity figure such as $12.35M while the row title keeps
+the exact one. A token badge shows the first two letters of a symbol in any
+script, or one emoji, instead of a longer symbol cut on both sides.
+Review not selected. Earlier archives and operator wallet data remain
+preserved. Registry publication is operator-only.
+
+## Candidate 1.12.0
+
+The web app now shows one number per question. Home has one summary card with
+the total value, the sell-out estimate and the allocation bar. The same total
+is no longer repeated in a second card. Wallets and networks are ranked rows
+with share bars, and long lists open with the largest rows. A large portfolio
+no longer renders one card per wallet on Home.
+
+Token and network pages lead with the same summary card. Token holders are one
+line each, with route output and observation times on demand. Recorded markets
+are compact rows on the token page only. Holdings tables show one line per
+token and no longer repeat pool cards under every row. The All tokens page no
+longer repeats the portfolio allocation. A token held only in wallets shows no
+allocation panel. Narrow screens use two-line token rows without repeated
+labels. The sidebar marks routine wallet status with a dot and names only
+lookups that are running, waiting or failed.
+
+Method notes moved behind info buttons beside each figure. State that needs
+attention stays visible as chips: missing estimates, limited routes, unpriced
+assets, hidden or review assets and coverage gaps. Unknown values remain
+unknown. Saved research, API responses and research behavior are unchanged.
+
+Three defects found during this work are fixed. The local server accepted only
+five waiting connections, so a page load could lose a script or a stylesheet;
+it now accepts a full page load at once, and a test opens 48 connections at
+once. Paging a token's markets removed its allocation panel until the next
+navigation; a rebuilt page now restores it. The first-run checklist pushed its
+buttons off a phone screen; its stale phone rules are removed. Styles for
+retired components were removed after a pixel comparison of 21 captures showed
+no layout change.
+
+Review not selected. Earlier archives and operator wallet data remain
+preserved. Registry publication is operator-only.
 
 ## Candidate 1.11.9
 

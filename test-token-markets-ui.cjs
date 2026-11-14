@@ -4,20 +4,44 @@ const source=fs.readFileSync('viewer/static/app.js','utf8');
 function harness(){
  const escapeHTML=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const ctx=vm.createContext({escapeHTML,quantity:String,money:v=>v==null?'—':'$'+v,stamp:String,coinIcon:()=>'<i></i>',venueMark:()=>'',shortAddress:a=>String(a).slice(0,10),safeURL:url=>/^https:\/\//.test(url)?url:'#'});
+ vm.runInContext(source.split('\n').find(line=>line.startsWith('const infoTip =')),ctx);
+ vm.runInContext(source.slice(source.indexOf('function progress('),source.indexOf('function chainIcon(')),ctx);
  vm.runInContext(source.slice(source.indexOf('let tokenPoolPage='),source.indexOf('function accountCard(')),ctx);return ctx;
 }
 const token={id:'1:token',chain_id:1,symbol:'TOKEN',environment:'mainnet',market_scope:'workspace',wallets:[],links:[],market_pools:Array.from({length:1000},(_,i)=>({pool:'pool-'+i,venue:i%2?'Aero':'PancakeSwap',pair:[{symbol:'TOKEN'},{symbol:'USD'}],url:'https://example.com/pool/'+i,version_labels:['v3'],liquidity_usd:i===0?null:100,observed_at:'2026-11-13T00:00:00Z'}))};
-test('top-level market cards stay bounded, paged and explicit about missing observations',()=>{
+test('market rows stay bounded, paged and explicit about missing observations',()=>{
  const ctx=harness();ctx.token=structuredClone(token);let html=ctx.tokenMarkets(ctx.token);
- assert.equal((html.match(/class="token-market-card"/g)||[]).length,4);assert.match(html,/1–4 of 1000/);assert.match(html,/Pool liquidity<\/span><strong>—/);
+ assert.equal((html.match(/class="market-row"/g)||[]).length,5);assert.match(html,/1–5 of 1000/);assert.match(html,/<strong>—<\/strong><small>Liquidity/);
  assert.match(html,/Saved markets across this workspace/);assert.match(html,/Observed 2026/);assert.match(html,/PancakeSwap/);assert.match(html,/Aero/);
- vm.runInContext('tokenPoolPage=249',ctx);html=ctx.tokenMarkets(ctx.token);assert.match(html,/997–1000 of 1000/);assert.match(html,/data-token-pool-page="next" disabled/);
- ctx.token.id='1:other';assert.match(ctx.tokenMarkets(ctx.token),/1–4 of 1000/);
+ assert.match(html,/Markets <span class="count-badge">1000<\/span>/);assert.doesNotMatch(html,/pool-0x|token-market-card/);
+ vm.runInContext('tokenPoolPage=199',ctx);html=ctx.tokenMarkets(ctx.token);assert.match(html,/996–1000 of 1000/);assert.match(html,/data-token-pool-page="next"[^>]*disabled/);
+ ctx.token.id='1:other';assert.match(ctx.tokenMarkets(ctx.token),/1–5 of 1000/);
 });
 test('curve backing remains separate from USD liquidity; testnets and unsafe links stay unpriced',()=>{
  const ctx=harness();ctx.token={...token,id:'1:curve',market_pools:[],curve_reserve:{amount:'5',symbol:'RESERVE',observed_at:'2026-11-13T00:00:00Z'},links:[{label:'Mint Club',url:'https://mint.club/token/ethereum/TOKEN'}]};
- let html=ctx.tokenMarkets(ctx.token);assert.match(html,/Curve backing/);assert.match(html,/5 RESERVE/);assert.doesNotMatch(html,/\$5/);assert.match(html,/0 pools · Bonding curve/);
+ let html=ctx.tokenMarkets(ctx.token);assert.match(html,/Curve backing/);assert.match(html,/5 RESERVE/);assert.doesNotMatch(html,/\$5/);assert.match(html,/Mint Club · Bonding curve/);assert.match(html,/excluded from wallet totals/);
  ctx.token={...token,environment:'testnet',market_pools:[{...token.market_pools[1],url:'javascript:alert(1)',venue:'<img src=x onerror=alert(1)>'}]};
- html=ctx.tokenMarkets(ctx.token);assert.match(html,/Pool liquidity<\/span><strong>—/);assert.doesNotMatch(html,/href="javascript:|<img src=x/);assert.match(html,/<article class="token-market-card"/);
- ctx.token={...token,market_pools:[]};assert.match(ctx.tokenMarkets(ctx.token),/No liquidity pools recorded/);
+ html=ctx.tokenMarkets(ctx.token);assert.match(html,/<strong>—<\/strong><small>Liquidity/);assert.doesNotMatch(html,/href="javascript:|<img src=x/);assert.match(html,/<div class="market-row"/);
+ ctx.token={...token,market_pools:[]};assert.match(ctx.tokenMarkets(ctx.token),/No markets recorded/);
+});
+test('a native asset names the wrapped token its markets come from; bars compare pool sizes',()=>{
+ const ctx=harness(),pools=[{pool:'0x'+'1'.repeat(40),venue:'PancakeSwap',pair:[{symbol:'WBNB'},{symbol:'USDT'}],url:'https://example.com/a',liquidity_usd:400,observed_at:'2026-11-13T00:00:00Z'},{pool:'0x'+'2'.repeat(40),venue:'PancakeSwap',pair:[{symbol:'WBNB'},{symbol:'USDC'}],url:'https://example.com/b',liquidity_usd:100,observed_at:'2026-11-13T00:00:00Z'},{pool:'0x'+'3'.repeat(40),venue:'Uniswap',pair:[{symbol:'WBNB'},{symbol:'DAI'}],url:'https://example.com/c',liquidity_usd:null,observed_at:null}];
+ ctx.token={id:'56:native',chain_id:56,symbol:'BNB',environment:'mainnet',market_scope:'workspace',market_via:{symbol:'WBNB',address:'0x'+'b'.repeat(40)},wallets:[],links:[],market_pools:pools};
+ const html=ctx.tokenMarkets(ctx.token);
+ assert.match(html,/<span class="chip">via WBNB<\/span>/);assert.match(html,/BNB has no contract of its own\. These are saved pools of WBNB and direct pairs\./);
+ assert.match(html,/value="400" max="400" aria-label="WBNB \/ USDT liquidity against the largest recorded pool"/);assert.match(html,/value="100" max="400"/);
+ assert.equal((html.match(/class="allocation-empty"/g)||[]).length,1,'Unknown liquidity draws no bar.');assert.match(html,/Observation time unavailable/);
+ ctx.token={...ctx.token,id:'56:plain',market_via:null};assert.doesNotMatch(ctx.tokenMarkets(ctx.token),/via |no contract of its own/);
+});
+
+test('a large pool carries a short figure for narrow rows and keeps the exact one',()=>{
+ const ctx=harness(),pool=(n,liquidity_usd)=>({pool:'0x'+String(n).repeat(40),venue:'PancakeSwap',pair:[{symbol:'WBNB'},{symbol:'USDT'}],url:'https://example.com/'+n,liquidity_usd,observed_at:'2026-11-13T00:00:00Z'});
+ ctx.token={id:'56:big',chain_id:56,symbol:'WBNB',environment:'mainnet',market_scope:'workspace',wallets:[],links:[],market_pools:[pool(1,12345678.9),pool(2,99999),pool(3,null)]};
+ const html=ctx.tokenMarkets(ctx.token);
+ assert.match(html,/<strong><span class="num-full">\$12345678\.9<\/span><span class="num-short" aria-hidden="true">\$12\.35M<\/span><\/strong>/);
+ assert.match(html,/title="0x11111111 · Liquidity \$12345678\.9 · Observed/,'The row title keeps the exact figure.');
+ assert.match(html,/<strong>\$99999<\/strong><small>Liquidity/,'A figure that already fits stays as it is.');assert.match(html,/<strong>—<\/strong><small>Liquidity/);
+ ctx.token={...ctx.token,id:'56:test',environment:'testnet'};assert.doesNotMatch(ctx.tokenMarkets(ctx.token),/num-short/,'A testnet pool has no dollar figure to shorten.');
+ const css=fs.readFileSync('viewer/static/compact.css','utf8');
+ assert.match(css,/\.num-short \{ display:none; \}/);assert.match(css,/@media\(max-width:640px\)[\s\S]*\.market-value \.num-full \{ display:none; \}\n\s*\.market-value \.num-short \{ display:inline; \}/);
 });

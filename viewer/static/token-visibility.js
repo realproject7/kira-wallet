@@ -77,8 +77,8 @@ var TokenManager = (()=>{
       const current=tab.dataset.assetStatus===status;tab.setAttribute('aria-selected',String(current));tab.tabIndex=current?0:-1;tab.disabled=TokenVisibility.busy;
     });
     document.querySelectorAll('[data-status-count]').forEach(count=>{count.textContent=$('all-token-testnets').checked?'':(summary[count.dataset.statusCount+'_count']??'');});
-    $('token-status-note').textContent=({portfolio:'Hidden and review assets are excluded from portfolio totals.',review:'These reported estimates are outside your totals. Review the evidence before including an asset.',excluded:'Hidden across every registered wallet and excluded from totals. Restore applies the automatic review rules.',all:'All saved holdings. Hidden and review assets remain outside portfolio totals.'})[status];
-    if(typeof FolderUI!=='undefined'&&FolderUI.id)$('token-status-note').textContent+=' Token visibility changes apply across all wallets.';
+    $('token-status-note').textContent=({portfolio:'',review:'These reported estimates are outside your totals. Review the evidence before including an asset.',excluded:'Hidden across every registered wallet and excluded from totals. Restore applies the automatic review rules.',all:'Includes hidden and review assets. They stay outside portfolio totals.'})[status];
+    if(status!=='portfolio'&&typeof FolderUI!=='undefined'&&FolderUI.id)$('token-status-note').textContent+=' Token visibility changes apply across all wallets.';
     const empty=$('all-token-empty');
     if(!$('all-token-search').value&&$('all-token-network').value==='all'&&!catalogMinimum){
       empty.querySelector('h3').textContent=({excluded:'No hidden tokens',review:'No assets need review',portfolio:'No tokens in your portfolio',all:'No recorded tokens'})[status];

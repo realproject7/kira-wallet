@@ -64,6 +64,19 @@ class PositionAccountingTests(unittest.TestCase):
         p=valued(position('8453:'+RECEIPT+':38',platform='mintclub-staking'),{})
         self.assertEqual(p['source_url'],'https://mint.club/staking/base/38')
         self.assertEqual(p['pool_id'],'38')
+        self.assertNotIn('reward',p)
+
+    def test_staking_pools_with_equal_stakes_are_told_apart_by_their_reward_token(self):
+        hunt='0x37f0c2915cecc7e977183b8543fc0864d03e064c';other='0x'+'9'*40
+        first=valued({**position('8453:'+RECEIPT+':41',platform='mintclub-staking'),'reward_token':hunt},{})
+        second=valued({**position('8453:'+RECEIPT+':42',platform='mintclub-staking'),'reward_token':other},{},{'8453:'+other:'DROP'})
+        self.assertEqual(first['reward'],{'address':hunt,'symbol':'HUNT'})
+        self.assertEqual(second['reward'],{'address':other,'symbol':'DROP'})
+        self.assertEqual((first['pool_id'],second['pool_id']),('41','42'))
+        unknown=valued({**position('8453:'+RECEIPT+':43',platform='mintclub-staking'),'reward_token':'0x'+'8'*40},{})
+        self.assertEqual(unknown['reward'],{'address':'0x'+'8'*40,'symbol':None})
+        for malformed in (None,'',42,'0x12','not-an-address'):
+            self.assertNotIn('reward',valued({**position('8453:'+RECEIPT+':44',platform='mintclub-staking'),'reward_token':malformed},{}))
 
     def test_token_scope_counts_only_its_underlying(self):
         p=position();p['assets'].append({'address':RECEIPT,'amount':'50','symbol':'OTHER'})
