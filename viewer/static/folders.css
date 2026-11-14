@@ -1,9 +1,6 @@
 .wallet-finder-trigger { flex:none; gap:8px; white-space:nowrap; background:#fff; }
 .topbar .connection-button { margin-left:0; }
-.portfolio-scope-bar { display:flex; align-items:center; gap:12px; margin:0 0 22px; }
-.portfolio-scope-bar>label { width:260px; min-width:0; }
-.portfolio-scope-bar .kira-select-trigger,.portfolio-scope-bar>.quiet-button { min-height:40px; padding:9px 12px; font-size:var(--text-secondary); background:#fff; }
-.portfolio-scope-bar>.quiet-button { margin-left:auto; }
+
 .folder-navigation { padding:0 4px 12px; margin-bottom:12px; border-bottom:1px solid #4b4356; }
 .folder-nav-heading { display:flex; align-items:center; justify-content:space-between; color:#bcb0ca; font-size:var(--text-caption); letter-spacing:.06em; padding:0 7px 4px; }
 .folder-nav-heading button { display:inline-flex; align-items:center; justify-content:center; min-width:52px; min-height:30px; padding:3px 7px; font-size:var(--text-caption); border:0; border-radius:6px; background:transparent; color:#dfd3ed; }
@@ -63,7 +60,7 @@
 #folder-manager-nav>button>span>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #folder-manager-nav .ui-icon { width:17px; height:17px; flex:none; }
 #folder-manager-nav small { font-size:var(--text-caption); font-variant-numeric:tabular-nums; color:#807189; }
-.organizer-sidebar-note { margin:auto 10px 0; padding-top:24px; font-size:var(--text-caption); line-height:1.8; color:#8b7d95; }
+
 .organizer-main { display:flex; flex-direction:column; min-width:0; min-height:0; background:#fff; }
 .organizer-view-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:22px 24px 16px; flex:none; }
 .organizer-view-heading h3 { margin:0 0 4px; font-size:19px; font-weight:600; letter-spacing:-.3px; overflow-wrap:anywhere; }
@@ -123,9 +120,9 @@
   .wallet-finder-trigger { width:44px; min-width:44px; padding:0; }
   .wallet-finder-trigger>span { display:none; }
   .topbar { gap:8px; }
-  .portfolio-scope-bar { gap:8px; margin-bottom:20px; }
-  .portfolio-scope-bar>label { flex:1; width:auto; }
-  .portfolio-scope-bar .kira-select-trigger,.portfolio-scope-bar>.quiet-button { min-height:44px; font-size:var(--text-caption); padding:9px 10px; }
+  
+  
+  
   .wallet-folder-button { min-height:44px; }
   .wallet-finder { padding:18px; }
   .finder-results { max-height:calc(100dvh - 270px); }
@@ -143,7 +140,7 @@
   .organizer-sidebar { flex:none; padding:8px 12px; border-right:0; border-bottom:1px solid var(--line); }
   .organizer-sidebar-heading { padding:0 4px 5px; }
   .organizer-sidebar-heading .text-button { min-height:36px; }
-  .organizer-sidebar-note,.research-dialog label.organizer-folder-search { display:none; }
+  .research-dialog label.organizer-folder-search { display:none; }
   #folder-manager-nav { display:flex; gap:5px; overflow:auto; padding-bottom:2px; }
   #folder-manager-nav>button { width:auto; max-width:180px; flex:none; min-height:38px; padding:7px 10px; }
   #folder-manager-nav>button>span { gap:6px; }

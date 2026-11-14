@@ -82,7 +82,7 @@ def main():
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/kira-logo.png') as response:assert response.headers['Content-Type']=='image/png'
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/ows-logo.svg') as response:
                 assert response.headers['Content-Type']=='image/svg+xml' and b'<svg' in response.read()
-            for asset in ['capital.js','capital.css','venues/lptoken.png','venues/factory.jpg','venues/aeromax.png','venues/pancakeswap.png','ui.css','alchemy-guide.js','wallet-management.js','folders.js','folders-model.js','folders.css','explorers/etherscan.png','venues/mintclub.png','venues/uniswap.svg','venues/aerodrome.svg','selects.js','ows.js','watching.js','watching-model.js','workspace.js','workspace-model.js','workspace.css','integrations.js','portfolio.js']:
+            for asset in ['capital.js','capital.css','compact.css','venues/lptoken.png','venues/factory.jpg','venues/aeromax.png','venues/pancakeswap.png','ui.css','alchemy-guide.js','wallet-management.js','folders.js','folders-model.js','folders.css','explorers/etherscan.png','venues/mintclub.png','venues/uniswap.svg','venues/aerodrome.svg','selects.js','ows.js','watching.js','watching-model.js','workspace.js','workspace-model.js','workspace.css','integrations.js','portfolio.js']:
                 with urllib.request.urlopen(f'http://127.0.0.1:{port}/'+asset) as response:assert response.status==200 and len(response.read())>100
             transcript='\n'.join(json.dumps(item) for item in [
                 {'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-06-18'}},

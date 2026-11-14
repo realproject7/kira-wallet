@@ -30,8 +30,6 @@ const FolderUI=(()=>{
     for(const link of document.querySelectorAll('[data-view="home"],[data-view="tokens"]'))link.href=path(link.dataset.view);
     if(selectedView==='home'){
       document.title=scope?label(scope)+' · Kira Wallet':'Home · Kira Wallet';
-      $('home-heading').querySelector('h1').textContent=scope?label(scope):'Your portfolio';
-      $('home-description').textContent=scope?'Saved balances for this folder.':'Your saved balances, in one place.';
       if(scope){$('home-empty').hidden=true;$('setup-path').hidden=true;$('home-summary').hidden=!view();}
     }
     const current=typeof currentWallet==='function'?currentWallet():null;
@@ -47,7 +45,7 @@ const FolderUI=(()=>{
   }
   function renderSearch(){
     const result=KiraFolders.find(state?.wallets||[],$('find-wallet-query').value);
-    $('find-wallet-count').textContent=result.total?(result.total+' matching wallet'+(result.total===1?'':'s')+(result.total>20?' · First 20 shown. Refine your search.':'')):'No saved wallet matches this name or address.';
+    $('find-wallet-count').textContent=result.total?(result.total+' wallet'+(result.total===1?'':'s')+(result.total>20?' · first 20 shown':'')):'No saved wallet matches this name or address.';
     $('find-wallet-results').innerHTML=result.rows.map(w=>`<li><button type="button" data-find-wallet="${escapeHTML(w.key)}"><span class="card-wallet-icon">${folderGlyph}</span><span><strong>${escapeHTML(w.name)}</strong><small>${escapeHTML(w.address)}</small></span><span class="finder-folder">${escapeHTML(label(data().assignments[w.key]||'unfiled'))}</span></button></li>`).join('');
   }
   async function write(operation,input){
@@ -102,7 +100,7 @@ const FolderUI=(()=>{
     $('folder-members-move').disabled=busy||outdated||!moves.length||count>1000;
     $('folder-bulk-target').disabled=busy||!count;
     const outside=count-pageSelected;
-    $('folder-selection-note').textContent=count>=1000?'1,000-wallet limit. Move or clear this selection first.':count&&target&&!moves.length?'Already in '+managerLabel(target)+'. Choose another folder.':count?(outside?outside+' selected outside this page.':'Choose a destination, then move.'):(managerNotice||'Choose wallets from the list above.');
+    $('folder-selection-note').textContent=count>=1000?'1,000-wallet limit. Move or clear this selection first.':count&&target&&!moves.length?'Already in '+managerLabel(target)+'. Choose another folder.':count?(outside?outside+' selected outside this page.':'Choose a destination, then move.'):(managerNotice||'');
     $('folder-page-check').checked=!!shownMembers.length&&pageSelected===shownMembers.length;
     $('folder-page-check').indeterminate=pageSelected>0&&pageSelected<shownMembers.length;
     $('folder-page-check').disabled=busy||!shownMembers.length;

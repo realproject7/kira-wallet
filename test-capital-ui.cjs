@@ -46,3 +46,44 @@ test('queued platform scans in the merged job list disable duplicate global disc
  const h=harness();h.context.localSession.controls=true;h.context.jobList=[{operation:'positions.refresh',state:'queued',input:{wallet:h.context.state.wallets[0].key}}];
  h.render();await tick();assert.match(h.host.innerHTML,/Platform scans in progress/);assert.match(h.host.innerHTML,/class="quiet-button capital-refresh" disabled/);
 });
+
+test('the summary card shows where assets sit without repeating its total or explaining itself',async()=>{
+ const h=harness();h.render();await tick();
+ assert.doesNotMatch(h.host.innerHTML,/Where your assets are|capital-total|capital-basis/);
+ assert.match(h.host.innerHTML,/<svg class="alloc-swatch"[^>]*><rect[^>]*fill="#ef5da8"/);assert.match(h.host.innerHTML,/class="alloc-pct">75\.0%/);
+ assert.match(h.host.innerHTML,/<details class="info-tip"><summary aria-label="About this allocation">/);assert.match(h.host.innerHTML,/Each claim counts once/);
+ assert.match(h.host.innerHTML,/data-platform="uniswap" aria-pressed="false"/);assert.doesNotMatch(h.host.innerHTML,/data-platform="wallet"/);
+});
+test('a token held only in wallets has no allocation panel and makes no position request',async()=>{
+ const h=harness(),single={groups:[{id:'wallet',name:'Wallet tokens',color:'#8a7aaf',value_usd:10,percent:100,position_count:0}],known_value_usd:10,wallets_checked:1,wallet_count:1,position_count:0};
+ h.context.selectedView='token';h.context.selectedToken='1:0x'+'2'.repeat(40);h.context.routeData={token:{capital_allocation:single}};
+ h.render();await tick();assert.equal(h.host.hidden,true);assert.equal(h.calls.length,0);
+ h.context.routeData={token:{capital_allocation:h.allocation}};h.render();await tick();
+ assert.equal(h.host.hidden,false);assert.equal(h.calls.length,1);assert.match(h.calls[0],/token_id=1%3A0x2/);
+ assert.doesNotMatch(h.host.innerHTML,/capital-refresh|capital-gaps/,'Scans cover a wallet or the portfolio, not one token.');
+});
+test('the token list has no allocation panel',async()=>{
+ const h=harness();h.context.selectedView='tokens';h.render();await tick();
+ assert.equal(h.calls.length,0);assert.equal(h.host.innerHTML,'');
+});
+test('a wallet with nothing to compare keeps one status line and its scan action',async()=>{
+ const single={groups:[{id:'wallet',name:'Wallet tokens',color:'#8a7aaf',value_usd:10,percent:100,position_count:0}],known_value_usd:10,wallets_checked:0,wallet_count:1,position_count:0};
+ const h=harness(()=>({data_revision:'r1',positions:[],allocation:single,matched_count:0,next_offset:null}));
+ h.context.localSession.controls=true;h.context.selectedView='wallet';h.context.selectedWallet=h.context.state.wallets[0].key;h.context.state.wallets[0].capital_allocation=single;
+ h.render();await tick();
+ assert.doesNotMatch(h.host.innerHTML,/capital-bar|capital-legend|capital-positions/);
+ assert.match(h.host.innerHTML,/Platform positions not scanned/);assert.match(h.host.innerHTML,/0\/1 wallets checked/);assert.match(h.host.innerHTML,/class="quiet-button capital-refresh" >Find platform positions/);
+});
+test('coverage gaps stay one chip until opened; position rows carry flags and evidence',async()=>{
+ const testCode=code.replace('return {render};','return {render,toggleCoverage};');
+ const position={id:'p1',platform:'uniswap',version:'v3',label:'Pool',chain_id:1,wallet:'0x'+'1'.repeat(40),wallet_name:'Fixture',value_usd:30,observed_at:'2026-11-13T00:00:00Z',source_url:'https://example.com/position',custody_platform:'gauge',retained:true,included_in_totals:false,exit_note:'NAV note.',assets:[{symbol:'AAA',address:'0x'+'a'.repeat(40),amount:'1',price:{observed_at:'2026-11-12T00:00:00Z'}},{symbol:'BBB',address:'0x'+'b'.repeat(40),amount:'2'}]};
+ const h=harness((url,ctx)=>({data_revision:'r1',positions:[position],allocation:{...h.allocation,coverage_gap_count:3},matched_count:1,next_offset:null,coverage_gap_count:3,coverage_gaps:[{wallet_name:'Fixture',chain_id:1,message:'Source <unchecked>.'}]}));
+ h.context.FolderUI={id:null,view:()=>null,path:route=>'#/'+route};
+ vm.runInContext(testCode.replace('const CapitalUI=','var CapitalGaps=').replaceAll('globalThis.capital=CapitalUI','globalThis.capitalGaps=CapitalGaps'),h.context);
+ h.context.capitalGaps.render();await tick();
+ assert.match(h.host.innerHTML,/class="chip warn capital-gaps" aria-expanded="false"[^>]*>3 coverage gaps/);assert.doesNotMatch(h.host.innerHTML,/class="capital-coverage"/);
+ assert.match(h.host.innerHTML,/<li class="capital-position" title="NAV note\. Saved prices 2026-11-12T00:00:00Z\. Observed 2026-11-13T00:00:00Z\.">/);
+ assert.match(h.host.innerHTML,/AAA \/ BBB/);assert.match(h.host.innerHTML,/Staked/);assert.match(h.host.innerHTML,/Retained/);assert.match(h.host.innerHTML,/Not in totals/);assert.match(h.host.innerHTML,/aria-label="View source for AAA \/ BBB"/);
+ h.context.capitalGaps.toggleCoverage();
+ assert.match(h.host.innerHTML,/aria-expanded="true"/);assert.match(h.host.innerHTML,/class="capital-coverage"[\s\S]*Source &lt;unchecked>\./);
+});

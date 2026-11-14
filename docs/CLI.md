@@ -99,8 +99,8 @@ requests skip wallets already queued or running. New wallets added later belong
 to the next batch. These actions require an explicit request and never execute
 trades. Sell analysis remains optional instead of starting on page loads.
 
-Home, wallets, tokens and networks expose a **Sell-out estimate sum**. This sums
-independent saved full-balance quotes and shows the quoted and missing position
+Home, wallets, tokens and networks expose a **Sell-out estimate**. This sums
+independent saved full-balance quotes and shows missing and limited-route
 counts. It excludes testnets, archived networks, retained quantities and gas.
 Shared pools, nested reserve tokens and different observation times mean this
 is an indicative subtotal, not proceeds verified for a combined portfolio exit.

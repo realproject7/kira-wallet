@@ -53,11 +53,24 @@ function clearCatalogFilters(){
   if(typeof KiraSelect!=='undefined')KiraSelect.refresh();
   state?.paged?loadRoute():renderCatalog();
 }
+const rankLimit=8;
+let homeWalletsExpanded=false;
 function filterHomeWallets(){
   if(!state)return;
-  const keys=new Set(matchingWallets(typeof FolderUI!=='undefined'?FolderUI.wallets():state.wallets,$('home-wallet-search').value).map(w=>w.key));
-  for(const row of $('wallet-cards').querySelectorAll('[data-wallet]'))row.hidden=!keys.has(row.dataset.wallet);
+  const query=$('home-wallet-search').value;
+  const keys=new Set(matchingWallets(typeof FolderUI!=='undefined'?FolderUI.wallets():state.wallets,query).map(w=>w.key));
+  const rows=[...$('wallet-cards').querySelectorAll('[data-wallet]')],searching=String(query||'').trim()!=='';
+  let shown=0;
+  for(const row of rows){
+    const match=keys.has(row.dataset.wallet);
+    row.hidden=!match||(!searching&&!homeWalletsExpanded&&shown>=rankLimit);
+    if(match)shown++;
+  }
   $('home-wallet-empty').hidden=keys.size>0;
+  const more=$('home-wallet-more');
+  more.hidden=searching||rows.length<=rankLimit;
+  more.textContent=homeWalletsExpanded?'Show top '+rankLimit:'Show all '+rows.length;
+  more.setAttribute('aria-expanded',String(homeWalletsExpanded));
 }
 function moveSectionTab(event,selector,keys,select){
   const button=event.target.closest(selector);if(!button)return;
@@ -73,6 +86,7 @@ function initWorkspaceDesign(){
   settingsOrientation();compactSettings.addEventListener('change',settingsOrientation);
   $('wallet-nav-search').addEventListener('input',()=>{if(state)renderWallets();});
   $('home-wallet-search').addEventListener('input',filterHomeWallets);
+  $('home-wallet-more').addEventListener('click',()=>{homeWalletsExpanded=!homeWalletsExpanded;filterHomeWallets();});
   navigation.addEventListener('click',event=>{if(mobile.matches&&event.target.closest('[data-wallet]'))navigation.open=false;});
   navigation.addEventListener('keydown',event=>{if(mobile.matches&&event.key==='Escape'){event.preventDefault();navigation.open=false;navigation.querySelector('summary').focus();}});
   $('workspace-settings-dialog').addEventListener('click',event=>{const button=event.target.closest('[data-settings-section]');if(button)setSettingsSection(button.dataset.settingsSection);});

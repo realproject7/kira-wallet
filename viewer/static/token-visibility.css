@@ -18,7 +18,7 @@
 .policy-undo{display:flex;align-items:center;gap:18px;left:50%;bottom:24px;max-width:calc(100vw - 32px);width:max-content;padding:12px 12px 12px 18px;box-shadow:0 8px 28px #251d3133;border:1px solid #4c4059;border-radius:12px;line-height:1.5;font-size:var(--text-ui)}
 .policy-undo .undo-button{background:transparent;border:0;color:#e5ceff;padding:8px 4px;font-weight:600;text-decoration:none;cursor:pointer}.policy-undo .undo-close{display:grid;place-items:center;flex:none;background:none;border:0;color:#d4cddd;width:32px;height:32px;font-size:20px;cursor:pointer;border-radius:6px}.policy-undo .undo-close:hover{background:#ffffff12}.policy-undo [disabled]{opacity:.5;cursor:wait}
 @media(max-width:1100px){
-.evidence-pane .token-table tr:not(.holding-markets){position:relative}
+
 .evidence-pane .catalog-table td:first-child{grid-column:1 / -1;grid-row:1;padding-right:50px}
 .evidence-pane .catalog-table td:nth-child(2){grid-column:1;grid-row:2;margin:0;text-align:left}
 .evidence-pane .catalog-table td:nth-child(4){grid-column:2;grid-row:2;text-align:right}
