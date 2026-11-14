@@ -369,4 +369,8 @@ a.market-row:hover { background:#faf7fc; border-radius:10px; }
   /* Info tips open as a sheet, so they never leave the screen. */
   .info-pop, .analysis-line .info-pop { position:fixed; z-index:30; top:auto; bottom:16px; left:16px; right:16px; width:auto; }
 }
+/* A list starts with priced holdings, so this count shows most of the time. Keep it one quiet line. */
+.holdings-filter-note { flex-direction:row; align-items:center; justify-content:flex-start; gap:10px; margin:0 0 12px; padding:0; border:0; border-radius:0; font-size:var(--text-caption); line-height:1.4; }
+.holdings-filter-note .quiet-button { min-height:30px; padding:4px 11px; font-size:var(--text-caption); }
+@media(max-width:640px) { .holdings-filter-note .quiet-button { min-height:40px; padding:6px 14px; } }
 @media(prefers-reduced-motion:reduce) { .position-details > summary .ui-icon { transition:none; } }

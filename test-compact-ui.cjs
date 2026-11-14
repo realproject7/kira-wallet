@@ -115,3 +115,14 @@ test('each wallet has a stable face from its address; bars state how far an esti
  assert.equal(run("walletTokenValue({groups:[{id:'wallet',value_usd:10},{id:'mintclub',value_usd:5},{id:'uniswap',value_usd:99},{id:'wallet',value_usd:null}]},1)"),15,'Platform positions are not part of the base.');
  assert.equal(run("walletTokenValue(null,7)"),7);assert.equal(run("walletTokenValue({groups:[{id:'uniswap',value_usd:3}]},undefined)"),null);
 });
+test('lists start with priced holdings and name what they leave out in one line',()=>{
+ const h=harness(),run=code=>vm.runInContext(code,h.ctx);
+ for(const helper of ['const valueFilter=','const unpricedNote='])vm.runInContext(source.split('\n').find(line=>line.startsWith(helper)),h.ctx);
+ assert.match(html,/aria-label="Token value filter"><button data-min="all" aria-pressed="false">All<\/button><button data-min="0" aria-pressed="true">Priced<\/button><button data-min="5"/);
+ assert.match(source,/\[null,0,5,10\]\.map\(n=>`<button data-min="\$\{n\?\?'all'\}"/,'The network list offers the same four choices.');
+ assert.equal(run('unpricedNote(0)'),'','Nothing hidden, nothing said.');
+ assert.equal(run('unpricedNote(1317)'),'<span>1,317 unpriced hidden</span><button type="button" class="quiet-button" data-clear-value-filter>Show all</button>');
+ assert.equal(run("valueFilter('all')"),null);assert.equal(run("valueFilter('0')"),0);assert.equal(run("valueFilter('10')"),10);
+ assert.match(css,/\.holdings-filter-note \{ flex-direction:row; align-items:center; justify-content:flex-start;[^}]*padding:0; border:0;/,'The count is a quiet line, not a card.');
+ assert.match(css,/@media\(max-width:640px\) \{ \.holdings-filter-note \.quiet-button \{ min-height:40px;/,'The button stays easy to tap on a phone.');
+});
