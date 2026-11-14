@@ -172,73 +172,163 @@ def acquire_candidate_slices(wallet, networks, folder, policy, acquire, prior, k
     return ordered
 
 
+PORTFOLIO_SOURCE='Alchemy Portfolio Tokens By Wallet'
+# Alchemy reads at most five networks per wallet in one Tokens By Wallet request,
+# and one request costs the same 360 compute units for one network or five.
+PORTFOLIO_GROUP=5
+# Tokens By Wallet answers "Unsupported network" for these (seen 2026-11-14), which
+# would fail a shared request. They keep their own request until they are retired.
+PORTFOLIO_SEPARATE={81457,168587773}
+
+
+def saved_discovery(wallet, evidence, indexed_only=False):
+    if not evidence.exists():return None
+    cached=read(evidence)
+    if cached['wallet'].lower()==wallet.lower() and cached['complete'] and cached.get('coverage_version')==2 and (not indexed_only or cached.get('source')==PORTFOLIO_SOURCE or cached.get('provider')=='explorer'):
+        return cached
+    return None
+
+
+def portfolio_read(wallet, chain_ids, key, deadline=None):
+    """Read one wallet's Alchemy token list on up to five networks, page by page.
+
+    A network that fails or returns a malformed record stops there and stays
+    incomplete; the other networks keep paging, as Alchemy's pageKey does.
+    """
+    names={PORTFOLIO[cid]:cid for cid in chain_ids};shared=len(names)>1
+    rows={cid:{'wallet':wallet,'chain_id':cid,'observed_at':h.now(),'complete':False,'tokens':[],'native':[],'pages':[],
+               'source':PORTFOLIO_SOURCE,'discovery_status':'incomplete',**({'portfolio_networks':list(names)} if shared else {})}
+          for cid in chain_ids}
+    endpoint=f'https://api.g.alchemy.com/data/v1/{key}/assets/tokens/by-address'
+    body={'addresses':[{'address':wallet,'networks':list(names)}], 'withMetadata':True,'withPrices':True,
+          'includeNativeTokens':True,'includeErc20Tokens':True,'includeBlockMetadata':True}
+    active=set(names);seen=set()
+    def stop(networks,error):
+        for name in list(networks):rows[names[name]]['error']=error
+    def own_page(name,response):
+        # Each network keeps only its own records; the request shows the shared read.
+        if not shared or not isinstance(response,dict) or not isinstance(response.get('data'),dict) or not isinstance(response['data'].get('tokens'),list):
+            return response
+        data=response['data'];meta=data.get('blockMetadata')
+        return {**{k:v for k,v in response.items() if k!='data'},
+                'data':{'tokens':[t for t in data['tokens'] if not isinstance(t,dict) or t.get('network')==name],'pageKey':data.get('pageKey'),
+                        **({'blockMetadata':{name:meta.get(name)}} if isinstance(meta,dict) else {})}}
+    for page in range(100):
+        if deadline:
+            from public_discovery import fetch_page
+            remaining=deadline-time.monotonic()
+            if remaining<=0:
+                stop(active,{'message':'Token discovery time budget reached. Saved candidates remain usable.'});break
+            response=fetch_page(endpoint,min(8,remaining),body)
+        else:response=fetch(endpoint,body)
+        for name in active:rows[names[name]]['pages'].append({'observed_at':h.now(),'request':dict(body),'response':own_page(name,response)})
+        if not isinstance(response,dict) or not isinstance(response.get('data'),dict) or not isinstance(response['data'].get('tokens'),list):
+            problem=(response.get('error') or response.get('transport_error')) if isinstance(response,dict) else None
+            stop(active,problem or {'message':'Token provider returned an invalid or missing token list.'})
+            break
+        data=response['data'];reading=set(active)
+        for t in data.get('tokens',[]):
+            if not isinstance(t,dict):
+                stop(reading,{'message':'Token provider returned an invalid token record.'});continue
+            if not isinstance(t.get('network'),str) or not t['network'] or not isinstance(t.get('address'),str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}',t['address']):
+                stop(reading,{'message':'A token record identity was missing or invalid.'});continue
+            if t['network'] not in reading or t['address'].lower()!=wallet.lower():
+                continue
+            row=rows[names[t['network']]]
+            try:
+                if not isinstance(t.get('tokenBalance'),str) or not re.fullmatch(r'0x[0-9a-fA-F]+',t['tokenBalance']):raise ValueError('Invalid balance')
+                balance=int(t['tokenBalance'],16)
+            except (TypeError,ValueError):
+                row['error']={'message':'A token balance was missing or invalid.'}
+                continue
+            if not t.get('tokenAddress'):
+                row['native'].append(t)
+            elif balance>0:
+                if not isinstance(t['tokenAddress'],str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}',t['tokenAddress']):
+                    row['error']={'message':'A token contract address was invalid.'};continue
+                meta=t.get('tokenMetadata') or {}
+                row['tokens'].append({'chain_id':row['chain_id'],'address':t['tokenAddress'],'name':meta.get('name'),'symbol':meta.get('symbol'),'suspicious_zero_check':True,
+                                      'decimals':meta.get('decimals'),'image_url':meta.get('logo'),'prices':t.get('tokenPrices') or []})
+        problem=response.get('error') or response.get('transport_error')
+        if problem:
+            # Alchemy names each failed network. An error that names none of the
+            # requested networks stops them all rather than passing as complete.
+            listed={e.get('network') for e in problem['partialErrors'] if isinstance(e,dict)} if isinstance(problem,dict) and isinstance(problem.get('partialErrors'),list) else set()
+            named=listed&set(names)
+            stop(reading&named if named else reading,problem)
+        active-={name for name in reading if rows[names[name]].get('error')}
+        if not active:break
+        cursor=data.get('pageKey')
+        if not cursor:
+            for name in active:rows[names[name]]['complete']=True
+            break
+        if cursor in seen:
+            stop(active,{'message':'Repeated pagination cursor'})
+            break
+        seen.add(cursor)
+        body['pageKey']=cursor
+    else:
+        stop(active,{'message':'Pagination safety limit reached; discovery incomplete'})
+    return rows
+
+
+def finish_discovery(row, evidence):
+    if row['complete']:row['discovery_status']='checked'
+    elif row['source'] and row['discovery_status']=='incomplete':row['discovery_status']='provider_error'
+    row['tokens']=list({t['address'].lower():t for t in row['tokens']}.values())
+    row['coverage_version']=2
+    atomic(evidence,row)
+    return row
+
+
+def portfolio_key():
+    cfg=load_config()
+    try:return h.secrets().get('ALCHEMY_CUSTOM_APY_KEY') if cfg['discovery']['provider']=='alchemy' else None
+    except ValueError:return None
+
+
+def portfolio_groups(wallet, networks, folder, key):
+    """Alchemy networks still to read, five to a request.
+
+    Tokens By Wallet is priced per request, so fourteen networks take three
+    requests instead of fourteen.
+    """
+    if not key:return []
+    wanted=[n['chain_id'] for n in networks if n['chain_id'] in PORTFOLIO and n['chain_id'] not in PORTFOLIO_SEPARATE
+            and not saved_discovery(wallet,folder/f"discovery-{n['chain_id']}.json")]
+    return [wanted[i:i+PORTFOLIO_GROUP] for i in range(0,len(wanted),PORTFOLIO_GROUP)] if len(wanted)>1 else []
+
+
+def read_portfolio_group(wallet, group, folder, key):
+    """Save each network the shared read finished. Any other network is read
+    alone by discover() afterwards, as Alchemy advises for retries."""
+    for cid,row in portfolio_read(wallet,group,key).items():
+        if row['complete']:finish_discovery(row,folder/f'discovery-{cid}.json')
+
+
+def discover_all(wallet, networks, folder):
+    """Indexed discovery for every network, Alchemy networks read five per request."""
+    key=portfolio_key()
+    groups=portfolio_groups(wallet,networks,folder,key);grouped={cid for group in groups for cid in group}
+    find=lambda n:discover(wallet,n,folder,indexed_only=True)
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        shared=[executor.submit(read_portfolio_group,wallet,group,folder,key) for group in groups]
+        alone={n['chain_id']:executor.submit(find,n) for n in networks if n['chain_id'] not in grouped}
+        for read_group in shared:read_group.result()
+        after={n['chain_id']:executor.submit(find,n) for n in networks if n['chain_id'] in grouped}
+        return {cid:future.result() for cid,future in {**alone,**after}.items()}
+
+
 def discover(wallet, n, folder, budget=None, *, continue_only=False, indexed_only=False):
     cid = n['chain_id']
     evidence = folder/f'discovery-{cid}.json'
-    if evidence.exists():
-        cached=read(evidence)
-        if cached['wallet'].lower()==wallet.lower() and cached['complete'] and cached.get('coverage_version')==2 and (not indexed_only or cached.get('source')=='Alchemy Portfolio Tokens By Wallet' or cached.get('provider')=='explorer'):
-            return cached
+    cached=saved_discovery(wallet,evidence,indexed_only)
+    if cached:return cached
     row = {'wallet':wallet,'chain_id':cid,'observed_at':h.now(),'complete':False,'tokens':[],'native':[], 'pages':[],'source':None,'discovery_status':'incomplete'}
     cfg=load_config();deadline=time.monotonic()+budget if budget else None
-    try:key=h.secrets().get('ALCHEMY_CUSTOM_APY_KEY') if cfg['discovery']['provider']=='alchemy' else None
-    except ValueError:key=None
+    key=portfolio_key()
     if cid in ALCHEMY and key:
-        row['source']='Alchemy Portfolio Tokens By Wallet'
-        network=PORTFOLIO[cid]
-        endpoint=f'https://api.g.alchemy.com/data/v1/{key}/assets/tokens/by-address'
-        body={'addresses':[{'address':wallet,'networks':[network]}], 'withMetadata':True,'withPrices':True,
-              'includeNativeTokens':True,'includeErc20Tokens':True,'includeBlockMetadata':True}
-        seen=set()
-        for page in range(100):
-            if deadline:
-                from public_discovery import fetch_page
-                remaining=deadline-time.monotonic()
-                if remaining<=0:
-                    row['error']={'message':'Token discovery time budget reached. Saved candidates remain usable.'};break
-                response=fetch_page(endpoint,min(8,remaining),body)
-            else:response=fetch(endpoint,body)
-            row['pages'].append({'observed_at':h.now(),'request':dict(body),'response':response})
-            if not isinstance(response,dict) or not isinstance(response.get('data'),dict) or not isinstance(response['data'].get('tokens'),list):
-                row['error']=(response.get('error') or response.get('transport_error')) if isinstance(response,dict) else None
-                row['error']=row['error'] or {'message':'Token provider returned an invalid or missing token list.'}
-                break
-            data=response['data']
-            for t in data.get('tokens',[]):
-                if not isinstance(t,dict):
-                    row['error']={'message':'Token provider returned an invalid token record.'};continue
-                if not isinstance(t.get('network'),str) or not t['network'] or not isinstance(t.get('address'),str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}',t['address']):
-                    row['error']={'message':'A token record identity was missing or invalid.'};continue
-                if t['network']!=network or t['address'].lower()!=wallet.lower():
-                    continue
-                try:
-                    if not isinstance(t.get('tokenBalance'),str) or not re.fullmatch(r'0x[0-9a-fA-F]+',t['tokenBalance']):raise ValueError('Invalid balance')
-                    balance=int(t['tokenBalance'],16)
-                except (TypeError,ValueError):
-                    row['error']={'message':'A token balance was missing or invalid.'}
-                    continue
-                if not t.get('tokenAddress'):
-                    row['native'].append(t)
-                elif balance>0:
-                    if not isinstance(t['tokenAddress'],str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}',t['tokenAddress']):
-                        row['error']={'message':'A token contract address was invalid.'};continue
-                    meta=t.get('tokenMetadata') or {}
-                    row['tokens'].append({'chain_id':cid,'address':t['tokenAddress'],'name':meta.get('name'),'symbol':meta.get('symbol'),'suspicious_zero_check':True,
-                                          'decimals':meta.get('decimals'),'image_url':meta.get('logo'),'prices':t.get('tokenPrices') or []})
-            if response.get('error') or response.get('transport_error') or row.get('error'):
-                row['error']=response.get('error') or response.get('transport_error') or row['error']
-                break
-            cursor=data.get('pageKey')
-            if not cursor:
-                row['complete']=True
-                break
-            if cursor in seen:
-                row['error']={'message':'Repeated pagination cursor'}
-                break
-            seen.add(cursor)
-            body['pageKey']=cursor
-        else:
-            row['error']={'message':'Pagination safety limit reached; discovery incomplete'}
+        row.update(portfolio_read(wallet,[cid],key,deadline)[cid])
     elif indexed_only:
         row.update(free_sources(wallet,cid,budget or 25,continue_only=continue_only,public=False,explorers=True))
     elif n.get('environment') in ('mainnet','testnet') and (cfg['discovery'].get('public',True) or cfg['discovery'].get('explorers')) and not (cfg.get('rpc',{}).get('mode')=='custom' and cfg['rpc'].get('allow_public_fallback') is False):
@@ -251,12 +341,7 @@ def discover(wallet, n, folder, budget=None, *, continue_only=False, indexed_onl
                   'missing_credential':'The selected indexer credential is unavailable. Configure its private environment reference, then refresh holdings.',
                   'unsupported':'No general ERC20 indexer is available for this network.'}
         row['error']={'message':messages[status]+' Mint Club registry and native balances are queried independently.'}
-    if row['complete']:row['discovery_status']='checked'
-    elif row['source'] and row['discovery_status']=='incomplete':row['discovery_status']='provider_error'
-    row['tokens']=list({t['address'].lower():t for t in row['tokens']}.values())
-    row['coverage_version']=2
-    atomic(evidence,row)
-    return row
+    return finish_discovery(row,evidence)
 
 
 def prior_candidates(wallet):
@@ -618,8 +703,7 @@ def research_holdings(wallet, folder, networks, scope='full'):
     """
     plan=fast_plan(wallet,networks) if scope=='fast' else {'retained':{},'chains':{}}
     active=[n for n in networks if n['chain_id'] not in plan['retained']]
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        fresh=dict(zip((n['chain_id'] for n in active),executor.map(lambda n:discover(wallet['address'],n,folder,indexed_only=True),active)))
+    fresh=discover_all(wallet['address'],active,folder)
     for cid,(_,found) in plan['retained'].items():
         atomic(folder/f'discovery-{cid}.json',found);fresh[cid]=found
     discovered=[fresh[n['chain_id']] for n in networks]

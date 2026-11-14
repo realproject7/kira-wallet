@@ -94,9 +94,12 @@ class FastRefreshTests(unittest.TestCase):
             captured.update(chains=chains, discovered=discovered, **options); return {'status': 'completed'}
 
         with patch.object(wallet, 'ROOT', self.root), patch.object(wallet, 'discover', side_effect=lambda address, n, out, **_: {'wallet': address, 'chain_id': n['chain_id'], 'complete': True, 'tokens': []}) as discover, \
-                patch.object(wallet, 'prior_candidates', return_value=[]), patch.object(wallet, 'run_node', side_effect=scan), patch.object(wallet, 'initial_result', side_effect=result):
+                patch.object(wallet, 'prior_candidates', return_value=[]), patch.object(wallet, 'run_node', side_effect=scan), patch.object(wallet, 'initial_result', side_effect=result), \
+                patch.object(wallet, 'fetch', return_value={'data': {'tokens': [], 'pageKey': None}}) as fetch:
             wallet.research_holdings(entry, folder, NETWORKS[:3], scope='fast')
         self.assertEqual(sorted(call.args[1]['chain_id'] for call in discover.call_args_list), [10, 8453], 'Kept networks need no discovery.')
+        self.assertEqual([call.args[1]['addresses'][0]['networks'] for call in fetch.call_args_list], [['base-mainnet', 'opt-mainnet']],
+                         'Both read networks share one Alchemy request; the kept test network is not asked for.')
         self.assertEqual(seen['networks'], [8453, 10]); self.assertEqual(seen['fast']['chains']['8453']['from_block'], '0')
         self.assertEqual([c['chain_id'] for c in captured['chains']], [8453, 10, 84532])
         self.assertEqual(captured['chains'][2]['retained_from'], 'snapshots/fixture/previous')
@@ -105,7 +108,8 @@ class FastRefreshTests(unittest.TestCase):
         # A full refresh reads everything and passes no fast plan.
         seen.clear(); captured.clear()
         with patch.object(wallet, 'ROOT', self.root), patch.object(wallet, 'discover', side_effect=lambda address, n, out, **_: {'wallet': address, 'chain_id': n['chain_id'], 'complete': True, 'tokens': []}), \
-                patch.object(wallet, 'prior_candidates', return_value=[]), patch.object(wallet, 'run_node', side_effect=scan), patch.object(wallet, 'initial_result', side_effect=result):
+                patch.object(wallet, 'prior_candidates', return_value=[]), patch.object(wallet, 'run_node', side_effect=scan), patch.object(wallet, 'initial_result', side_effect=result), \
+                patch.object(wallet, 'fetch', return_value={'data': {'tokens': [], 'pageKey': None}}) as fetch:
             wallet.research_holdings(entry, self.root / 'snapshots/fixture/full', NETWORKS[:3])
         self.assertEqual(seen['networks'], [8453, 10, 84532]); self.assertIsNone(seen['fast'])
         self.assertEqual(captured['pipeline'], {'refresh_scope': 'full'})

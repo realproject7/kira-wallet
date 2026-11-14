@@ -2,7 +2,7 @@
 // Bounded work, durable holes and chain scheduling. No live provider calls.
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-const h=require('./onchain.cjs'),{registry,balanceReads,mintclubMembership,scanChain,scanNetworks,setGroupSize,calls,GROUP,MIN_GROUP}=require('./pipeline-onchain.cjs');
+const h=require('./onchain.cjs'),{registry,balanceReads,mintclubMembership,scanChain,scanNetworks,setGroupSize,setPeerLagWait,calls,GROUP,MIN_GROUP}=require('./pipeline-onchain.cjs');
 // Slice tests use small groups so a few hundred fixtures span several slices.
 const small=client=>setGroupSize(client,128);
 const HASH='0x'+'a'.repeat(64),WALLET='0x'+'1'.repeat(40);
@@ -123,6 +123,29 @@ test('suspicious-zero retry holes rotate after restart without blocking later ev
   assert.equal(rows[8].status,'success');assert.equal(rows[8].result,9n);assert.equal(seen[8],address(8));
   assert.equal(Object.keys(checkpoint.zero_attempts).length,9);assert.equal(rows.filter(r=>r.status==='failure').length,8);
  }finally{Object.assign(h,originals);fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('a peer one block behind the pinned head is asked again before a zero is left unknown',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-zero-peer-lag-'));
+ const originals={peerClient:h.peerClient,snapshotBlock:h.snapshotBlock};
+ setPeerLagWait(1);
+ try{
+  const file=path.join(root,'balances.json'),peer={readContract:async()=>0n};
+  const client={multicall:async({contracts})=>contracts.map(()=>({status:'success',result:0n})),readContract:async()=>0n};
+  let behind=2;h.peerClient=()=>peer;
+  h.snapshotBlock=async c=>{
+   if(c===peer&&behind-->0){const error=new Error('Block at number "7" could not be found.');error.name='BlockNotFoundError';throw error;}
+   return {number:7n,hash:HASH};
+  };
+  const checkpoint={balances:{},block_hash:HASH};
+  const rows=await balanceReads(client,[{address:address(1),token_type:'ERC20',suspicious_zero_check:true}],WALLET,7n,checkpoint,file,{chain_id:999});
+  assert.equal(rows[0].status,'success');assert.equal(rows[0].result,0n);assert.equal(behind,-1,'The peer was asked three times.');
+  assert.equal(checkpoint.zero_checks[address(1).toLowerCase()+':ERC20'].outcome,'agreed');
+  // Any other peer failure is not retried and leaves the balance unknown.
+  let asked=0;h.snapshotBlock=async c=>{if(c===peer){asked++;throw new Error('synthetic peer outage');}return {number:7n,hash:HASH};};
+  const again=await balanceReads(client,[{address:address(2),token_type:'ERC20',suspicious_zero_check:true}],WALLET,7n,{balances:{},block_hash:HASH},file,{chain_id:999});
+  assert.equal(again[0].status,'failure');assert.equal(asked,1);
+ }finally{Object.assign(h,originals);setPeerLagWait(2000);fs.rmSync(root,{recursive:true,force:true});}
 });
 
 test('retained native balances preserve their original observation time after RPC failure',async()=>{

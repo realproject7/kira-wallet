@@ -157,6 +157,22 @@ async function factReads(c,contracts,block,checkpoint,file,n,operation) {
   }
   return contracts.map(q=>{const fact=checkpoint.facts[key(q)];return fact?{status:'success',result:cacheDecode(fact.value),observed_at:fact.observed_at}:{status:'failure',error:failures.get(key(q))||new Error('Pinned token details unavailable.')};});
 }
+// The peer that double-checks a suspicious zero can be a block or two behind
+// the head the snapshot was pinned to; on Base that head is often one second old.
+let PEER_LAG_WAIT=2000;
+const behindPinnedBlock=error=>error?.name==='BlockNotFoundError'
+  ||/header not found|block not found|unknown block/i.test(String(error?.message||'')+' '+String(error?.cause?.message||''));
+async function peerRead(peer,query,block,hash){
+  for(let attempt=1;;attempt++){
+    try{
+      await h.snapshotBlock(peer,{block_number:block.toString(),block_hash:hash});
+      return await peer.readContract(query);
+    }catch(error){
+      if(attempt>=3||!behindPinnedBlock(error))throw error;
+      await new Promise(resolve=>setTimeout(resolve,PEER_LAG_WAIT*attempt));
+    }
+  }
+}
 async function balanceReads(c,tokens,wallet,block,checkpoint,file,n,{maxBatches=Infinity}={}) {
   checkpoint.balance_times=checkpoint.balance_times||{};
   const key=t=>t.address.toLowerCase()+':'+t.token_type;
@@ -195,8 +211,7 @@ async function balanceReads(c,tokens,wallet,block,checkpoint,file,n,{maxBatches=
         const verifier=h.verificationClient(c)||c;
         const direct=await verifier.readContract(query),peer=h.peerClient(verifier);
         if(!peer)throw new Error('A qualified peer is unavailable for this suspicious zero. Balance remains unknown.');
-        await h.snapshotBlock(peer,{block_number:block.toString(),block_hash:checkpoint.block_hash});
-        const other=await peer.readContract(query);
+        const other=await peerRead(peer,query,block,checkpoint.block_hash);
         checkpoint.zero_checks[key(token)]={direct:direct.toString(),peer:other.toString(),block_hash:checkpoint.block_hash,
           outcome:direct===other?'agreed':'conflicting',rpc_routes:h.rpcRoutes(peer)};
         if(direct!==other)throw new Error('Pinned balance observations conflict. Balance remains unknown.');
@@ -1129,4 +1144,5 @@ async function main() {
 if(require.main===module)main().catch(e=>{console.error(h.serialize(h.safeError(e)));process.exitCode=1;});
 const setGroupSize=(c,size)=>{groupLimits.set(c,size);return c;};
 const setFastFallbackPause=ms=>{FAST_FALLBACK_PAUSE=ms;};
-module.exports={GROUP,MIN_GROUP,setGroupSize,setFastFallbackPause,scanNetworks,parallel,calls,registry,connect,scanChain,batches,balanceReads,factReads,mintclubMembership,dexChain,reserveChain,liquidationChain,routePools,boundedMarket,MarketBudget};
+const setPeerLagWait=ms=>{PEER_LAG_WAIT=ms;};
+module.exports={GROUP,MIN_GROUP,setGroupSize,setFastFallbackPause,setPeerLagWait,scanNetworks,parallel,calls,registry,connect,scanChain,batches,balanceReads,factReads,mintclubMembership,dexChain,reserveChain,liquidationChain,routePools,boundedMarket,MarketBudget};

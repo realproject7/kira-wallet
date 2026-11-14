@@ -77,3 +77,10 @@ custom RPC endpoints keep their existing pacing and fallback behavior. Canonical
 block checks and provider backoff still apply. This is a local scheduling policy,
 not a guarantee about an account's available capacity. Alchemy's
 [throughput allowance is shared across apps and chains](https://support.alchemy.com/articles/3788245542-is-alchemy-s-throughput-cu-s-limit-shared-across-all-apps-or-set-per-chain).
+
+Token discovery asks Alchemy's Tokens By Wallet API about up to five networks
+in one request, the most the API accepts. Alchemy
+[charges that request the same](https://www.alchemy.com/docs/reference/compute-unit-costs)
+for one network or five, so a holdings refresh reads the Alchemy networks in
+three requests. A wallet with hundreds of tokens needs more pages. A network
+that fails inside a shared request is read again on its own.

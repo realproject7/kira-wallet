@@ -96,13 +96,17 @@ async function localAPI(path,options={}){
   if(response.status===403){localSession=null;throw new Error('The local session changed. Reopen this action after reconnecting.');}
   const data=await response.json();if(!response.ok)throw new Error(data.error?.message||'The local action could not be completed.');return data;
 }
+const BULK_REQUEST_MS=180000;
 async function submitOperation(operation,input,{refresh=true}={}){
   const fingerprint=JSON.stringify({operation,input});if(pendingActions.has(fingerprint))throw new Error('This request is already being submitted.');
   pendingActions.add(fingerprint);
   const storageKey='kira-request:'+fingerprint;
   const key=sessionStorage.getItem(storageKey)||crypto.randomUUID();sessionStorage.setItem(storageKey,key);
   try{
-    const result=await localAPI('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schema_version:1,operation,input,idempotency_key:key})});
+    // A portfolio action admits one job per wallet before it answers; a large
+    // portfolio needs more than the usual twelve seconds.
+    const wait=operation.startsWith('portfolio.')?BULK_REQUEST_MS:12000;
+    const result=await localAPI('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schema_version:1,operation,input,idempotency_key:key}),signal:AbortSignal.timeout(wait)});
     sessionStorage.removeItem(storageKey);
     if(operation==='wallet.remove'||operation==='wallet.restore'){if(refresh)await pollWorkspace();return result;}
     if(operation.startsWith('folder.')){if(refresh)await pollWorkspace();return result;}
