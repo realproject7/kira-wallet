@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.12.3**. Prepared candidate: **1.13.2**.
+Published npm release: **1.13.2**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -9,7 +9,16 @@ Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
 
-## Candidate 1.13.2
+## Published 1.13.2
+
+The operator published 1.13.2 on November 14, 2026. The registry archive is
+byte-identical to the frozen one, and a clean registry installation matched
+all 130 members. Pull request 6 merged at
+`745f34978459d9f8e25b53299f226c532d26a218`; a fresh pack from the merged tree
+reproduces the archive. SHA-256 is
+`e4bb886d2516eb12b6945b7e0a0dc2931c50876623407ee44b20ba04c565b7a2`.
+Versions 1.13.0 and 1.13.1 were prepared and not published.
+
 
 Holdings refreshes make fewer, larger reads. One aggregate read now carries up
 to 1,024 balance calls instead of 128. When a provider refuses a large read,
