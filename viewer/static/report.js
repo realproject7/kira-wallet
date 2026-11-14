@@ -2,7 +2,9 @@
 let setupReadiness=null,setupLoading=false,setupUnavailable=false,setupRetryAfter=0;
 function renderHomeTokens(){
   if(!state)return;
-  const result=state.paged?{rows:routeData.page?.assets||[],count:routeData.page?.matched_count??state.dashboard.unique_asset_count}:KiraView.catalog(state.details.tokens,{sort:'value'}),rows=result.rows.slice(0,5);
+  const home=typeof FolderUI!=='undefined'?FolderUI.view():state;
+  if(!home){$('home-token-body').innerHTML='';renderSetupPath();return;}
+  const result=state.paged?{rows:routeData.page?.assets||[],count:routeData.page?.matched_count??home.dashboard.unique_asset_count}:KiraView.catalog(home.details.tokens,{sort:'value'}),rows=result.rows.slice(0,5);
   $('home-token-body').innerHTML=rows.map(catalogRow).join('');
   $('home-token-count').textContent=rows.length+' of '+result.count;
   $('home-tokens-empty').hidden=result.count>0;
@@ -11,17 +13,18 @@ function renderHomeTokens(){
 }
 function renderSetupPath() {
   if(!state)return;
+  if(typeof FolderUI!=='undefined'&&FolderUI.id){$('setup-path').hidden=true;$('home-empty').hidden=true;$('home-heading').hidden=false;$('home-summary').hidden=!FolderUI.view();return;}
   const wallet=state.wallets.length>0,connected=setupReadiness?.discovery_key_available===true;
   $('home-heading').hidden=!wallet;$('home-summary').hidden=!wallet;
   $('setup-path').hidden=state.demo||!localSession?.controls||(wallet&&connected);
   $('home-empty').hidden=wallet||!$('setup-path').hidden;
   if($('setup-path').hidden)return;
-  $('setup-path').innerHTML='<div class="section-heading"><h1>Your wallets, in one place.</h1></div><p>Connect Alchemy once, then add your public wallet. AI is optional.</p><ol class="setup-checklist">'+
-    '<li><span class="setup-check">'+(connected?'✓':'1')+'</span><div><strong>Connect Alchemy</strong><p>'+(connected?'Connected on this computer.':!setupReadiness?(setupUnavailable?'Could not check the connection. Retrying…':'Checking the connection…'):'Alchemy supplies the token list across networks. Your API key stays on this computer.')+'</p></div><button class="'+(connected?'quiet':'primary')+'-button" id="setup-discovery" type="button">'+(connected?'Connected':'Connect Alchemy')+'</button></li>'+
-    '<li><span class="setup-check">'+(wallet?'✓':'2')+'</span><div><strong>Add your wallet</strong><p>Use a public EVM address. No signature or seed phrase.</p></div><button class="quiet-button" id="setup-wallet" type="button" '+(!connected?'disabled':'')+'>'+ (wallet?'Add another':'Add wallet')+'</button></li></ol><p class="form-note">Your agent can use the same saved research through the Kira CLI.</p><button id="setup-extra-tools" class="quiet-button" type="button">Optional: add h402 tools</button>';
+  $('setup-path').innerHTML='<div class="section-heading"><h1>Your wallets, in one place.</h1></div><p>Two steps to your first portfolio.</p><ol class="setup-checklist">'+
+    '<li><span class="setup-check">'+(connected?'✓':'1')+'</span><div><strong>Connect Alchemy</strong><p>'+(connected?'Connected on this computer.':!setupReadiness?(setupUnavailable?'Could not check the connection. Retrying…':'Checking the connection…'):'Find balances and tokens across networks.')+'</p></div><button class="'+(connected?'quiet':'primary')+'-button" id="setup-discovery" type="button">'+(connected?'Connected':'Connect Alchemy')+'</button></li>'+
+    '<li><span class="setup-check">'+(wallet?'✓':'2')+'</span><div><strong>Add your wallet</strong><p>Paste a public EVM address. Your keys stay in your wallet.</p></div><button class="quiet-button" id="setup-wallet" type="button" '+(!connected?'disabled':'')+'>'+ (wallet?'Add another':'Add wallet')+'</button></li></ol><details class="setup-optional"><summary>Tools for your agent</summary><p class="form-note">Your agent can read this same portfolio through Kira.</p><button id="setup-extra-tools" class="quiet-button" type="button" data-ui-icon="plus">Optional: add h402 tools</button></details>';
   $('setup-wallet').addEventListener('click',openAdd);
   $('setup-discovery').addEventListener('click',()=>openDataConnections());
-  $('setup-extra-tools').addEventListener('click',openWorkspaceSettings);
+  $('setup-extra-tools').addEventListener('click',()=>openWorkspaceSettings('tools'));
 }
 async function loadSetupReadiness(){
   if(setupLoading||!localSession?.controls)return false;setupLoading=true;

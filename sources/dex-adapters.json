@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "verified_on": "2026-11-13",
+  "scope": "Read-only direct-pool estimates. No swaps, approvals, Infinity, cross-chain or split routing.",
+  "records": [
+    {
+      "chain_id": 56,
+      "venue": "pancakeswap",
+      "type": "v2",
+      "kind": "pancakeswap_v2_reserves",
+      "factory": "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73",
+      "fee_bps": 25,
+      "source": "https://developer.pancakeswap.finance/contracts/v2/addresses"
+    },
+    {
+      "chain_id": 56,
+      "venue": "pancakeswap",
+      "type": "v3",
+      "kind": "pancakeswap_v3_quoter",
+      "factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
+      "quoter": "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997",
+      "source": "https://developer.pancakeswap.finance/contracts/v3/addresses"
+    },
+    {
+      "chain_id": 8453,
+      "venue": "aero",
+      "type": "basic",
+      "kind": "aero_pool",
+      "factory": "0x78589E876edcEbdce72ee3436ab3c9AD3a7cEF2D",
+      "stable": true,
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "2ce1816b20948c26a2eec52419c9eccac3857136",
+      "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-base.json"
+    },
+    {
+      "chain_id": 8453,
+      "venue": "aero",
+      "type": "basic",
+      "kind": "aero_pool",
+      "factory": "0x8E6a9FCd1d638CC760Ffba397605Fe3355dE76D2",
+      "stable": false,
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "2ce1816b20948c26a2eec52419c9eccac3857136",
+      "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-base.json"
+    },
+    {
+      "chain_id": 8453,
+      "venue": "aero",
+      "type": "cl",
+      "kind": "aero_cl_quoter",
+      "factory": "0x9CB220581b91b0C83223012FE69688b92aD07a76",
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "f99f2095918cab69eafeffa2c3d0a8762de737b7",
+      "source": "https://github.com/dromos-labs/metadex-slipstream-public/blob/f99f2095918cab69eafeffa2c3d0a8762de737b7/deployment-addresses/cl-base.json"
+    },
+    {
+      "chain_id": 1,
+      "venue": "aero",
+      "type": "basic",
+      "kind": "aero_pool",
+      "factory": "0x78589E876edcEbdce72ee3436ab3c9AD3a7cEF2D",
+      "stable": true,
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "2ce1816b20948c26a2eec52419c9eccac3857136",
+      "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-ethereum.json"
+    },
+    {
+      "chain_id": 1,
+      "venue": "aero",
+      "type": "basic",
+      "kind": "aero_pool",
+      "factory": "0x8E6a9FCd1d638CC760Ffba397605Fe3355dE76D2",
+      "stable": false,
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "2ce1816b20948c26a2eec52419c9eccac3857136",
+      "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-ethereum.json"
+    },
+    {
+      "chain_id": 1,
+      "venue": "aero",
+      "type": "cl",
+      "kind": "aero_cl_quoter",
+      "factory": "0xF4Fd2E6c5B60c5b365cd1B96DD6245E6D60414c2",
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "f99f2095918cab69eafeffa2c3d0a8762de737b7",
+      "source": "https://github.com/dromos-labs/metadex-slipstream-public/blob/f99f2095918cab69eafeffa2c3d0a8762de737b7/deployment-addresses/cl-ethereum.json"
+    },
+    {
+      "chain_id": 10,
+      "venue": "aero",
+      "type": "basic",
+      "kind": "aero_pool",
+      "factory": "0x78589E876edcEbdce72ee3436ab3c9AD3a7cEF2D",
+      "stable": true,
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "2ce1816b20948c26a2eec52419c9eccac3857136",
+      "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-optimism.json"
+    },
+    {
+      "chain_id": 10,
+      "venue": "aero",
+      "type": "basic",
+      "kind": "aero_pool",
+      "factory": "0x8E6a9FCd1d638CC760Ffba397605Fe3355dE76D2",
+      "stable": false,
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "2ce1816b20948c26a2eec52419c9eccac3857136",
+      "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-optimism.json"
+    },
+    {
+      "chain_id": 10,
+      "venue": "aero",
+      "type": "cl",
+      "kind": "aero_cl_quoter",
+      "factory": "0xfeaB42D90055db3a0616249f76B6002D72266778",
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "f99f2095918cab69eafeffa2c3d0a8762de737b7",
+      "source": "https://github.com/dromos-labs/metadex-slipstream-public/blob/f99f2095918cab69eafeffa2c3d0a8762de737b7/deployment-addresses/cl-optimism.json"
+    },
+    {
+      "chain_id": 42161,
+      "venue": "aero",
+      "type": "basic",
+      "kind": "aero_pool",
+      "factory": "0x78589E876edcEbdce72ee3436ab3c9AD3a7cEF2D",
+      "stable": true,
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "2ce1816b20948c26a2eec52419c9eccac3857136",
+      "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-arbitrum.json"
+    },
+    {
+      "chain_id": 42161,
+      "venue": "aero",
+      "type": "basic",
+      "kind": "aero_pool",
+      "factory": "0x8E6a9FCd1d638CC760Ffba397605Fe3355dE76D2",
+      "stable": false,
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "2ce1816b20948c26a2eec52419c9eccac3857136",
+      "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-arbitrum.json"
+    },
+    {
+      "chain_id": 42161,
+      "venue": "aero",
+      "type": "cl",
+      "kind": "aero_cl_quoter",
+      "factory": "0x88a60ee77392577c355C0acb2A8d476D5a4EC03a",
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "f99f2095918cab69eafeffa2c3d0a8762de737b7",
+      "source": "https://github.com/dromos-labs/metadex-slipstream-public/blob/f99f2095918cab69eafeffa2c3d0a8762de737b7/deployment-addresses/cl-arbitrum.json"
+    },
+    {
+      "chain_id": 4663,
+      "venue": "aero",
+      "type": "basic",
+      "kind": "aero_pool",
+      "factory": "0x78589E876edcEbdce72ee3436ab3c9AD3a7cEF2D",
+      "stable": true,
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "2ce1816b20948c26a2eec52419c9eccac3857136",
+      "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-robinhood.json"
+    },
+    {
+      "chain_id": 4663,
+      "venue": "aero",
+      "type": "basic",
+      "kind": "aero_pool",
+      "factory": "0x8E6a9FCd1d638CC760Ffba397605Fe3355dE76D2",
+      "stable": false,
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "2ce1816b20948c26a2eec52419c9eccac3857136",
+      "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-robinhood.json"
+    },
+    {
+      "chain_id": 4663,
+      "venue": "aero",
+      "type": "cl",
+      "kind": "aero_cl_quoter",
+      "factory": "0xc63d7338c178e805c544B8f897066bD3BBcBE136",
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "f99f2095918cab69eafeffa2c3d0a8762de737b7",
+      "source": "https://github.com/dromos-labs/metadex-slipstream-public/blob/f99f2095918cab69eafeffa2c3d0a8762de737b7/deployment-addresses/cl-robinhood.json"
+    },
+    {
+      "chain_id": 57073,
+      "venue": "aero",
+      "type": "basic",
+      "kind": "aero_pool",
+      "factory": "0x78589E876edcEbdce72ee3436ab3c9AD3a7cEF2D",
+      "stable": true,
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "2ce1816b20948c26a2eec52419c9eccac3857136",
+      "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-ink.json"
+    },
+    {
+      "chain_id": 57073,
+      "venue": "aero",
+      "type": "basic",
+      "kind": "aero_pool",
+      "factory": "0x8E6a9FCd1d638CC760Ffba397605Fe3355dE76D2",
+      "stable": false,
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "2ce1816b20948c26a2eec52419c9eccac3857136",
+      "source": "https://github.com/dromos-labs/metadex-public/blob/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses/pools-ink.json"
+    },
+    {
+      "chain_id": 57073,
+      "venue": "aero",
+      "type": "cl",
+      "kind": "aero_cl_quoter",
+      "factory": "0x7660BF2aDefC687C22906112ca323d60A00358cF",
+      "quoter": "0x1dDfeC5058180C207F55BB77D95AcDd0d8227868",
+      "revision": "f99f2095918cab69eafeffa2c3d0a8762de737b7",
+      "source": "https://github.com/dromos-labs/metadex-slipstream-public/blob/f99f2095918cab69eafeffa2c3d0a8762de737b7/deployment-addresses/cl-ink.json"
+    }
+  ]
+}

@@ -13,6 +13,8 @@ const context={$:node,KiraView:require('./viewer/static/workspace-model.js'),cur
   localStorage:{setItem:(key,value)=>saved.set(key,value)},renderBreadcrumb(){},bindImages(){},
   assetRow:a=>'<tr>'+a.symbol+'</tr>',chainIcon:()=>'',networkHref:String,arrowGlyph:'',renderDetail(){}};
 vm.createContext(context);
+for(const helper of ['const infoTip =','const integer =','const walletAvatar =','const ratioBar =','const walletTokenValue ='])vm.runInContext(source.split('\n').find(line=>line.startsWith(helper)),context);
+vm.runInContext(source.slice(source.indexOf('function progress('),source.indexOf('function chainIcon(')),context);
 vm.runInContext(source.slice(source.indexOf('function policyBadge('),source.indexOf('function policyPanel(')),context);
 vm.runInContext(source.slice(source.indexOf('function sellSummary('),source.indexOf('function sellOutNote(')),context);
 vm.runInContext(source.slice(source.indexOf('function renderWallet(){'),source.indexOf('function icon(asset){')),context);
@@ -23,7 +25,7 @@ assert.equal(node('total-value').textContent,'—');
 assert.equal(node('visible-count').textContent,0);
 assert.match(node('holdings-filter-note').innerHTML,/3 unpriced holdings are hidden/);
 assert.match(node('empty-h3').textContent,/hidden by the value filter/);
-assert.match(node('coverage-note').textContent,/Token discovery: 0 of 3 mainnets checked/);
+assert.match(node('coverage-note').textContent,/^0 of 3 checked$/);
 assert.equal(node('discovery-notice').hidden,false);
 assert.match(node('discovery-notice-title').textContent,/Network coverage/);
 context.setupReadiness={discovery_provider:'none',discovery_configured:false,discovery_key_available:false};
@@ -88,30 +90,33 @@ vm.runInContext(source.slice(source.indexOf('function venueMark('),source.indexO
 vm.runInContext(source.slice(source.indexOf('function sellOutNote(a){'),source.indexOf('function renderHoldings(){')),context);
 const historic=context.assetRow({id:'fixture',symbol:'Fixture',name:'Fixture',balance:'1',value_usd:100,links:[],
   price:{usd:100,basis:'Curve spot',retained_from_previous:true,observed_at:'2026-10-01T00:00:00Z'}});
-assert.match(historic,/holding-markets/);assert.doesNotMatch(historic,/markets-label/);assert.match(historic,/colspan="6"/);assert.match(historic,/Previous Curve spot/);assert.match(historic,/title="2026-10-01T00:00:00Z"/);
+assert.equal(historic.match(/<tr\b/g).length,1,'A holding is one row.');assert.doesNotMatch(historic,/holding-markets|pool-link|No market recorded/);assert.match(historic,/Previous Curve spot/);assert.match(historic,/title="2026-10-01T00:00:00Z"/);
 console.log('Retained price labels preserve the original observation time.');
 const pools=Array.from({length:4},(_,i)=>({url:'https://example.com/pool/'+i,pool:'0x'+'1'.repeat(40),
   venue:'Uniswap V3',pair:[{symbol:'USDC'},{symbol:'WETH'}],liquidity_usd:i===0?null:100,
   observed_at:'2026-10-05T00:00:00Z'}));
-const markets=context.marketLinks([{url:pools[0].url,label:'Uniswap V3'}],{market_pools:pools},true);
-assert.equal(markets.split('<details')[0].match(/class="pool-link"/g).length,2);
-assert.match(markets,/<summary>Show 2 more pools<\/summary>/);
-assert.equal(markets.match(/class="pool-link"/g).length,4);
-assert.match(markets,/<strong>—<\/strong><small>Pool liquidity/);
-assert.match(markets,/Observed 2026-10-05T00:00:00Z/);
-assert.doesNotMatch(context.marketLinks([{label:'Explorer',url:'https://etherscan.io/token/fixture'}]),/etherscan/);
-assert.match(context.marketLinks([],{market_pools:[{...pools[0],url:'https://dexscreener.com/base/fixture'}]}),/via DexScreener/);
+// Markets belong to the token page. A holding row links there and stays one line.
+const withPools=context.assetRow({id:'1:fixture',symbol:'Fixture',name:'Fixture',balance:'1',value_usd:100,links:[{url:pools[0].url,label:'Uniswap V3'}],market_pools:pools,price:{usd:100,basis:'DEX market'}});
+assert.doesNotMatch(withPools,/example\.com\/pool|pool-link|Show \d+ more pools/);assert.match(withPools,/class="token-name token-link" href="1:fixture"/);
+const tokenRecord={id:'1:fixture',chain_id:1,symbol:'Fixture',environment:'mainnet',wallets:[],links:[],market_pools:pools};
+const markets=context.tokenMarkets(tokenRecord);
+assert.equal(markets.match(/class="market-row"/g).length,4);assert.match(markets,/<strong>—<\/strong><small>Liquidity/);
+assert.match(markets,/Observed 2026-10-05T00:00:00Z/);assert.doesNotMatch(markets,/etherscan/);
 vm.runInContext(source.slice(source.indexOf('function explorerLink('),source.indexOf('function renderDetail(')),context);
 assert.match(context.explorerLink({symbol:'Example',chain_id:1,links:[{label:'Explorer',url:'https://etherscan.io/token/fixture'}]}),/explorers\/etherscan.png/);
 assert.equal(context.explorerLink({is_native:true,links:[{label:'Explorer',url:'https://etherscan.io/address/wallet'}]}),'','A wallet address explorer is not a native token explorer.');
-console.log('Markets show two pools initially, retain every route and preserve unknown liquidity.');
+console.log('Holding rows stay one line; the token page keeps every market and preserves unknown liquidity.');
 context.safeImage=()=>null;
 vm.runInContext(source.slice(source.indexOf('function icon(asset){'),source.indexOf('function bindImages(){')),context);
-const malformed=context.marketLinks([],{symbol:'Fixture',market_pools:[{...pools[0],pair:[{symbol:123},{}]}]});
+const malformed=context.tokenMarkets({...tokenRecord,id:'1:malformed',market_pools:[{...pools[0],pair:[{symbol:123},{}]}]});
 assert.match(malformed,/coin-fallback">\?<\/span>/);
 console.log('Malformed pool symbols cannot crash the real artwork renderer.');
+const glyph=symbol=>context.coinIcon({symbol}).match(/coin-fallback">([^<]*)</)[1];
+assert.equal(glyph('東京タワー'),'東京','A badge holds two letters, not the whole symbol cut on both sides.');
+assert.equal(glyph('🚀🌕'),'🚀','One emoji fills a badge.');assert.equal(glyph('ab👍'),'AB');assert.equal(glyph('usdc'),'US');
+console.log('Token badges show the start of a symbol in any script.');
 
-context.walletGlyph='';context.share=(value,total)=>value==null?'—':(value/total*100).toFixed(1)+'%';
+context.walletGlyph='';
 vm.runInContext(source.slice(source.indexOf('function accountCard('),source.indexOf('function aggregateRow(')),context);
 const account={name:'Synthetic wallet',key:'fixture',address:'0x'+'1'.repeat(40),status:'No holding recorded',coverage:'Researched',analysed_at:'2026-10-04T00:00:00Z'};
 const absent=context.accountCard(account,{symbol:'SAMPLE',value_usd:100,environment:'mainnet'});
@@ -119,7 +124,9 @@ assert.match(absent,/account-position/);assert.match(absent,/No holding recorded
 assert.doesNotMatch(absent,/account-facts|account-quote/);
 const recorded=context.accountCard({...account,asset:{balance:'1',value_usd:100,price:{usd:100,basis:'Curve spot',observed_at:'2026-10-01T00:00:00Z'},
   sell_out:{valuation:'reserve_reference',value_usd:75,output_amount:'0.123',output_symbol:'ETH',observed_at:'2026-10-02T00:00:00Z',block_number:123,royalty_included:true}}},{symbol:'SAMPLE',value_usd:100,environment:'mainnet'});
-assert.doesNotMatch(recorded,/100.0%|Share of priced holdings|Recorded full-balance/);assert.match(recorded,/Curve spot/);assert.match(recorded,/Receive 0.123 ETH/);assert.match(recorded,/<details class="position-details">/);assert.match(recorded,/≈ \$75/);
+assert.doesNotMatch(recorded,/100.0%|Share of priced holdings|Recorded full-balance/);
+const ranked=context.accountCard({...account,asset:{balance:'1',value_usd:25,price:{usd:25}}},{symbol:'SAMPLE',value_usd:100,environment:'mainnet'},100);
+assert.match(ranked,/<progress class="allocation-progress" value="25" max="100" aria-label="Synthetic wallet share of this token">25.0%<\/progress>/);assert.match(recorded,/Curve spot/);assert.match(recorded,/Receive 0.123 ETH/);assert.match(recorded,/<details class="position-details"[^>]*>/);assert.match(recorded,/≈ \$75/);
 assert.match(recorded,/123 · After royalty/);assert.match(recorded,/Gas excluded/);assert.match(recorded,/Price checked<\/dt><dd>2026-10-01/);assert.match(recorded,/Selling that token to USD is not quoted/);
 const testnet=context.accountCard({...account,asset:{balance:'1',value_usd:null,price:{usd:999}}},{symbol:'SAMPLE',value_usd:null,environment:'testnet'});
 assert.match(testnet,/Testnet/);assert.doesNotMatch(testnet,/999/);
@@ -132,6 +139,9 @@ assert.match(context.sellSummary({value_usd:null,quoted_count:0,position_count:3
 assert.match(context.sellOutValue({id:'fixture',environment:'testnet',sell_out:{value_usd:999,output_amount:'1',output_symbol:'TEST'}}),/>—</);
 assert.match(context.explorerLink({symbol:'Example',chain_id:8453,links:[{label:'Explorer',url:'https://basescan.org/token/fixture'}]}),/explorers\/etherscan.png/);
 assert.match(context.explorerLink({symbol:'Example',chain_id:8453,links:[{label:'Explorer',url:'https://basescan.org/token/fixture'}]}),/>BaseScan/);
+const limitedValue=context.sellOutValue({id:'fixture',sell_out:{value_usd:2,output_amount:'0.001',output_symbol:'ETH',route_coverage:{status:'limited',reason:'A larger known pool is unquoted.'}}});
+assert.match(limitedValue,/≈ \$2/);assert.match(limitedValue,/Limited routes/);assert.match(limitedValue,/A larger known pool is unquoted/);
+assert.match(context.sellSummary({value_usd:2,missing_count:1,limited_count:1}),/1 limited routes/);
 console.log('Compact wallet rows distinguish saved reserve value, missing quotes, zero and testnets.');
 
 const workspaceSource=fs.readFileSync('viewer/static/workspace.js','utf8');
@@ -213,7 +223,7 @@ delete network.lifecycle;
 networkContext.state.details.tokens=[{chain_id:42161,symbol:'SAMPLE',name:'Sample',value_usd:null}];networkContext.minimum=10;
 networkContext.renderNetworkTokens(network);assert.match(node('network-token-empty').innerHTML,/filters/);assert(!node('network-token-empty').innerHTML.includes('#/activity'));
 
-const paired=context.marketLinks([{label:'Mint Club',url:'https://mint.club/token/base/PLOT'}],{symbol:'PLOT',chain_id:8453,curve_reserve:{symbol:'HUNT',address:'0x'+'2'.repeat(40),amount:'9'}},false);
+const paired=context.tokenMarkets({id:'8453:plot',symbol:'PLOT',chain_id:8453,environment:'mainnet',wallets:[],market_pools:[],links:[{label:'Mint Club',url:'https://mint.club/token/base/PLOT'}],curve_reserve:{symbol:'HUNT',address:'0x'+'2'.repeat(40),amount:'9'}});
 assert.match(paired,/PLOT \/ HUNT/);assert.match(paired,/venues\/mintclub.png/);
 
 const referenceCell=context.sellOutValue({id:'fixture',environment:'mainnet',sell_out_reference:{value_usd:123,kind:'native_market_reference',observed_at:'2026-11-11T00:00:00Z'}});

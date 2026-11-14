@@ -80,7 +80,7 @@ class ResearchTools:
         return {'snapshot_id':identity,**({'price_observation':observation} if observation else {}),'wallets':rows,'note':'Historical recorded evidence. Prices and balances retain their observation times; curve backing is not executable cash. Follow next_offset for more holdings.'}
 
     def job(self, job, approved):
-        if job['operation'] not in ('wallet.add','wallet.refresh','prices.refresh'):
+        if job['operation'] not in ('wallet.add','wallet.refresh','prices.refresh','positions.refresh'):
             raise JobError('job_scope','Only approved wallet research jobs are available.')
         selector=job['input'].get('wallet') or job['input'].get('address')
         wallet=self.wallet(selector,approved)

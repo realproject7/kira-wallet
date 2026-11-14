@@ -53,7 +53,7 @@
     const last = job.events?.at(-1)?.observed_at || job.updated_at;
     const quiet = job.state === 'running' && now - Date.parse(last) > 60000;
     return {
-      label: job.cancel_requested && active(job) ? (job.scan_policy?'Pausing':'Stopping') : job.scan_policy&&job.state==='cancelled'?'Paused':job.scan_policy&&job.analysis_phase==='baseline'&&['partial','succeeded'].includes(job.state)?'Holdings saved':job.scan_policy&&job.analysis_phase==='enrichment'&&['partial','succeeded'].includes(job.state)?'Sell analysis saved':labels[job.state] || 'Unknown',
+      label: job.cancel_requested && active(job) ? (job.scan_policy||job.operation==='positions.refresh'?'Pausing':'Stopping') : (job.scan_policy||job.operation==='positions.refresh')&&job.state==='cancelled'?'Paused':job.scan_policy&&job.analysis_phase==='baseline'&&['partial','succeeded'].includes(job.state)?'Holdings saved':job.scan_policy&&job.analysis_phase==='enrichment'&&['partial','succeeded'].includes(job.state)?'Sell analysis saved':labels[job.state] || 'Unknown',
       active: active(job), spinner: connected && job.state === 'running', quiet,
       elapsed: Number.isFinite(elapsed) ? elapsed : null,
       timerLabel: job.state === 'queued' ? 'Waiting' : job.started_at ? job.attempt>1?(job.scan_policy?(active(job)?'Current pass':'Last pass'):'Attempt elapsed'):'Elapsed' : active(job)?'Since request':'Request duration',
@@ -144,7 +144,12 @@
       mode=job.state==='partial'?'partial':'complete';title=mode==='partial'?'Completed with gaps':'Lookup complete';description=mode==='partial'?'The lookup finished with gaps. Available holdings are saved; some networks or token checks remain incomplete.':'The configured holdings checks finished. These are saved observations, not live balances.';
       if(basic?.result){action='deepen';actionLabel='Analyze sell routes';}
     }
-    return {basic,deep,job,isDeep,basicReady,mode,title,description,failure,action,actionLabel};
+    const analysis=wallet?.sell_analysis;
+    if(analysis&&!isDeep&&basicReady&&!active(job)&&!['failed','interrupted','cancelled'].includes(job.state)){
+      action=analysis.needs_analysis?'deepen':null;
+      actionLabel=analysis.last_analyzed_at?'Update sell estimates':'Calculate sell estimates';
+    }
+    return {basic,deep,job,isDeep,basicReady,mode,title,description,failure,action,actionLabel,analysis};
   }
   function walletStatus(jobs,wallet) {
     // Optional sale analysis must not replace the holdings lookup status.

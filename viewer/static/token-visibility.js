@@ -8,7 +8,7 @@ var TokenVisibility = (()=>{
     const id=++notice,node=$('policy-undo');clearTimeout(timer);node.hidden=false;node.innerHTML='';
     const text=document.createElement('span');text.textContent=message;node.append(text);
     const undo=document.createElement('button');undo.type='button';undo.className='undo-button';undo.textContent='Undo';
-    const close=document.createElement('button');close.type='button';close.className='undo-close';close.setAttribute('aria-label','Dismiss notification');close.textContent='×';
+    const close=document.createElement('button');close.type='button';close.className='undo-close';close.setAttribute('aria-label','Dismiss notification');close.setAttribute('data-ui-icon','close');
     node.append(undo,close);
     const expire=()=>{clearTimeout(timer);timer=setTimeout(()=>{if(id===notice)dismiss();},10000);};
     node.onmouseenter=()=>clearTimeout(timer);node.onmouseleave=expire;node.onfocusin=()=>clearTimeout(timer);node.onfocusout=expire;
@@ -71,13 +71,14 @@ var TokenManager = (()=>{
     for(const id of ['all-token-search','all-token-network','all-token-pricing','all-token-sort','all-token-testnets'])$(id).disabled=TokenVisibility.busy;
     document.querySelectorAll('[data-catalog-min]').forEach(button=>{button.disabled=TokenVisibility.busy;});
     if(TokenVisibility.busy){$('tokens-prev').disabled=true;$('tokens-next').disabled=true;}
-    const status=$('all-token-status').value,summary=state?.dashboard?.asset_policy_summary||{};
+    const status=$('all-token-status').value,summary=(typeof FolderUI!=='undefined'?FolderUI.view():state)?.dashboard?.asset_policy_summary||{};
     $('token-catalog-panel').setAttribute('aria-labelledby','asset-tab-'+status);
     document.querySelectorAll('[data-asset-status]').forEach(tab=>{
       const current=tab.dataset.assetStatus===status;tab.setAttribute('aria-selected',String(current));tab.tabIndex=current?0:-1;tab.disabled=TokenVisibility.busy;
     });
     document.querySelectorAll('[data-status-count]').forEach(count=>{count.textContent=$('all-token-testnets').checked?'':(summary[count.dataset.statusCount+'_count']??'');});
-    $('token-status-note').textContent=({portfolio:'Hidden and review assets are excluded from portfolio totals.',review:'These reported estimates are outside your totals. Review the evidence before including an asset.',excluded:'Hidden across every registered wallet and excluded from totals. Restore applies the automatic review rules.',all:'All saved holdings. Hidden and review assets remain outside portfolio totals.'})[status];
+    $('token-status-note').textContent=({portfolio:'',review:'These reported estimates are outside your totals. Review the evidence before including an asset.',excluded:'Hidden across every registered wallet and excluded from totals. Restore applies the automatic review rules.',all:'Includes hidden and review assets. They stay outside portfolio totals.'})[status];
+    if(status!=='portfolio'&&typeof FolderUI!=='undefined'&&FolderUI.id)$('token-status-note').textContent+=' Token visibility changes apply across all wallets.';
     const empty=$('all-token-empty');
     if(!$('all-token-search').value&&$('all-token-network').value==='all'&&!catalogMinimum){
       empty.querySelector('h3').textContent=({excluded:'No hidden tokens',review:'No assets need review',portfolio:'No tokens in your portfolio',all:'No recorded tokens'})[status];

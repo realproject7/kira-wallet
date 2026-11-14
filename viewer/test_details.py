@@ -4,7 +4,7 @@ from decimal import Decimal
 from pathlib import Path
 import tempfile
 import unittest
-from details import project_details, total_balance, coverage_status
+from details import project_details, total_balance, coverage_status, native_markets
 
 
 class DetailTests(unittest.TestCase):
@@ -115,6 +115,26 @@ class DetailTests(unittest.TestCase):
         token=next(t for t in details['tokens'] if t['chain_id']==84532)
         self.assertIsNone(testnet['value_usd']);self.assertIsNone(token['value_usd'])
         self.assertEqual(token['balance'],'1')
+
+    def test_native_assets_show_the_saved_pools_of_their_wrapped_token(self):
+        wbnb='0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c';usdt='0x55d398326f99059fF775485246999027B3197955';cake='0x'+'c'*40;zero='0x'+'0'*40
+        catalog=[{'chain_id':56,'address':wbnb,'symbol':'WBNB'},{'chain_id':1,'address':'0x'+'e'*40,'symbol':'WETH'},{'chain_id':56,'address':usdt,'symbol':'USDT'}]
+        def pool(identity,pair,liquidity,observed='2026-11-13T00:00:00Z'):
+            return {'venue':'PancakeSwap','pool':identity,'url':'https://example.com/'+identity,'pair':[{'address':a,'symbol':s} for a,s in pair],'liquidity_usd':liquidity,'observed_at':observed}
+        tokens=[{'chain_id':56,'id':'56:'+wbnb.lower(),'market_pools':[pool('0x'+'1'*40,[(wbnb,'WBNB'),(usdt,'USDT')],36000000),pool('0x'+'2'*40,[(wbnb,'WBNB'),(cake,'Cake')],None)]},
+                {'chain_id':56,'id':'56:'+cake,'market_pools':[pool('0x'+'3'*40,[(cake,'Cake'),(wbnb.lower(),'WBNB')],900000000),pool('0x'+'4'*40,[(cake,'Cake'),(usdt,'USDT')],9000000)]},
+                {'chain_id':56,'id':'56:'+usdt.lower(),'market_pools':[pool('0x'+'1'*40,[(wbnb,'WBNB'),(usdt,'USDT')],37000000,'2026-11-14T00:00:00Z'),pool('0x'+'5'*40,[(usdt,'USDT'),(zero,'BNB')],500)]},
+                {'chain_id':1,'id':'1:0x'+'f'*40,'market_pools':[pool('0x'+'6'*40,[('0x'+'f'*40,'FFF'),(wbnb,'WBNB')],999999999)]},
+                {'chain_id':56,'id':'56:native'}]
+        rows,via=native_markets(56,tokens,catalog)
+        self.assertEqual([r['pool'][2] for r in rows],['1','5','2'],'Largest first; unknown liquidity last; other chains excluded.')
+        self.assertEqual(rows[0]['liquidity_usd'],37000000,'The newest observation of one pool wins.')
+        self.assertNotIn('3',[r['pool'][2] for r in rows],"An uncatalogued token's reported liquidity is not a native market.")
+        self.assertEqual(via,{'symbol':'WBNB','address':wbnb.lower()})
+        self.assertEqual(len(native_markets(56,tokens,catalog,limit=2)[0]),2)
+        # A chain without a catalogued wrapped token claims no wrapper and no market.
+        self.assertEqual(native_markets(8217,[{'chain_id':8217,'market_pools':[pool('0x'+'7'*40,[('0x'+'a'*40,'AAA'),(zero,'KAIA')],10)]}],catalog),([],None))
+        self.assertEqual(native_markets(56,[],catalog),([],None),'No saved pool means no market claim.')
 
     def test_total_balance_keeps_large_and_tiny_quantities(self):
         large='1234567890123456789012345678901234567890.123456789012345678'

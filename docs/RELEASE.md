@@ -1,9 +1,529 @@
 # Releases and preparation
 
-Published npm release: **1.1.0**. Prepared candidate: **1.5.0**.
+Published npm release: **1.5.0**. Prepared candidate: **1.12.1**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.12.1
+
+The web app uses more picture and fewer words. Each summary card draws its
+allocation as a donut with the largest share in the middle. A bar under the
+sell-out estimate shows how much of the wallet token value it reaches. Every
+wallet has a small face drawn from its address, so wallets can be told apart
+at a glance in the sidebar, lists and headers. Position rows show the token
+pair's artwork. Market rows draw each pool's size against the largest one. The
+token page shows the recorded price, and the All tokens table shows chain
+artwork.
+
+A native asset such as BNB or ETH now shows markets. It has no contract, so no
+pool was recorded under it and its page said none existed. The page now lists
+the saved pools of its wrapped token, such as WBNB, and direct pairs. Pools
+saved under another token count only when their other side is a catalogued
+token, so an unknown token's reported liquidity cannot stand in for the native
+market. No chain read is added.
+
+Two Mint Club staking pools that hold the same token and amount looked like
+one position shown twice. A direct read confirmed they are separate pools.
+Each row now shows its pool number. New position scans also record the pool's
+reward token from the pool read they already make, and the row names it.
+Earlier saved claims show the reward after their next position refresh.
+
+A browser check of every page and dialog looked for content that leaves its
+card, cut text, overlapping items and sideways scrolling at eleven widths from
+320 to 2560 px. It found and fixed a legend that left its chart at 1280 px.
+
+A second pass looked for text pressed into a column too narrow for one word.
+Position rows now answer to the width of their own list instead of the window,
+so they stay readable beside the sidebar and in a narrow window. On a phone a
+wallet name, a holder name and the token search each keep their own line, the
+wallet address is cut with an ellipsis next to its copy button, and a large
+pool shows a short liquidity figure such as $12.35M while the row title keeps
+the exact one. A token badge shows the first two letters of a symbol in any
+script, or one emoji, instead of a longer symbol cut on both sides.
+Review not selected. Earlier archives and operator wallet data remain
+preserved. Registry publication is operator-only.
+
+## Candidate 1.12.0
+
+The web app now shows one number per question. Home has one summary card with
+the total value, the sell-out estimate and the allocation bar. The same total
+is no longer repeated in a second card. Wallets and networks are ranked rows
+with share bars, and long lists open with the largest rows. A large portfolio
+no longer renders one card per wallet on Home.
+
+Token and network pages lead with the same summary card. Token holders are one
+line each, with route output and observation times on demand. Recorded markets
+are compact rows on the token page only. Holdings tables show one line per
+token and no longer repeat pool cards under every row. The All tokens page no
+longer repeats the portfolio allocation. A token held only in wallets shows no
+allocation panel. Narrow screens use two-line token rows without repeated
+labels. The sidebar marks routine wallet status with a dot and names only
+lookups that are running, waiting or failed.
+
+Method notes moved behind info buttons beside each figure. State that needs
+attention stays visible as chips: missing estimates, limited routes, unpriced
+assets, hidden or review assets and coverage gaps. Unknown values remain
+unknown. Saved research, API responses and research behavior are unchanged.
+
+Three defects found during this work are fixed. The local server accepted only
+five waiting connections, so a page load could lose a script or a stylesheet;
+it now accepts a full page load at once, and a test opens 48 connections at
+once. Paging a token's markets removed its allocation panel until the next
+navigation; a rebuilt page now restores it. The first-run checklist pushed its
+buttons off a phone screen; its stale phone rules are removed. Styles for
+retired components were removed after a pixel comparison of 21 captures showed
+no layout change.
+
+Review not selected. Earlier archives and operator wallet data remain
+preserved. Registry publication is operator-only.
+
+## Candidate 1.11.9
+
+A short chain recovery may need several bounded passes. Its first four passes
+can continue ahead of ordinary deep research, so a large wallet queue does not
+age the fresh block out of a non-archive RPC again. Holdings, prices and settings
+retain higher priority. Each pass still uses the same writer, task, time and RPC
+limits. Progressing recovery can continue immediately; unchanged work keeps its
+backoff and stall guard. The persisted hint must match the continuation fingerprint
+and expires after four slices across the job, rather than resetting for each
+chain. Earlier recoveries that encountered another pruned state receive one
+migration to this bounded scheduling mode. Other evidence and prior epochs stay
+preserved. Tests execute the actual worker ordering, reject stale/exhausted hints,
+and verify migration and unchanged-work stopping. Review not selected.
+
+## Candidate 1.11.8
+
+Superseded failures remain audit history and cannot trigger another chain rebuild.
+A regression covers an aged method failure already replaced by the gauge-registry
+migration, keeping recovery bounded across source upgrades. Source pointers retain
+the catalog's structured URL/revision format. Review not selected. Previous
+archives and research progress remain preserved.
+
+## Candidate 1.11.7
+
+Upgraded Aero Basic and CL gauge discovery uses the official per-chain
+FactoryRegistry `targetToGauge(pool)` mapping. New Basic pools do not expose the
+legacy pool-level gauge accessor. Canonical deployment records cover Base,
+Ethereum, OP Mainnet, Arbitrum, Robinhood and Ink. A pool without a gauge still
+has its loose LP balance checked. Affected earlier checkpoints receive one
+compatible chain rebuild at a fresh pin, preserving other chains, task IDs and
+dated prior evidence. Tests verify Basic reserve shares, CL beneficiary ownership,
+zero-gauge loose holdings and migration of the incorrect accessor's failure.
+Legacy Aerodrome continues to use its own voter and Sugar paths. Request and
+writer limits are unchanged. Review not selected; prior archives stay immutable.
+
+## Candidate 1.11.6
+
+Long multi-wallet queues can outlive an RPC's historical-state window. A pruned
+chain is rechecked once at a fresh block, with its earlier claim observations
+retained and dated until fresh checks finish. The retry rebuilds that chain's
+inventory, ownership counters and negative evidence without mixing block epochs.
+Other chains and prior snapshot files stay intact. That chain takes priority
+within its normal bounded slices; ordinary transport errors and recent generic
+method failures do not repin. A still-unavailable source stays partial after the
+single retry. Legacy aged method failures also receive this bounded recovery.
+Live diagnosis distinguished a successful fresh hash-pinned read from an
+unavailable older state. The writer, request and slice limits remain unchanged.
+Review not selected; previous archives remain immutable.
+
+## Candidate 1.11.5
+
+Completed task payloads release cumulative NFT pagination frontiers. Pending
+and failed task arguments remain available for continuation and bounded rechecks.
+A 64-page / 1,024-ID history regression keeps the checkpoint below 200KB while
+retaining serial requests. This prevents repeated copies of the full ID and page
+history without adding provider calls or dropping saved positions. Earlier
+archives stay immutable. Review not selected.
+
+## Candidate 1.11.4
+
+A verified zero balance, closed liquidity position or changed NFT owner retires
+that specific prior claim even when another read in its source fails. Unknown
+claims still retain earlier evidence. The checkpoint records failed task indices
+and safe error categories for bounded follow-up verification. Incomplete holdings
+discovery remains an explicit LP/vault inventory gap, even when the attempted
+contract reads succeed. Tests separate a
+checked-empty pool from an unavailable pool in the same staking contract, and a
+transferred NFT from an unresolved owner read. No extra provider calls are added.
+Review not selected; earlier archives remain immutable.
+
+## Candidate 1.11.3
+
+Staking evidence links use Mint Club's supported network-name routes. Earlier
+numeric routes are normalized in saved-data views. Excluded positions retain
+their project name and artwork when absent from allocation groups. Platform scan
+buttons also inspect the merged job list, including queued work present in recent
+history rather than the small active-job summary. Unsupported pair factories no
+longer cause unnecessary per-token LP probes. These changes add no provider work
+to page reads. Desktop and 320px synthetic acceptance verifies exclusions, artwork
+and no horizontal overflow. Review not selected.
+
+## Candidate 1.11.2
+
+Portfolio position admission now queues every registered wallet behind active
+holdings work instead of permanently skipping busy wallets. Duplicate covering
+position scans coalesce; an explicit full scan can follow a known-only scan.
+V4 owner transport failures stay partial and retain earlier evidence. Excluded
+receipt tokens remain excluded after decoding, including staked receipts without
+a loose wallet balance. Position cards explain exclusions. Operator-retired
+networks stay outside new position research and valuation. Raw inputs for
+principal calculations are saved without adding provider requests, allowing
+independent offline quantity verification.
+
+Regression coverage includes busy-wallet batch admission, full/known mode
+coalescing, failed V4 ownership with zero direct inventory, excluded custodial
+receipts and retired network filtering. Review not selected. Earlier archives
+remain immutable; registry publication remains an operator action.
+
+## Candidate 1.11.1
+
+Kira records read-only protocol positions alongside direct holdings. Supported
+paths cover verified lpTOKEN vault shares, Hunt Factory NFT HUNT backing,
+Aeromax-attributed Aero positions, Uniswap V2/V3/V4, legacy/new Aerodrome basic
+and concentrated pools and gauges, PancakeSwap V2/V3 LPs and configured farms,
+and Mint Club staking including older deployment windows. Mint Club bonding-curve
+tokens are classified from existing saved ownership rather than adding shared
+curve reserves. Unsupported custodians, ALM wrappers, lending/debt, Infinity,
+unclaimed fees/rewards and complete exit proceeds remain outside this inventory.
+
+Home, folder, wallet, network and token views show exclusive known-value platform
+allocation. LP receipts and decoded underlying assets count once; Aeromax is an
+exclusive application label for an Aerodrome claim, not an additional deposit.
+Token allocation includes only that underlying's portion. Cards retain quantity,
+block, source, position and price clocks; missing prices remain unknown. Official
+product artwork identifies the platforms. The bar uses SVG presentation attributes
+without weakening the existing content security policy. Platform selection filters
+the bounded position list while the allocation retains its stated portfolio scope.
+
+The first explicit scan discovers new positions. Subsequent default refreshes
+recheck recorded claims and wallet inventory, avoiding another full old-pool sweep.
+Find new positions requests full discovery explicitly. Global refresh preserves each wallet’s default, so unchecked wallets receive initial discovery while previously checked wallets refresh saved claims. The earlier 1.11.0 candidate archive remains frozen. Base legacy pool counts
+observed during acceptance were 30,002 basic and 3,684 CL pools. The official Sugar
+reader groups up to 128 old pools; empty pages do not end discovery. The two pools
+beyond Sugar's 30,000-iteration boundary use bounded direct reads. Other deployment
+catalogs and calls are versioned with their official sources.
+
+Position jobs share the sequential research writer, coalesce duplicate requests,
+yield to holdings/settings work, persist partial evidence and stop stalled retries.
+Each slice limits logical RPC batches to 48, direct multicalls to 32 contracts,
+tasks to 32 and a soft 25-second budget with a 50-second worker timeout. Cached
+metadata is shared across wallets, capped, and written only when changed at the
+slice boundary. Checkpoints coalesce small updates. Views and folder changes make
+no provider calls. RPC batching does not guarantee a specific provider-unit cost;
+large initial discovery can still take substantial time. Pause and resume remain
+available without discarding saved results.
+
+Validation includes exact CL/share math, custody and beneficiary checks, canonical
+factory/pool verification, V4 packed identity, receipt deduplication, token/folder
+scope, partial/empty distinction, durable recovery, refresh/discovery separation,
+30,002-pool pagination and 100-wallet/15,000-claim saved-view scale. Review not
+selected. Earlier archives and operator wallet data remain preserved. Registry
+publication is operator-only.
+
+## Candidate 1.10.0
+
+Manage wallets reuses the folder organizer's search, range selection, page
+selection and select-all-matches controls. Selected registrations can be removed
+in one reviewed action of up to 1,000 wallets. The confirmation lists every
+selected address with bounded pages. Removed wallets leave wallet lists and
+portfolio/folder totals. Removed wallets opens a searchable, paged recovery list
+that restores names, saved research and available previous folder membership.
+A wallet's action menu also offers removal.
+
+Removal is recoverable registration metadata, not file or key destruction.
+Selected wallets with queued or running work must be paused before removal;
+unrelated scans continue. The shared admission and registry locks, optimistic
+revision checks, atomic registry commit and durable receipts prevent partial
+selection updates or replaying obsolete removals. Old add receipts and engine
+publication cannot resurrect a removed registration. Viewing recovery records
+and restoring wallets require no providers or research worker. CLI and optional
+MCP expose the same typed actions; browser writes retain session/origin guards.
+
+Token pages show saved liquidity pools directly below the summary and risk
+controls. Cards show pair, venue/version/fee, recorded liquidity, source link and
+observation time. Bonding-curve backing has its own units and label. The view
+uses four cards per page, retains unknown values and adds no discovery requests.
+Pools are unioned from saved workspace records for the same chain/contract;
+folder balances and wallet counts remain scoped to their members. Shared market
+funds never enter wallet totals. Testnet liquidity is not displayed as USD.
+
+Regression coverage includes recoverable bulk removal, active-job exclusion,
+crash/replay recovery, cross-operation keys, stale and concurrent writes,
+1,000-wallet actions, bounded recovery pages, full-input metadata preservation,
+global market/folder balance separation, unsafe links and paged market cards.
+`npm test` passes 352 root and 80 viewer Python tests plus 48 JavaScript suites
+and syntax checks. Browser acceptance removes and restores 110 synthetic wallets
+across pages, preserves names, folder membership and research, and checks paged
+pool cards plus 390px and 320px layouts. Actual registrations are not removed.
+Review not selected. Earlier packages and local wallet data remain preserved.
+Registry publication is operator-only.
+
+## Candidate 1.9.3
+
+BNB Chain pools indexed under PancakeSwap were visible but excluded by the
+sell-quote adapter allowlist. PancakeSwap V2 and V3 now verify their official
+factory mappings at the holding block. V2 uses its 0.25% fee; V3 uses Pancake's
+own QuoterV2 and fee tier. Infinity and StableSwap remain unsupported.
+
+The upgraded Aero Basic and Slipstream factories are separate from legacy
+Aerodrome. The catalog records official deployment sources and revisions for
+Base, Ethereum, OP Mainnet, Arbitrum, Robinhood and Ink. Basic pools use the
+official Metaquoter with total contextual fees and its pause/registry checks.
+Slipstream verifies signed tick spacing and quotes its exact pool through that
+Metaquoter. Price-limit outputs cannot count as full-input estimates. Dynamic
+fees are included in the read context; execution-time priority-fee MEV tax,
+caller discounts, gas and transfer restrictions can change actual proceeds.
+
+Discovery adds bounded common-quote factory checks, with at most 12 additional
+ordinary holdings per invocation and a shared maximum 60-second discovery
+budget. Quotes retain the 12-asset, 20-second limit, quantity recheck, negative
+cache and explicit refresh trigger. Views launch no provider work. Unknown
+outputs remain unknown. Earlier frozen packages and wallet history are kept.
+
+Sources: [Pancake V2 deployments](https://developer.pancakeswap.finance/contracts/v2/addresses),
+[Pancake V3 deployments](https://developer.pancakeswap.finance/contracts/v3/addresses),
+[Aero Basic deployments](https://github.com/dromos-labs/metadex-public/tree/2ce1816b20948c26a2eec52419c9eccac3857136/deployment-addresses),
+[Aero Slipstream deployments](https://github.com/dromos-labs/metadex-slipstream-public/tree/f99f2095918cab69eafeffa2c3d0a8762de737b7/deployment-addresses),
+and [Metaquoter interface](https://github.com/dromos-labs/metadex-slipstream-public/blob/f99f2095918cab69eafeffa2c3d0a8762de737b7/contracts/periphery/interfaces/IMetaquoter.sol).
+Review not selected. Registry publication is operator-only.
+
+## Candidate 1.9.2
+
+A final intermediate sell-route check could repeat indefinitely. Full asset
+budgets did not consume the retry limit, and repeated diagnostic strings
+changed the continuation fingerprint without adding provider evidence.
+
+Diagnostic messages are now bounded and normalized for continuation detection.
+A full 18-second asset budget without new facts counts toward the two-attempt
+limit, and every attempt is persisted. Short global slices and newly saved RPC
+or pool facts retain their resumable frontier. Exhausted checks finish unknown,
+never as a zero balance or a zero-value quote. Empty cached pool catalogs skip
+unnecessary nested pool verification. Completed amount-specific v2 checkpoints
+survive upgrades except Base assets affected by the v4 adapter correction.
+
+Regressions cover duplicate diagnostics, persisted deadline failures, short
+slices, successful intermediate prefixes, terminal pending flags, and selective
+checkpoint migration. Existing quotes and wallet records remain intact.
+Review not selected. Earlier frozen archives remain preserved; registry
+publication is operator-only.
+
+## Candidate 1.9.1
+
+Representative pool selection previously preferred address-based pools over v4
+pool IDs. Quick quotes also excluded v4 entirely. A liquid v4 market could
+therefore be skipped in favor of a tiny alternate pool, severely understating
+sell proceeds. Selection now prioritizes terminal outputs and recorded liquidity
+without favoring the pool address format.
+
+The Base adapter validates an initialized pool against the official StateView,
+recovers a hookless static-fee key only when its fields hash exactly to the pool
+ID, and uses the reviewed V4Quoter at the same block as the holding proof.
+The deployed quoter's verified source rejects incomplete input consumption.
+The bounded local key search adds no discovery requests. Other chains,
+unresolved keys and hooks remain unquoted. Native output uses the saved native
+price for that chain, preserving its independent observation time. Quotes remain
+indicative, gas-excluded and execution-unverified.
+
+A valid quote from a tiny alternate route stays visible with a Limited routes
+label when a much larger known market remains unquoted. A newer balance proof
+that differs from the saved quantity invalidates the old full-balance quote and
+asks for holdings refresh. Quantity reuse cannot resurrect that invalid quote.
+The quick collector retains its 12-asset and 20-second limits, negative cache,
+exact balance check and read-only calls. No automatic research is added.
+
+References: [official v4 deployments](https://developers.uniswap.org/docs/protocols/v4/deployments),
+[PoolId hashing](https://github.com/Uniswap/v4-core/blob/main/src/types/PoolId.sol),
+and the Base quoter's [verified deployed sources](https://sourcify.dev/server/v2/contract/8453/0xE1A6C5803e3c44368b171BD680c7D32dfc92CA47?fields=sources).
+Regression coverage includes a liquid v4 market beside a dust alternate pool,
+key/direction/pin validation, native output prices, old-quoter rejection,
+checkpoint reuse and stale-quantity invalidation. Review not selected.
+Earlier frozen archives remain preserved; registry publication is operator-only.
+
+## Candidate 1.9.0
+
+The local workspace shares a readable system-font scale, with 17px body text,
+15px controls, 13–14px supporting text and responsive headings. Consistent SVG
+icons, 44px controls, aligned chevrons and selection marks replace mismatched
+button geometry. Mobile navigation and current-work summaries use less space.
+No external fonts or design dependencies are added.
+
+Home, wallet, token and network summaries emphasize values and visual status.
+Sell estimates retain missing counts, market-reference labels and expandable
+liquidity/gas context. Network coverage uses individual status tiles and a
+compact meter. A complete discovery response with failed RPC reads remains
+marked for review rather than shown as a completed balance check.
+
+Activity adds visual status summaries above its existing filters and task
+history. Settings show the current connection first, with network references
+and optional agent tools in separate tabs. Closing connection guidance no
+longer reloads and discards unsaved network edits. Token filters put advanced
+choices in a disclosure. Wallet addition starts with public address or browser
+wallet; local wallet options expand separately. History, comparison, names,
+search and folder dialogs share the same spacing and controls.
+
+The Alchemy guide uses a three-step layout with a fixed command-copy action.
+API keys still enter only through the private terminal prompt. Viewing saved
+records, opening settings and changing folders never start provider research.
+Financial calculations, source timestamps and unknown values are preserved.
+
+References: Lazyweb's public [banking balance and transaction patterns](https://design.lazyweb.com/blog/banking-home-balance-and-transaction-states)
+and Apple's [typography guidance](https://developer.apple.com/design/human-interface-guidelines/typography).
+The scale is adapted for Kira, not claimed as a measurement of apple.com.
+Authenticated Lazyweb search and Agentic Search finalization were unavailable;
+no private research resource is claimed. Browser acceptance uses isolated empty
+and 110-wallet fixtures, including 320px and 390px layouts. Review not selected.
+Earlier frozen candidates remain preserved. Registry publication is operator-only.
+
+## Candidate 1.8.1
+
+Folder management now uses a wide organizer with folder navigation beside a
+searchable wallet list. Checkboxes select wallets for a move, independently of
+current membership. Selection survives folder, search and page changes. Choose
+a destination and explicitly move the selected wallets in one metadata action.
+Wallets already at the destination are excluded from that action.
+
+New folders use a small name dialog and become the selected destination without
+losing wallet selection. Rename and remove actions sit in the folder heading.
+The selection count, destination and move action remain visible while scrolling;
+mobile uses a horizontal folder strip and a fixed footer. The list renders at
+most 50 rows, with page and matching-result selection, an optional Shift range
+and a 1,000-wallet action limit. Concurrent edits preserve selection and require
+loading the latest folders before a move. No provider work is added.
+
+Reference: Lazyweb's public [Dropbox screen library](https://design.lazyweb.com/company/dropbox)
+provided file-list, search and creation examples. Authenticated screen search
+and Agentic Search finalization were unavailable, so no private research resource
+is claimed. Kira's bulk-move flow is an implementation decision. Browser checks
+use an isolated 110-wallet fixture and never reorganize the operator's wallets.
+Review not selected. Earlier frozen archives are preserved; registry publication
+remains an operator action.
+
+## Candidate 1.8.0
+
+Find wallet opens a keyboard-accessible lookup by saved name, tag or public
+address, from any screen. Matching stays local to the loaded wallet directory,
+prioritizes exact matches in one linear pass and renders at most 20 results.
+It includes wallets awaiting their first analysis and searches across folders.
+
+Wallets can belong to one named folder or Unfiled. Folder metadata is stored
+separately from the wallet registry, names, research snapshots and credentials.
+Creation, rename, individual moves and bulk membership changes apply immediately
+without launching research. Atomic metadata commits retain their last receipt
+for crash recovery, and revision checks prevent stale drafts overwriting newer
+organization. Removing a folder moves its wallets to Unfiled and keeps research.
+
+Folder overview, token catalogue, token detail and network detail use only that
+folder's cached saved positions. Existing policy exclusions, testnet rules,
+unknown values and dated independent sell observations remain unchanged.
+Token visibility preferences still apply across the workspace. Folder research
+buttons freeze the selected wallet set at admission and reuse the existing
+sequential queue. All wallets keeps the original global controls.
+
+Folder aggregates are lazy and cached for at most eight recently used scopes
+per published-data revision. They reuse projected records, with no provider
+calls or snapshot parsing on ordinary scope switches. Bulk management renders
+50 rows at a time, preserves selection across searches and pages, and saves
+membership in one metadata operation. Existing research continues independently.
+
+Verification covers synthetic 100-wallet / 15,000-plus-position scale, cached reads,
+null valuations, membership moves, receipt recovery, stale/concurrent edits,
+scoped batch replay and protected HTTP writes. CLI/MCP expose folder metadata
+and saved statistics through the installed tool catalogue. Review not selected.
+Earlier frozen archives remain preserved. Registry publication is operator-only.
+
+## Candidate 1.7.1
+
+Worker launch admission is bounded to one active worker and one waiting
+successor. A reservation lock transfers to the child until it acquires the
+worker lease. Repeated or concurrent submissions reuse that waiting successor;
+they no longer create one sleeping process per request. A successor still
+handles the boundary where new work arrives as the current worker exits.
+Process exit releases reservations automatically. Existing research and older
+workers remain untouched during local adoption. Synthetic process acceptance
+covers concurrent submissions, lock handoff and a terminated waiting successor.
+The frozen 1.7.0 archive remains preserved; 1.7.1 is the current candidate.
+Review not selected. Registry publication remains an operator action.
+
+## Candidate 1.7.0
+
+The workspace now shares a compact information hierarchy across Home, wallet,
+token and network pages. Portfolio and sell estimates sit together. Wallet
+search works by exact address fragments, names and tags in navigation and Home.
+Mobile wallet navigation collapses after selection. Token filters have a clear
+reset that retains the chosen Portfolio / Needs review / Hidden membership.
+
+Token holders form connected rows with optional position evidence. Contract
+identity remains visible and copyable. Routine valuation controls and market
+details expand on demand; saved warnings and excluded assets open their risk
+panel by default. Expanded evidence survives published-data refreshes. Network
+views separate tokens from wallet allocation, with other wallets' incomplete
+coverage still available. No estimate arithmetic or uncertainty is changed.
+
+Settings separate data connection, RPC references and optional agent tools,
+preserving unsaved edits between keyboard-accessible tabs. Watching-wallet,
+browser-wallet, OWS, history and Alchemy setup surfaces use the same controls,
+spacing and responsive layout. Setup commands have a direct copy action.
+References from Coinbase, OpenSea and Notion were researched through Lazyweb.
+
+Wallet name edits previously waited behind long research jobs while the UI
+reported them saved on admission. The shared application service now completes
+these local edits immediately, under the existing job and registry locks,
+without acquiring the research writer. Older queued edits complete in order;
+idempotent receipts prevent a retry from restoring an obsolete name. UI success
+requires completion. Published data invalidates normally, updating titles,
+navigation and breadcrumbs while historical snapshots remain unchanged.
+
+Verification includes the complete Python/JavaScript suite, name edits with a
+held research lock, old queued edits and receipt recovery, protected HTTP writes,
+and desktop/mobile browser flows with an isolated 110-wallet portfolio. OWS key
+lifecycle testing is not selected. Review not selected. Registry publication
+remains an operator action. Earlier frozen archives remain preserved.
+
+## Candidate 1.6.2
+
+Activity separates current research from a compact, aligned history. Status
+filters, wallet selection and search work across the full saved history before
+pagination. Counts reflect that scope rather than the latest 50 loaded jobs.
+Partial results remain saved with gaps, outside failed/interrupted attention.
+
+A keyboard-accessible task detail panel holds timestamps, saved-result context,
+recovery actions, recorded stages and technical identifiers. Diagnostics stay
+out of default rows. Pause/resume still use the existing durable operations.
+Opening history, searching and viewing details never start research. Current
+step progress is explicitly separated from cumulative asset review counts.
+
+Design references: Databricks job runs and n8n executions, researched through
+Lazyweb. The existing Kira palette, type and controls remain shared. Desktop,
+mobile, keyboard, filters, paging, recovery and error states are verified.
+The frozen 1.6.0 and 1.6.1 archives are preserved. The 1.6.2 candidate
+also wires the current-work pause action to the durable operation handler;
+1.6.1 is superseded and must not be published. Review not selected.
+
+## Candidate 1.6.0
+
+Holdings refreshes retain completed sell analysis when exact recorded quantities
+match. Changed positions need updated estimates; incomplete balance checks stay
+unverified. Reused estimates preserve quote and price timestamps, and never
+replace fresh balances, prices or coverage. No historical snapshot is rewritten.
+
+Home, wallet and Activity share eligibility and show the last sell-analysis time.
+Home queues only changed or never-analyzed wallets and reports unchanged skips.
+The initial action is Calculate sell estimates; subsequent changes offer Update
+sell estimates. Completed partial analyses do not repeatedly prompt new work.
+CLI, MCP and browser admission share the same comparison.
+
+Published wallet projections are cached per wallet, with at most current and
+latest-analysis entries per registered wallet. A changed wallet does not force
+all wallets through raw snapshot projection again. Offline acceptance covers
+100 wallets and 15,000 positions, bounded responses and incremental invalidation.
+Admission uses compact stat-cached job headers rather than repeatedly decoding
+historical events. In a synthetic local benchmark with 100 wallets, 1,000 prior
+jobs and 100 events per prior job, admitting 100 refreshes fell from 52.8 seconds
+to 2.9 seconds. This measures queue admission, not provider research throughput.
+Provider research stays sequential and explicitly requested. Total scan time,
+provider quotas and retained disk history still grow with the portfolio.
+Review not selected. Registry publication remains an operator action.
 
 ## Candidate 1.5.0
 

@@ -7,7 +7,7 @@ const pendingActions=new Set();
 const scanBusyJobs=new Set();
 let scanAnnouncement='';
 let observedResearchStates=new Map();
-const jobLabels={'wallet.add':'Wallet research','wallet.refresh':'Holdings refresh','prices.refresh':'Price refresh','wallet.setTags':'Wallet names','settings.rpc':'RPC settings','settings.discovery':'Token discovery','settings.provider':'Data provider connection','settings.importEnv':'Local connection setup','settings.h402':'h402 preference'};
+const jobLabels={'wallet.add':'Wallet research','wallet.refresh':'Holdings refresh','positions.refresh':'Platform positions','prices.refresh':'Price refresh','wallet.setTags':'Wallet names','settings.rpc':'RPC settings','settings.discovery':'Token discovery','settings.provider':'Data provider connection','settings.importEnv':'Local connection setup','settings.h402':'h402 preference'};
 const stageLabels={queued:'Waiting to start',starting:'Opening saved evidence',registered:'Wallet registered',discovery:'Token discovery',chain:'Checking on-chain holdings',onchain_progress:'Reading on-chain records',first_evidence:'First results available',dex_discovery:'Checking markets',token_images:'Preparing token artwork',published:'Evidence saved',failed:'Research stopped',stopped:'Research stopped',interrupted:'Ready for recovery'};
 function researchStage(event) {
   if(event.stage==='price_refresh')return ({native:'Checking native asset prices',markets:'Checking market prices',index:'Checking indexed prices',curves:'Checking curve prices',discovery:'Finding additional markets',reserves:'Checking reserve prices',quotes:'Checking sale estimates',artwork:'Updating token artwork',saving:'Saving price observations'})[event.context?.phase]||'Refreshing prices';
@@ -15,7 +15,7 @@ function researchStage(event) {
   if(event.stage==='research_paused')return 'Partial results saved · research continues';
   const label=stageLabels[event.stage]||event.stage;
   if(event.stage!=='onchain_progress')return label;
-  const operations={balances:'Checking token balances',registry:'Discovering Mint Club tokens',metadata:'Reading token details',curves:'Checking curve backing',markets:'Checking markets',reserves:'Checking reserve prices',mintclub_membership:'Checking Mint Club membership',history:'Discovering transfer history',market_discovery:'Finding token markets',factory_queries:'Finding pools',pool_checks:'Verifying pools',cashout_routes:'Checking sell estimates',asset_review:'Saving asset checks'};
+  const operations={positions:'Checking platform positions',balances:'Checking token balances',registry:'Discovering Mint Club tokens',metadata:'Reading token details',curves:'Checking curve backing',markets:'Checking markets',reserves:'Checking reserve prices',mintclub_membership:'Checking Mint Club membership',history:'Discovering transfer history',market_discovery:'Finding token markets',factory_queries:'Finding pools',pool_checks:'Verifying pools',cashout_routes:'Checking sell estimates',asset_review:'Saving asset checks'};
   const counts=event.counts||{},context=event.context||{};
   const chain=(typeof state==='undefined'?[]:state?.wallets||[]).flatMap(w=>w.chains||[]).find(c=>c.id===context.chain_id);
   return (context.operation==='asset_inventory'?'Saving discovered asset counts':operations[context.operation]||label)+(context.chain_id?' · '+(chain?.name||'network '+context.chain_id):'')+(context.provider==='etherscan_keyless_erc1155_id0'?' · ERC1155 ID0':'');
@@ -33,10 +33,18 @@ function scanButton(action,id,label,primary=false,disabled=false) {
   const busy=scanBusyJobs.has(id);
   return `<button type="button" class="${primary?'primary':'quiet'}-button" data-job-action="${action}" data-job-id="${escapeHTML(id)}" ${disabled||busy||!jobsConnected?'disabled':''}>${escapeHTML(busy?(action==='cancel'?'Pausing…':action==='deepen'?'Starting…':'Resuming…'):label)}</button>`;
 }
+function sellAnalysisNote(job){
+  const key=String(job.input.wallet||job.input.address||'').toLowerCase(),wallet=state?.wallets.find(w=>w.key===key);
+  const saved=wallet?.sell_analysis,session=wallet&&KiraView.researchSession(jobList,wallet);
+  if(!saved?.last_analyzed_at||session?.job.job_id!==job.job_id)return '';
+  const label=saved.status==='changed'?'Holdings changed':saved.status==='current'?'Holdings unchanged · saved estimates retained':saved.status==='unverified'?'Some quantities unverified':'Saved estimates available';
+  return `<p class="job-saved">${escapeHTML(label)} · Last sell analysis <time datetime="${escapeHTML(saved.last_analyzed_at)}" title="${escapeHTML(saved.last_analyzed_at)}">${stamp(saved.last_analyzed_at)}</time></p>`;
+}
 function jobControls(job) {
   if(!localSession?.controls||state?.demo)return '';
-  if(KiraView.active(job))return scanButton('cancel',job.job_id,job.cancel_requested?(job.scan_policy?'Pausing…':'Stopping…'):job.scan_policy?'Pause scan':'Stop',false,job.cancel_requested);
-  const key=String(job.input.wallet||job.input.address||'').toLowerCase(),session=KiraView.researchSession(jobList,{key});
+  const resumable=job.scan_policy||job.operation==='positions.refresh';
+  if(KiraView.active(job))return scanButton('cancel',job.job_id,job.cancel_requested?(resumable?'Pausing…':'Stopping…'):resumable?'Pause scan':'Stop',false,job.cancel_requested);
+  const key=String(job.input.wallet||job.input.address||'').toLowerCase(),wallet=state?.wallets.find(w=>w.key===key)||{key},session=KiraView.researchSession(jobList,wallet);
   if(session?.job.job_id===job.job_id&&session.action)return scanButton(session.action,job.job_id,session.actionLabel,session.action==='deepen');
   if(!['wallet.add','wallet.refresh'].includes(job.operation)&&['interrupted','failed','cancelled'].includes(job.state))return scanButton('resume',job.job_id,'Resume saved work');
   return '';
@@ -58,21 +66,27 @@ function renderWalletScan() {
     return `${working?`<p><strong>${escapeHTML(jobStage(job))}</strong> · <span data-job-timer="${escapeHTML(job.job_id)}">${KiraView.jobTimeText(job,Date.now(),jobsConnected)}</span></p>${progress.count?`<p>${escapeHTML(progress.count)}</p>`:''}${progress.total&&!progress.cumulative?`<progress value="${progress.checked}" max="${progress.total}" aria-label="${escapeHTML(progress.count)}"></progress>`:''}${progress.eta?`<p data-job-estimate="${escapeHTML(job.job_id)}">${escapeHTML(progress.eta)}</p>`:''}`:''}${progress.assets?`<p>${escapeHTML(assetProgressText(progress))}</p>`:''}`;
   };
   const secondary=disconnected?'Connection lost':pending?jobStage(lookup.job):wallet.analysed_at?'Saved '+stamp(wallet.analysed_at):'';
-  card.innerHTML=`<div class="wallet-status-row"><details class="wallet-status-details" ${detailsOpen?'open':''}><summary id="wallet-scan-title"><span class="wallet-status-label"><span class="wallet-status-dot ${pending&&jobsConnected?'is-working':''}" data-mode="${status.mode}" aria-hidden="true"></span><span class="status-prefix">Holdings</span>${escapeHTML(status.label)}</span><span class="status-chevron" aria-hidden="true">⌄</span></summary><div class="wallet-status-body">
+  card.innerHTML=`<div class="wallet-status-row"><details class="wallet-status-details" ${detailsOpen?'open':''}><summary id="wallet-scan-title"><span class="wallet-status-label"><span class="wallet-status-dot ${pending&&jobsConnected?'is-working':''}" data-mode="${status.mode}" aria-hidden="true"></span><span class="status-prefix">Holdings</span>${escapeHTML(status.label)}</span><span class="status-chevron" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24" fill="none"><path d="m7 10 5 5 5-5"/></svg></span></summary><div class="wallet-status-body">
     <p>${escapeHTML(status.description)}</p>${progressHTML(lookup?.job)}
     ${disconnected?'<p>Connection lost. This is the last recorded status. Actions are available after reconnecting.</p>':''}
     ${wallet.analysed_at?'<p>See network coverage below for missing checks.</p>':''}
     <a class="text-link" href="#/activity">View activity ↗</a></div></details>
     ${secondary?`<span class="wallet-status-note">${escapeHTML(secondary)}</span>`:''}${lookupAction}</div>
     ${lookup?.failure?`<p class="status-failure">${escapeHTML(lookup.failure)}</p>`:''}`;
-  const optional=canWrite&&session?.action==='deepen',showDeep=deep&&session.mode!=='saved';analysis.hidden=!(optional||showDeep);
+  const saved=wallet.sell_analysis,optional=canWrite&&session?.action==='deepen',showDeep=deep&&session.mode!=='saved',showSaved=!!saved?.last_analyzed_at;
+  analysis.hidden=!(optional||showDeep||showSaved);
   analysis.dataset.mode=deep?session.mode:'ready';
   const job=session?.job,working=!!job&&KiraView.active(job);
   const action=canWrite&&session?.action?scanButton(session.action,job.job_id,session.actionLabel,optional,working&&job.cancel_requested):'';
-  analysis.innerHTML=optional||showDeep?`<div class="analysis-card-heading"><div class="analysis-copy"><div class="analysis-title-row"><h2 id="wallet-analysis-title" tabindex="-1">${escapeHTML(deep?session.title:'Your holdings are ready')}</h2>${optional?'<span class="analysis-optional">Optional analysis</span>':''}</div><p>${escapeHTML(deep?session.description:'Balances and available prices are saved. Explore additional sale and redemption estimates when you need them.')}</p></div>${action?`<div class="analysis-card-action">${action}</div>`:''}</div>
+  const analysisTitle=showDeep?session.title:saved?.status==='changed'?'Holdings changed':showSaved?'Saved sell estimates':'Calculate sell estimates';
+  const analysisDescription=showDeep?session.description:saved?.status==='changed'?saved.changed_count+' recorded position'+(saved.changed_count===1?'':'s')+' changed. Update estimates for the new quantities. Matching positions keep their dated estimates.':['holdings_pending','holdings_required'].includes(saved?.status)?'Saved estimates stay available while holdings are checked.':saved?.status==='unverified'?'Some quantities could not be verified. Matching positions keep their saved estimates. Refresh holdings to resolve the gaps.':showSaved?'Recorded quantities match the last analysis. Saved estimates are retained; market conditions may have changed.':'Optional sale and redemption estimates for your saved holdings.';
+  const shortDescription=showDeep?session.description:saved?.status==='changed'?saved.changed_count+' recorded positions changed.':saved?.status==='unverified'?'Some quantities are still unverified.':showSaved?'Your saved estimates are available.':'Estimate selling the balances you already saved.';
+  const analysisIcon=typeof workspaceIcon==='function'?workspaceIcon(showSaved&&saved.status==='current'?'check':saved?.status==='changed'?'warning':'chart'):'';
+  // One line: state, when it was saved, and the next action. The method sits behind the info tip.
+  const routine=showSaved&&saved.status==='current'&&!showDeep;
+  analysis.innerHTML=optional||showDeep||showSaved?`<div class="analysis-line"><span class="analysis-status-icon">${analysisIcon}</span><h2 id="wallet-analysis-title" tabindex="-1">${escapeHTML(analysisTitle)}</h2>${optional?'<span class="chip analysis-optional">Optional</span>':''}${routine?'':`<span class="analysis-note">${escapeHTML(shortDescription)}</span>`}${showSaved?`<time datetime="${escapeHTML(saved.last_analyzed_at)}" title="Last sell analysis ${escapeHTML(saved.last_analyzed_at)} · Gas excluded">${stamp(saved.last_analyzed_at)}</time>`:''}<div class="analysis-card-action">${action}<a class="text-link" href="#/activity">Activity ↗</a><details class="info-tip analysis-explainer" ${aboutOpen?'open':''}><summary id="analysis-explainer-toggle" aria-label="About sell-route analysis"></summary><div class="info-pop"><p>${escapeHTML(analysisDescription)}</p><p>Checks additional sale and redemption routes for your full balances. This is optional and can take time. It does not look for more tokens or execute trades. Estimates exclude gas and do not guarantee execution or the best price. You can pause and resume.</p></div></details></div></div>
     ${deep?`<div class="analysis-progress">${session.failure?`<p class="status-failure">${escapeHTML(session.failure)}</p>`:''}${progressHTML(job)}</div>`:''}
-    ${disconnected?'<p class="analysis-connection">Connection lost. Actions are available after reconnecting.</p>':''}
-    <div class="analysis-card-footer"><details class="analysis-explainer" ${aboutOpen?'open':''}><summary id="analysis-explainer-toggle">About sell-route analysis</summary><p>Checks additional sale and redemption routes for your full balances. This is optional and can take time. It does not look for more tokens or execute trades. Estimates exclude gas and do not guarantee execution or the best price. You can pause and resume.</p></details><a class="text-link" href="#/activity">Activity ↗</a></div>`:'';
+    ${disconnected?'<p class="analysis-connection">Connection lost. Actions are available after reconnecting.</p>':''}`:'';
   if(focused){const next=focused.job?[...card.querySelectorAll('[data-job-id]'),...analysis.querySelectorAll('[data-job-id]')].find(el=>el.dataset.jobId===focused.job):focused.id&&$(focused.id);(next||$('wallet-scan-title')).focus({preventScroll:true});}
   const announcement=wallet.key+':'+status.mode+':'+(deep?session.mode:'')+':'+disconnected;
   if(announcement!==scanAnnouncement){scanAnnouncement=announcement;$('scan-announcement').textContent=[status.label,deep&&session.title,session?.failure,disconnected&&'Connection lost'].filter(Boolean).join('. ');}
@@ -90,15 +104,18 @@ async function submitOperation(operation,input,{refresh=true}={}){
   try{
     const result=await localAPI('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schema_version:1,operation,input,idempotency_key:key})});
     sessionStorage.removeItem(storageKey);
+    if(operation==='wallet.remove'||operation==='wallet.restore'){if(refresh)await pollWorkspace();return result;}
+    if(operation.startsWith('folder.')){if(refresh)await pollWorkspace();return result;}
     if(operation.startsWith('token.')){if(refresh)await pollWorkspace();return result;}
-    const scanMessage=operation==='job.deepen'?'Sell-route analysis queued. Your holdings stay available.':operation==='job.resume'?'Scan queued to resume from saved work.':operation==='job.cancel'?'Pause requested. Saved results stay available.':null;
+    const scanMessage=operation==='job.deepen'?(['succeeded','partial'].includes(result.state)?'Holdings unchanged. Saved sell estimates retained.':'Sell estimate update queued. Your holdings stay available.'):operation==='job.resume'?'Scan queued to resume from saved work.':operation==='job.cancel'?'Pause requested. Saved results stay available.':null;
     if(result.batch_id){toast(result.jobs.length+' wallet jobs · '+result.skipped.length+' skipped · '+result.errors.length+' need attention');}
-    else toast(scanMessage||(operation.startsWith('settings.')?'Queued ':'Saved ')+(jobLabels[operation]||'job').toLowerCase());await pollJobs();await pollWorkspace();return result;
+    else toast(scanMessage||(operation==='wallet.setTags'?(result.state==='succeeded'?'Wallet names saved':'Wallet name change queued'):(operation.startsWith('settings.')?'Queued ':'Saved ')+(jobLabels[operation]||'job').toLowerCase()));await pollJobs();await pollWorkspace();return result;
   }finally{pendingActions.delete(fingerprint);}
 }
 function refreshControlState(){
   const enabled=localSession?.controls===true;
   if(typeof renderPortfolioActions==='function')renderPortfolioActions();
+  if(typeof CapitalUI!=='undefined')CapitalUI.render();
   $('research-controls').hidden=!enabled;$('empty-add-wallet').hidden=!enabled;$('wallet-actions').hidden=!enabled;
   $('wallet-secondary-actions').hidden=!enabled;
   $('wallet-tools').hidden=!enabled&&!currentWallet()?.report_url;
@@ -126,26 +143,7 @@ function renderJobs(){
   notifyResearchCompletions();
   const active=jobList.filter(KiraView.active).sort((a,b)=>(a.state!=='running')-(b.state!=='running'));
   $('activity-count').textContent=(workspaceStatus?.active_job_count??active.length)||'';
-  $('jobs-summary').textContent=active.length?active.length+' in progress':jobList.length+(jobList.length===1?' saved job':' saved jobs');
-  $('jobs-freshness').textContent=!localSession?.controls?'Activity needs a local control session.':!jobsConnected?'Reconnecting. Last recorded states shown.':lastJobsPoll?'Checked '+stamp(lastJobsPoll):'Loading saved jobs…';
-  const filter=$('job-filter').value;
-  const filtered=jobList.filter(j=>filter==='all'||(filter==='active'?KiraView.active(j):filter==='attention'?['partial','interrupted','failed'].includes(j.state):j.state===filter));
-  const history=selectedView==='activity'&&activityData;
-  const total=history?history.total:filtered.length;
-  const pages=Math.max(1,Math.ceil(total/20));jobsPage=Math.min(jobsPage,pages);
-  $('jobs-page').textContent=jobsPage+' / '+pages;$('jobs-prev').disabled=jobsPage===1;$('jobs-next').disabled=jobsPage===pages;
-  const rows=history?history.jobs:filtered.slice((jobsPage-1)*20,jobsPage*20);
-  $('jobs-list').innerHTML=rows.map(j=>{
-    const presentation=KiraView.jobPresentation(j,Date.now(),jobsConnected),progress=KiraView.jobProgress(j,Date.now(),jobsConnected);
-    const counts=j.events?.at(-1)?.counts||{},context=j.events?.at(-1)?.context;
-    const evidence=progress.count?(Number.isSafeInteger(counts.pending_ranges)?counts.pending_ranges+' block ranges still pending':''):[...Object.entries(counts).filter(([name])=>name!=='block_number').map(([name,count])=>`${name.replaceAll('_',' ')} ${count}`),...(context?.block_number?['block '+context.block_number]:[])].join(' · ');
-    const controls=jobControls(j);
-    const link=j.input.wallet||j.input.address;
-    const name=state?.wallets.find(w=>w.key===link?.toLowerCase())?.name||(j.operation==='wallet.add'?j.input.tag:null);
-    const recorded=(j.events||[]).map(event=>{const context=event.context;const detail=Object.entries(event.counts||{}).filter(([name])=>name!=='block_number').map(([name,value])=>name.replaceAll('_',' ')+': '+value).join(' · ');return `<li><strong>${escapeHTML(researchStage(event))}</strong><span>${stamp(event.observed_at)} · ${escapeHTML(detail)}${context?.block_number?' · block '+escapeHTML(context.block_number):''}</span></li>`;}).join('');
-    const stages=recorded?`<details class="job-stages"><summary>Recorded stages · ${j.events.length}</summary><ol>${recorded}</ol></details>`:'';
-    return `<article class="job-row"><div class="job-identity"><span class="job-state ${escapeHTML(j.state)}">${presentation.spinner?'<span class="spinner" aria-hidden="true"></span>':''}${escapeHTML(presentation.label)}</span><strong>${escapeHTML(jobLabels[j.operation]||j.operation)}</strong>${link?`<a href="#/wallet/${escapeHTML(link.toLowerCase())}">${escapeHTML(name||shortAddress(link))}</a>`:''}<p>${escapeHTML(jobStage(j))}${j.state==='partial'?' · coverage gaps remain':''}</p><p class="job-timer" data-job-timer="${escapeHTML(j.job_id)}">${KiraView.jobTimeText(j,Date.now(),jobsConnected)}</p>${progress.assets?`<p class="job-progress">${escapeHTML(assetProgressText(progress))}</p>`:''}${progress.count&&!progress.cumulative?`<p class="job-progress">${escapeHTML(progress.count)}</p>`:''}<p class="job-estimate" data-job-estimate="${escapeHTML(j.job_id)}">${escapeHTML(progress.eta)}</p>${progress.saved?`<p class="job-saved">${escapeHTML(progress.saved)}</p>`:''}${evidence?`<p class="job-evidence">${escapeHTML(evidence)}</p>`:''}${presentation.freshness?`<p class="job-freshness">${escapeHTML(presentation.freshness)}</p>`:''}${j.errors?.length?`<p class="job-error">${escapeHTML(KiraView.jobErrorMessage(j))}</p>`:''}${stages}<small>Last update ${stamp(j.updated_at)} · attempt ${j.attempt} · ${escapeHTML(j.job_id.slice(0,8))}</small></div><div class="job-actions">${controls}</div></article>`;
-  }).join('')||'<div class="empty"><h3>'+(!localSession?.controls?'Activity is not available in this session':'No jobs in this view')+'</h3><p>Research jobs appear here when a local action starts.</p></div>';
+  if(typeof renderActivity==='function')renderActivity();
   $('active-work').hidden=true;$('active-work').innerHTML='';
   renderActiveWork();
   if(typeof renderWallets==='function'&&state)renderWallets();
@@ -154,6 +152,7 @@ function renderJobs(){
 function tickJobTimers(){
   if(document.hidden)return;
   document.querySelectorAll('[data-job-timer]').forEach(node=>{const job=jobList.find(j=>j.job_id===node.dataset.jobTimer);if(!job)return;node.textContent=KiraView.jobTimeText(job,Date.now(),jobsConnected);});
+  document.querySelectorAll('[data-activity-duration]').forEach(node=>{const job=jobList.find(j=>j.job_id===node.dataset.activityDuration);if(job)node.textContent=KiraView.duration(KiraView.jobPresentation(job,Date.now(),jobsConnected).elapsed);});
   document.querySelectorAll('[data-job-estimate]').forEach(node=>{const job=jobList.find(j=>j.job_id===node.dataset.jobEstimate);if(job)node.textContent=KiraView.jobProgress(job,Date.now(),jobsConnected).eta;});
 }
 $('job-filter').addEventListener('change',()=>{jobsPage=1;loadActivity();});
@@ -164,21 +163,24 @@ function pendingWalletJob(wallet){return jobList.find(job=>KiraView.active(job)&
 function mergeJobs(){const rows=new Map();for(const job of [...recentJobs,...activeJobs,...walletJobs,...(activityData?.jobs||[])]){const prior=rows.get(job.job_id);if(!prior||(job.sequence??0)>=(prior.sequence??0))rows.set(job.job_id,job);}jobList=[...rows.values()].sort((a,b)=>b.created_at.localeCompare(a.created_at));}
 function renderActiveWork(){
   const all=jobList.filter(KiraView.active).sort((a,b)=>(b.state==='running')-(a.state==='running')||a.created_at.localeCompare(b.created_at)),active=all.slice(0,1),panel=$('active-work');
-  panel.hidden=!active.length;panel.innerHTML=active.map(job=>{
+  panel.hidden=!active.length||selectedView==='activity';panel.innerHTML=active.map(job=>{
     const name=state?.wallets.find(w=>w.key===String(job.input?.wallet||job.input?.address||'').toLowerCase())?.name||job.input?.tag||jobLabels[job.operation]||'Research';
     const p=KiraView.jobPresentation(job,Date.now(),jobsConnected);
     return '<div class="active-work-row"><a href="#/activity"><span>'+ (p.spinner?'<span class="spinner" aria-hidden="true"></span>':'')+'<strong>'+escapeHTML(name)+'</strong> · '+escapeHTML(jobStage(job))+'</span><small data-job-timer="'+escapeHTML(job.job_id)+'">'+escapeHTML(KiraView.jobTimeText(job))+'</small></a><div class="job-actions">'+jobControls(job)+'</div></div>';
-  }).join('')+(all.length>1?'<a class="text-link" href="#/activity">View '+(all.length-1)+' more wallet jobs in Activity ↗</a>':'');
+  }).join('')+(all.length>1?'<a class="text-link" href="#/activity">All tasks ('+all.length+') ↗</a>':'');
 }
 async function loadActivity(){
   if(!localSession?.controls)return;
   const epoch=++activityEpoch,page=jobsPage,filter=$('job-filter').value;
-  $('jobs-prev').disabled=true;$('jobs-next').disabled=true;
+  $('jobs-prev').disabled=true;$('jobs-next').disabled=true;$('research-jobs').setAttribute('aria-busy','true');
   try{
-    const result=await localAPI('/api/job-history?offset='+((page-1)*20)+'&limit=20&state='+encodeURIComponent(filter));
+    const wallet=$('activity-wallet').value,query=$('activity-query').value.trim();
+    const result=await localAPI('/api/job-history?offset='+((page-1)*20)+'&limit=20&state='+encodeURIComponent(filter)+(wallet&&wallet!=='all'?'&wallet='+encodeURIComponent(wallet):'')+(query?'&query='+encodeURIComponent(query):''));
     if(epoch!==activityEpoch||selectedView!=='activity')return;
-    activityData=result;mergeJobs();renderJobs();
-  }catch(error){if(epoch===activityEpoch){$('jobs-freshness').textContent=error.message;toast(error.message);}}
+    if(result.total&&result.offset>=result.total){jobsPage=Math.max(1,Math.ceil(result.total/20));return loadActivity();}
+    $('activity-load-error').hidden=true;activityData=result;mergeJobs();renderJobs();
+  }catch(error){if(epoch===activityEpoch){$('activity-load-error').hidden=false;$('activity-load-error-message').textContent=error.message;$('jobs-freshness').textContent='Unable to load activity';}}
+  finally{if(epoch===activityEpoch)$('research-jobs').setAttribute('aria-busy','false');}
 }
 async function loadWalletJobs(wallet){
   if(!localSession?.controls)return;
@@ -223,7 +225,7 @@ async function pollWorkspace(){
   finally{workspacePolling=false;scheduleWorkspacePoll();}
 }
 for(const button of document.querySelectorAll('[data-close-dialog]'))button.addEventListener('click',()=>button.closest('dialog').close());
-function openAdd(){if(!localSession?.controls)return;if(setupReadiness?.discovery_key_available!==true){openDataConnections();return;}if(!watchingSubmission)$('wallet-form-error').textContent='';if(typeof renderWatching==='function')renderWatching();$('wallet-dialog').showModal();if(typeof loadSetupReadiness==='function')loadSetupReadiness();}
+function openAdd(){if(!localSession?.controls)return;if(typeof FolderUI!=='undefined'&&!watchingSubmission)FolderUI.prepareAdd();if(setupReadiness?.discovery_key_available!==true){openDataConnections();return;}if(!watchingSubmission)$('wallet-form-error').textContent='';if(typeof renderWatching==='function')renderWatching();$('wallet-dialog').showModal();if(typeof loadSetupReadiness==='function')loadSetupReadiness();}
 $('open-wallet').addEventListener('click',openAdd);$('empty-add-wallet').addEventListener('click',openAdd);
 function formAction(form,error,action){
   form.addEventListener('submit',async e=>{e.preventDefault();error.textContent='';const buttons=[...form.querySelectorAll('button[type="submit"]')];if(buttons.some(b=>b.disabled))return;buttons.forEach(b=>b.disabled=true);
@@ -235,7 +237,10 @@ $('wallet-form').addEventListener('submit',async event=>{
   $('wallet-form-error').textContent='';
   try{
     const input=Object.freeze({...watchingRegistrationInput()});watchingSubmission=input;watchingSubmitting=true;renderWatching();
+    const folder=typeof FolderUI!=='undefined'?$('new-wallet-folder').value:null;
+    const folderRevision=state?.wallet_folders?.revision;
     await submitOperation('wallet.add',input);
+    if(typeof FolderUI!=='undefined')await FolderUI.afterAdd(input.address,folder,folderRevision);
     watchingSubmission=null;
     $('wallet-dialog').close();$('wallet-form').reset();watchingConnection.clearSelection();
     navigate('#/activity');
@@ -245,7 +250,7 @@ $('wallet-form').addEventListener('submit',async event=>{
 $('refresh-wallet').addEventListener('click',async()=>{if(setupReadiness?.discovery_key_available!==true){await openDataConnections(false,true,selectedWallet);return;}try{await submitOperation('wallet.refresh',{wallet:selectedWallet});}catch(error){toast(error.message);}});
 $('refresh-prices').addEventListener('click',async()=>{if(setupReadiness?.discovery_key_available!==true){await openDataConnections(false,true,selectedWallet);return;}try{await submitOperation('prices.refresh',{wallet:selectedWallet});}catch(error){toast(error.message);}});
 $('edit-tags').addEventListener('click',()=>{if(!currentWallet())return;$('tags-dialog').dataset.wallet=selectedWallet;$('tag-values').value=currentWallet().tags.join('\n');$('tags-error').textContent='';$('tags-dialog').showModal();});
-formAction($('tags-form'),$('tags-error'),async()=>{await submitOperation('wallet.setTags',{wallet:$('tags-dialog').dataset.wallet,tags:$('tag-values').value.split('\n').filter(t=>t.length)});$('tags-dialog').close();});
+formAction($('tags-form'),$('tags-error'),async()=>{const result=await submitOperation('wallet.setTags',{wallet:$('tags-dialog').dataset.wallet,tags:$('tag-values').value.split('\n').filter(t=>t.length)});if(result.state!=='succeeded')throw Error(result.errors?.at(-1)?.message||'Name change is queued. Check Activity before saving another change.');$('tags-dialog').close();});
 async function handleScanAction(event) {
   const button=event.target.closest('[data-job-action]');if(!button||button.disabled||!jobsConnected)return;
   const id=button.dataset.jobId,action=button.dataset.jobAction;
@@ -270,10 +275,11 @@ function connectionSummary(config) {
 function renderConnectionForm() {
   const available=connectionReadiness?.local_key_available===true&&$('discovery-key').value===connectionConfig?.discovery.key_env;
   const connected=available&&connectionReadiness?.discovery_key_available===true;
+  $('settings-title').textContent=connected?'Alchemy connection':'Connect Alchemy';
   $('provider-save').disabled=settingSaving||!available;
   $('provider-save').textContent=connected?'Done':'Connect Alchemy';
   $('settings-done').hidden=connected;
-  $('provider-key-status').textContent=connected?'Alchemy is connected. Holdings lookups will confirm access on each network.':available?'Local key found. Connect it to start.':'Run the command above, then check the connection.';
+  $('provider-key-status').textContent=connected?'Key ready on this computer. Network access is checked during research.':available?'Local key found. Connect it to start.':'Run the command in your terminal, then check the connection.';
   $('settings-refresh').hidden=!connectionWallet||!connected;
   $('settings-refresh').disabled=settingSaving||jobList.some(j=>KiraView.active(j)&&j.input?.wallet===connectionWallet);
 }
@@ -288,7 +294,7 @@ function loadRpcSettings(config){
   const rpc=config.rpc||{};
   rpcNetworks=config.rpc_networks||[];
   rpcRows=Object.entries(rpc.chains||{}).map(([chain_id,entry])=>({chain_id:Number(chain_id),url_env:entry.url_env||''}));
-  $('rpc-mode').value=rpc.mode||'public';$('rpc-priority').value=rpc.priority||'public_first';$('rpc-fallback').checked=rpc.allow_public_fallback!==false;
+  $('rpc-mode').value=rpc.mode||'public';$('rpc-reference-details').open=$('rpc-mode').value==='custom';$('rpc-priority').value=rpc.priority||'public_first';$('rpc-fallback').checked=rpc.allow_public_fallback!==false;
   $('rpc-network').innerHTML=rpcNetworks.map(network=>'<option value="'+network.chain_id+'">'+escapeHTML(network.name)+'</option>').join('');
   $('rpc-reference').value='';renderRpcRows();rpcLoaded=true;$('rpc-fields').disabled=false;
 }
@@ -312,9 +318,10 @@ async function saveRpcSettings(){
   catch(error){$('rpc-status').textContent='Could not confirm the settings result. Retry checks the same request.';throw error;}
   finally{rpcSaving=false;$('rpc-fields').disabled=!rpcLoaded;}
 }
-async function openWorkspaceSettings(){
+async function openWorkspaceSettings(section='data'){
   if(!localSession?.controls||rpcSaving)return;
   const revision=++workspaceSettingsRevision;
+  if(typeof setSettingsSection==='function')setSettingsSection(section);
   if(!$('workspace-settings-dialog').open)$('workspace-settings-dialog').showModal();
   rpcLoaded=false;$('rpc-fields').disabled=true;$('rpc-error').textContent='';$('rpc-status').textContent='';$('rpc-activity').hidden=true;
   $('workspace-data-summary').textContent='Checking the saved connection…';
@@ -343,7 +350,7 @@ async function openDataConnections(advanced = false, recommend = false, walletKe
   try {
     const [config, readiness] = await Promise.all([localAPI('/api/settings'), localAPI('/api/onboarding')]);
     if (revision !== connectionRevision || !$('settings-dialog').open) return;
-    connectionConfig = config; connectionReadiness = readiness;
+    connectionConfig = config; connectionReadiness = readiness;$('alchemy-setup-steps').open=!readiness.discovery_key_available;
     $('data-provider').value='alchemy';
     $('discovery-key').value = config.discovery.key_env;
     $('provider-status').textContent = pendingSetting ? 'A saved request is pending. Save again to check its result.' : 'Saved connection: '+connectionSummary(config);
@@ -393,7 +400,12 @@ $('wallet-discovery-settings').addEventListener('click',()=>openDataConnections(
 $('settings-done').addEventListener('click',()=>$('settings-dialog').close());
 $('workspace-settings-dialog').addEventListener('close',()=>{workspaceSettingsRevision++;});
 $('rpc-activity').addEventListener('click',()=>{$('workspace-settings-dialog').close();});
-$('settings-dialog').addEventListener('close',()=>{connectionRevision++; if ($('workspace-settings-dialog').open) openWorkspaceSettings();});
+$('settings-dialog').addEventListener('close',()=>{
+  connectionRevision++;
+  if ($('workspace-settings-dialog').open && connectionConfig) {
+    $('workspace-data-summary').textContent = connectionSummary(connectionConfig);
+  }
+});
 $('provider-recheck').addEventListener('click',async()=>{
   if(settingSaving||!connectionConfig||$('provider-recheck').disabled)return;
   const revision = connectionRevision; $('provider-recheck').disabled = true; $('settings-error').textContent = '';
@@ -436,7 +448,7 @@ function renderHistory(){
 }
 $('history-intermediate').addEventListener('change',renderHistory);
 $('view-history').addEventListener('click',async()=>{try{historyRows=await localAPI('/api/snapshots?wallet='+encodeURIComponent(selectedWallet));$('history-intermediate').checked=false;renderHistory();$('history-dialog').showModal();}catch(error){toast(error.message);}});
-formAction($('compare-form'),$('history-error'),async()=>{const comparison=await localAPI('/api/compare?before='+encodeURIComponent($('compare-before').value)+'&after='+encodeURIComponent($('compare-after').value));$('comparison-result').innerHTML=`<p>${escapeHTML(comparison.note)}</p><p>Coverage observations ${comparison.coverage_changed?'changed':'unchanged'} · native price references ${comparison.price_references_changed?'changed':'unchanged'}</p><div class="table-wrap"><table><thead><tr><th>Token / chain</th><th>Earlier balance</th><th>Later balance</th><th>Change</th></tr></thead><tbody>${comparison.positions.map(p=>`<tr><td>${escapeHTML(p.symbol||shortAddress(p.address))} · ${p.chain_id}<small>${escapeHTML(p.presence.replaceAll('_',' '))}${p.price_references_changed?' · price references changed':''}${p.valuation_method_changed?' · method changed':''}</small></td><td>${escapeHTML(p.before_balance??'Unknown')}</td><td>${escapeHTML(p.after_balance??'Unknown')}</td><td>${escapeHTML(p.balance_delta??'Unknown')}</td></tr>`).join('')}</tbody></table></div>`;});
+formAction($('compare-form'),$('history-error'),async()=>{const comparison=await localAPI('/api/compare?before='+encodeURIComponent($('compare-before').value)+'&after='+encodeURIComponent($('compare-after').value));$('comparison-result').innerHTML=`<p>Recorded balance observations. Missing records are unknown, not zero.</p><details class="comparison-note"><summary>How to read this comparison</summary><p>${escapeHTML(comparison.note)}</p></details><p>Coverage observations ${comparison.coverage_changed?'changed':'unchanged'} · native price references ${comparison.price_references_changed?'changed':'unchanged'}</p><div class="table-wrap"><table><thead><tr><th>Token / chain</th><th>Earlier balance</th><th>Later balance</th><th>Change</th></tr></thead><tbody>${comparison.positions.map(p=>`<tr><td>${escapeHTML(p.symbol||shortAddress(p.address))} · ${p.chain_id}<small>${escapeHTML(p.presence.replaceAll('_',' '))}${p.price_references_changed?' · price references changed':''}${p.valuation_method_changed?' · method changed':''}</small></td><td>${escapeHTML(p.before_balance??'Unknown')}</td><td>${escapeHTML(p.after_balance??'Unknown')}</td><td>${escapeHTML(p.balance_delta??'Unknown')}</td></tr>`).join('')}</tbody></table></div>`;});
 window.addEventListener('hashchange',()=>{activityEpoch++;walletJobsEpoch++;activityData=null;walletJobs=[];mergeJobs();refreshControlState();renderJobs();});
 document.addEventListener('visibilitychange',()=>{clearTimeout(workspaceTimer);if(!document.hidden)pollWorkspace();});
 pollWorkspace();

@@ -40,6 +40,120 @@ class JobFixtures:
         atomic(self.root/job['checkpoint']/'run.json',{'wallet_address':ADDRESS,**({'completed_at':'now'} if completed_manifest else {'status':'running'})})
         registry=json.loads((self.root/'wallets.json').read_text());registry['wallets'][0]['latest_snapshot']={'directory':job['checkpoint']};atomic(self.root/'wallets.json',registry)
 class JobsTest(JobFixtures, unittest.TestCase):
+    def test_worker_launches_bound_waiters_and_recover_a_lost_successor(self):
+        import fcntl,time
+        children=[];spawn=subprocess.Popen
+        def capture(*args,**kwargs):
+            child=spawn(*args,**kwargs);children.append(child);return child
+        def held(path):
+            with path.open('a') as file:
+                try:fcntl.flock(file,fcntl.LOCK_EX|fcntl.LOCK_NB);return False
+                except BlockingIOError:return True
+        def until(check):
+            deadline=time.monotonic()+5
+            while not check():
+                if time.monotonic()>deadline:self.fail('Worker lock handoff timed out')
+                time.sleep(.01)
+        try:
+            with (self.root/'.analysis.lock').open('a') as writer,patch('kira_jobs.subprocess.Popen',side_effect=capture):
+                fcntl.flock(writer,fcntl.LOCK_EX)
+                self.assertTrue(self.store.launch())
+                until(lambda:held(self.root/'.job-worker.lock') and not held(self.root/'.job-launch.lock'))
+                self.assertTrue(self.store.launch())
+                with ThreadPoolExecutor(max_workers=8) as pool:self.assertFalse(any(pool.map(lambda _:self.store.launch(),range(24))))
+                self.assertEqual(len(children),2)
+                children[1].terminate();children[1].wait(timeout=5)
+                self.assertTrue(self.store.launch());self.assertEqual(len(children),3)
+                # A request admitted while the current worker is blocked is
+                # retained even though subsequent launches are coalesced.
+                job=self.store.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Saved after handoff']},'worker-handoff'))
+                self.assertFalse(self.store.launch())
+            for child in children:child.wait(timeout=10)
+            self.assertEqual(self.store.get(job['job_id'])['state'],'succeeded')
+            self.assertEqual(self.store.wallet(ADDRESS)['tags'],['Saved after handoff'])
+            self.assertFalse(held(self.root/'.job-launch.lock'))
+        finally:
+            for child in children:
+                if child.poll() is None:child.terminate();child.wait(timeout=5)
+
+    def test_names_save_immediately_during_research_and_keep_saved_evidence(self):
+        from kira_service import Application
+        import fcntl
+        from viewer.test_viewer import fixture_snapshot
+        snapshot=fixture_snapshot();snapshot['wallet_address']=ADDRESS
+        atomic(self.root/'snapshots/prior/results.json',snapshot)
+        app=Application(self.root)
+        active=self.running()
+        previous=(self.root/'snapshots/prior/results.json').read_bytes()
+        with (self.root/'.analysis.lock').open('a') as writer:
+            fcntl.flock(writer,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            with patch.object(app.jobs,'launch') as launch,patch.object(app.jobs,'execute',side_effect=AssertionError('No research')):
+                result=app.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Savings','Main']},'immediate-name'))
+                self.assertEqual(result['state'],'succeeded');launch.assert_not_called()
+        self.assertEqual(app.jobs.wallet(ADDRESS)['tags'],['Savings','Main'])
+        self.assertEqual(app.jobs.get(active['job_id'])['state'],'running')
+        self.assertEqual((self.root/'snapshots/prior/results.json').read_bytes(),previous)
+        self.assertEqual(app.views.wallet(ADDRESS)['name'],'Savings')
+        repeated=app.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Savings','Main']},'immediate-name'))
+        self.assertEqual(repeated['job_id'],result['job_id'])
+        self.assertEqual(repeated['attempt'],1)
+
+    def test_pending_names_finish_in_order_without_overwriting_a_newer_edit(self):
+        from kira_service import Application
+        earlier=self.store.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Earlier']},'earlier-name'))
+        later=self.store.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Later']},'later-name'))
+        app=Application(self.root)
+        result=app.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Final']},'final-name'))
+        self.assertEqual(result['state'],'succeeded')
+        for job in (earlier,later):self.assertEqual(self.store.get(job['job_id'])['state'],'succeeded')
+        self.assertEqual(self.store.wallet(ADDRESS)['tags'],['Final'])
+        app.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Earlier']},'earlier-name'))
+        self.assertEqual(self.store.wallet(ADDRESS)['tags'],['Final'])
+        app.jobs.worker()
+        self.assertEqual(self.store.wallet(ADDRESS)['tags'],['Final'])
+
+    def test_names_recover_a_committed_receipt_without_reapplying_an_old_name(self):
+        from kira_service import Application
+        old=self.store.submit(self.request('wallet.setTags',{'wallet':ADDRESS,'tags':['Earlier']},'crashed-name'))
+        receipt=self.store.set_tags(old)
+        atomic(self.store.jobs/'results'/(old['job_id']+'.json'),receipt)
+        self.store.set_tags({**old,'input':{'wallet':ADDRESS,'tags':['Newer external edit']}})
+        app=Application(self.root)
+        self.assertEqual(app.jobs.finish_tag_edits(),[old['job_id']])
+        self.assertEqual(self.store.wallet(ADDRESS)['tags'],['Newer external edit'])
+        self.assertEqual(self.store.get(old['job_id'])['state'],'succeeded')
+
+    def test_history_counts_and_search_cover_all_pages_without_provider_work(self):
+        template=self.store.submit(self.request())
+        for index in range(65):
+            identity=str(uuid.uuid4())
+            job={**template,'job_id':identity,'checkpoint':'snapshots/jobs/'+identity,'key_hash':digest('history-'+str(index)),
+                 'state':'partial' if index%2 else 'succeeded','created_at':f'2026-10-03T00:00:{index%60:02d}Z'}
+            atomic(self.store.jobs/(identity+'.json'),job)
+        page=self.store.page(limit=20,state='succeeded')
+        self.assertEqual(len(page['jobs']),20);self.assertEqual(page['total'],65)
+        self.assertEqual(page['counts']['succeeded'],65);self.assertEqual(page['counts']['active'],1)
+        self.assertEqual(page['counts']['attention'],0)
+        self.assertEqual(self.store.page(query='ORIGINAL',state='succeeded')['total'],65)
+        self.assertEqual(self.store.page(query='holdings',state='succeeded')['total'],65)
+        self.assertEqual(self.store.page(query='Holdings refresh',state='succeeded')['total'],65)
+        self.assertEqual(self.store.page(query=template['job_id'])['total'],1)
+        self.assertEqual(self.store.page(query='no such wallet')['counts']['all'],0)
+        with self.assertRaises(JobError):self.store.page(query='x'*201)
+        with self.assertRaises(JobError):self.store.page(query=None)
+
+    def test_status_includes_running_work_outside_the_oldest_five_queued_jobs(self):
+        template=self.store.submit(self.request())
+        for index in range(8):
+            identity=str(uuid.uuid4())
+            job={**template,'job_id':identity,'checkpoint':'snapshots/jobs/'+identity,
+                 'created_at':f'2026-10-01T00:00:{index:02d}Z'}
+            atomic(self.store.jobs/(identity+'.json'),job)
+        template.update(state='running',created_at='2026-11-12T00:00:00Z');self.store.save(template)
+        status=self.store.status()
+        self.assertEqual(status['active_job_count'],9)
+        self.assertEqual(status['active_jobs'][0]['job_id'],template['job_id'])
+
     def test_price_phase_events_keep_only_safe_context_and_real_counts(self):
         job=self.running()
         self.store.event(job['job_id'],{'stage':'price_refresh','phase':'markets','checked':2,'total':5,'url':'https://provider.test/PRIVATE-KEY'})

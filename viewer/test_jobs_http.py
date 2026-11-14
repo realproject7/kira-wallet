@@ -54,8 +54,36 @@ class JobsHTTPTest(unittest.TestCase):
 
     def test_valid_submission_duplicate_and_private_state(self):
         code,first=self.request();self.assertEqual(code,202);_,duplicate=self.request();self.assertEqual(first['job_id'],duplicate['job_id'])
+        self.assertEqual(first['state'],'succeeded')
+        self.assertEqual(self.http.jobs.wallet(ADDRESS)['tags'],['New name'])
         self.assertEqual(self.request('/api/jobs',method='GET')[0],200)
         self.assertEqual(self.request('/api/jobs',headers={'X-Kira-Session':''},method='GET')[0],403)
+
+    def test_folder_writes_share_local_auth_and_reads_remain_provider_free(self):
+        body=json.dumps({'schema_version':1,'operation':'folder.create','input':{'name':'Savings'},'idempotency_key':'folder-http-test'}).encode()
+        for headers in ({'X-Kira-Session':''},{'Origin':'https://foreign.test'}):self.assertEqual(self.request(body=body,headers=headers)[0],403)
+        self.assertFalse((self.root/'wallet-folders.json').exists())
+        code,created=self.request(body=body);self.assertEqual(code,202);self.assertTrue(created['completed'])
+        self.assertEqual(self.request(body=body)[1],created)
+        move=json.dumps({'schema_version':1,'operation':'folder.assign','input':{'folder_id':created['folder_id'],'wallets':[ADDRESS]},'idempotency_key':'folder-http-move'}).encode()
+        self.assertTrue(self.request(body=move)[1]['completed'])
+        overview=self.request('/api/overview?folder_id='+created['folder_id'],method='GET')[1]
+        self.assertEqual(overview['dashboard']['wallet_count'],1);self.assertIsNone(overview['dashboard']['known_value_usd'])
+        self.assertEqual(self.request('/api/holdings?folder_id='+created['folder_id'],method='GET')[1]['matched_count'],0)
+        self.assertEqual(self.request('/api/folders',method='GET')[1]['folders'][0]['wallet_count'],1)
+        self.assertEqual(self.request('/api/overview?folder_id=missing',method='GET')[0],400)
+        self.assertEqual(self.http.jobs.list(),[])
+        before=(self.root/'wallet-folders.json').read_bytes();self.http.controls=False
+        self.assertEqual(self.request(body=body)[0],501);self.assertEqual((self.root/'wallet-folders.json').read_bytes(),before)
+
+    def test_folder_batch_admits_only_its_saved_wallets(self):
+        other='0x'+'2'*40
+        registry=json.loads((self.root/'wallets.json').read_text());registry['wallets'].append({'address':other,'address_key':other,'tags':['Other']});atomic(self.root/'wallets.json',registry)
+        def action(operation,value,key):return self.request(body=json.dumps({'schema_version':1,'operation':operation,'input':value,'idempotency_key':key}).encode())[1]
+        group=action('folder.create',{'name':'One wallet'},'folder-http-create')['folder_id']
+        action('folder.assign',{'folder_id':group,'wallets':[ADDRESS]},'folder-http-assign')
+        result=action('portfolio.refresh',{'folder_id':group},'folder-http-refresh')
+        self.assertEqual(result['wallet_count'],1);self.assertEqual([j['wallet'] for j in result['jobs']],[ADDRESS])
 
     def test_portfolio_admission_has_the_same_session_origin_and_read_only_gates(self):
         body=json.dumps({'schema_version':1,'operation':'portfolio.refresh','input':{},'idempotency_key':'portfolio-http-test'}).encode()

@@ -1,5 +1,38 @@
 # CLI and provider configuration
 
+## Wallet folders
+
+Folder tools are introduced in 1.8.0. Check the installed `describe` output
+before calling them.
+
+```sh
+kira describe folders_list --json
+kira describe folder_set_members --json
+kira call folders_list --arguments '{}' --json
+kira call folder_create --arguments '{"name":"Treasury","idempotency_key":"create-treasury-once"}' --json
+kira call folder_overview --arguments '{"folder_id":"FOLDER_ID"}' --json
+```
+
+Replace `FOLDER_ID` with an ID returned by the tools. `unfiled` reads wallets
+without a folder. `portfolio_read` also accepts an optional `folder_id`, and
+keeps its existing bounded wallet pagination. `folder_overview` returns the
+saved dashboard, compact wallets and network summaries without token payloads.
+These reads use projected records and start no provider or worker activity.
+
+Folder writes are immediate metadata operations with durable idempotent
+receipts. `folder_assign` moves registered public addresses to one folder or
+`unfiled`. `folder_set_members` replaces one named folder's membership with the
+chosen addresses, removing unchecked wallets to Unfiled. It requires the
+`revision` returned by `folders_list` as `expected_revision`. Other folder edits
+can use the same optional guard. A conflict keeps the saved state unchanged.
+Folder deletion preserves wallets, names and all research snapshots.
+
+`portfolio_holdings_refresh` and `portfolio_sell_routes_analyze` accept an
+optional `folder_id`. Omitting it retains the global behavior. Batch admission
+captures folder membership, so a retry cannot include newly moved wallets.
+Existing per-wallet job receipts, eligibility and sequential execution remain
+in use. These explicit research actions can consume provider allowance.
+
 ## Discover tools and optional h402 capabilities
 
 ```sh
@@ -39,11 +72,18 @@ conversation, general tools and approvals. Kira does not start a model process.
 
 ## Portfolio research actions
 
-From Home, use **Refresh all holdings** or **Analyze all sell-out values**.
+From Home, use **Refresh all holdings** or **Update sell estimates (N)**.
 Both queue ordinary per-wallet jobs and preserve previous snapshots. Work runs
 one wallet at a time. Active wallets are skipped. Sell analysis requires a
 finished current holdings scan; interrupted analysis is resumed and completed
-analysis is skipped. A partial completed result can contain unknown quotes.
+analysis is skipped. Unchanged recorded quantities retain the last completed
+analysis across new holdings snapshots, including completed partial analyses
+with unknown routes. Only changed or never-analyzed wallets need a sell update.
+Missing/retained balances wait for verified holdings instead of implying sales.
+Home, wallet and Activity show the last sell-analysis timestamp. Saved quotes
+keep their original price and quote times; equal holdings do not imply current
+market conditions or guaranteed execution. Native/stable market references use
+their separately recorded price timestamps.
 
 Agents use the same actions:
 
@@ -59,8 +99,8 @@ requests skip wallets already queued or running. New wallets added later belong
 to the next batch. These actions require an explicit request and never execute
 trades. Sell analysis remains optional instead of starting on page loads.
 
-Home, wallets, tokens and networks expose a **Sell-out estimate sum**. This sums
-independent saved full-balance quotes and shows the quoted and missing position
+Home, wallets, tokens and networks expose a **Sell-out estimate**. This sums
+independent saved full-balance quotes and shows missing and limited-route
 counts. It excludes testnets, archived networks, retained quantities and gas.
 Shared pools, nested reserve tokens and different observation times mean this
 is an indicative subtotal, not proceeds verified for a combined portfolio exit.
@@ -350,3 +390,61 @@ hides/restores directly. **Manage tokens** selects visible-page identities for
 bulk hiding/restoration; page or filter changes clear selection. Hidden assets
 still use `portfolio_status=excluded` in CLI/MCP. Existing financial semantics
 and raw evidence are unchanged. Undo restores each confirmed item's prior mode.
+
+Activity supports full-history wallet/task search and wallet/status filters.
+The job-history response includes scoped `counts` and `last_updated_at` before
+status filtering, independent of the requested page. `job_list` also accepts
+`query` (up to 200 characters). Partial completed work counts as saved; only
+failed/interrupted work counts as needing attention. The browser keeps stage
+logs and technical identifiers in task details, with the existing recovery
+operations and no automatic provider calls.
+
+
+## Remove and restore registered wallets
+
+Use Manage wallets in the web app to select multiple saved wallets, then Remove.
+The confirmation reviews the exact selected addresses. Removed wallets leave
+portfolio totals while their research and local keys stay intact. Open Removed
+wallets in the manager to restore selected registrations without research.
+Pause selected wallets' queued/running work in Activity before removal.
+
+CLI and optional MCP use the same immediate local operations:
+
+```sh
+kira call wallets_removed --arguments '{}' --json
+kira describe wallets_remove --json
+kira describe wallets_restore --json
+```
+
+`wallets_remove` and `wallets_restore` take 1–1,000 unique public addresses in
+`wallets`, the current `expected_revision` from `wallets_removed`, and an
+`idempotency_key`. Recovery reads accept `offset`, `limit` (at most 100) and
+`query`. These operations never delete snapshot files, modify keys, or start
+provider work. An already removed address must be restored before adding or
+refreshing it. This preserves its earlier names and research.
+
+
+## Protocol positions and platform allocation
+
+`positions_read` returns saved LP, vault, NFT-backed and staking claims. It accepts
+optional `wallet`, `folder_id`, `chain_id`, `token_id`, `platform`, `offset` and
+`limit` (at most 100). Allocation percentages use known, non-overlapping recorded
+value in the selected wallet/folder/token/network, before the platform list filter.
+Unknown amounts and incomplete discovery remain explicit. Position NAV, pending
+rewards and executable sell estimates are separate concepts.
+
+```sh
+kira describe positions_read --json
+kira call positions_read --arguments '{"wallet":"Savings","limit":25}' --json
+kira call positions_refresh --arguments '{"wallet":"Savings","idempotency_key":"refresh-savings-platforms"}' --json
+kira call portfolio_positions_refresh --arguments '{"folder_id":"FOLDER_ID","discover":true,"idempotency_key":"find-folder-platforms"}' --json
+```
+
+The first scan discovers positions. Later refreshes default to saved-claim and
+wallet-inventory checks. `discover: true` additionally sweeps supported pool and
+farm registries for new deposits. Legacy Aerodrome has over 30,000 pools; broad
+initial discovery can be slow even with batched reads. Explicit full discovery
+is kept separate from ordinary refresh. Jobs share the existing sequential writer,
+short resumable slices, pause/resume, duplicate coalescing and bounded retries.
+Opening any page or reading saved claims launches no provider work. Use Activity
+to monitor source progress; financial unknowns never establish a zero holding.

@@ -85,6 +85,8 @@ def sell_out_estimate(quote, eligibility, reserve_price):
     the received reserve token, not a subsequent sale of that reserve. The quote
     and the USD reference keep their independent clocks.
     """
+    if eligibility.get('balance_changed'):
+        return None
     routes = [q for q in eligibility.get('quotes', [])
               if q.get('partial_input') is False and number(q.get('quoted_output_usd')) is not None
               and number((checked_price(q.get('output_price')) or {}).get('usd')) is not None]
@@ -216,7 +218,10 @@ def project_wallet(entry, snapshot, root=ROOT, images=None, *, market=None):
         if t.get('mintclub'):links.append({'label':'Mint Club','url':t['mintclub']['source_url']})
         found={}; market_pools=[]
         for pool in t.get('dex_pools',[]):
-            venue=pool['venue'].lower(); label_venue='Uniswap' if 'uniswap' in venue else 'Aerodrome' if 'aerodrome' in venue else venue.replace('-',' ').title()
+            venue=pool['venue'].lower()
+            label_venue=('Aero' if venue in ('aero','aero-slipstream') or (pool.get('factory_discovery') or {}).get('venue')=='aero' or str((pool.get('factory_measurement') or {}).get('adapter','')).startswith('aero_')
+                         else 'PancakeSwap' if venue.startswith('pancakeswap') else 'Uniswap' if 'uniswap' in venue
+                         else 'Aerodrome' if 'aerodrome' in venue else venue.replace('-',' ').title())
             weight=(pool.get('reported_liquidity') or {}).get('usd',0)
             measured=pool.get('factory_measurement') or {}
             if not weight and measured.get('quote_balance'):
@@ -247,6 +252,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None, *, market=None):
             'exit_route': 'mintclub_burn' if t.get('mintclub') else 'dex_unquoted' if t.get('dex_liquidity_found') or any(pool_has_liquidity(pool) for pool in t.get('dex_pools',[])) else 'unverified',
             'image_url':safe_image(t.get('indexer_image_url')) or image_for(images,t['chain_id'],t['token_address'],mint=bool(t.get('mintclub'))),
             'curve_reserve': {'amount':market_token.get('curve_reserve',t['mintclub']['reserve_balance']),'symbol':t['mintclub']['reserve_symbol'],'address':t['mintclub']['reserve_token'],
+                'observed_at':market_token.get('observed_at') if 'curve_reserve' in market_token else t['mintclub'].get('observed_at'),
                 'image_url':image_for(images,t['chain_id'],t['mintclub']['reserve_token'])} if t.get('mintclub') else None})
         if t.get('mintclub'):
             mint=t['mintclub']
@@ -261,6 +267,19 @@ def project_wallet(entry, snapshot, root=ROOT, images=None, *, market=None):
             reserve_price = price_for(parent) if parent else checked_price(prices.get(key), legacy_pools.get(key, []))
         asset['sell_out'] = sell_out_estimate(quote, asset['cashout_eligibility'], reserve_price)
         estimate = asset['sell_out']
+        if estimate and estimate.get('valuation') == 'terminal_reference':
+            quoted_pool = estimate.get('pool') or next(iter(estimate.get('legs') or [{}])).get('pool')
+            markets = asset['market_pools']
+            largest = max(markets, key=lambda p: p.get('liquidity_usd') or 0, default=None)
+            selected = next((p for p in markets if str(p.get('pool')).lower() == str(quoted_pool).lower()), None)
+            # Keep a valid observed quote, but distinguish a tiny alternate
+            # route from an exit that covers the known main market.
+            if (largest and selected and (largest.get('liquidity_usd') or 0) >= MIN_PRICE_LIQUIDITY_USD
+                    and (selected.get('liquidity_usd') or 0) * 10 < largest['liquidity_usd']
+                    and not any((q.get('pool') or next(iter(q.get('legs') or [{}])).get('pool')) == largest['pool']
+                                for q in asset['cashout_eligibility'].get('quotes', []) if q.get('partial_input') is False)):
+                estimate['route_coverage'] = {'status': 'limited', 'unquoted_pool': largest['pool'],
+                    'reason': 'A larger known pool has no full-balance quote. This is a limited-route observation, not a market-wide exit value.'}
         if estimate and not estimate.get('output_symbol'):
             output_token = by_address.get((token['chain_id'], estimate['output_address']))
             if output_token: estimate['output_symbol'] = output_token['symbol']
@@ -350,10 +369,15 @@ def project_wallet(entry, snapshot, root=ROOT, images=None, *, market=None):
 
 def dashboard(wallets):
     """Sum direct mainnet positions, without adding pool liquidity or curve backing."""
+    from positions import allocation
     chains={};assets={};positions=[]
     for wallet in wallets:
         wallet['sell_out_summary']=summarize_sell_out(wallet['assets'])
         names={c['id']:c['name'] for c in wallet['chains']}
+        for p in wallet.get('positions',[]):
+            chain=chains.setdefault(p['chain_id'],{'id':p['chain_id'],'name':names.get(p['chain_id'],str(p['chain_id'])),
+                'position_count':0,'wallet_keys':set(),'values':[],'unpriced_count':0})
+            chain['wallet_keys'].add(wallet['key'])
         for asset in wallet['assets']:
             if asset.get('environment')!='mainnet':continue
             positions.append(asset)
@@ -373,31 +397,62 @@ def dashboard(wallets):
         row['wallet_count']=len(row.pop('wallet_keys'));row.pop('values')
         return row
     network_rows=sorted((finish(c) for c in chains.values()),key=lambda c:c['value_usd'] or 0,reverse=True)
+    for row in network_rows:row['capital_allocation']=allocation(wallets,chain_id=row['id'])
     asset_rows=sorted((finish(a) for a in assets.values()),key=lambda a:a['value_usd'] or 0,reverse=True)
     for asset in asset_rows:asset['chain_name']=chains[asset['chain_id']]['name']
     values=[a['value_usd'] for a in positions if included(a) and a['value_usd'] is not None]
     dates=[w['prices_at'] for w in wallets if w.get('prices_at')]
-    return {'asset_policy_summary':policy_summary(positions),'sell_out_summary':summarize_sell_out(positions),'known_value_usd':sum(values) if values else None,'wallet_count':len(wallets),
+    return {'capital_allocation':allocation(wallets),'asset_policy_summary':policy_summary(positions),'sell_out_summary':summarize_sell_out(positions),'known_value_usd':sum(values) if values else None,'wallet_count':len(wallets),
         'analysed_wallet_count':sum(bool(w.get('analysed_at')) for w in wallets),
         'position_count':len(positions),'unique_asset_count':len({a['id'] for a in positions}),'chain_count':len(chains),
         'priced_count':len(values),'unpriced_count':sum(included(a) and a['value_usd'] is None for a in positions),
         'prices_from':min(dates,default=None),'prices_to':max(dates,default=None),
         'networks':network_rows,'largest_holdings':[a for a in asset_rows if a['value_usd'] is not None][:5]}
 
-def load_state(root=ROOT, *, include_details=True, encode=True):
+def load_state(root=ROOT, *, include_details=True, encode=True, wallet_cache=None):
+    from copy import deepcopy
+    from sell_analysis import analysis_index, assess, quantities, reuse_estimates, signature
     registry=read(root/'wallets.json');wallets=[];images=read_catalog(root)
+    analyses=analysis_index(root)
+    def project(entry, slot):
+        latest=entry['latest_snapshot'];folder=within(root,latest['directory'])
+        paths=[within(root,latest['result']),folder/'market-prices.json',folder/'token-market-metadata.json',root/'cache/token-images.json']
+        paths.extend(sorted(folder.glob('chain-*.json')))
+        version=(json.dumps(entry,sort_keys=True),tuple((str(p),signature(p)) for p in paths))
+        key=(entry['address_key'],slot)
+        cached=wallet_cache.get(key) if wallet_cache is not None else None
+        if cached and cached[0]==version:return deepcopy(cached[1])
+        result=read(paths[0])
+        if result['wallet_address'].lower()!=entry['address_key']:raise ValueError('Snapshot wallet identity mismatch')
+        wallet=project_wallet(entry,result,root,images)
+        if wallet_cache is not None:wallet_cache[key]=(version,deepcopy(wallet))
+        return wallet
     for entry in registry.get('wallets',[]):
         latest=entry.get('latest_snapshot')
         if latest and latest.get('result'):
-            result=read(within(root,latest['result']))
-            if result['wallet_address'].lower()!=entry['address_key']:raise ValueError('Snapshot wallet identity mismatch')
-            wallets.append(project_wallet(entry,result,root,images))
+            wallet=project(entry,'current')
+            summary=assess(root,entry,analyses)
+            if summary['snapshot_id'] and summary['snapshot_id']!=latest.get('directory'):
+                prior=summary['snapshot_id']
+                old=project({**entry,'latest_snapshot':{'directory':prior,'result':prior+'/results.json'}},'analysis')
+                current=quantities(root,latest.get('directory'),entry['address_key'])
+                previous=quantities(root,prior,entry['address_key'])
+                if current and previous:reuse_estimates(wallet,old,current,previous,summary)
+            wallet['sell_analysis']=summary
+            wallets.append(wallet)
         else:
             wallets.append({'address':entry['address'],'key':entry['address_key'],'tags':entry.get('tags',[]),
                 'name':(entry.get('tags') or [entry['address'][:10]])[0],'assets':[],'chains':[],
-                'known_value_usd':0,'unpriced_count':0,'analysed_at':None,'status':'awaiting_analysis','counts':{}})
+                'known_value_usd':0,'unpriced_count':0,'analysed_at':None,'status':'awaiting_analysis','counts':{},'sell_analysis':assess(root,entry,analyses)})
+    if wallet_cache is not None:
+        registered={entry['address_key'] for entry in registry.get('wallets',[])}
+        for key in list(wallet_cache):
+            if key[0] not in registered:del wallet_cache[key]
     apply_policy(wallets, root)
-    state={'wallets':wallets,'currency':'USD','dashboard':dashboard(wallets),
+    from positions import attach
+    attach(root,wallets)
+    from kira_wallets import management
+    state={'wallet_management':management(registry),'wallets':wallets,'currency':'USD','dashboard':dashboard(wallets),
            'details':project_details(wallets,root) if include_details else {'tokens':[], 'networks':[]}}
     if registry.get('demo') is True:state['demo']=True
     if not encode:return state,None,None

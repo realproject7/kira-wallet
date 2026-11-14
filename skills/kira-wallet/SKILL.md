@@ -24,6 +24,29 @@ networks, with explicit coverage gaps. These records do not establish complete
 DeFi positions, debts, perp accounts, prediction-market positions, deployable
 capital or total net worth. A receipt token is not a decoded underlying position.
 
+When `positions_read` is available, read it alongside direct holdings. It returns
+saved LP, vault, NFT-backed and staking claims plus exclusive platform allocation.
+Follow `next_offset`; filter by wallet, folder, chain, token or platform ID. The
+allocation describes the selected scope before a platform list filter. Source
+coverage, amounts, price timestamps and retained observations remain explicit.
+Do not add an LP receipt to the same underlying claim, or Aeromax to its backing
+Aerodrome position again. NAV is not a sell-out quote or complete net worth.
+
+`positions_refresh` explicitly starts sequential read-only collection. The first
+scan discovers positions; subsequent default refreshes recheck saved claims and
+current wallet inventory. Pass `discover: true` to find new pool/farm deposits.
+Full discovery can span thousands of old pools and take much longer. Read the
+job and source gaps; do not retry a broad scan just because a view is opened.
+`portfolio_positions_refresh` applies the same operation to all wallets or a
+folder. No signing, strategy execution or payment is involved.
+
+When the installed catalogue exposes folder tools, read `folders_list` and
+`folder_overview` for a folder-scoped request. `portfolio_read` accepts `folder_id` for bounded wallet pages.
+The browser's `ui_context` can include the selected `folder_id`. Folder reads
+reuse saved data and do not start research. Keep that scope explicit in any
+requested refresh; omitting `folder_id` targets the whole workspace. Folder
+writes organize registered addresses without changing their names or snapshots.
+
 ## Analyze with the host agent
 
 Use Kira as the source of saved wallet facts. Use your own search, browser, API
@@ -223,6 +246,14 @@ latest 100 events.
 Accepted work survives viewer shutdown or agent disconnection. Cancel only
 when requested; resume interrupted jobs explicitly. `jobs deepen` adds
 optional sell-route analysis from saved holdings without rediscovering tokens.
+Read `wallet_read.sell_analysis` before proposing another sell analysis. Matching
+recorded quantities keep prior completed estimates across holdings refreshes.
+`current` requires no new job; `changed` or `not_analyzed` can need one, while
+`unverified` needs a holdings check. A completed partial analysis may still have
+unknown routes. Explain its `last_analyzed_at` and quote timestamps instead of
+presenting reused estimates as current execution prices. Portfolio sell analysis
+uses the same eligibility and skips unchanged wallets. `job_deepen` may return
+an earlier completed job receipt when quantities match.
 
 Use `call job_list` with optional `state`, `wallet`, `offset` and `limit` for
 paged job discovery. `state` is `all` (default), a group (`active`,

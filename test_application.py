@@ -29,6 +29,35 @@ class ApplicationTest(unittest.TestCase):
             for _ in range(20):
                 self.assertEqual(self.app.views.summary(),(body,revision));self.assertEqual(self.app.status()['data_revision'],revision)
         self.assertEqual(self.app.views.builds,1)
+    def test_hundred_wallets_reproject_only_changed_wallet_and_keep_pages_bounded(self):
+        from copy import deepcopy
+        from model import project_wallet
+        registry=json.loads((self.root/'wallets.json').read_text())
+        template=json.loads((self.root/'snapshots/demo/initial/results.json').read_text())
+        wallets=[]
+        for index in range(100):
+            address=f'0x{index+1:040x}';folder=f'snapshots/scale/{index}'
+            snapshot=deepcopy(template);snapshot['wallet_address']=address
+            snapshot['tokens']=[{**snapshot['tokens'][0],'token_address':f'0x{token+1000:040x}'} for token in range(150)]
+            atomic(self.root/folder/'results.json',snapshot)
+            wallets.append({'address':address,'address_key':address,'tags':[f'Wallet {index}'],
+                            'latest_snapshot':{'directory':folder,'result':folder+'/results.json'}})
+        atomic(self.root/'wallets.json',{**registry,'wallets':wallets})
+        with patch('model.project_wallet',wraps=project_wallet) as project:
+            body,revision=self.app.views.summary()
+            self.assertEqual(project.call_count,100)
+            summary=json.loads(body)
+            self.assertEqual(len(summary['wallets']),100)
+            self.assertTrue(all(w['assets']==[] for w in summary['wallets']))
+            self.assertEqual(sum(w['asset_count'] for w in summary['wallets']),15000)
+            self.assertEqual(len(self.app.views.wallet('Wallet 0',limit=50)['assets']),50)
+            self.assertEqual(self.app.views.summary()[1],revision)
+            self.assertEqual(project.call_count,100)
+            file=self.root/'snapshots/scale/0/results.json';snapshot=json.loads(file.read_text())
+            snapshot['tokens'][0]['wallet_balance']='200';atomic(file,snapshot)
+            self.assertNotEqual(self.app.views.summary()[1],revision)
+            self.assertEqual(project.call_count,101)
+            self.assertEqual(len(self.app.views.wallet_cache),100)
     def test_external_atomic_changes_invalidate_same_snapshot_and_tags(self):
         before=self.app.views.summary()[1]
         folder=self.root/'snapshots/demo/initial';market=json.loads((folder/'market-prices.json').read_text())
@@ -62,18 +91,19 @@ class ApplicationTest(unittest.TestCase):
         self.assertEqual(self.app.call('holdings_query',{'mode':'search','query':'TOKEN4999'})['matched_position_count'],1)
     def test_mutation_parity_preserves_history_and_can_be_waited_for(self):
         before=(self.root/'snapshots/demo/initial/results.json').read_bytes()
-        with patch.object(self.app.jobs,'launch'):
+        self.assertEqual(self.app.call('wallet_read',{'wallet':'Demo wallet'})['name'],'Demo wallet')
+        with patch.object(self.app.jobs,'launch') as launch:
             job=self.app.call('wallet_tags',{'wallet':'Demo wallet','tags':['New','Old'],'idempotency_key':'new-tags-once'},allow_write=True)
-        self.assertFalse(self.app.wait(job['job_id'],0)['completed'])
-        self.app.jobs.worker();self.assertTrue(self.app.wait(job['job_id'],0)['completed'])
+            launch.assert_not_called()
+        self.assertTrue(self.app.wait(job['job_id'],0)['completed'])
         self.assertEqual((self.root/'snapshots/demo/initial/results.json').read_bytes(),before)
         self.assertEqual(self.app.call('wallet_read',{'wallet':'New'})['tags'],['New','Old'])
         self.assertTrue(json.loads((self.root/'wallets.json').read_text())['tag_history'])
         with self.assertRaises(JobError):self.app.wait(job['job_id'],121)
     def test_jobs_status_does_not_rebuild_data_or_reread_unchanged_history(self):
         self.app.views.summary()
-        with patch.object(self.app.jobs,'launch'):
-            job=self.app.call('wallet_tags',{'wallet':'Demo wallet','tags':['New'],'idempotency_key':'jobs-only-tags'},allow_write=True)
+        # Legacy queued edits still exercise stat-cached job headers.
+        job=self.app.jobs.submit({'schema_version':1,'operation':'wallet.setTags','input':{'wallet':'Demo wallet','tags':['New']},'idempotency_key':'jobs-only-tags'})
         first=self.app.status();self.assertEqual(first['active_job_count'],1)
         with patch.object(self.app.jobs,'get',side_effect=AssertionError('Idle history reread')):
             self.assertEqual(self.app.status(),first)

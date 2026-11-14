@@ -44,3 +44,8 @@ site/.vercel/
 /token-policy.json
 /.token-actions/
 /.token-policy.lock
+/wallet-folders.json
+/.folder-actions/
+/.wallet-actions/
+/positions/
+/.job-launch.lock

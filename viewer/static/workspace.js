@@ -9,7 +9,7 @@ function catalogFilters() {
 }
 function catalogRow(a) {
   const network = state.details.networks.find(n => n.id === a.chain_id);
-  return `<tr><td><div class="token-identity">${tokenSelection(a)}<a class="token-name token-link" href="${tokenHref(a.id)}">${coinIcon(a)}<div class="coin-title"><div class="symbol">${escapeHTML(a.symbol)}${policyBadge(a)}</div><div class="token-description">${escapeHTML(a.is_native ? 'Native asset' : a.name)}</div></div></a></div></td><td class="catalog-chain"><span class="mobile-label">Chain</span><a class="chain-link" href="${networkHref(a.chain_id)}">${escapeHTML(network?.name || 'Chain ' + a.chain_id)}</a>${a.environment === 'testnet' ? '<small>Testnet</small>' : ''}</td><td><span class="mobile-label">Total balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span></td><td><span class="mobile-label">Wallets</span>${a.wallet_count}</td><td><span class="mobile-label">Known value</span><span class="token-value">${a.environment === 'testnet' ? 'Testnet' : money(a.value_usd)}</span>${a.included_in_totals===false?'<div class="price-basis">Reported · not in totals</div>':''}${a.unpriced_count ? '<div class="price-basis">' + a.unpriced_count + ' unpriced</div>' : ''}</td><td><span class="mobile-label">Sell-out est.</span>${sellOutValue(a)}</td><td class="visibility-cell">${policyActions(a)}</td></tr>`;
+  return `<tr><td><div class="token-identity">${tokenSelection(a)}<a class="token-name token-link" href="${tokenHref(a.id)}">${coinIcon(a)}<div class="coin-title"><div class="symbol">${escapeHTML(a.symbol)}${policyBadge(a)}</div><div class="token-description">${escapeHTML(a.is_native ? 'Native asset' : a.name)}</div></div></a></div></td><td class="catalog-chain"><span class="mobile-label">Chain</span><a class="chain-link" href="${networkHref(a.chain_id)}" title="${escapeHTML(network?.name || 'Chain ' + a.chain_id)}">${chainIcon(network || 'Chain ' + a.chain_id)}<span>${escapeHTML(network?.name || 'Chain ' + a.chain_id)}</span></a>${a.environment === 'testnet' ? '<small>Testnet</small>' : ''}</td><td><span class="mobile-label">Total balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span></td><td><span class="mobile-label">Wallets</span>${a.wallet_count}</td><td><span class="mobile-label">Value</span><span class="token-value">${a.environment === 'testnet' ? 'Testnet' : money(a.value_usd)}</span>${a.included_in_totals===false?'<div class="price-basis">Reported · not in totals</div>':''}${a.unpriced_count ? '<div class="price-basis">' + a.unpriced_count + ' unpriced</div>' : ''}</td><td><span class="mobile-label">Sell-out est.</span>${sellOutValue(a)}</td><td class="visibility-cell">${policyActions(a)}</td></tr>`;
 }
 function renderCatalog() {
   if (!state) return;
@@ -38,18 +38,21 @@ function renderWorkspace() {
     if (current) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   });
   if (selectedView === 'home') $('brand-home').setAttribute('aria-current', 'page'); else $('brand-home').removeAttribute('aria-current');
-  $('all-token-count').textContent = state.dashboard.unique_asset_count;
+  const context=typeof FolderUI!=='undefined'?FolderUI.view():state;
+  $('all-token-count').textContent = context?.dashboard.unique_asset_count??'—';
   if (selectedView === 'tokens') {
-    renderBreadcrumb([{ label: 'Home', href: '#/home' }, { label: 'All tokens' }]);
+    renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Home',href:'#/home'}]),{label:'All tokens'}]);
     document.title = 'All tokens · Kira Wallet';
+    if(!context){$('sync-label').textContent='Loading folder holdings…';renderCatalog();return;}
     const network = $('all-token-network').value;
-    const recordedChains = new Set(state.paged?state.details.networks.filter(n=>n.position_count>0).map(n=>n.id):state.details.tokens.map(t=>t.chain_id));
-    $('all-token-network').innerHTML = '<option value="all">All chains</option>' + state.details.networks.filter(n => recordedChains.has(n.id)).map(n => `<option value="${n.id}" data-chain-id="${n.id}">${escapeHTML(n.name)}${n.environment === 'testnet' ? ' · Testnet' : ''}</option>`).join('');
+    const recordedChains = new Set(state.paged?context.details.networks.filter(n=>n.position_count>0).map(n=>n.id):state.details.tokens.map(t=>t.chain_id));
+    $('all-token-network').innerHTML = '<option value="all">All chains</option>' + context.details.networks.filter(n => recordedChains.has(n.id)).map(n => `<option value="${n.id}" data-chain-id="${n.id}">${escapeHTML(n.name)}${n.environment === 'testnet' ? ' · Testnet' : ''}</option>`).join('');
     $('all-token-network').value = [...$('all-token-network').options].some(o => o.value === network) ? network : 'all';
     $('sync-label').textContent = 'Latest recorded holdings'; renderCatalog();
   } else if (selectedView === 'activity') {
     renderBreadcrumb([{ label: 'Home', href: '#/home' }, { label: 'Activity' }]);
     document.title = 'Activity · Kira Wallet'; $('sync-label').textContent = 'Local research history';
+    if(typeof renderActivity==='function')renderActivity();
   }
 }
 function resetRouteFilters() {
@@ -57,6 +60,7 @@ function resetRouteFilters() {
   $('all-token-testnets').checked=false;catalogPage=1;catalogMinimum=0;
   walletSort='value';networkSort='value';walletStatus='portfolio';networkStatus='portfolio';$('wallet-token-status').value='portfolio';$('wallet-token-sort').value='value';
   if(typeof jobsPage!=='undefined')jobsPage=1;
+  $('activity-query').value='';$('activity-wallet').value='all';
   if(typeof KiraSelect!=='undefined')KiraSelect.refresh();
 }
 for (const id of ['all-token-status','all-token-network', 'all-token-pricing', 'all-token-sort', 'all-token-testnets']) $(id).addEventListener('change', () => { catalogPage = 1; state?.paged?loadRoute():renderCatalog(); });

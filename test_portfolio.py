@@ -56,6 +56,28 @@ class PortfolioTests(JobFixtures,unittest.TestCase):
         self.assertEqual(len(self.store.list()),2)
         self.assertEqual((self.root/'snapshots/prior/results.json').read_bytes(),before)
 
+    def test_hundred_wallet_batch_reads_history_once_not_for_every_admission(self):
+        import uuid
+        from collections import Counter
+        template=self.baseline(ADDRESS)
+        history=set()
+        for index in range(50):
+            identity=str(uuid.uuid4());history.add(identity)
+            job={**deepcopy(template),'job_id':identity,'checkpoint':'snapshots/jobs/'+identity,'key_hash':f'{index:064x}'}
+            atomic(self.store.jobs/(identity+'.json'),job)
+        registry=json.loads((self.root/'wallets.json').read_text())
+        registry['wallets']=[{'address':f'0x{index+1:040x}','address_key':f'0x{index+1:040x}',
+                              'tags':[f'Wallet {index}']} for index in range(100)]
+        atomic(self.root/'wallets.json',registry)
+        reads=Counter();get=self.store.get
+        def counted(identity):
+            if identity in history:reads[identity]+=1
+            return get(identity)
+        with patch.object(self.store,'get',side_effect=counted):result=self.batch()
+        self.assertEqual(len(result['jobs']),100);self.assertFalse(result['errors'])
+        self.assertEqual(set(reads),history)
+        self.assertTrue(all(count==1 for count in reads.values()))
+
     def test_refresh_recovers_the_rejected_preflight_instead_of_duplicating_it(self):
         failed=self.store.submit(self.request(key='failed-preflight'))
         failed.update(state='failed',errors=[{'code':'network_scope_changed','message':'Compatibility check failed.'}])
@@ -102,7 +124,7 @@ class PortfolioTests(JobFixtures,unittest.TestCase):
         child.update(state='partial',result={'snapshot_id':'snapshots/prior','status':'completed_with_coverage_gaps'});self.store.save(child)
         result=self.batch('portfolio.analyzeSell')
         self.assertEqual(result['jobs'],[])
-        self.assertEqual({r['reason'] for r in result['skipped']},{'already_analyzed','holdings_refresh_required'})
+        self.assertEqual({r['reason'] for r in result['skipped']},{'unchanged_holdings','holdings_refresh_required'})
 
     def test_request_keys_cannot_cross_single_and_batch_operations(self):
         self.batch()

@@ -19,6 +19,12 @@ from token_images import IMAGE_HOSTS
 STATIC=Path(__file__).resolve().parent/'static'
 lock=threading.Lock()
 
+class LocalServer(ThreadingHTTPServer):
+    # One page load opens dozens of short connections at once. The default
+    # backlog of five resets some of them and leaves a script or stylesheet missing.
+    request_queue_size=128
+    daemon_threads=True
+
 
 class Handler(BaseHTTPRequestHandler):
     def application(self):
@@ -99,7 +105,7 @@ class Handler(BaseHTTPRequestHandler):
                 return {'query':text('query',''),'chain_id':integer('chain_id'),
                     'minimum_value_usd':text('minimum_value_usd','0'),'sort':text('sort','value'),
                     'pricing':text('pricing','all'),'include_testnets':testnets=='1','portfolio_status':text('portfolio_status','portfolio')}
-            if path in ('/api/state','/api/status','/api/wallet','/api/token','/api/network','/api/holdings'):
+            if path in ('/api/state','/api/status','/api/overview','/api/folders','/api/wallet','/api/token','/api/network','/api/holdings','/api/positions'):
                 app=self.application()
                 if path=='/api/state':
                     body,etag=app.views.summary()
@@ -108,16 +114,21 @@ class Handler(BaseHTTPRequestHandler):
                     self.respond(body,'application/json; charset=utf-8',etag);return
                 if path=='/api/status':
                     self.json(app.status() if getattr(self.server,'controls',False) else {'schema_version':1,'data_revision':app.views.data_revision(),'jobs_revision':'','active_job_count':0,'active_jobs':[]});return
-                if path=='/api/wallet':result=app.views.wallet(text('wallet'),integer('offset',0),integer('limit',100),**filters())
-                elif path=='/api/token':result=app.views.token(integer('chain_id'),text('address'))
-                elif path=='/api/network':result=app.views.network(integer('chain_id'))
-                else:result=app.views.holdings(integer('offset',0),integer('limit',100),**filters())
+                if path=='/api/overview':result=app.views.overview(text('folder_id'))
+                elif path=='/api/positions':result=app.views.positions(wallet=text('wallet'),folder_id=text('folder_id'),token_id=text('token_id'),platform=text('platform'),chain_id=integer('chain_id') if text('chain_id') else None,offset=integer('offset',0),limit=integer('limit',50))
+                elif path=='/api/folders':
+                    from kira_folders import catalog
+                    result=catalog(app.root)
+                elif path=='/api/wallet':result=app.views.wallet(text('wallet'),integer('offset',0),integer('limit',100),**filters())
+                elif path=='/api/token':result=app.views.token(integer('chain_id'),text('address'),folder_id=text('folder_id'))
+                elif path=='/api/network':result=app.views.network(integer('chain_id'),folder_id=text('folder_id'))
+                else:result=app.views.holdings(integer('offset',0),integer('limit',100),folder_id=text('folder_id'),**filters())
                 self.json(result);return
-            if path.startswith('/api/jobs') or path in ('/api/job-history','/api/onboarding','/api/snapshots','/api/snapshot','/api/compare','/api/settings','/api/ows'):
+            if path.startswith('/api/jobs') or path in ('/api/job-history','/api/onboarding','/api/snapshots','/api/snapshot','/api/compare','/api/settings','/api/ows','/api/removed-wallets'):
                 if not self.authenticated():return
                 app=self.application()
                 if path=='/api/jobs':result=app.jobs.page(integer('offset',0),integer('limit',50))['jobs']
-                elif path=='/api/job-history':result=app.jobs.page(integer('offset',0),integer('limit',20),text('state','all'),text('wallet'))
+                elif path=='/api/job-history':result=app.jobs.page(integer('offset',0),integer('limit',20),text('state','all'),text('wallet'),text('query',''))
                 elif path.startswith('/api/jobs/'):result=app.jobs.get(path.removeprefix('/api/jobs/'))
                 elif path=='/api/snapshots':result=app.jobs.snapshots(text('wallet',''))
                 elif path=='/api/snapshot':result=app.jobs.snapshot(text('id',''))
@@ -127,6 +138,9 @@ class Handler(BaseHTTPRequestHandler):
                     from onboarding import readiness
                     result=readiness()
                 elif path=='/api/settings':result=app.settings()
+                elif path=='/api/removed-wallets':
+                    from kira_wallets import removed_page
+                    result=removed_page(app.root,integer('offset',0),integer('limit',50),text('query',''))
                 else:self.send_error(404);return
                 self.json(result);return
             if path.startswith('/api/report/'):
@@ -136,12 +150,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not entry or not entry.get('latest_snapshot',{}).get('report'):self.send_error(404);return
                 body=within(ROOT,entry['latest_snapshot']['report']).read_bytes()
                 self.respond(body,'text/plain; charset=utf-8');return
-            files={**{f'/explorers/{name}':f'explorers/{name}' for name in ('etherscan.png',)},**{f'/venues/{name}':f'venues/{name}' for name in ('mintclub.png','uniswap.svg','aerodrome.svg')},'/alchemy-guide.html':'alchemy-guide.html','/alchemy-guide.css':'alchemy-guide.css','/alchemy-create-app.png':'alchemy-create-app.png','/':'index.html','/index.html':'index.html','/app.js':'app.js','/jobs.js':'jobs.js','/portfolio.js':'portfolio.js','/token-visibility.js':'token-visibility.js','/token-visibility.css':'token-visibility.css','/workspace.js':'workspace.js','/workspace-model.js':'workspace-model.js','/workspace.css':'workspace.css','/ows.js':'ows.js','/selects.js':'selects.js','/integrations.js':'integrations.js','/report.js':'report.js','/report.css':'report.css','/watching.js':'watching.js','/watching-model.js':'watching-model.js','/style.css':'style.css','/favicon.svg':'favicon.svg','/kira-logo.png':'kira-logo.png','/ows-logo.svg':'ows-logo.svg'}
+            files={**{f'/explorers/{name}':f'explorers/{name}' for name in ('etherscan.png',)},**{f'/venues/{name}':f'venues/{name}' for name in ('mintclub.png','uniswap.svg','aerodrome.svg','lptoken.png','factory.jpg','aeromax.png','pancakeswap.png')},'/alchemy-guide.html':'alchemy-guide.html','/alchemy-guide.css':'alchemy-guide.css','/alchemy-guide.js':'alchemy-guide.js','/alchemy-create-app.png':'alchemy-create-app.png','/':'index.html','/index.html':'index.html','/app.js':'app.js','/activity.js':'activity.js','/activity.css':'activity.css','/workspace-design.css':'workspace-design.css','/workspace-design.js':'workspace-design.js','/folders-model.js':'folders-model.js','/folders.js':'folders.js','/wallet-management.js':'wallet-management.js','/folders.css':'folders.css','/ui.css':'ui.css','/jobs.js':'jobs.js','/portfolio.js':'portfolio.js','/capital.js':'capital.js','/capital.css':'capital.css','/compact.css':'compact.css','/token-visibility.js':'token-visibility.js','/token-visibility.css':'token-visibility.css','/workspace.js':'workspace.js','/workspace-model.js':'workspace-model.js','/workspace.css':'workspace.css','/ows.js':'ows.js','/selects.js':'selects.js','/integrations.js':'integrations.js','/report.js':'report.js','/report.css':'report.css','/watching.js':'watching.js','/watching-model.js':'watching-model.js','/style.css':'style.css','/favicon.svg':'favicon.svg','/kira-logo.png':'kira-logo.png','/ows-logo.svg':'ows-logo.svg'}
             if path not in files:self.send_error(404);return
             file=STATIC/files[path]
-            content={'html':'text/html; charset=utf-8','js':'text/javascript; charset=utf-8','css':'text/css; charset=utf-8','svg':'image/svg+xml','png':'image/png'}[file.suffix[1:]]
+            content={'html':'text/html; charset=utf-8','js':'text/javascript; charset=utf-8','css':'text/css; charset=utf-8','svg':'image/svg+xml','png':'image/png','jpg':'image/jpeg'}[file.suffix[1:]]
             self.respond(file.read_bytes(),content)
-        except JobError as error:self.json({'error':{'code':error.code,'message':str(error)}},400)
         except JobError as error:self.json({'error':{'code':error.code,'message':str(error)}},400)
         except (ValueError,OSError,TypeError,KeyError):self.send_error(503,'Research data is being updated. Try again shortly.')
 
@@ -158,9 +171,8 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=8765);parser.add_argument('--controls',action='store_true');args=parser.parse_args()
-    server=ThreadingHTTPServer(('127.0.0.1',args.port),Handler)
+    server=LocalServer(('127.0.0.1',args.port),Handler)
     server.controls=args.controls;server.session_token=secrets.token_urlsafe(32)
-    server.daemon_threads=True
     server.application=Application(ROOT);server.jobs=server.application.jobs
     if args.controls:server.ows=OwsStore(ROOT)
     if args.controls:server.jobs.reconcile_idle()

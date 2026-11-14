@@ -33,11 +33,32 @@ def fixture():
 
 
 class SellQuoteTests(unittest.TestCase):
-    def test_supported_terminal_pools_only_not_v4_nonterminal_or_wrong_identity(self):
+    def test_extended_venues_use_chain_bound_candidates_and_full_input_guards(self):
+        for venue,kind,chain in [('pancakeswap','pancakeswap_v2_reserves',56),('pancakeswap','pancakeswap_v3_quoter',56),('aero','aero_pool',8453),('aero','aero_cl_quoter',8453),('aerodrome-slipstream','aero_cl_quoter',1)]:
+            with self.subTest(kind=kind,chain=chain):
+                snapshot,market,row=fixture();token=snapshot['tokens'][0];pool=market['markets'][0]['pools'][0]
+                token['chain_id']=chain;snapshot['coverage'][0]['chain_id']=chain
+                output='0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c' if chain==56 else OUTPUT if chain==8453 else '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
+                pool.update(venue=venue,version_labels=['v3'] if 'quoter' in kind else ['v2'],paired_tokens=[{'address':TOKEN},{'address':output}])
+                market['markets'][0]['id']=f'{chain}:{TOKEN}';market['tokens'][0].update(chain_id=chain,address=output)
+                self.assertEqual(len(candidates(snapshot,market)),1)
+                row.update(chain_id=chain);row['quote'].update(kind=kind,output_address=output,input_amount_is_maximum=False)
+                market['sell_quotes']={'version':1,'wallet_address':WALLET,'records':[row]}
+                result=classify_with_cache(token,market,wallet_address=WALLET)
+                self.assertEqual(result['quotes'][0]['kind'],kind);self.assertFalse(result['quotes'][0]['partial_input'])
+                if 'quoter' in kind:
+                    row['quote']['input_amount_is_maximum']=True
+                    self.assertTrue(classify_with_cache(token,market,wallet_address=WALLET)['quotes'][0]['partial_input'])
+        snapshot,market,_=fixture();market['markets'][0]['pools'][0].update(venue='pancakeswap',version_labels=['v3'])
+        self.assertEqual(candidates(snapshot,market),[])
+
+    def test_largest_supported_terminal_pool_includes_base_v4(self):
         snapshot, market, row = fixture()
         pools = market['markets'][0]['pools']
         pools.insert(0,{**pools[0],'pool':'0x'+'4'*64,'venue':'uniswap','version_labels':['v4'],'reported_liquidity':{'usd':1000000}})
-        self.assertEqual(candidates(snapshot,market)[0]['dex_pools'][0]['pool'],POOL)
+        self.assertEqual(candidates(snapshot,market)[0]['dex_pools'][0]['pool'],pools[0]['pool'])
+        unsupported=deepcopy(snapshot);unsupported['tokens'][0]['chain_id']=1;unsupported['coverage'][0]['chain_id']=1
+        self.assertFalse(candidates(unsupported,market))
         for change in ({'environment':'testnet'},{'environment':'unknown'}):
             snapshot['coverage'][0].update(change);self.assertEqual(candidates(snapshot,market),[])
         snapshot['coverage'][0]['environment']='mainnet'
@@ -45,8 +66,37 @@ class SellQuoteTests(unittest.TestCase):
             snapshot['tokens'][0][field]=True;self.assertEqual(candidates(snapshot,market),[]);snapshot['tokens'][0].pop(field)
         for change in ({'retained_from_previous':True},{'quality':'unreliable'},{'liquidity_usd':1},{'basis':'Curve spot'}):
             altered=deepcopy(market);altered['tokens'][0].update(change);self.assertEqual(candidates(snapshot,altered),[])
-        pools[1]['paired_tokens']=[{'address':TOKEN},{'address':'0x'+'5'*40}]
+        for pool in pools:pool['paired_tokens']=[{'address':TOKEN},{'address':'0x'+'5'*40}]
         self.assertEqual(candidates(snapshot,market),[])
+
+    def test_native_v4_output_uses_the_saved_chain_native_reference(self):
+        from cashout import output_price
+        snapshot,market,row=fixture();zero='0x'+'0'*40;pool=market['markets'][0]['pools'][0]
+        pool.update(pool='0x'+'4'*64,venue='uniswap',version_labels=['v4'],paired_tokens=[{'address':TOKEN},{'address':zero}])
+        self.assertFalse(candidates(snapshot,market))
+        market['native_usd']={'ETH':{'usd':'2000','basis':'Market index','observed_at':STAMP,'source':'https://example.com/native'}}
+        self.assertEqual(candidates(snapshot,market)[0]['dex_pools'][0]['pool'],pool['pool'])
+        self.assertEqual(output_price(8453,zero,market)['symbol'],'ETH')
+        self.assertIsNone(output_price(123456,zero,market))
+        self.assertIsNone(output_price(8453,TOKEN,market))
+        row.update(pool=pool['pool']);row['quote'].update(kind='uniswap_v4_quoter',pool=pool['pool'],output_address=zero,output_symbol='ETH',input_amount_is_maximum=False,full_input_verified=True)
+        market['sell_quotes']={'version':1,'wallet_address':WALLET,'records':[row]}
+        quoted=classify_with_cache(snapshot['tokens'][0],market,wallet_address=WALLET)
+        self.assertEqual(quoted['quotes'][0]['quoted_output_usd'],'4000')
+        self.assertEqual(quoted['quotes'][0]['pool'],pool['pool'])
+        self.assertFalse(quoted['quotes'][0]['partial_input'])
+        row['quote']['full_input_verified']=False
+        self.assertTrue(classify_with_cache(snapshot['tokens'][0],market,wallet_address=WALLET)['quotes'][0]['partial_input'])
+
+    def test_new_balance_proof_invalidates_an_older_route_without_repricing_the_balance(self):
+        snapshot,market,row=fixture();token=snapshot['tokens'][0]
+        token.update(balance_block_number='9',dex_pools=[{'cashout_quote':deepcopy(row['quote'])}])
+        self.assertTrue(classify_with_cache(token,market,wallet_address=WALLET)['quotes'])
+        row.update(status='unknown',observed_wallet_balance_raw='99',balance_block_number='10',reason='Balance changed; refresh holdings')
+        row.pop('quote');market['sell_quotes']={'version':1,'wallet_address':WALLET,'records':[row]}
+        before=deepcopy(token)
+        result=classify_with_cache(token,market,wallet_address=WALLET)
+        self.assertEqual(result['quotes'],[]);self.assertTrue(result['balance_changed']);self.assertEqual(token,before)
 
     def test_fresh_same_quantity_cache_has_zero_provider_work_and_expiry_is_bounded(self):
         snapshot, market, row = fixture()

@@ -33,7 +33,7 @@ def signal_process_group(pgid, sig):
         if status.returncode or not valid or any(int(row[0])==pgid and not row[1].startswith('Z') for row in rows):raise
 
 State = Literal['queued', 'running', 'interrupted', 'succeeded', 'partial', 'failed', 'cancelled']
-Operation = Literal['wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv','settings.h402']
+Operation = Literal['wallet.add','wallet.refresh','positions.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv','settings.h402']
 TERMINAL = {'succeeded', 'partial', 'failed', 'cancelled', 'interrupted'}
 # Web history uses the groups. Agents may also filter by an exact state they read on a job.
 STATE_FILTERS = {'all': None, 'active': {'queued','running'}, 'succeeded': {'succeeded','partial'},
@@ -113,6 +113,16 @@ def atomic(path, value):
 def read(path):
     return json.loads(Path(path).read_text())
 
+def position_recheck_hint(saved):
+    hint=saved.get('position_recheck') if isinstance(saved,dict) else None
+    return (saved.get('fingerprint') if isinstance(hint,dict) and set(hint)=={'chain_id','slices_used'}
+            and type(hint['chain_id']) is int and hint['chain_id']>0
+            and type(hint['slices_used']) is int and 0<=hint['slices_used']<4 else None)
+
+@lru_cache(maxsize=256)
+def cached_position_recheck(path, version):
+    return position_recheck_hint(read(path))
+
 @lru_cache(maxsize=64)
 def published_asset_progress(path, version):
     """Project final classifications without rewriting historical progress events."""
@@ -169,13 +179,14 @@ class JobStore:
         if not isinstance(job,dict) or type(job.get('schema_version')) is not int or job.get('schema_version') != 1: raise JobError('unsupported_version', 'Unsupported persisted job version.')
         required={'schema_version','job_id','operation','input','state','attempt','sequence','result','previous_result','key_hash','request_hash','created_at','updated_at','cancel_requested','checkpoint','stage','events','errors','chains'}
         optional={'raw_hash','control_receipts','control_raw','provider_configuration','started_at','analysis_phase','parent_job_id','continuation_id','continuation','scan_policy','progress_observed_at','asset_progress'}
-        if required-set(job) or set(job)-required-optional or job['job_id']!=job_id or job['checkpoint']!='snapshots/jobs/'+job_id or not isinstance(job['operation'],str) or job['operation'] not in {'wallet.add','wallet.refresh','prices.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv','settings.h402'} or not isinstance(job['state'],str) or job['state'] not in TERMINAL|{'queued','running'} or any(type(job[k]) is not int or job[k]<0 for k in ('attempt','sequence')) or type(job['cancel_requested']) is not bool or not isinstance(job['input'],dict) or any(not isinstance(job[k],list) for k in ('events','errors')) or not isinstance(job['chains'],dict):
+        if required-set(job) or set(job)-required-optional or job['job_id']!=job_id or job['checkpoint']!='snapshots/jobs/'+job_id or not isinstance(job['operation'],str) or job['operation'] not in {'wallet.add','wallet.refresh','prices.refresh','positions.refresh','wallet.setTags','settings.rpc','settings.discovery','settings.provider','settings.importEnv','settings.h402'} or not isinstance(job['state'],str) or job['state'] not in TERMINAL|{'queued','running'} or any(type(job[k]) is not int or job[k]<0 for k in ('attempt','sequence')) or type(job['cancel_requested']) is not bool or not isinstance(job['input'],dict) or any(not isinstance(job[k],list) for k in ('events','errors')) or not isinstance(job['chains'],dict):
             raise JobError('invalid_envelope','Persisted job validation failed. Preserve the file for recovery.')
         names={'wallet.add':['address','tag'],'wallet.refresh':['wallet'],'prices.refresh':['wallet'],'wallet.setTags':['wallet','tags'],
-            'settings.rpc':['mode','chains','allow_public_fallback'],'settings.discovery':['provider','key_env'],'settings.provider':['provider','key_env'],'settings.importEnv':['import_id','key_env'],'settings.h402':['enabled']}[job['operation']]
+            'settings.rpc':['mode','chains','allow_public_fallback'],'settings.discovery':['provider','key_env'],'settings.provider':['provider','key_env'],'settings.importEnv':['import_id','key_env'],'settings.h402':['enabled'],'positions.refresh':['wallet','discover']}[job['operation']]
         if job['operation']=='settings.rpc' and 'priority' in job['input']:names=names+['priority']
         if job['operation']=='settings.discovery' and 'explorers' in job['input']:names=names+['explorers']
         fields(job['input'],names)
+        if job['operation']=='positions.refresh' and type(job['input']['discover']) is not bool:raise JobError('invalid_envelope','Invalid position discovery mode.')
         if job['operation']=='settings.h402' and type(job['input']['enabled']) is not bool:raise JobError('invalid_envelope','Invalid h402 preference.')
         if 'analysis_phase' in job and job['analysis_phase'] not in ('baseline','enrichment'):raise JobError('invalid_envelope','Invalid analysis phase.')
         if 'scan_policy' in job and job['scan_policy'] not in ('optional_depth_v1','alchemy_inventory_v1'):raise JobError('invalid_envelope','Invalid scan policy.')
@@ -239,29 +250,47 @@ class JobStore:
             cached = self._summary_cache.get(path.stem)
             if cached is None or cached[0] != version:
                 job = self.get(path.stem)
-                row = {k: job.get(k) for k in ('job_id','operation','state','stage','created_at','updated_at','input','analysis_phase','parent_job_id','continuation_id')}
+                row = {k: job.get(k) for k in ('job_id','operation','state','stage','created_at','updated_at','input','analysis_phase','parent_job_id','continuation_id',
+                    'key_hash','raw_hash','request_hash','control_receipts','control_raw','result','errors','scan_policy')}
                 self._summary_cache[path.stem] = version, row
             rows.append(self._summary_cache[path.stem][1])
         for key in set(self._summary_cache) - existing:del self._summary_cache[key]
         return rows
 
-    def page(self, offset=0, limit=50, state='all', wallet=None):
+    def page(self, offset=0, limit=50, state='all', wallet=None, query=''):
         from kira_state import page_bounds
         page_bounds(offset, limit)
         if state not in STATE_FILTERS:raise JobError('invalid_state','Choose a job state filter: '+', '.join(STATE_FILTERS)+'.')
+        if not isinstance(query,str) or len(query)>200:raise JobError('invalid_query','Search activity with up to 200 characters.')
+        query=query.strip().casefold()
         selected = self.wallet(wallet)['address_key'] if wallet else None
         with self.locked():
-            rows = [r for r in self.summaries() if (STATE_FILTERS[state] is None or r['state'] in STATE_FILTERS[state])
-                    and (selected is None or (r['input'].get('wallet') or r['input'].get('address','')).lower() == selected)]
+            names={w['address_key']:' '.join(w.get('tags',[])) for w in read(self.root/'wallets.json').get('wallets',[])} if query else {}
+            labels={'wallet.add':'wallet lookup add wallet holdings','wallet.refresh':'holdings refresh refresh holdings',
+                    'positions.refresh':'platform positions liquidity staking DeFi refresh','prices.refresh':'price refresh refresh prices','wallet.setTags':'wallet names',
+                    'settings.rpc':'RPC settings','settings.discovery':'token discovery','settings.provider':'data provider connection',
+                    'settings.importEnv':'local connection setup','settings.h402':'h402 preference'}
+            rows=[]
+            for row in self.summaries():
+                address=(row['input'].get('wallet') or row['input'].get('address','')).lower()
+                if selected is not None and address!=selected:continue
+                words=' '.join((address,names.get(address,''),row['job_id'],row['operation'],
+                    'sell estimates routes analysis' if row.get('analysis_phase')=='enrichment' else labels.get(row['operation'],''),str(row['input'].get('tag',''))))
+                if query and query not in words.casefold():continue
+                rows.append(row)
+            counts={key:sum(group is None or row['state'] in group for row in rows) for key,group in STATE_FILTERS.items()}
+            updated=max((row['updated_at'] for row in rows),default=None)
+            rows=[row for row in rows if STATE_FILTERS[state] is None or row['state'] in STATE_FILTERS[state]]
             rows.sort(key=lambda r: r['created_at'], reverse=True)
             jobs = [self.get(r['job_id']) for r in rows[offset:offset+limit]]
         end = offset + len(jobs)
-        return {'jobs': jobs, 'offset': offset, 'total': len(rows), 'next_offset': end if end < len(rows) else None}
+        return {'jobs': jobs, 'offset': offset, 'total': len(rows), 'next_offset': end if end < len(rows) else None,
+                'counts':counts,'last_updated_at':updated}
 
     def status(self):
         with self.locked():
             rows = self.summaries()
-            active = sorted((r for r in rows if r['state'] in ('queued','running')), key=lambda r:r['created_at'])
+            active = sorted((r for r in rows if r['state'] in ('queued','running')), key=lambda r:(r['state']!='running',r['created_at']))
             revision = digest([(r['job_id'],r['updated_at'],r['state'],r['stage']) for r in sorted(rows,key=lambda r:r['job_id'])])
             return {'jobs_revision': revision, 'active_job_count': len(active),
                     'active_jobs': [{**{k:r[k] for k in ('job_id','operation','state','stage')},
@@ -284,8 +313,13 @@ class JobStore:
         return matches[0]
 
     def normalize(self, operation, value):
-        if operation in {'wallet.add','wallet.refresh','prices.refresh','job.deepen'}:
+        if operation in {'wallet.add','wallet.refresh','prices.refresh','positions.refresh','job.deepen'}:
             self.require_connection()
+        if operation=='positions.refresh':
+            if not isinstance(value,dict) or set(value)-{'wallet','discover'} or 'wallet' not in value or 'discover' in value and type(value['discover']) is not bool:raise JobError('invalid_input','Use a registered wallet and optional discover boolean.')
+            wallet=self.wallet(value['wallet']);index=self.root/'positions/index.json'
+            known=index.exists() and wallet['address_key'] in read(index).get('wallets',{})
+            return {'wallet':wallet['address_key'],'discover':value.get('discover',not known)}
         if operation == 'settings.h402':
             fields(value,['enabled'])
             if type(value['enabled']) is not bool:raise JobError('invalid_settings','Choose whether to enable h402 tools.')
@@ -331,8 +365,9 @@ class JobStore:
             # Validate mixed-case checksums with the existing engine contract.
             from wallet import validate_address
             address = validate_address(value['address'])
+            if address.lower() in read(self.root/'wallets.json').get('removed_wallets',{}):raise JobError('wallet_removed','This wallet was removed. Restore it in Manage wallets to keep its saved research.')
             return {'address': address, 'tag': value['tag']}
-        if operation in {'wallet.refresh', 'prices.refresh', 'wallet.setTags'}:
+        if operation in {'wallet.refresh', 'prices.refresh', 'positions.refresh', 'wallet.setTags'}:
             fields(value, ['wallet', 'tags'] if operation == 'wallet.setTags' else ['wallet'])
             wallet = self.wallet(value['wallet'])
             if operation == 'prices.refresh' and not wallet.get('latest_snapshot'):
@@ -375,12 +410,14 @@ class JobStore:
         return self.submit({'schema_version':1,'operation':'settings.importEnv','input':{'import_id':identity,'key_env':key_env},'idempotency_key':identity})
 
     def admit_wallet(self, job):
+        if job['operation'] in ('prices.refresh','positions.refresh') and job['input']['wallet'].lower() in read(self.root/'wallets.json').get('removed_wallets',{}):raise JobError('wallet_removed','Restore this wallet in Manage wallets before refreshing research.')
         if job['operation'] not in ('wallet.add','wallet.refresh'):return job
         from wallet import register, registry_locked
         with registry_locked(self.root):
             registry=read(self.root/'wallets.json')
             admissions=registry.setdefault('wallet_admissions',{})
             address=job['input'].get('address') or job['input'].get('wallet')
+            if address.lower() in registry.get('removed_wallets',{}):raise JobError('wallet_removed','This wallet was removed. Restore it in Manage wallets before starting research.')
             entry=next((w for w in registry['wallets'] if w['address_key']==address.lower()),None)
             if job['job_id'] not in admissions:
                 legacy_done=not job.get('analysis_phase') and (job['state']!='queued' or job['attempt']>0) and entry is not None
@@ -409,13 +446,15 @@ class JobStore:
             operation = request['operation']
             if not isinstance(operation,str):raise JobError('unsupported_operation','Expected a typed operation name.')
             key_hash = digest(key); receipt = self.jobs / 'requests' / (key_hash + '.json')
+            from kira_folders import key_used
+            if key_used(self.root,key_hash):raise JobError('idempotency_conflict','This request key belongs to a folder action.')
             if (self.root/'.token-actions'/(key_hash+'.json')).exists() or (self.jobs/'batches'/(key_hash+'.json')).exists():
                 raise JobError('idempotency_conflict','This request key already belongs to a portfolio action.')
             raw_hash=digest({'operation':operation,'input':request['input']})
             if receipt.exists() and read(receipt).get('raw_hash')==raw_hash:return self.admit_wallet(self.get(read(receipt)['job_id']))
-            for p in self.jobs.glob('*.json'):
-                saved=self.get(p.stem)
-                if saved.get('control_raw',{}).get(key_hash)==raw_hash or saved['key_hash']==key_hash and saved.get('raw_hash')==raw_hash:
+            for saved in self.summaries():
+                if (saved.get('control_raw') or {}).get(key_hash)==raw_hash or saved['key_hash']==key_hash and saved.get('raw_hash')==raw_hash:
+                    saved=self.get(saved['job_id'])
                     fingerprint=saved.get('control_receipts',{}).get(key_hash,saved['request_hash'])
                     atomic(receipt,{'schema_version':1,'request_hash':fingerprint,'raw_hash':raw_hash,'job_id':saved['job_id']})
                     return self.admit_wallet(saved)
@@ -426,8 +465,9 @@ class JobStore:
                 if old['request_hash'] != fingerprint: raise JobError('idempotency_conflict', 'This request key already belongs to another operation.')
                 return self.admit_wallet(self.get(old['job_id']))
             # Recover an envelope committed before its request receipt.
-            existing = next((j for p in self.jobs.glob('*.json') if (j := self.get(p.stem))['key_hash'] == key_hash or key_hash in j.get('control_receipts',{})), None)
+            existing = next((j for j in self.summaries() if j['key_hash'] == key_hash or key_hash in (j.get('control_receipts') or {})), None)
             if existing:
+                existing=self.get(existing['job_id'])
                 recorded=existing.get('control_receipts',{}).get(key_hash,existing['request_hash'])
                 if recorded != fingerprint: raise JobError('idempotency_conflict', 'This request key already belongs to another operation.')
                 job = existing
@@ -443,7 +483,15 @@ class JobStore:
                 if wallet.get('research_generation') not in (None,parent_job['job_id']):
                     raise JobError('superseded','A newer basic scan is available. Start deep scanning from its saved result.')
                 # Recover admission if the child was saved before its parent link.
-                job=next((j for p in self.jobs.glob('*.json') if (j:=self.get(p.stem)).get('parent_job_id')==parent_job['job_id']),None)
+                child=next((j for j in self.summaries() if j.get('parent_job_id')==parent_job['job_id']),None)
+                job=self.get(child['job_id']) if child else None
+                if job is None:
+                    from sell_analysis import assess
+                    analysis=assess(self.root,wallet,snapshot_id=parent_job['result']['snapshot_id'])
+                    if analysis['status']=='unverified':
+                        raise JobError('holdings_unverified','Some previously held quantities could not be checked. Refresh holdings before updating sell estimates. Saved estimates are preserved.')
+                    if analysis['status']=='current':
+                        job=self.get(analysis['job_id'])
                 if job is None:
                     job=self.new_job('wallet.refresh',{'wallet':wallet['address_key']},key_hash,fingerprint,raw_hash,'enrichment',parent_job['job_id'])
                 job.setdefault('control_receipts',{})[key_hash]=fingerprint
@@ -466,6 +514,9 @@ class JobStore:
                 job.setdefault('control_receipts',{})[key_hash]=fingerprint
                 job.setdefault('control_raw',{})[key_hash]=raw_hash
                 self.save(job)
+            elif operation=='positions.refresh' and any(j['operation']==operation and j['state'] in ('queued','running') and j['input']['wallet']==value['wallet'] and (j['input']['discover'] or not value['discover']) for j in self.summaries()):
+                job=self.get(next(j['job_id'] for j in self.summaries() if j['operation']==operation and j['state'] in ('queued','running') and j['input']['wallet']==value['wallet'] and (j['input']['discover'] or not value['discover'])))
+                job.setdefault('control_receipts',{})[key_hash]=fingerprint;job.setdefault('control_raw',{})[key_hash]=raw_hash;self.save(job)
             else:
                 job=self.new_job(operation,value,key_hash,fingerprint,raw_hash,phase,parent)
             self.admit_wallet(job)
@@ -480,7 +531,7 @@ class JobStore:
         return bool(target) and any(j['state'] in ('queued','running') and
             j['operation'] in ('wallet.add','wallet.refresh','prices.refresh') and
             (j['input'].get('wallet') or j['input'].get('address') or '').lower()==target.lower()
-            for p in self.jobs.glob('*.json') for j in [self.get(p.stem)])
+            for j in self.summaries())
 
     def new_job(self,operation,value,key_hash,fingerprint,raw_hash,phase,parent):
         """Called under the request lock; child admission is serialized too."""
@@ -624,6 +675,13 @@ class JobStore:
         return sorted(rows, key=lambda r: (r['compiled_at'] or '',r['snapshot_id']))
 
     def publication(self, job):
+        if job['operation']=='positions.refresh':
+            folder=self.root/job['checkpoint'];receipt=folder/'positions-publication.json'
+            if receipt.exists():return read(receipt)
+            index=self.root/'positions/index.json';saved=folder/'positions.json'
+            if index.exists() and saved.exists() and (read(index).get('wallets',{}).get(job['input']['wallet']) or {}).get('path')==str(saved.relative_to(self.root)):
+                value=read(saved);result={'status':'completed' if value['status']=='checked' else 'partial','positions_snapshot':str(saved.relative_to(self.root)),'position_count':len(value['positions']),'coverage_gaps':sum(c['status']!='checked' for c in value['coverage'])};atomic(receipt,result);return result
+            return None
         if job['operation'].startswith('settings.') or job['operation']=='wallet.setTags':
             receipt=self.jobs/'results'/(job['job_id']+'.json')
             return read(receipt) if receipt.exists() else None
@@ -709,7 +767,7 @@ class JobStore:
                 job['events'][-1]['context']={'phase':event['phase'],'attempt':job['attempt']}
                 if event['phase']=='markets':job['events'][-1]['context']['operation']='price_requests'
                 job['progress_observed_at']=job['events'][-1]['observed_at']
-            if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets','reserves','history','market_discovery','factory_queries','pool_checks','cashout_routes','mintclub_membership','asset_review','asset_inventory'):
+            if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets','reserves','history','market_discovery','factory_queries','pool_checks','cashout_routes','mintclub_membership','asset_review','asset_inventory','positions'):
                 context={'operation':event['operation'],'chain_id':counts.get('chain_id'),'attempt':job['attempt']}
                 if event['operation']=='asset_inventory':
                     prior=job.setdefault('asset_progress',{}).setdefault(str(event['chain_id']),{'total':0,'checked':0,'quoted':0,'unknown':0})
@@ -741,6 +799,28 @@ class JobStore:
             wallet['tags'] = tags; atomic(self.root / 'wallets.json', registry)
         return {'wallet': wallet['address_key'], 'tags': tags, 'status': 'completed'}
 
+    def finish_tag_edits(self):
+        """Commit admitted name edits without waiting for the research writer.
+
+        The envelope lock excludes worker claims. The registry lock in set_tags
+        preserves concurrent registration/publication. Older queued edits run in
+        order so a later worker cannot restore an obsolete name.
+        """
+        with self.locked():
+            edits=[self.get(j['job_id']) for j in self.summaries() if j['operation']=='wallet.setTags' and j['state'] in ('queued','running')]
+            # An older worker may already be between claim and registry commit.
+            if any(j['state']=='running' for j in edits):return []
+            completed=[]
+            for job in sorted(edits,key=lambda j:(j['created_at'],j['job_id'])):
+                result=self.publication(job)
+                if result is None:
+                    job.update(started_at=now(),attempt=job['attempt']+1)
+                    result=self.set_tags(job)
+                    atomic(self.jobs/'results'/(job['job_id']+'.json'),result)
+                job.update(result=result,state='succeeded',stage='published')
+                self.save(job);completed.append(job['job_id'])
+            return completed
+
     def continue_research(self):
         """Compatibility hook. Deep work now requires explicit job.deepen.
 
@@ -750,6 +830,7 @@ class JobStore:
         return
 
     def engine_command(self, job):
+        if job['operation']=='positions.refresh':return [sys.executable,str(ASSETS/'position_worker.py'),'--wallet',job['input']['wallet']]
         if job['operation'] == 'prices.refresh':
             command = [sys.executable, str(ASSETS / 'viewer/refresh_prices.py'), '--wallet', job['input']['wallet']]
         else:
@@ -819,7 +900,7 @@ class JobStore:
             while child.poll() is None:
                 if self.get(job['job_id'])['cancel_requested']:
                     cancelled = True; stop_child(); break
-                if job.get('analysis_phase')=='enrichment' and time.monotonic()>=next_check:
+                if (job.get('analysis_phase')=='enrichment' or job['operation']=='positions.refresh') and time.monotonic()>=next_check:
                     next_check=time.monotonic()+2
                     if any(j['state']=='queued' and (j.get('analysis_phase')=='baseline' or j['operation']=='prices.refresh' or j['operation'].startswith('settings.')) for j in self.list()):
                         yielded=True;stop_child();break
@@ -855,7 +936,7 @@ class JobStore:
     def queue_continuation(self, job, error):
         """Only explicit slice boundaries resume automatically, with bounded stalls."""
         path=self.root/job['checkpoint']/'continuation.json'
-        if job.get('analysis_phase')!='enrichment' or not path.is_file():
+        if (job.get('analysis_phase')!='enrichment' and job['operation']!='positions.refresh') or not path.is_file():
             job.update(state='interrupted',stage='market_paused' if error.code=='market_budget' else 'research_paused',
                        errors=[{'code':error.code,'message':str(error)}])
             return
@@ -869,17 +950,32 @@ class JobStore:
             return
         prior=job.get('continuation',{})
         unchanged=prior.get('unchanged_turns',0)+1 if prior.get('fingerprint')==saved['fingerprint'] else 0
+        delay=0 if job['operation']=='positions.refresh' and unchanged==0 and position_recheck_hint(saved)==saved['fingerprint'] else min(60,2**unchanged)
         job['continuation']={'fingerprint':saved['fingerprint'],'unchanged_turns':unchanged,
-                             'not_before':max(saved['not_before'],int(time.time())+min(60,2**unchanged))}
+                             'not_before':max(saved['not_before'],int(time.time())+delay)}
         if unchanged>=3:
             job.update(state='interrupted',stage='research_stalled',errors=[{'code':'no_progress',
                        'message':'Three continuation attempts made no new progress. Saved evidence is intact; unresolved reads remain unknown. Resume explicitly after checking the source.'}])
         else:
             job.update(state='queued',stage='waiting' if saved['not_before']>time.time() else 'queued',errors=[])
 
-    def worker(self):
+    def research_order(self, job):
+        heavy=job.get('analysis_phase')=='enrichment' or job['operation']=='positions.refresh'
+        urgent=False
+        if job['operation']=='positions.refresh' and job['state']=='queued' and job.get('continuation',{}).get('unchanged_turns')==0:
+            path=self.root/job['checkpoint']/'continuation.json'
+            try:
+                stat=path.stat();fingerprint=cached_position_recheck(str(path),(stat.st_mtime_ns,stat.st_size,stat.st_ino))
+                urgent=fingerprint is not None and fingerprint==job['continuation']['fingerprint']
+            except (OSError,ValueError,TypeError):pass
+        return heavy,not urgent,job['updated_at'] if heavy else job['created_at']
+
+    def worker(self, startup_fd=None):
         with (self.root / '.job-worker.lock').open('a') as lease:
             fcntl.flock(lease, fcntl.LOCK_EX)
+            # The launcher transfers one reservation to its child. Keep it
+            # while waiting for the current worker, then allow one successor.
+            if startup_fd is not None:os.close(startup_fd)
             # Do not reconcile or claim work while a legacy engine/config writer is live.
             with (self.root / '.analysis.lock').open('a') as writer:
                 fcntl.flock(writer, fcntl.LOCK_EX)
@@ -889,7 +985,7 @@ class JobStore:
                 writer = (self.root / '.analysis.lock').open('a')
                 fcntl.flock(writer, fcntl.LOCK_EX)
                 with self.locked():
-                    queued = sorted((self.get(p.stem) for p in self.jobs.glob('*.json')), key=lambda j: (j.get('analysis_phase')=='enrichment',j['updated_at'] if j.get('analysis_phase')=='enrichment' else j['created_at']))
+                    queued = sorted((self.get(p.stem) for p in self.jobs.glob('*.json')), key=self.research_order)
                     job = next((j for j in queued if j['state']=='queued' and j.get('continuation',{}).get('not_before',0)<=time.time()), None)
                     waiting=any(j['state']=='queued' for j in queued)
                     if not job:
@@ -934,12 +1030,24 @@ class JobStore:
                 finally: writer.close()
 
     def launch(self):
-        # Logs never contain raw engine output or credentials.
-        with (self.root / 'jobs-worker.log').open('ab') as log:
-            subprocess.Popen([sys.executable, str(ASSETS / 'kira_jobs.py'), '--worker', str(self.root)],
-                stdout=log, stderr=log, start_new_session=True, env=os.environ.copy())
+        # One active worker and at most one waiting successor. The successor
+        # also avoids a lost wakeup when a request arrives during worker exit.
+        with (self.root / '.job-launch.lock').open('a') as reservation:
+            try:fcntl.flock(reservation,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:return False
+            # Logs never contain raw engine output or credentials.
+            with (self.root / 'jobs-worker.log').open('ab') as log:
+                subprocess.Popen([sys.executable, str(ASSETS / 'kira_jobs.py'), '--worker', str(self.root),
+                                  '--startup-fd',str(reservation.fileno())],pass_fds=(reservation.fileno(),),
+                    stdout=log, stderr=log, start_new_session=True, env=os.environ.copy())
+            return True
 
 if __name__ == '__main__':
-    if len(sys.argv) == 3 and sys.argv[1] == '--worker':
+    if len(sys.argv) in (3,5) and sys.argv[1] == '--worker':
+        startup_fd=None
+        if len(sys.argv)==5:
+            if sys.argv[3]!='--startup-fd' or not sys.argv[4].isdigit():raise SystemExit('Invalid worker reservation.')
+            startup_fd=int(sys.argv[4]);saved=os.fstat(startup_fd);expected=(Path(sys.argv[2])/'.job-launch.lock').stat()
+            if startup_fd<3 or (saved.st_dev,saved.st_ino)!=(expected.st_dev,expected.st_ino):raise SystemExit('Invalid worker reservation.')
         signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
-        JobStore(sys.argv[2]).worker()
+        JobStore(sys.argv[2]).worker(startup_fd)

@@ -55,7 +55,7 @@ function renderWatching() {
   $('wallet-manual-mode').setAttribute('aria-pressed', String(!browser));
   $('wallet-browser-mode').setAttribute('aria-pressed', String(browser));
   $('wallet-browser-panel').hidden = !!submission || !browser;
-  $('wallet-dialog-title').textContent = submission ? 'Watching wallet request' : browser && current.selected ? 'Review your Watching wallet' : 'Add a Watching wallet';
+  $('wallet-dialog-title').textContent = submission ? 'Wallet request' : browser && current.selected ? 'Review wallet' : 'Add wallet';
   $('wallet-dialog').classList.toggle('is-review', !!submission || browser && !!current.selected);
   $('wallet-intro').hidden = !!submission || browser && !!current.selected;
   $('wallet-address-field').hidden = browser;
@@ -122,6 +122,7 @@ function renderWatching() {
   $('wallet-preview-address').textContent = address;
   $('wallet-preview-name').textContent = tag;
   const existing = state?.wallets.find(wallet => wallet.key === address.toLowerCase());
+  $('wallet-preview-title').textContent = existing ? 'Already saved' : 'Ready to watch';
   $('wallet-existing').hidden = !existing;
   $('wallet-existing-link').href = '#/wallet/'+address.toLowerCase();
   $('wallet-register').disabled = !!submission || !permitted || !valid || !!existing;
@@ -158,6 +159,7 @@ $('wallet-change-account').addEventListener('click', () => {
 $('wallet-session').addEventListener('click', () => {
   if (!localSession?.controls) return;
   if (!watchingSubmission) setWatchingMode('browser');
+  if(typeof FolderUI!=='undefined'&&!watchingSubmission)FolderUI.prepareAdd();
   renderWatching(); $('wallet-dialog').showModal();
 });
 $('wallet-submission-activity').addEventListener('click', () => {
@@ -179,5 +181,6 @@ $('open-connection').addEventListener('click', () => {
   if (!watchingCanAct()) return;
   if (typeof owsState !== 'undefined' && owsState?.connection && !watchingConnection.snapshot().accounts.length) { openOws(); return; }
   if (!watchingSubmission) setWatchingMode('browser');
+  if(typeof FolderUI!=='undefined'&&!watchingSubmission)FolderUI.prepareAdd();
   renderWatching(); $('wallet-dialog').showModal();
 });

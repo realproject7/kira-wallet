@@ -1,0 +1,177 @@
+[
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "poolId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "staker",
+        "type": "address"
+      }
+    ],
+    "name": "claimableReward",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "rewardClaimable",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "fee",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "claimedTotal",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "feeTotal",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "poolCount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "pools",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "stakingToken",
+        "type": "address"
+      },
+      {
+        "internalType": "bool",
+        "name": "isStakingTokenERC20",
+        "type": "bool"
+      },
+      {
+        "internalType": "address",
+        "name": "rewardToken",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "creator",
+        "type": "address"
+      },
+      {
+        "internalType": "uint104",
+        "name": "rewardAmount",
+        "type": "uint104"
+      },
+      {
+        "internalType": "uint32",
+        "name": "rewardDuration",
+        "type": "uint32"
+      },
+      {
+        "internalType": "uint40",
+        "name": "rewardStartsAt",
+        "type": "uint40"
+      },
+      {
+        "internalType": "uint40",
+        "name": "rewardStartedAt",
+        "type": "uint40"
+      },
+      {
+        "internalType": "uint40",
+        "name": "cancelledAt",
+        "type": "uint40"
+      },
+      {
+        "internalType": "uint128",
+        "name": "totalStaked",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint32",
+        "name": "activeStakerCount",
+        "type": "uint32"
+      },
+      {
+        "internalType": "uint40",
+        "name": "lastRewardUpdatedAt",
+        "type": "uint40"
+      },
+      {
+        "internalType": "uint256",
+        "name": "accRewardPerShare",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint104",
+        "name": "totalAllocatedRewards",
+        "type": "uint104"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "userPoolStake",
+    "outputs": [
+      {
+        "internalType": "uint104",
+        "name": "stakedAmount",
+        "type": "uint104"
+      },
+      {
+        "internalType": "uint104",
+        "name": "claimedTotal",
+        "type": "uint104"
+      },
+      {
+        "internalType": "uint104",
+        "name": "feeTotal",
+        "type": "uint104"
+      },
+      {
+        "internalType": "uint256",
+        "name": "rewardDebt",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

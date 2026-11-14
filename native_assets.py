@@ -15,6 +15,17 @@ NATIVE_ASSETS.update({137: ('POL', 'polygon-ecosystem-token'), 56: ('BNB', 'bina
     8217: ('KAIA', 'kaia'), 33139: ('APE', 'apecoin'), 177: ('HSK', 'hashkey-platform-token')})
 
 
+# A native asset has no contract. Its markets are recorded under its wrapped form.
+WRAPPED_SYMBOLS = {'ETH': 'WETH', 'BNB': 'WBNB', 'AVAX': 'WAVAX', 'POL': 'WMATIC'}
+
+
+def wrapped_native(chain_id, catalog):
+    """The catalogued wrapped token of a chain's native asset, or None. Chain identity is required."""
+    row = NATIVE_ASSETS.get(chain_id) if type(chain_id) is int else None
+    symbol = WRAPPED_SYMBOLS.get(row[0]) if row else None
+    return next((t for t in catalog if t.get('chain_id') == chain_id and t.get('symbol') == symbol), None) if symbol else None
+
+
 def native_identity(chain_id, symbol):
     if type(chain_id) is not int or not isinstance(symbol, str): return None
     row = NATIVE_ASSETS.get(chain_id)

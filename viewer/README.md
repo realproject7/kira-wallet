@@ -6,6 +6,33 @@ application service. Your agent host owns the conversation and can display
 this app beside it. Kira does not embed a model runtime or model-account setup.
 Signing and trading are not exposed.
 
+## Find and organize wallets
+
+Use **Find wallet** in the top bar, or Command-K / Control-K, to search every
+registered wallet by name, tag or public address. This includes wallets still
+awaiting research. Search runs against the loaded directory and starts no work.
+
+Choose a folder from the sidebar or the overview selector to inspect its saved
+portfolio, sell estimates, tokens and networks. **Manage folders** opens the organizer. Pick a source folder or All wallets,
+select wallets, choose a destination and press **Move wallets**. Selections stay
+with you across folders, searches and pages. **+ New** creates a folder and
+selects it as the destination; the folder heading offers rename and remove.
+The folder button beside a wallet address moves that individual wallet. New
+watching wallets can choose a folder during registration. Every wallet belongs
+to one folder or Unfiled. Folder removal keeps the wallets and their research.
+
+Research buttons in a folder target that folder's wallets. Requests keep the
+wallet set captured when accepted; later moves do not retarget queued research.
+Activity remains workspace-wide. Token visibility preferences also remain
+workspace-wide. Folders organize records and do not create access boundaries.
+
+Statistics reuse cached observations. Folder views never refresh providers,
+copy balances or alter unknowns. At most eight folder aggregates are cached;
+the manager renders 50 wallet rows per page and accepts up to 1,000 selected
+addresses per move. Wallets already at the destination are skipped. Selection
+survives ordinary data updates; conflicting folder edits require **Load latest
+folders** before moving. No checkbox alone changes membership.
+
 ## Open the viewer
 
 ```sh
@@ -25,9 +52,11 @@ Python's standard library and needs no frontend build. For source maintenance,
 the historical `python3 viewer/start.py` launcher retains its separate local
 workspace default and port 8765. Use the supported CLI for normal operation.
 
-Home is the first sidebar item and the default view. It shows the estimated total value, registered wallet count, networks with holdings, position count, wallet shares, network allocations, and the five largest holdings. Click a wallet card or sidebar item to open its holdings. The selected view and value filter stay in the browser.
+Home is the first sidebar item and the default view. One summary card shows the total value, the sell-out estimate, wallet, network and token counts, and an allocation donut across wallet tokens and platform positions. A bar under the sell-out estimate shows how much of the wallet token value it reaches. Each wallet has a small face drawn from its address. Below it are the five largest holdings, wallets ranked by value and networks ranked by value. Long lists open with the largest rows. Click a wallet row or sidebar item to open its holdings. The selected view and value filter stay in the browser.
 
-Click a token name or a Top tokens row to open its token overview. It sums the recorded balance and known value for that exact chain ID and contract, then shows every registered wallet, recorded prices, analysis times, market links, curve backing and recorded burn refunds where available. An absent holding remains a missing record rather than a fabricated zero. The price range can reflect different observation times. Shared curve backing is never added once per wallet.
+Each figure keeps its method behind a small info button: what the total includes, what a sell-out estimate is, and when prices were observed. State that needs attention appears as a chip, such as missing estimates, limited routes, hidden assets or coverage gaps.
+
+Click a token name or a Top tokens row to open its token overview. It sums the recorded balance and known value for that exact chain ID and contract, then lists holders largest first, one line each. Open a holder for its route output, unit price, observation times and coverage. Recorded markets and curve backing appear as compact rows on this page only. A native asset such as BNB or ETH has no contract, so its page lists the saved pools of its wrapped token and direct pairs. Holdings tables show one line per token. An absent holding remains a missing record rather than a fabricated zero. The price range can reflect different observation times. Shared curve backing is never added once per wallet.
 
 Click a network name in Home or a wallet's chain heading to open its network overview. It shows aggregate known value, unique assets, positions, holding wallets, each wallet's coverage and allocation, and the combined token list. Search tokens by name, symbol or contract. The dollar filters apply to the combined token value across wallets; summary totals remain unfiltered. The network selector includes all configured mainnets and testnets, including networks without recorded holdings.
 
@@ -41,7 +70,7 @@ Mint Club's current network selector uses static artwork under `https://mint.clu
 
 Holdings are grouped by chain and sorted by estimated USD value. Use All, ≥ $5, or ≥ $10 to filter by the value of the whole held position. The default is All. Saved dollar-filter choices are preserved. Unpriced positions do not qualify for dollar filters; a notice explains the hidden holdings and offers Show all holdings. An entirely unpriced wallet or network shows unknown value, not zero.
 
-Home sums direct mainnet positions across wallets. A position is one asset in one wallet. Unique assets use chain ID and contract address, so the same asset held by two wallets counts once as a unique asset and twice as positions. Unknown network values show a dash. Testnets, curve backing, and pool TVL are excluded from the total. Allocation percentages refer to priced value, and the footer shows the range of recorded price update times.
+Home sums direct mainnet positions across wallets. A position is one asset in one wallet. Unique assets use chain ID and contract address, so the same asset held by two wallets counts once as a unique asset and twice as positions. Unknown network values show a dash. Testnets, curve backing, and pool TVL are excluded from the total. Allocation percentages refer to priced value. The info button beside the total shows the range of recorded price update times.
 
 Market links open Mint Club or the observed DEX pool evidence. A DEX link can lead to DEX Screener or the pool contract explorer when that pool is absent from the market index. Research notes link to the complete recorded report.
 

@@ -29,6 +29,7 @@ test('changed holdings, failed balances and exhausted budgets never quote or tur
     for(const balance of [{status:'success',result:99n},{status:'failure',error:Error('unavailable')}]){
       p.calls=async()=>[balance];const result=await collect(input());
       assert.equal(result.records[0].status,'unknown');assert.equal(result.records[0].quote,undefined);
+      if(balance.status==='success'){assert.equal(result.records[0].observed_wallet_balance_raw,'99');assert.equal(result.records[0].balance_block_number,'9');assert.equal(result.records[0].balance_block_hash,HASH);}
     }
     const result=await collect({...input(),budget_ms:0});assert.equal(result.status,'partial');assert.deepEqual(result.records,[]);
   }finally{Object.assign(p,{connect:original.connect,calls:original.calls,dexChain:original.dexChain});h.snapshotBlock=original.snapshotBlock;}

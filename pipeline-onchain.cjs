@@ -5,8 +5,9 @@ const crypto = require('crypto');
 const h = require('./onchain.cjs');
 const {mintclubUrl}=require('./market-links.cjs');
 const v = h.viem;
-const {quotePool}=require('./cashout-quotes.cjs');
-const {expandRoutes,terminal,validLeg,seedQuotes,representativeQuote}=require('./cashout-routes.cjs');
+const {quotePool,v4Key}=require('./cashout-quotes.cjs');
+const dex=require('./dex-adapters.cjs');
+const {expandRoutes,terminal,validLeg,seedQuotes,representativeQuote,nativeCurrency}=require('./cashout-routes.cjs');
 const MULTICALL = '0xcA11bde05977b3631167028862bE2a173976CA11';
 const erc20 = v.parseAbi([
   'function balanceOf(address) view returns (uint256)',
@@ -18,7 +19,9 @@ const erc1155 = v.parseAbi(['function balanceOf(address,uint256) view returns (u
 const poolAbi = v.parseAbi([
   'function factory() view returns (address)', 'function token0() view returns (address)',
   'function token1() view returns (address)', 'function liquidity() view returns (uint128)',
-  'function getReserves() view returns (uint112,uint112,uint32)',
+  'function getReserves() view returns (uint256,uint256,uint256)',
+  'function getPool(address,address) view returns (address)',
+  'function getPool(address,address,int24) view returns (address)',
   'function getSlot0(bytes32) view returns (uint160,int24,uint24,uint24)',
   'function getLiquidity(bytes32) view returns (uint128)',
   'function getPool(address,address,uint24) view returns (address)',
@@ -461,10 +464,17 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
   const pinned=tokens.find(t=>t.balance_block_hash&&t.balance_block_number!=null);
   const holdingBlock=pinned?{block_number:String(pinned.balance_block_number),block_hash:pinned.balance_block_hash}:null;
   const client=await boundedMarket(connect(n),deadline),snapshot=await boundedMarket(h.snapshotBlock(client,cache||holdingBlock),deadline),block=snapshot.number;
-  cache=cache||{wallet:wallet.toLowerCase(),chain_id:n.chain_id,fingerprint,block_number:block.toString(),block_hash:snapshot.hash,requests:{},completed_pools:[],tokens:cacheEncode(tokens),quote_schema_version:2};
-  // Legacy completed pool checks predate amount-specific quotes. Preserve their
-  // cached reads and fixed block, but revisit the pools to record quote status.
-  if(cache.quote_schema_version!==2){cache.completed_pools=[];cache.quote_schema_version=2;}
+  cache=cache||{wallet:wallet.toLowerCase(),chain_id:n.chain_id,fingerprint,block_number:block.toString(),block_hash:snapshot.hash,requests:{},completed_pools:[],tokens:cacheEncode(tokens),quote_schema_version:4};
+  // Preserve completed amount-specific evidence. Revisit only assets whose
+  // available adapters changed in the v4 or extended-venue upgrade.
+  if(cache.quote_schema_version!==4){
+    if([2,3].includes(cache.quote_schema_version)){
+      const affected=new Set([...tokens,...cacheDecode(cache.tokens)].filter(t=>(t.dex_pools||[]).some(p=>dex.supported(n.chain_id,p)||cache.quote_schema_version===2&&n.chain_id===8453&&p.pool?.length===66)).map(t=>t.token_address.toLowerCase()));
+      cache.completed_pools=cache.completed_pools.filter(key=>!affected.has(key.split(':')[0]));
+      for(const key of Object.keys(cache.asset_reviews||{}))if(affected.has(key.split(':')[0]))delete cache.asset_reviews[key];
+    }else{cache.completed_pools=[];cache.asset_reviews={};}
+    cache.quote_schema_version=4;
+  }
   cache.pool_attempts=cache.pool_attempts||{};
   cache.asset_reviews=cache.asset_reviews||{};
   if(typeof cache.asset_reviews!=='object'||Array.isArray(cache.asset_reviews)||Object.values(cache.asset_reviews).some(r=>!r||typeof r!=='object'||typeof r.done!=='boolean'||!Number.isSafeInteger(r.failures)||r.failures<0))throw new Error('Invalid saved asset review frontier.');
@@ -523,7 +533,7 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
     });
     for(const t of tokens)t.factory_discovery={candidate_count:queries.filter(q=>q.t===t).length,errors:queries.filter((q,i)=>q.t===t&&found[i].status==='failure').length,block_number:block};
   }
-  const supported=t=>t.dex_pools.filter(p=>['uniswap','aerodrome'].includes(p.venue));
+  const supported=t=>t.dex_pools.filter(p=>p.venue==='uniswap'||p.venue==='aerodrome'&&n.chain_id===8453||dex.supported(n.chain_id,p));
   if(representative)for(const t of tokens){
     const key=assetKey(t),review=cache.asset_reviews[key]||{done:false,failures:0};cache.asset_reviews[key]=review;
     // A funded curve prefix may still need an intermediate quote. Give that
@@ -532,7 +542,9 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
     const pools=supported(t);
     if(!pools.length&&t.dex_discovery_status!=='pending'){review.done=true;review.reason='No supported indexed pool. Other factories and venues remain unsearched.';}
     if(!review.pool&&pools.length){
-      const score=p=>Number(p.pool.length===42)*2+Number((p.paired_tokens||[]).some(a=>a.address.toLowerCase()!==t.token_address.toLowerCase()&&terminal(n.chain_id,a.address)));
+      const v4Enabled=deployments.some(d=>d.chainId===n.chain_id&&d.protocol==='v4'&&d.contract==='V4Quoter'&&d.status==='active'&&d.fullInputChecked===true);
+      // Compare liquidity within adapters this network can actually quote.
+      const score=p=>Number(p.pool.length===42||p.pool.length===66&&v4Enabled)*2+Number((p.paired_tokens||[]).some(a=>a.address.toLowerCase()!==t.token_address.toLowerCase()&&terminal(n.chain_id,a.address)));
       review.pool=[...pools].sort((a,b)=>score(b)-score(a)||Number(b.reported_liquidity?.usd||0)-Number(a.reported_liquidity?.usd||0)||a.pool.toLowerCase().localeCompare(b.pool.toLowerCase()))[0].pool.toLowerCase();
     }
   }
@@ -580,15 +592,24 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
     };
     const value=q=>{const raw=cache.requests[requestKey('readContract',{...q,blockNumber:block})];return raw===undefined?undefined:cacheDecode(raw);};
     const plan=poolQueue.filter(({p})=>p.pool.length===42);
-    const state=p=>Object.fromEntries(['factory','token0','token1',p.version_labels?.includes('v3')?'liquidity':'getReserves'].map(functionName=>[functionName,value({address:p.pool,abi:poolAbi,functionName})]));
-    const recognized=s=>typeof s.factory==='string'&&(deployments.some(d=>d.chainId===n.chain_id&&d.contract.toLowerCase().includes('factory')&&d.address.toLowerCase()===s.factory.toLowerCase())||n.chain_id===8453&&s.factory.toLowerCase()==='0x420dd381b31aef6683db6b902084cb0ffece40da');
-    await warm(plan.flatMap(({t,p})=>['factory','token0','token1',p.version_labels?.includes('v3')?'liquidity':'getReserves'].map(functionName=>owned(t,{address:p.pool,abi:poolAbi,functionName}))));
-    const parameter=p=>p.version_labels?.includes('v3')?{address:p.pool,abi:v.parseAbi(['function fee() view returns (uint24)']),functionName:'fee'}:p.venue==='aerodrome'?{address:p.pool,abi:v.parseAbi(['function stable() view returns (bool)']),functionName:'stable'}:null;
+    const state=p=>Object.fromEntries(['factory','token0','token1',dex.concentrated(p)?'liquidity':'getReserves'].map(functionName=>[functionName,value({address:p.pool,abi:poolAbi,functionName})]));
+    const recognized=s=>typeof s.factory==='string'&&(deployments.some(d=>d.chainId===n.chain_id&&d.contract.toLowerCase().includes('factory')&&d.address.toLowerCase()===s.factory.toLowerCase())||dex.records.some(d=>d.chain_id===n.chain_id&&d.factory.toLowerCase()===s.factory.toLowerCase())||n.chain_id===8453&&s.factory.toLowerCase()==='0x420dd381b31aef6683db6b902084cb0ffece40da');
+    await warm(plan.flatMap(({t,p})=>(p.venue==='uniswap'?['factory','token0','token1',dex.concentrated(p)?'liquidity':'getReserves']:['factory','token0','token1']).map(functionName=>owned(t,{address:p.pool,abi:poolAbi,functionName}))));
+    for(const {p} of plan){const a=dex.adapter(n.chain_id,p,state(p).factory);if(a){p.version_labels=(p.version_labels||[]).filter(v=>!['v2','v3','slipstream','cl'].includes(v));p.version_labels.push(['v3','cl'].includes(a.type)?'v3':'v2');}}
+    await warm(plan.filter(({p})=>p.venue!=='uniswap').map(({t,p})=>owned(t,{address:p.pool,abi:poolAbi,functionName:dex.concentrated(p)?'liquidity':'getReserves'})));
+
+    const parameter=p=>{
+      const a=dex.adapter(n.chain_id,p,state(p).factory);
+      if(a?.type==='cl')return {address:p.pool,abi:v.parseAbi(['function tickSpacing() view returns (int24)']),functionName:'tickSpacing'};
+      if(a?.type==='basic')return null;
+      return dex.concentrated(p)?{address:p.pool,abi:v.parseAbi(['function fee() view returns (uint24)']),functionName:'fee'}:p.venue==='aerodrome'?{address:p.pool,abi:v.parseAbi(['function stable() view returns (bool)']),functionName:'stable'}:null;
+    };
     await warm(plan.filter(({p})=>recognized(state(p))).map(({t,p})=>owned(t,parameter(p))).filter(Boolean));
     const membership=p=>{
       const s=state(p),q=parameter(p),param=q?value(q):null;
       if(!recognized(s)||!s.token0||!s.token1||q&&param===undefined)return null;
-      return {address:s.factory,abi:poolAbi,functionName:p.version_labels?.includes('v3')||p.venue==='aerodrome'?'getPool':'getPair',args:q?[s.token0,s.token1,param]:[s.token0,s.token1]};
+      const a=dex.adapter(n.chain_id,p,s.factory);
+      return {address:s.factory,abi:a?.type==='cl'?v.parseAbi(['function getPool(address,address,int24) view returns(address)']):poolAbi,functionName:q||a?.type==='basic'?'getPool':'getPair',args:q?[s.token0,s.token1,param]:[s.token0,s.token1]};
     };
     await warm(plan.map(({t,p})=>owned(t,membership(p))).filter(Boolean));
     await warm(plan.flatMap(({t,p})=>{
@@ -598,7 +619,7 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
     }));
   }
   for(const {t,p} of poolQueue) {
-    if(!['uniswap','aerodrome'].includes(p.venue))continue;
+    if(!supported(t).includes(p))continue;
     if(representative&&done(t)){emitProgress(n,'pool_checks',++poolChecked,poolTotal);continue;}
     const identity=poolKey(t,p);
     if(cache.completed_pools.includes(identity)){if(representative)cache.asset_reviews[assetKey(t)].done=true;emitProgress(n,'pool_checks',++poolChecked,poolTotal);continue;}
@@ -613,19 +634,44 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
         if(r.some(x=>x.status==='failure'))retry=true;
         p.rpc_verification={verification:r[0].status==='success'&&r[0].result[0]>0n?'initialized_at_official_v4_state_view':'unverified',block_number:block,observed_at:stamp(),state_view:sv};
         if(r[1].status==='success')p.factory_measurement={active_liquidity_verified:r[1].result>0n,state:{liquidity:r[1].result}};
+        const key=r[0].status==='success'?v4Key(p,r[0].result[3]):null;
+        if(!key){p.cashout_quote={status:'unknown',reason:'V4 pool key or hooks unsupported; other pools do not establish its exit value.'};continue;}
+        const output=key.currency0===t.token_address.toLowerCase()?key.currency1:key.currency0;
+        if(![key.currency0,key.currency1].includes(t.token_address.toLowerCase()))continue;
+        const native=nativeCurrency(n.chain_id);
+        const metadata=output===v.zeroAddress&&native?[{status:'success',result:native.decimals},{status:'success',result:native.symbol}]:await calls(c,[{address:output,abi:erc20,functionName:'decimals'},{address:output,abi:erc20,functionName:'symbol'}],block);
+        if(metadata.some(x=>x.status==='failure')){retry=true;continue;}
+        Object.assign(p.factory_measurement,{quote_token:output,quote_decimals:metadata[0].result,quote_symbol:metadata[1].result,
+          state:{...p.factory_measurement.state,token0:key.currency0,token1:key.currency1,pool_key:key,pool_manager:deployment(n.chain_id,'v4','PoolManager')}});
+        p.cashout_quote=await quotePool(c,n,t,p,block,snapshot.hash,deployments,{batchRead:contracts=>calls(c,contracts,block),fullOnly});
+        if(p.cashout_quote.status==='unknown'&&p.cashout_quote.reason.startsWith('Pool quote failed'))retry=true;
         continue;
       }
-      const names=['factory','token0','token1',p.version_labels?.includes('v3')?'liquidity':'getReserves'];
+      let baseState=null;
+      if(p.venue!=='uniswap'){
+        const names=['factory','token0','token1',dex.concentrated(p)?'liquidity':'getReserves'],rows=await calls(c,names.map(functionName=>({address:p.pool,abi:poolAbi,functionName})),block);
+        if(rows.slice(0,3).some(r=>r.status==='failure'))retry=true;
+        baseState=Object.fromEntries(rows.flatMap((r,i)=>r.status==='success'?[[names[i],r.result]]:[]));
+        const a=dex.adapter(n.chain_id,p,baseState.factory);
+        if(a){p.version_labels=(p.version_labels||[]).filter(v=>!['v2','v3','slipstream','cl'].includes(v));p.version_labels.push(['v3','cl'].includes(a.type)?'v3':'v2');}
+      }
+      const stateName=dex.concentrated(p)?'liquidity':'getReserves';
+      const names=baseState?(baseState[stateName]===undefined?[stateName]:[]):['factory','token0','token1',stateName];
       const r=await calls(c,names.map(functionName=>({address:p.pool,abi:poolAbi,functionName})),block);
       if(r.some(x=>x.status==='failure'))retry=true;
-      const state={};r.forEach((x,i)=>{if(x.status==='success')state[names[i]]=x.result;});
-      const factory=state.factory;
-      const recognized=typeof factory==='string' && (deployments.some(d=>d.chainId===n.chain_id&&d.contract.toLowerCase().includes('factory')&&d.address.toLowerCase()===factory.toLowerCase()) ||
+      const state={...baseState};r.forEach((x,i)=>{if(x.status==='success')state[names[i]]=x.result;});
+      const factory=state.factory,extra=dex.adapter(n.chain_id,p,factory);
+      const recognized=extra||typeof factory==='string' && (deployments.some(d=>d.chainId===n.chain_id&&d.contract.toLowerCase().includes('factory')&&d.address.toLowerCase()===factory.toLowerCase()) ||
         (n.chain_id===8453&&p.venue==='aerodrome'&&factory.toLowerCase()==='0x420dd381b31aef6683db6b902084cb0ffece40da'));
       let membership=false;
       if(recognized&&state.token0&&state.token1) {
         let check;
-        if(p.version_labels?.includes('v3')) {
+        if(extra?.type==='cl'){
+          const tickSpacing=await c.readContract({address:p.pool,abi:v.parseAbi(['function tickSpacing() view returns(int24)']),functionName:'tickSpacing',blockNumber:block});state.tick_spacing=tickSpacing;
+          check={address:factory,abi:v.parseAbi(['function getPool(address,address,int24) view returns(address)']),functionName:'getPool',args:[state.token0,state.token1,tickSpacing]};
+        }else if(extra?.type==='basic'){
+          check={address:factory,abi:poolAbi,functionName:'getPool',args:[state.token0,state.token1]};
+        }else if(dex.concentrated(p)) {
           const fee=await c.readContract({address:p.pool,abi:v.parseAbi(['function fee() view returns (uint24)']),functionName:'fee',blockNumber:block});state.fee=fee;
           check={address:factory,abi:poolAbi,functionName:'getPool',args:[state.token0,state.token1,fee]};
         } else if(p.venue==='aerodrome') {
@@ -637,7 +683,7 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
       p.rpc_verification={verification:membership?'official_factory_verified':'unverified',block_number:block,observed_at:stamp(),state};
       const identity=[state.token0,state.token1].some(a=>a?.toLowerCase()===t.token_address.toLowerCase());
       const active=membership&&identity&&(state.liquidity>0n || (state.getReserves?.[0]>0n&&state.getReserves?.[1]>0n));
-      p.factory_measurement={factory_verified:membership,active_liquidity_verified:!!active,state};
+      p.factory_measurement={factory_verified:membership,active_liquidity_verified:!!active,...(extra?{adapter:extra.kind,adapter_source:extra.source}:{}),state};
       if(membership&&identity) {
         const quote=[state.token0,state.token1].find(a=>a.toLowerCase()!==t.token_address.toLowerCase());
         const q=await calls(c,[{address:quote,abi:erc20,functionName:'balanceOf',args:[p.pool]},{address:quote,abi:erc20,functionName:'decimals'},{address:quote,abi:erc20,functionName:'symbol'}],block);
@@ -751,7 +797,7 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
     cache=cache||{schema_version:1,wallet:input.wallet.toLowerCase(),chain_id:n.chain_id,bond:n.mintclub_bond_address.toLowerCase(),block_number:block.toString(),block_hash:snapshot.hash,requests:{},asset_pools:{},nodes:{}};save();
     cache.asset_reviews=cache.asset_reviews||{};
     if(typeof cache.asset_reviews!=='object'||Array.isArray(cache.asset_reviews)||Object.values(cache.asset_reviews).some(r=>!r||typeof r!=='object'||typeof r.done!=='boolean'||!Number.isSafeInteger(r.failures)||r.failures<0))throw new Error('Invalid saved asset review frontier.');
-    let assetDeadline=deadline;
+    let assetDeadline=deadline,assetAdvanced=false;
     const queryKey=args=>crypto.createHash('sha256').update(h.serialize({...args,blockNumber:block})).digest('hex');
     const deferred=new Map();
     const read=async args=>{
@@ -816,15 +862,23 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
       if(!cache.asset_pools[key]){flush();cache.asset_pools[key]=await routePools(input.market_chain_names?.[n.chain_id],address,assetDeadline);save(true);}
       const catalog=cache.asset_pools[key];
       if(catalog.unknown)quotes.push({status:'unknown',reason:catalog.unknown});
+      if(!catalog.pools.length)return quotes;
       const shadow={chain_id:n.chain_id,token_address:address,token_type:'ERC20',wallet_balance_raw:amount,
         balance_block_number:block,balance_block_hash:snapshot.hash,quantity_basis:'Prior amount-specific route output, not an observed wallet holding.',dex_pools:structuredClone(catalog.pools)};
       const identity=crypto.createHash('sha256').update(h.serialize([address.toLowerCase(),amount])).digest('hex');
-      const [verified]=await dexChain(n,[shadow],{file:path.join(path.dirname(outputPath),`route-market-checkpoint-${n.chain_id}-${identity}.json`),wallet:input.wallet,deadline:assetDeadline,representative});
+      const marketFile=path.join(path.dirname(outputPath),`route-market-checkpoint-${n.chain_id}-${identity}.json`);
+      const facts=()=>{
+        if(!fs.existsSync(marketFile))return 0;
+        const saved=JSON.parse(fs.readFileSync(marketFile));
+        return Object.keys(saved.requests||{}).length+(saved.completed_pools||[]).length;
+      };
+      const before=facts();let verified;
+      try{[verified]=await dexChain(n,[shadow],{file:marketFile,wallet:input.wallet,deadline:assetDeadline,representative});}
+      finally{if(facts()>before)assetAdvanced=true;}
       if(verified.market_pending)throw new MarketBudget();
       for(const pool of verified.dex_pools)quotes.push(pool.cashout_quote||{status:'unknown',reason:'Pool adapter or quote unavailable.'});
       return quotes;
     };
-    let retryPending=false;
     const attemptsKey=rootOnly?'root_attempts':'route_attempts';
     cache[attemptsKey]=cache[attemptsKey]||{};
     if(typeof cache[attemptsKey]!=='object'||Array.isArray(cache[attemptsKey])||Object.values(cache[attemptsKey]).some(n=>!Number.isSafeInteger(n)||n<0))throw new Error('Invalid route attempt checkpoint.');
@@ -850,32 +904,38 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
         if(!restoreReviewed(token))throw new Error('Saved representative holding changed.');
         progress();continue;
       }
-      if(representative&&!rootOnly&&token.market_pending){token.cashout_pending=true;retryPending=true;continue;}
+      if(representative&&!rootOnly&&token.market_pending){token.cashout_pending=true;continue;}
       if(Date.now()>=deadline)throw new MarketBudget();
       // Three root reads or four intermediate reads must fit the shared
       // two-second family lane while two chains are active. Keep the overall
       // deadline authoritative and retain incomplete work at a turn boundary.
-      assetDeadline=Math.min(deadline,Date.now()+18000);
+      const assetStarted=Date.now();assetDeadline=Math.min(deadline,assetStarted+18000);assetAdvanced=false;
       cache[attemptsKey][key]=(cache[attemptsKey][key]||0)+1;save();
-      let state;const expandedBefore=cache.nodes[key]?.expanded||0;
+      const requestsBefore=Object.keys(cache.requests).length;
+      let state;const expandedBefore=cache.nodes[key]?.expanded||0,routesBefore=cache.nodes[key]?.routes?.length||0,rootsBefore=cache.nodes[key]?.root_quotes?.length||0;
       try{state=await expandRoutes(token,quoteAsset,{state:cache.nodes[key],rootOnly,representative,maxNodes:representative?4:32,maxBranches:representative?1:4,maxSteps:2,save:state=>{cache.nodes[key]=state;save();}});}
       catch(error){if(error.code!=='market_budget')throw error;
-        token.cashout_pending=true;retryPending=true;state=cache.nodes[key];
+        token.cashout_pending=true;state=cache.nodes[key];
         if(!state)continue;
       }
-      token.liquidation_routes=state.routes;token.liquidation_unknown_routes=state.unknown;
-      if(representative&&!rootOnly&&(state.root_retry_pending||state.pending.length&&state.expanded===expandedBefore)&&Date.now()<assetDeadline){
+      const advanced=assetAdvanced||Object.keys(cache.requests).length>requestsBefore||state.expanded>expandedBefore||state.routes.length>routesBefore||(state.root_quotes?.length||0)>rootsBefore;
+      const retryAdmitted=Date.now()<assetDeadline||assetDeadline-assetStarted>=18000;
+      if(representative&&!rootOnly&&(state.root_retry_pending||state.pending.length)&&!advanced&&retryAdmitted){
+        // A full asset timeout is an attempted check, not an infinite pause.
+        // Short global slices and successful RPC prefixes still resume.
         review.failures++;
-        if(review.failures>=2){state.root_retry_pending=false;state.pending=[];state.unknown=[...new Set([...state.unknown,'Representative redemption unavailable after bounded attempts. Other routes remain unknown.'])];save();}
+        if(review.failures>=2){state.root_retry_pending=false;state.pending=[];state.unknown=[...new Set([...state.unknown,'Representative redemption unavailable after bounded attempts. Other routes remain unknown.'])];}
+        save();
       }
+      token.liquidation_routes=state.routes;token.liquidation_unknown_routes=state.unknown;
       if(representative&&!rootOnly&&!state.pending.length&&!state.root_retry_pending){
         review.done=true;token.asset_review={scope:'representative_v1',status:representativeQuote(token)?'quoted':'unknown'};save();
       }
-      if(state.pending.length||state.root_retry_pending){token.cashout_pending=true;retryPending=true;}else delete token.cashout_pending;
+      if(state.pending.length||state.root_retry_pending){token.cashout_pending=true;}else delete token.cashout_pending;
       progress();
     }
     progress(true);
-    return {tokens,market_pending:retryPending};
+    return {tokens,market_pending:tokens.some(t=>t.cashout_pending)};
   }catch(error){
     const pending=error.code==='market_budget';
     for(const token of tokens){const state=cache?.nodes?.[token.token_address.toLowerCase()+':'+token.token_type];

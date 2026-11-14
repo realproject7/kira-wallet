@@ -34,7 +34,8 @@ def summarize_sell_out(assets):
     with localcontext() as context:
         context.prec = 800
         value = number(sum((Decimal(str(q['value_usd'])) for q in quotes+references), Decimal(0))) if quotes or references else None
-    return {'value_usd': value, 'quoted_count': len(quotes), 'position_count': len(positions),
+    limited = sum(q.get('route_coverage', {}).get('status') == 'limited' for q in quotes)
+    return {**({'limited_count': limited} if limited else {}), 'value_usd': value, 'quoted_count': len(quotes), 'position_count': len(positions),
             'reference_count':len(references),'missing_count': len(positions) - len(quotes) - len(references), 'observed_from': min(dates, default=None),
             'observed_to': max(dates, default=None), 'basis': 'independent_quotes_and_market_references' if references else 'independent_saved_quotes',
             'gas_included': False, 'combined_execution_verified': False}

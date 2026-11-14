@@ -1,10 +1,12 @@
 # Kira release status
 
-Updated: 2026-11-12. Kira 1.1.0 is published and PR #59 is merged. Its registry
-archive matches the tested source and installed package. This source prepares
-1.5.0 with portfolio research controls, native/stable market references,
-sell-out sorting, persistent valuation exclusions, direct visibility controls,
-bulk management and explicit risk observations.
+Updated: 2026-11-14. The operator published Kira 1.5.0. Candidate 1.12.1 adds
+a compact, visual-first web app on top of 1.11.9: one summary card per page
+with an allocation donut, wallet faces, ranked rows, one-line holdings, markets
+on token pages, and saved wrapped-token pools for native assets. PR #62 prepares
+1.11.9: balance-aware sell-analysis reuse, immediate name edits,
+bounded worker admission, wallet search and folders, and a consistent local
+workspace design, including corrected main-pool sell quotes on Base bounded sell-route retries, PancakeSwap BNB quotes, upgraded Aero pools, recoverable bulk wallet removal, visible token markets, and saved protocol positions with exclusive platform allocation. Previous snapshots and frozen archives remain preserved.
 Earlier plans and reports preserve historical evidence, not active release gates.
 
 ## Completed release scope

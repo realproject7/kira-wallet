@@ -244,6 +244,33 @@ class ViewerTests(unittest.TestCase):
         self.assertEqual(native['price']['observed_at'],stamp)
         self.assertEqual(native['sell_out_reference']['observed_at'],stamp)
 
+    def test_newer_balance_change_invalidates_even_a_saved_burn_value(self):
+        self.assertIsNone(model.sell_out_estimate({'output_amount':'100'},{'balance_changed':True},{'usd':2000}))
+
+    def test_larger_unquoted_market_is_labeled_without_erasing_a_valid_quote(self):
+        token=self.snapshot['tokens'][0]
+        address=token['token_address'];hash='0x'+'a'*64;small='0x'+'4'*40;large='0x'+'5'*64;weth='0x4200000000000000000000000000000000000006';zero='0x'+'0'*40
+        token.update(wallet_balance='100',wallet_balance_raw='100',balance_block_number='7',balance_block_hash=hash,mintclub=None)
+        quote={'status':'quoted','kind':'aerodrome_pool','pool':small,'input_address':address,'input_amount_raw':'100','holding_amount_raw':'100',
+            'output_address':weth,'output_amount':'0.001','output_amount_raw':'1000000000000000','output_symbol':'WETH','output_decimals':18,
+            'block_number':'7','block_hash':hash,'observed_at':'2026-10-03T00:00:00Z','route_fees_included':True,'price_impact_included':True,'gas_included':False,'partial_input':False}
+        token['dex_pools']=[{'pool':small,'venue':'aerodrome','paired_tokens':[{'address':address},{'address':weth}],'reported_liquidity':{'usd':4},'source_url':'https://example.com/tiny','cashout_quote':quote},
+            {'pool':large,'venue':'uniswap','version_labels':['v4'],'paired_tokens':[{'address':address},{'address':zero}],'reported_liquidity':{'usd':500000},'source_url':'https://example.com/main'}]
+        market={'tokens':[{'chain_id':8453,'address':weth,'usd':2000,'quality':'estimated','basis':'DEX market','liquidity_usd':1000000,'source':'https://example.com/weth','observed_at':'2026-10-03T00:00:00Z'}],
+            'native_usd':{'ETH':{'usd':2000,'basis':'Market index','source':'https://example.com/native','observed_at':'2026-10-02T00:00:00Z'}}}
+        before=deepcopy(self.snapshot)
+        asset=next(a for a in model.project_wallet(self.entry,self.snapshot,self.root,market=market)['assets'] if a['address']==address)
+        self.assertEqual(asset['sell_out']['value_usd'],2)
+        self.assertEqual(asset['sell_out']['route_coverage']['status'],'limited')
+        self.assertEqual(model.summarize_sell_out([asset])['limited_count'],1)
+        self.assertEqual(self.snapshot,before)
+        token['dex_pools'][1]['cashout_quote']={**quote,'kind':'uniswap_v4_quoter','pool':large,'output_address':zero,'output_symbol':'ETH','output_amount':'4','output_amount_raw':'4000000000000000000','input_amount_is_maximum':False,'full_input_verified':True}
+        asset=next(a for a in model.project_wallet(self.entry,self.snapshot,self.root,market=market)['assets'] if a['address']==address)
+        self.assertEqual(asset['sell_out']['value_usd'],8000)
+        self.assertNotIn('route_coverage',asset['sell_out'])
+        self.assertEqual(asset['sell_out']['output_symbol'],'ETH')
+        self.assertEqual(asset['sell_out']['output_price']['observed_at'],'2026-10-02T00:00:00Z')
+
     def test_exit_proceeds_use_full_burn_not_spot_price(self):
         self.quoted_token()
         asset=next(t for t in model.project_wallet(self.entry,self.snapshot,self.root)['assets'] if t['symbol']=='CHICKEN')
@@ -253,6 +280,30 @@ class ViewerTests(unittest.TestCase):
         self.assertEqual(asset['exit_quote']['input_amount'],'1')
         self.assertTrue(asset['exit_quote']['royalty_included'])
         self.assertFalse(asset['exit_quote']['gas_included'])
+
+    def test_holdings_refresh_retains_original_quote_and_price_clocks(self):
+        self.quoted_token()
+        prior=model.project_wallet(self.entry,self.snapshot,self.root)
+        expected=next(a for a in prior['assets'] if a['symbol']=='CHICKEN')['sell_out']
+        self.assertIsNotNone(expected)
+        old=self.root/'snapshots/older';old.mkdir(parents=True)
+        (old/'results.json').write_text(json.dumps(self.snapshot))
+        evidence=(old/'results.json').read_bytes()
+        jobs=self.root/'jobs';jobs.mkdir()
+        (jobs/'saved.json').write_text(json.dumps({'job_id':'saved','analysis_phase':'enrichment','state':'partial',
+            'input':{'wallet':self.entry['address_key']},'created_at':'2026-10-01T00:00:00Z','result':{'snapshot_id':'snapshots/older'}}))
+        for token in self.snapshot['tokens']:
+            if token.get('mintclub'):token['mintclub'].pop('wallet_full_burn',None)
+        self.snapshot['compiled_at']='2026-11-12T00:00:00Z'
+        self.snapshot['price_references']['ETH_USD'].update(value=3000,observed_at=self.snapshot['compiled_at'])
+        (self.directory/'results.json').write_text(json.dumps(self.snapshot))
+        state,_,_=model.load_state(self.root,include_details=False)
+        wallet=state['wallets'][0];asset=next(a for a in wallet['assets'] if a['symbol']=='CHICKEN')
+        self.assertEqual(wallet['sell_analysis']['status'],'current')
+        self.assertEqual(asset['sell_out'],expected)
+        self.assertEqual(asset['value_usd'],3000)
+        self.assertEqual(asset['sell_analysis_provenance']['snapshot_id'],'snapshots/older')
+        self.assertEqual((old/'results.json').read_bytes(),evidence)
 
     def test_exit_quote_requires_matching_balance_block_and_backing(self):
         token=self.quoted_token()
@@ -648,6 +699,30 @@ class ViewerTests(unittest.TestCase):
                 with urllib.request.urlopen(base+'/ows-logo.svg') as r:
                     self.assertEqual(r.headers['Content-Type'],'image/svg+xml')
                     self.assertIn(b'<svg',r.read())
+            finally:app.shutdown();app.server_close();thread.join()
+
+    def test_page_load_burst_keeps_every_static_file(self):
+        # A page load opens dozens of short connections at once. Each one must
+        # be accepted, or the page loses a script or a stylesheet.
+        self.assertGreaterEqual(server.LocalServer.request_queue_size,64)
+        self.assertIn("server=LocalServer(('127.0.0.1',args.port),Handler)",Path(server.__file__).read_text())
+        with patch.object(server,'ROOT',self.root):
+            app=server.LocalServer(('127.0.0.1',0),server.Handler)
+            thread=threading.Thread(target=app.serve_forever,daemon=True);thread.start()
+            base=f'http://127.0.0.1:{app.server_port}';failures=[];lock=threading.Lock()
+            paths=['/style.css','/ui.css','/compact.css','/capital.css','/app.js','/jobs.js','/capital.js','/folders.js']
+            def read(path):
+                try:
+                    with urllib.request.urlopen(base+path,timeout=20) as response:
+                        if response.status!=200 or len(response.read())<100:raise OSError('short response')
+                except OSError as error:
+                    with lock:failures.append(path+': '+str(error))
+            try:
+                for _ in range(2):
+                    workers=[threading.Thread(target=read,args=(paths[index%len(paths)],)) for index in range(48)]
+                    for worker in workers:worker.start()
+                    for worker in workers:worker.join()
+                self.assertEqual(failures,[])
             finally:app.shutdown();app.server_close();thread.join()
 
 def fixture_snapshot():

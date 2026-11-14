@@ -17,6 +17,14 @@ checker=module('public_checker','check-public.py')
 release=module('release_preparer','prepare-release.py')
 
 class PublicReleaseTest(unittest.TestCase):
+    def test_removed_registration_identifiers_remain_private(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);address='0x'+'c'*40
+            (root/'wallets.json').write_text(json.dumps({'wallets':[],'removed_wallets':{address:{'wallet':{'address':address,'tags':['Synthetic removed name']}}}}))
+            identifiers,_=checker.private_values([root])
+            self.assertIn(address,identifiers);self.assertIn('"synthetic removed name"',identifiers)
+            self.assertIn('private runtime file',checker.check('.wallet-actions/fixture.json',b'{}',set(),set()))
+
     def test_packing_never_replaces_an_existing_release_or_manifest(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);(root/'scripts').mkdir();(root/'dist').mkdir()
@@ -48,7 +56,7 @@ class PublicReleaseTest(unittest.TestCase):
         self.assertIn('loaded secret',checker.check('commit message',b'synthetic-private-value',set(),{'synthetic-private-value'}))
 
     def test_forced_runtime_config_and_transcripts_are_rejected(self):
-        for path in ('.kira-agent.json','.kira.local.json','subdir/.kira-agent.json','conversations/synthetic.json','site/.vercel/project.json','token-policy.json','.token-policy.lock','.token-actions/synthetic.json'):
+        for path in ('.kira-agent.json','.kira.local.json','subdir/.kira-agent.json','conversations/synthetic.json','site/.vercel/project.json','wallet-folders.json','.folder-actions/fixture.json','token-policy.json','.token-policy.lock','.token-actions/synthetic.json','positions/index.json'):
             self.assertIn('private runtime file',checker.check(path,b'{}',set(),set()))
         self.assertEqual(checker.check('kira_agent.py',b'public source',set(),set()),[])
 

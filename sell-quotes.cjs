@@ -22,8 +22,8 @@ async function collect(input,save=()=>{}) {
           wallet_balance_raw:t.wallet_balance_raw,checked_at:new Date().toISOString(),status:'unknown'};
         result.records.push(row);
         if(balance?.status!=='success'){row.reason='Holding check unavailable';continue;}
+        Object.assign(row,{balance_block_number:String(block.number),balance_block_hash:block.hash,balance_observed_at:row.checked_at,observed_wallet_balance_raw:String(balance.result)});
         if(String(balance.result)!==t.wallet_balance_raw){row.reason='Balance changed; refresh holdings';continue;}
-        Object.assign(row,{balance_block_number:String(block.number),balance_block_hash:block.hash,balance_observed_at:row.checked_at});
         // Only the independently rechecked quantity gets the fresh block pin.
         ready.push({...structuredClone(t),balance_block_number:row.balance_block_number,balance_block_hash:block.hash});
       }

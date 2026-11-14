@@ -4,7 +4,10 @@
 const {formatUnits}=require('viem');
 const catalog=require('./sources/known-tokens.json').tokens;
 const terminalAssets=new Set(catalog.filter(t=>['USDC','USDC.e','USDT','USDT0','DAI','WETH','WBNB','WAVAX','WMATIC'].includes(t.symbol)).map(t=>t.chain_id+':'+t.address.toLowerCase()));
-const terminal=(chain,address)=>terminalAssets.has(chain+':'+address.toLowerCase());
+const nativeChains=new Set(require('./networks.json').networks.filter(n=>n.environment==='mainnet').map(n=>n.chain_id));
+const chainCurrencies=new Map(Object.values(require('viem/chains')).filter(n=>n?.nativeCurrency).map(n=>[n.id,n.nativeCurrency]));
+const nativeCurrency=chain=>nativeChains.has(chain)?chainCurrencies.get(chain):null;
+const terminal=(chain,address)=>address.toLowerCase()==='0x'+'0'.repeat(40)?!!nativeCurrency(chain):terminalAssets.has(chain+':'+address.toLowerCase());
 const address=value=>typeof value==='string'&&/^0x[0-9a-fA-F]{40}$/.test(value);
 const integer=value=>{try{if(!/^(0|[1-9][0-9]{0,77})$/.test(String(value)))return null;const n=BigInt(value);return n<2n**256n?n:null;}catch{return null;}};
 
@@ -48,7 +51,8 @@ function representativeQuote(token, routes=token.liquidation_routes||[]) {
   return seedQuotes(token).find(q=>validLeg(q,token.token_address,holding,block,hash)&&terminal(token.chain_id,q.output_address))||null;
 }
 
-async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNodes=32,maxBranches=4,maxSteps=Infinity,rootOnly=false,representative=false}={}) {
+async function expandRoutes(token,quoteAsset,{state,save:saveState=()=>{},maxLegs=4,maxNodes=32,maxBranches=4,maxSteps=Infinity,rootOnly=false,representative=false}={}) {
+  const save=value=>{value.unknown=[...new Set(value.unknown)];saveState(value);};
   const holding=integer(token.wallet_balance_raw),block=String(token.balance_block_number),hash=token.balance_block_hash;
   if(!holding||!address(token.token_address)||!/^0x[0-9a-fA-F]{64}$/.test(hash||''))throw new Error('Pinned route holding unavailable');
   const identity=JSON.stringify([token.chain_id,token.token_address.toLowerCase(),token.token_type,holding.toString(),block,hash]);
@@ -120,4 +124,4 @@ async function expandRoutes(token,quoteAsset,{state,save=()=>{},maxLegs=4,maxNod
   }
   return state;
 }
-module.exports={terminal,validLeg,seedQuotes,representativeQuote,expandRoutes};
+module.exports={nativeCurrency,terminal,validLeg,seedQuotes,representativeQuote,expandRoutes};

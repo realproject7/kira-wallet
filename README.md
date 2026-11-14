@@ -19,7 +19,7 @@ Kira supplies wallet tools and a full-window
 management app. Your agent host manages its own conversations, models, files and
 approvals. Kira does not launch a model CLI or require a model login.
 
-Published npm release: **1.1.0**. This source prepares **1.5.0**.
+Published npm release: **1.5.0**. This source prepares **1.12.1**.
 [Release notes](docs/RELEASE.md) ·
 [Implementation status and follow-ups](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_NEXT_STEPS.md).
 
@@ -118,7 +118,7 @@ portfolio totals.
 
 Alchemy remains required for new holdings and price research. Token indexes
 provide candidates; on-chain reads verify balances. Unsupported indexes and
-failed reads remain coverage gaps. **Analyze sell routes** is optional and uses
+failed reads remain coverage gaps. **Calculate sell estimates** is optional and uses
 saved holdings; it does not discover additional tokens. Price refresh preserves
 recorded balances and does not recover missing holdings.
 

@@ -13,6 +13,14 @@ Supported operations are `wallet.add` (address, exact tag), `wallet.refresh`
 Read operations are `job.read`, `job.list`, `snapshot.read`, and
 `snapshots.compare`. The portfolio projection retains its existing schema.
 
+`wallet.remove` and `wallet.restore` are immediate local actions rather than
+research jobs. Both require 1 to 1,000 unique wallet addresses and the current
+`expected_revision` from wallet management. Removal preserves registration
+metadata, saved research, folder assignments and keys for recovery. A stale
+revision or queued/running work on any selected wallet rejects the whole action.
+Removed registrations cannot be added or refreshed until restored. Receipts
+share the job idempotency namespace and never restart provider work.
+
 Inputs reject unknown fields and invalid identifiers. Wallet selectors resolve
 to a unique registered address before persistence. Ambiguous tags fail.
 Idempotency keys are private, bounded strings. Persist only their SHA-256 hash.
@@ -235,14 +243,35 @@ It invokes `--phase sell --holdings-snapshot SNAPSHOT`. The source must belong t
 that wallet and have `pipeline.phase: holdings`. Its balances, blocks and clocks
 are copied into the new analysis without running discovery, registry scans or
 balance refresh. Route checks use those recorded blocks. Partial historical
-scans require a new holdings lookup first. New holdings supersede older analysis.
+scans require a new holdings lookup first. A new holdings generation supersedes
+older in-flight work, while matching quantities can reuse completed analysis.
+
+Before admitting a new enrichment child, compare the current saved quantities
+against the wallet's latest completed enrichment, including history outside the
+current Activity page. Compare exact raw balances where both exist, otherwise
+exact decimal strings, by chain, contract, token type and token ID. Native
+balances participate. Prices, block numbers, metadata and observation times
+alone do not invalidate quantity reuse. Testnets and retired chains are outside
+this comparison. Failed reads and missing positions on incomplete chains are
+unverified, never inferred sales. `job.deepen` can return the earlier terminal
+job receipt without a new provider job. No persisted envelope schema changes.
+
+`portfolio.analyzeSell` uses the same comparison and skips `unchanged_holdings`
+or `holdings_unverified`. Home displays the eligible wallet count, retains
+**Refresh all holdings**, and disables the sell action when no wallet needs it.
+Partial results do not continually prompt another analysis for unknown routes.
+Projection reuses only equal-quantity, verified positions, preserves original
+quote/price clocks, and exposes `sell_analysis_provenance`. Changed positions never
+inherit an old full-balance estimate. Fresh holdings, prices and coverage remain
+the current snapshot's observations; historical files remain immutable.
 
 Pause and resume preserve the same job and its evidence. App restart requires
 explicit resume for queued or interrupted scans. Market slices, provider pacing,
 short-operation priority, immutable publication and no-progress protection remain.
 There is no overall twenty-minute deadline. Finite route work never proves every
-market has been searched. The viewer calls this optional action **Analyze sell
-routes**; holdings, token prices and artwork do not depend on it.
+market has been searched. The viewer calls this optional action **Calculate sell
+estimates** initially and **Update sell estimates** after quantities change;
+holdings, token prices and artwork do not depend on it.
 Pending or failed route checks stay in sell-analysis progress and do not
 invalidate the saved holdings coverage.
 
@@ -298,3 +327,34 @@ The durable plan fixes wallet selection before admission. Each selected wallet
 uses a deterministic child request key so retries recover partially admitted
 plans. Active-wallet admission is checked under the existing job lock. Reads and
 page loads do not create plans. Sample and read-only modes reject writes.
+
+
+## Protocol position research
+
+`positions.refresh` normalizes `{wallet, discover}` for a registered wallet.
+The optional request `discover` defaults to true only before a saved position
+record exists. A repeat refresh defaults to known claims and current direct
+inventory; explicit `discover: true` sweeps supported pool/farm catalogs.
+`portfolio.positionsRefresh` accepts an optional folder and discovery choice.
+Duplicate requests coalesce when an active scan covers the requested mode. A
+known-only scan cannot satisfy a subsequently requested full discovery.
+
+Position jobs do not replace `latest_snapshot` or `research_generation` for
+holdings. Immutable per-pass/final records live under the job checkpoint;
+`positions/index.json` publishes the latest active registration's record.
+A receipt recovers an index commit interrupted before the final receipt write.
+An older request cannot replace newer position research. Failed scopes retain
+older claims explicitly; a checked empty scope can retire its previous claims.
+Known refresh records the omitted broad discovery as not requested.
+
+Short slices use the shared worker and writer lease, coalesce checkpoint writes,
+yield to holdings/settings work and share bounded metadata caches. Missing,
+unsupported, timed-out or throttled ownership/quantity reads remain unknown.
+Position blocks and price references keep independent clocks. Position NAV is
+separate from wallet-token sell quotes and from unclaimed fees or rewards.
+
+A progressing platform chain recovery may request up to four priority slices per
+job through a private, fingerprint-bound checkpoint hint. Holdings, price and
+settings work still runs first. Slice budgets and the single writer are unchanged.
+Stale or exhausted hints do not affect order, and unchanged progress keeps the
+normal retry backoff and stall guard.

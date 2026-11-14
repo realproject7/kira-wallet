@@ -75,7 +75,7 @@ test('coverage recovery opens Alchemy guidance and rechecks local readiness with
   assert.equal(h.element('provider-save').disabled,true);assert.equal(h.posts.length,0);
   h.run("localAPI=async path=>path==='/api/settings'?{rpc:{mode:'custom',allow_public_fallback:true,priority:'public_first',chains:{}},discovery:{provider:'alchemy',key_env:'ALCHEMY_API_KEY'}}:{local_key_available:true,discovery_key_available:true};");
   await h.element('provider-recheck').listeners.click();
-  assert.equal(h.element('provider-save').disabled,false);assert.match(h.element('provider-key-status').textContent,/Alchemy is connected/);
+  assert.equal(h.element('provider-save').disabled,false);assert.match(h.element('provider-key-status').textContent,/Key ready on this computer/);
   assert.equal(h.element('settings-refresh').hidden,false);assert.equal(h.element('settings-refresh').disabled,false);assert.equal(h.posts.length,0);
 });
 test('settings refresh retains its chosen wallet and is explicit',async()=>{

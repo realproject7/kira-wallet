@@ -175,3 +175,51 @@ test('successful pinned token details are reused without new metadata calls',asy
   const next=await scanChain(input,network,root);assert.equal(metadata,count);assert.equal(next.tokens[0].wallet_balance,'1.234567');
  }finally{Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('full asset deadlines settle unchanged reads unknown, while short global slices keep their frontier',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-asset-deadline-')),original={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock},now=Date.now;
+ try{
+  const base=now();let clock=base,reads=0;Date.now=()=>clock;
+  const network={chain_id:8453,environment:'mainnet',mintclub_bond_address:address(99)},held=token(10),reserve=address(12),key=held.token_address+':ERC20';
+  held.dex_pools=[{cashout_quote:leg(held.token_address,reserve)}];
+  const state=await expandRoutes(held,async()=>assert.fail('Only seed recovery is needed'),{rootOnly:true});
+  const checkpoint={schema_version:1,wallet:WALLET,chain_id:8453,bond:network.mintclub_bond_address,block_number:'7',block_hash:HASH,requests:{},nodes:{[key]:state},asset_pools:{[reserve]:{pools:[],unknown:'Discovery unavailable.'}},asset_reviews:{[key]:{done:false,failures:0}}};
+  h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:7n,hash:HASH});
+  let slice=18000;h.client=()=>({getChainId:async()=>8453,readContract:async()=>{reads++;await Promise.resolve();clock+=slice;throw Object.assign(Error('Synthetic deadline'),{code:'market_budget'});}});
+  const out=path.join(root,'out.json'),file=path.join(root,'cashout-checkpoint-8453.json');fs.writeFileSync(file,JSON.stringify(checkpoint));
+  for(let turn=0;turn<2;turn++){
+   clock=base;const result=await liquidationChain(network,{wallet:WALLET,tokens:[structuredClone(held)],market_scope:'representative_v1'},out,base+60000);
+   assert.equal(result.market_pending,turn===0,JSON.stringify({turn,reads,saved:JSON.parse(fs.readFileSync(file)).asset_reviews[key]}));
+  }
+  let saved=JSON.parse(fs.readFileSync(file));assert.equal(saved.asset_reviews[key].failures,2);assert(saved.asset_reviews[key].done);assert.equal(saved.nodes[key].pending.length,0);assert.equal(saved.nodes[key].routes.length,0);
+  const count=reads;clock=base;const replay=await liquidationChain(network,{wallet:WALLET,tokens:[structuredClone(held)],market_scope:'representative_v1'},out,base+60000);
+  assert.equal(reads,count);assert.equal(replay.tokens[0].asset_review.status,'unknown');
+  fs.writeFileSync(file,JSON.stringify(checkpoint));slice=1000;
+  for(let turn=0;turn<3;turn++){clock=base;const result=await liquidationChain(network,{wallet:WALLET,tokens:[structuredClone(held)],market_scope:'representative_v1'},out,base+1000);assert(result.market_pending);}
+  saved=JSON.parse(fs.readFileSync(file));assert.equal(saved.asset_reviews[key].failures,0);assert(!saved.asset_reviews[key].done);assert.equal(saved.nodes[key].pending.length,1);
+ }finally{Date.now=now;Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('new intermediate pool facts survive repeated full asset budgets without premature failure',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-intermediate-budget-')),original={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock},now=Date.now;
+ try{
+  const base=now();let clock=base;Date.now=()=>clock;
+  const network={chain_id:8453,environment:'mainnet',mintclub_bond_address:address(99)},held=token(10),reserve=address(12),pool=address(100),key=held.token_address+':ERC20';
+  held.dex_pools=[{cashout_quote:leg(held.token_address,reserve)}];
+  const state=await expandRoutes(held,async()=>assert.fail('Seed only'),{rootOnly:true});
+  const factory=require('./sources/uniswap-deployments.json').records.find(d=>d.chainId===8453&&d.contract==='UniswapV2Factory').address;
+  const checkpoint={schema_version:1,wallet:WALLET,chain_id:8453,bond:network.mintclub_bond_address,block_number:'7',block_hash:HASH,requests:{},nodes:{[key]:state},asset_pools:{[reserve]:{pools:[{pool,venue:'uniswap',version_labels:['v2'],paired_tokens:[{address:reserve},{address:WETH}]}],unknown:null}},asset_reviews:{[key]:{done:false,failures:0}}};
+  const out=path.join(root,'out.json'),file=path.join(root,'cashout-checkpoint-8453.json');fs.writeFileSync(file,JSON.stringify(checkpoint));
+  const query=q=>({factory,token0:reserve,token1:WETH,getReserves:[10n**24n,10n**24n,0],getPair:pool,balanceOf:10n**24n,decimals:18,symbol:'WETH'}[q.functionName]);
+  h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:7n,hash:HASH});h.client=()=>({getChainId:async()=>8453,
+   readContract:async q=>{if(q.functionName==='exists')return false;await Promise.resolve();clock+=18000;return query(q);},
+   multicall:async({contracts})=>{await Promise.resolve();clock+=18000;return contracts.map(q=>({status:'success',result:query(q)}));}});
+  let result;
+  for(let turn=0;turn<6;turn++){
+   clock=base;result=await liquidationChain(network,{wallet:WALLET,tokens:[structuredClone(held)],market_scope:'representative_v1'},out,base+60000);
+   const saved=JSON.parse(fs.readFileSync(file));assert.equal(saved.asset_reviews[key].failures,0);
+   if(!result.market_pending)break;
+  }
+  assert.equal(result.market_pending,false);assert.equal(result.tokens[0].asset_review.status,'quoted');assert.equal(result.tokens[0].liquidation_routes[0].legs.length,2);
+ }finally{Date.now=now;Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
+});

@@ -40,6 +40,8 @@ def market_url(chain_id, pool):
     identity=str(pool.get('pool',''))
     if venue in ('uniswap','uniswap-v2','uniswap-v3','uniswap-v4') and chain_id in UNISWAP_CHAINS and re.fullmatch(r'0x(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})',identity):
         return f'https://app.uniswap.org/explore/pools/{UNISWAP_CHAINS[chain_id]}/{identity}'
+    if (pool.get('factory_discovery') or {}).get('venue')=='aero' or str((pool.get('factory_measurement') or {}).get('adapter','')).startswith('aero_') or venue in ('aero','aero-slipstream'):
+        return pool.get('source_url')
     if venue in ('aerodrome','aerodrome-slipstream') and chain_id==8453 and re.fullmatch(r'0x[0-9a-fA-F]{40}',identity):
         pair=pool.get('paired_tokens') or []
         if len(pair)==2 and all(isinstance(t,dict) and re.fullmatch(r'0x[0-9a-fA-F]{40}',str(t.get('address',''))) for t in pair):
@@ -86,7 +88,7 @@ def pool_row(pair, observed):
 
 def pool_identity(pool):
     venue=str(pool.get('venue','')).lower()
-    venue='uniswap' if 'uniswap' in venue else 'aerodrome' if 'aerodrome' in venue else venue
+    venue='uniswap' if 'uniswap' in venue else 'aerodrome' if 'aerodrome' in venue or venue in ('aero','aero-slipstream') else venue
     return venue,str(pool.get('pool') or pool.get('source_url') or '').lower()
 
 

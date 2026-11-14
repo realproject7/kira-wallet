@@ -117,6 +117,8 @@ def action(root, request):
     identity = str(args['chain_id']) + ':' + args['address']
     fingerprint = digest({'operation': operation, 'input': args})
     receipt = root / '.token-actions' / (digest(key) + '.json')
+    from kira_folders import key_used
+    if key_used(root,digest(key)):raise JobError('idempotency_conflict','This request key belongs to a folder action.')
     if (root/'jobs/requests'/(digest(key)+'.json')).exists() or (root/'jobs/batches'/(digest(key)+'.json')).exists():
         raise JobError('idempotency_conflict','This request key belongs to a research operation.')
     def previous():

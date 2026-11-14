@@ -29,7 +29,8 @@ def private_values(extra_roots=()):
     identifiers, secrets = set(), set()
     for registry in [ROOT/'wallets.json',*[Path(p).expanduser()/'wallets.json' for p in extra_roots]]:
         if not registry.exists():continue
-        for wallet in json.loads(registry.read_text()).get('wallets', []):
+        saved=json.loads(registry.read_text())
+        for wallet in saved.get('wallets', [])+[r['wallet'] for r in saved.get('removed_wallets',{}).values()]:
             for key in ('address', 'address_key'):
                 if isinstance(wallet.get(key), str):
                     identifiers.add(wallet[key].casefold())
@@ -46,7 +47,7 @@ def private_values(extra_roots=()):
 def check(path, body, identifiers, secrets):
     reasons = []
     name = Path(path).name
-    if path in ('wallets.json', 'session.json', '.ui-context.json', 'viewer-process.json', 'token-policy.json', '.token-policy.lock') or path.startswith(('.token-actions/', 'snapshots/', 'conversations/', 'cache/', 'jobs/', 'kira-agent-workspaces/', '.agent-history/', 'site/.vercel/', '.kira-ows-requests/', '.ows/')) or path.endswith(('.env', '.log', '.tgz')) or name.startswith(('.env', '.kira.')) or (name.startswith('.kira') and name.endswith('.json')):
+    if path in ('wallets.json', 'session.json', '.ui-context.json', 'viewer-process.json', 'token-policy.json', '.token-policy.lock', 'wallet-folders.json', '.job-launch.lock') or path.startswith(('.folder-actions/', '.wallet-actions/', '.token-actions/', 'positions/', 'snapshots/', 'conversations/', 'cache/', 'jobs/', 'kira-agent-workspaces/', '.agent-history/', 'site/.vercel/', '.kira-ows-requests/', '.ows/')) or path.endswith(('.env', '.log', '.tgz')) or name.startswith(('.env', '.kira.')) or (name.startswith('.kira') and name.endswith('.json')):
         reasons.append('private runtime file')
     if b'\x00' in body:
         return reasons  # Images need a separate visual review.

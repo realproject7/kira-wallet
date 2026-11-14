@@ -65,3 +65,37 @@ Each link retains its destination explorer name or the generic Explorer label.
 It was retrieved unchanged on October 19, 2026 from
 [Etherscan documentation](https://docs.etherscan.io/mintlify-assets/_mintlify/favicons/etherscan/PMbbZQeU1A_1WqNP/_generated/favicon/android-chrome-192x192.png).
 The mark belongs to its owner and does not imply affiliation or endorsement.
+
+
+## Position protocol references and artwork
+
+`position-math.cjs` adapts TickMath constants and fixed-point rounding from
+[Uniswap v3-sdk TickMath](https://github.com/Uniswap/v3-sdk/blob/main/src/utils/tickMath.ts),
+Copyright (c) 2021 Uniswap Labs. Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated documentation files
+(the "Software"), to deal in the Software without restriction, including without
+limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following conditions: The above copyright
+notice and this permission notice shall be included in all copies or substantial
+portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
+EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+Position ABIs and deployment identities are factual contract interfaces derived
+from the official project sources listed in `sources/position-protocols.json`.
+The Sugar interface follows the official velodrome-finance/sugar-sdk v0.4.2 ABI
+and velodrome-finance/sugar at the recorded revision. Kira imports no Sugar SDK
+runtime or transaction builder.
+
+Platform identification artwork is included unchanged from lpTOKEN.fun's
+192px favicon, Aeromax's apple-touch icon, Hunt Town's `factory-nft.jpg`, and
+the canonical CAKE image served by Hunt Town's token artwork service at
+`https://fc.hunt.town/tokens/logo/56/0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82/image`.
+The marks belong to their respective projects and imply no endorsement.
+PancakeSwap's [brand guidance](https://docs.pancakeswap.finance/welcome-to-pancakeswap/about-us/brand)
+permits product references using unmodified artwork.
