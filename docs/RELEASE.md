@@ -32,6 +32,15 @@ Earlier saved claims show the reward after their next position refresh.
 A browser check of every page and dialog looked for content that leaves its
 card, cut text, overlapping items and sideways scrolling at eleven widths from
 320 to 2560 px. It found and fixed a legend that left its chart at 1280 px.
+
+A second pass looked for text pressed into a column too narrow for one word.
+Position rows now answer to the width of their own list instead of the window,
+so they stay readable beside the sidebar and in a narrow window. On a phone a
+wallet name, a holder name and the token search each keep their own line, the
+wallet address is cut with an ellipsis next to its copy button, and a large
+pool shows a short liquidity figure such as $12.35M while the row title keeps
+the exact one. A token badge shows the first two letters of a symbol in any
+script, or one emoji, instead of a longer symbol cut on both sides.
 Review not selected. Earlier archives and operator wallet data remain
 preserved. Registry publication is operator-only.
 

@@ -33,6 +33,7 @@
 .hero:has(.capital-chart) > .hero-figures > .figure-primary { grid-column:1/-1; }
 .hero:has(.capital-chart) > .hero-figures > .sell-figure { grid-column:span 2; }
 .hero:has(.capital-chart) > .hero-figures > .sell-figure:last-child { grid-column:1/-1; }
+.hero:has(.capital-chart) > .hero-figures > .sell-figure + .figure:last-child { grid-column:span 2; }
 .hero:has(.capital-chart) > .hero-figures > .figure + .figure { padding-left:0; border-left:0; }
 .hero:has(.capital-chart) > .capital-panel:not([hidden]) { display:contents; }
 .hero:has(.capital-chart) .capital-chart { grid-column:2; grid-row:1; }
@@ -155,8 +156,9 @@ button.chip.warn:hover { background:#f6e6c4; color:#6b4d0f; }
 .holder-head { padding:0 8px 8px; font-size:12px; line-height:1.4; font-weight:500; color:var(--secondary); }
 .holder-head > span:nth-child(n+2) { text-align:right; }
 .holder-row { position:relative; min-height:52px; padding:7px 8px; border-top:1px solid #f1edf4; font-size:var(--text-ui); }
-.holder-name { display:flex; align-items:center; gap:10px; min-width:0; color:inherit; text-decoration:none; }
-.holder-name strong { font-weight:550; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.holder-name { display:flex; flex-wrap:nowrap; align-items:center; gap:10px; min-width:0; color:inherit; text-decoration:none; }
+.holder-name strong { min-width:0; font-weight:550; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.holder-name .rank-label { min-width:0; }
 .holder-name:hover strong { color:var(--accent); }
 .holder-balance, .holder-value, .holder-sell { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .holder-balance { font-size:var(--text-secondary); color:#544a5f; overflow:hidden; text-overflow:ellipsis; }
@@ -190,7 +192,9 @@ a.market-row:hover { background:#faf7fc; border-radius:10px; }
 .market-row .pool-art .coin-icon + .coin-icon { margin-left:-8px; }
 .market-name { min-width:0; }
 .market-name strong { display:block; font-size:var(--text-ui); font-weight:550; line-height:1.35; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.market-name small { display:flex; align-items:center; gap:5px; font-size:12px; line-height:1.4; color:var(--secondary); }
+.market-name small { display:block; font-size:12px; line-height:1.4; color:var(--secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.market-name small .venue-logo { margin-right:5px; vertical-align:-2px; }
+.num-short { display:none; }
 .market-name .venue-logo { width:14px; height:14px; }
 .market-value { display:flex; flex-direction:column; align-items:flex-end; }
 .market-value strong { font-size:var(--text-ui); font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -233,6 +237,7 @@ a.market-row:hover { background:#faf7fc; border-radius:10px; }
 .holdings-toolbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px 16px; margin-bottom:12px; }
 .holdings-toolbar h2 { margin:0; }
 .holdings-toolbar .filters { width:auto; flex:0 1 auto; margin-left:auto; }
+.holdings-toolbar .token-search { flex:1 1 180px; min-width:150px; }
 .holdings-toolbar:has(> h2.sr-only) .filters { width:100%; margin-left:0; justify-content:flex-start; }
 
 /* Sidebar: a dot for routine status. */
@@ -294,8 +299,10 @@ a.market-row:hover { background:#faf7fc; border-radius:10px; }
   .holder-table-token .holder-row { grid-template-columns:minmax(0,1fr) auto; gap:2px 12px; padding:10px 48px 10px 8px; }
   .holder-table-token .holder-name { grid-column:1; grid-row:1; }
   .holder-table-token .holder-value { grid-column:2; grid-row:1; }
-  .holder-table-token .holder-balance { grid-column:1; grid-row:2; text-align:left; padding-left:40px; }
-  .holder-table-token .holder-sell { grid-column:2; grid-row:2; }
+  /* Balance and sell-out share the second line from opposite ends, so the name keeps the first. */
+  .holder-table-token .holder-balance { grid-column:1 / -1; grid-row:2; justify-self:start; max-width:46%; text-align:left; padding-left:40px; }
+  .holder-table-token .holder-sell { grid-column:1 / -1; grid-row:2; justify-self:end; max-width:54%; min-width:0; }
+  .holder-table-token .holder-sell .price-basis { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
   .holder-table-token .position-details { grid-row:3; }
   .holder-table-token .holder-share { display:none; }
   .holdings-toolbar .filters { width:100%; margin-left:0; justify-content:flex-start; }
@@ -325,14 +332,20 @@ a.market-row:hover { background:#faf7fc; border-radius:10px; }
   .holder-row > .holder-share { display:none; }
   .market-row { grid-template-columns:auto minmax(0,1fr) auto; gap:10px; }
   .market-flag, .market-arrow, .market-size { display:none; }
+  .market-value .num-full { display:none; }
+  .market-value .num-short { display:inline; }
+  .holdings-toolbar .token-search { flex:1 1 100%; }
   .notice-line-actions { margin-left:0; }
   .analysis-line .analysis-card-action { margin-left:0; width:100%; }
   .analysis-line .analysis-card-action .primary-button, .analysis-line .analysis-card-action .quiet-button { min-height:44px; flex:1; }
   .detail-identity > .coin-icon, .detail-identity > .chain-icon { width:38px; height:38px; flex-basis:38px; }
   .hero:has(.capital-chart) > .hero-figures > .sell-figure { grid-column:1/-1; }
   .hero:has(.capital-chart) > .hero-figures > .figure:not(.figure-primary):not(.sell-figure) { grid-column:span 2; }
-  .wallet-heading { flex-wrap:wrap; gap:10px; }
-  .wallet-identity { flex:1 1 100%; }
+  .wallet-header .wallet-heading { flex-wrap:wrap; gap:10px; }
+  .wallet-header .wallet-identity { flex:1 1 100%; }
+  .wallet-header .wallet-header-actions { margin-left:0; }
+  .wallet-header > .wallet-address { flex-wrap:nowrap; max-width:100%; }
+  .wallet-header #address { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
   #content .token-table tbody tr { grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) 36px; gap:1px 10px; padding:11px 12px; }
   #content .token-table tbody td:first-child { grid-area:1 / 1 / 2 / 2; }
   #content .token-table tbody td:first-child .token-description { display:none; }

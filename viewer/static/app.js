@@ -289,7 +289,8 @@ function icon(asset){
   if(asset.symbol==='CHICKEN')return ['chicken','🐔'];
   if(asset.symbol==='hcbBTC')return ['bitcoin','₿'];
   if(asset.symbol.toLowerCase()==='member')return ['member','m'];
-  if(/[^\x00-\x7F]/.test(asset.symbol)&&asset.symbol.length<10)return ['',asset.symbol];
+  // A badge holds two letters or one emoji. A longer symbol was cut on both sides.
+  if(/[^\x00-\x7F]/.test(asset.symbol)){const chars=[...asset.symbol];return ['',/\p{Extended_Pictographic}/u.test(chars[0])?chars[0]:chars.slice(0,2).join('').toUpperCase()];}
   return ['',asset.symbol.slice(0,2).toUpperCase()];
 }
 function coinIcon(asset){
@@ -385,9 +386,11 @@ function tokenMarkets(token){
     const venue=pool.curve?'Mint Club':pool.venue,versions=pool.curve?'Bonding curve':(pool.version_labels||[]).filter(v=>/^v[234]$/i.test(v)).join(' · ');
     const fee=Number.isFinite(pool.fee_bps)?' · '+Number((pool.fee_bps/100).toFixed(4))+'%':'';
     const amount=pool.curve?quantity(token.curve_reserve.amount)+' '+escapeHTML(token.curve_reserve.symbol):money(token.environment==='testnet'?null:pool.liquidity_usd);
+    // A phone row has no room for fourteen digits. It shows the short figure; the row title keeps the exact one.
+    const short=!pool.curve&&token.environment!=='testnet'&&pool.liquidity_usd>=100000?'$'+new Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:2}).format(pool.liquidity_usd):'';
     const url=pool.url?safeURL(pool.url):'#',linked=url!=='#',tag=linked?'a':'div';
-    const evidence=(pool.curve?'Shared reserve':shortAddress(String(pool.pool||'')))+' · '+(pool.observed_at?'Observed '+stamp(pool.observed_at):'Observation time unavailable');
-    return `<${tag} class="market-row" ${linked?`href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${escapeHTML(label)} on ${escapeHTML(venue)}"`:''} title="${escapeHTML(evidence)}"><span class="pool-art" aria-hidden="true">${pair.map(c=>coinIcon({...c,chain_id:token.chain_id})).join('')}</span><span class="market-name"><strong>${escapeHTML(label)}</strong><small>${venueMark(venue)}${escapeHTML(venue)}${versions?' · '+escapeHTML(versions):''}${fee}</small></span><span class="market-size">${pool.curve||token.environment==='testnet'?'':shareBar(pool.liquidity_usd,largest,label+' liquidity against the largest recorded pool')}</span><span class="market-flag">${used.has(String(pool.pool).toLowerCase())?'<span class="chip" title="A saved sell estimate uses this pool.">Quoted</span>':''}</span><span class="market-value"><strong>${amount}</strong><small>${pool.curve?'Curve backing':'Liquidity'}</small></span><span class="market-arrow" aria-hidden="true">${linked?'↗':''}</span></${tag}>`;
+    const evidence=(pool.curve?'Shared reserve':shortAddress(String(pool.pool||'')))+(short?' · Liquidity '+amount:'')+' · '+(pool.observed_at?'Observed '+stamp(pool.observed_at):'Observation time unavailable');
+    return `<${tag} class="market-row" ${linked?`href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${escapeHTML(label)} on ${escapeHTML(venue)}"`:''} title="${escapeHTML(evidence)}"><span class="pool-art" aria-hidden="true">${pair.map(c=>coinIcon({...c,chain_id:token.chain_id})).join('')}</span><span class="market-name"><strong>${escapeHTML(label)}</strong><small>${venueMark(venue)}${escapeHTML(venue)}${versions?' · '+escapeHTML(versions):''}${fee}</small></span><span class="market-size">${pool.curve||token.environment==='testnet'?'':shareBar(pool.liquidity_usd,largest,label+' liquidity against the largest recorded pool')}</span><span class="market-flag">${used.has(String(pool.pool).toLowerCase())?'<span class="chip" title="A saved sell estimate uses this pool.">Quoted</span>':''}</span><span class="market-value"><strong>${short?`<span class="num-full">${amount}</span><span class="num-short" aria-hidden="true">${short}</span>`:amount}</strong><small>${pool.curve?'Curve backing':'Liquidity'}</small></span><span class="market-arrow" aria-hidden="true">${linked?'↗':''}</span></${tag}>`;
   }).join('');
   const pager=pages>1?`<div class="mini-pager"><span>${tokenPoolPage*size+1}–${Math.min((tokenPoolPage+1)*size,rows.length)} of ${rows.length}</span><button type="button" class="icon-button" data-token-pool-page="prev" aria-label="Previous markets" ${tokenPoolPage===0?'disabled':''}>‹</button><button type="button" class="icon-button" data-token-pool-page="next" aria-label="More markets" ${tokenPoolPage===pages-1?'disabled':''}>›</button></div>`:'';
   const via=token.market_via?.symbol;

@@ -100,4 +100,9 @@ test('two staking pools with the same stake are told apart by number and reward'
  assert.match(rows[1],/Pool #42/);assert.match(rows[1],/title="This pool pays DROP">earns <i class="coin" data-symbol="DROP"[^>]*><\/i><strong>DROP<\/strong>/);assert.match(rows[1],/aria-label="View source for STAKE Pool #42"/);
  assert.match(rows[2],/Pool #43/);assert.doesNotMatch(rows[2],/earns/,'An older saved claim without a reward token still shows its pool number.');
  assert.match(rows[0],/<img class="pos-platform" src="\/venues\/mintclub\.png"/);
+ assert.match(rows[1],/<span class="pos-text"><span class="pos-label"><strong>STAKE<\/strong><small>Mint Club Staking · V1_0 · Pool #42<\/small><\/span><span class="chip pos-reward"/,'Chips wrap under the label, not under the icons.');
+ const css=require('node:fs').readFileSync('viewer/static/capital.css','utf8');
+ assert.match(css,/\.capital-position-list\{[^}]*container:positions \/ inline-size/,'Rows answer to the width of their own list, not the window.');
+ assert.match(css,/@container positions \(max-width:859px\)/);assert.match(css,/@container positions \(max-width:519px\)/);assert.doesNotMatch(css,/@media\(max-width:860px\)\{\s*\.capital-position/);
+ assert.match(css,/\.pos-label strong,\.pos-label small\{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis\}/,'A label is cut with an ellipsis instead of wrapping into a narrow column.');
 });

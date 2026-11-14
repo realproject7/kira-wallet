@@ -167,13 +167,7 @@
 
 .account-card-heading:focus-visible { outline:3px solid #a58abd; outline-offset:5px; }
 
-@media(max-width:600px) {
-.account-card-heading { flex-wrap:wrap; gap:9px; }
 
-.account-position { order:2; flex:1 0 100%; max-width:100%; display:flex; align-items:baseline; justify-content:space-between; text-align:left; gap:8px; }
-
-.account-position .account-meta { text-align:right; }
-}
 .holdings-table.sale-table col:first-child { width:26%; }
 .holdings-table.sale-table col:nth-child(2) { width:22%; }
 .holdings-table.sale-table col:nth-child(3) { width:16%; }

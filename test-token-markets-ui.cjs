@@ -33,3 +33,15 @@ test('a native asset names the wrapped token its markets come from; bars compare
  assert.equal((html.match(/class="allocation-empty"/g)||[]).length,1,'Unknown liquidity draws no bar.');assert.match(html,/Observation time unavailable/);
  ctx.token={...ctx.token,id:'56:plain',market_via:null};assert.doesNotMatch(ctx.tokenMarkets(ctx.token),/via |no contract of its own/);
 });
+
+test('a large pool carries a short figure for narrow rows and keeps the exact one',()=>{
+ const ctx=harness(),pool=(n,liquidity_usd)=>({pool:'0x'+String(n).repeat(40),venue:'PancakeSwap',pair:[{symbol:'WBNB'},{symbol:'USDT'}],url:'https://example.com/'+n,liquidity_usd,observed_at:'2026-11-13T00:00:00Z'});
+ ctx.token={id:'56:big',chain_id:56,symbol:'WBNB',environment:'mainnet',market_scope:'workspace',wallets:[],links:[],market_pools:[pool(1,12345678.9),pool(2,99999),pool(3,null)]};
+ const html=ctx.tokenMarkets(ctx.token);
+ assert.match(html,/<strong><span class="num-full">\$12345678\.9<\/span><span class="num-short" aria-hidden="true">\$12\.35M<\/span><\/strong>/);
+ assert.match(html,/title="0x11111111 · Liquidity \$12345678\.9 · Observed/,'The row title keeps the exact figure.');
+ assert.match(html,/<strong>\$99999<\/strong><small>Liquidity/,'A figure that already fits stays as it is.');assert.match(html,/<strong>—<\/strong><small>Liquidity/);
+ ctx.token={...ctx.token,id:'56:test',environment:'testnet'};assert.doesNotMatch(ctx.tokenMarkets(ctx.token),/num-short/,'A testnet pool has no dollar figure to shorten.');
+ const css=fs.readFileSync('viewer/static/compact.css','utf8');
+ assert.match(css,/\.num-short \{ display:none; \}/);assert.match(css,/@media\(max-width:640px\)[\s\S]*\.market-value \.num-full \{ display:none; \}\n\s*\.market-value \.num-short \{ display:inline; \}/);
+});

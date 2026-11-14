@@ -111,6 +111,10 @@ vm.runInContext(source.slice(source.indexOf('function icon(asset){'),source.inde
 const malformed=context.tokenMarkets({...tokenRecord,id:'1:malformed',market_pools:[{...pools[0],pair:[{symbol:123},{}]}]});
 assert.match(malformed,/coin-fallback">\?<\/span>/);
 console.log('Malformed pool symbols cannot crash the real artwork renderer.');
+const glyph=symbol=>context.coinIcon({symbol}).match(/coin-fallback">([^<]*)</)[1];
+assert.equal(glyph('東京タワー'),'東京','A badge holds two letters, not the whole symbol cut on both sides.');
+assert.equal(glyph('🚀🌕'),'🚀','One emoji fills a badge.');assert.equal(glyph('ab👍'),'AB');assert.equal(glyph('usdc'),'US');
+console.log('Token badges show the start of a symbol in any script.');
 
 context.walletGlyph='';
 vm.runInContext(source.slice(source.indexOf('function accountCard('),source.indexOf('function aggregateRow(')),context);

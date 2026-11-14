@@ -73,6 +73,13 @@ test('page structure keeps one summary card and no repeated taglines',()=>{
  // Phones get a sheet for info tips and two-line token rows without repeated labels.
  assert.match(css,/@media\(max-width:640px\)[\s\S]*\.info-pop \{ position:fixed;/);assert.match(css,/#content \.token-table \.mobile-label \{ display:none; \}/);
  assert.doesNotMatch(source,/function marketLinks\(|holding-markets|Where your assets are/);
+ // Narrow screens: a name keeps its own line instead of breaking beside buttons or values.
+ const phone=css.slice(css.indexOf('@media(max-width:640px)'));
+ assert.match(phone,/\.wallet-header \.wallet-identity \{ flex:1 1 100%; \}/);assert.match(phone,/\.wallet-header #address \{[^}]*text-overflow:ellipsis; \}/);
+ assert.match(phone,/\.holdings-toolbar \.token-search \{ flex:1 1 100%; \}/);
+ assert.match(css,/\.holder-name \{ display:flex; flex-wrap:nowrap;/);assert.match(css,/\.holder-table-token \.holder-balance \{ grid-column:1 \/ -1; grid-row:2; justify-self:start;/);
+ assert.doesNotMatch(fs.readFileSync('viewer/static/report.css','utf8'),/\.account-card-heading \{ flex-wrap:wrap/,'An older phone rule dropped long wallet names under their icon.');
+ assert.match(css,/\.sell-figure \+ \.figure:last-child \{ grid-column:span 2; \}/);
 });
 
 test('rebuilding a token page keeps its allocation panel',()=>{
