@@ -17,17 +17,25 @@ function renderCatalog() {
   const result=state.paged?{rows:page?.assets||[],count:page?.matched_count||0,page:Math.floor((page?.offset??(catalogPage-1)*50)/50)+1,pages:Math.max(1,Math.ceil((page?.matched_count||0)/50))}:KiraView.catalog(state.details.tokens,catalogFilters());
   if(!routeLoading)catalogPage=result.page;
   document.querySelectorAll('[data-catalog-min]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.catalogMin)===catalogMinimum)));
-  $('catalog-filter-note').hidden=catalogMinimum===0;
-  $('catalog-filter-note').textContent=catalogMinimum?'Showing tokens with at least $'+catalogMinimum+' in known value across wallets. Unpriced tokens and testnets are hidden.':'';
+  // The list starts with priced tokens. Say how many unpriced ones it leaves out.
+  const filters=catalogFilters();
+  const hiddenUnpriced=state.paged?(page?.unpriced_hidden_count??0):filters.pricing==='priced'||catalogMinimum>0?KiraView.catalog(state.details.tokens,{...filters,pricing:'unpriced',minimum:0,page:1}).count:0;
+  $('catalog-filter-note').hidden=hiddenUnpriced===0;
+  $('catalog-filter-note').innerHTML=unpricedNote(hiddenUnpriced,'data-show-all-tokens');
   $('all-token-result').textContent = result.count + (result.count === 1 ? ' token · ' : ' tokens · ') + (result.count ? ((result.page - 1) * 50 + 1) + '–' + Math.min(result.page * 50, result.count) + ' shown' : 'none shown');
   $('tokens-page').textContent = result.page + ' / ' + result.pages;
   $('tokens-prev').disabled = routeLoading || result.page === 1;
   $('tokens-next').disabled = routeLoading || result.page === result.pages;
   $('all-token-empty').hidden = routeLoading || result.count > 0;
-  if(typeof TokenManager!=='undefined')TokenManager.sync(result.rows,catalogFilters());
+  if(typeof TokenManager!=='undefined')TokenManager.sync(result.rows,filters);
   $('all-token-body').innerHTML = result.rows.map(catalogRow).join('');
   bindImages();
   if(typeof TokenManager!=='undefined')TokenManager.render();
+  if(!result.count&&hiddenUnpriced){
+    const empty=$('all-token-empty');
+    empty.querySelector('h3').textContent='Only unpriced tokens here';
+    empty.querySelector('p').textContent='These tokens have no price yet. Show all to see their balances.';
+  }
 }
 function renderWorkspace() {
   if (!state) return;
@@ -56,7 +64,7 @@ function renderWorkspace() {
   }
 }
 function resetRouteFilters() {
-  for (const [id,value] of Object.entries({'all-token-status':'portfolio','all-token-network':'all','all-token-pricing':'all','all-token-sort':'value','all-token-search':'','job-filter':'all'})) $(id).value=value;
+  for (const [id,value] of Object.entries({'all-token-status':'portfolio','all-token-network':'all','all-token-pricing':'priced','all-token-sort':'value','all-token-search':'','job-filter':'all'})) $(id).value=value;
   $('all-token-testnets').checked=false;catalogPage=1;catalogMinimum=0;
   walletSort='value';networkSort='value';walletStatus='portfolio';networkStatus='portfolio';$('wallet-token-status').value='portfolio';$('wallet-token-sort').value='value';
   if(typeof jobsPage!=='undefined')jobsPage=1;
@@ -66,12 +74,13 @@ function resetRouteFilters() {
 for (const id of ['all-token-status','all-token-network', 'all-token-pricing', 'all-token-sort', 'all-token-testnets']) $(id).addEventListener('change', () => { catalogPage = 1; state?.paged?loadRoute():renderCatalog(); });
 $('all-token-search').addEventListener('input', () => { clearTimeout(catalogTimer); catalogTimer = setTimeout(() => { catalogPage = 1; state?.paged?loadRoute():renderCatalog(); }, 120); });
 document.querySelectorAll('[data-catalog-min]').forEach(button=>button.addEventListener('click',()=>{catalogMinimum=Number(button.dataset.catalogMin);catalogPage=1;state?.paged?loadRoute():renderCatalog();}));
+$('catalog-filter-note').addEventListener('click',event=>{if(!event.target.closest('[data-show-all-tokens]'))return;$('all-token-pricing').value='all';catalogMinimum=0;catalogPage=1;if(typeof KiraSelect!=='undefined')KiraSelect.refresh();state?.paged?loadRoute():renderCatalog();});
 $('tokens-prev').addEventListener('click', () => { catalogPage--; state?.paged?loadRoute():renderCatalog(); });
 $('tokens-next').addEventListener('click', () => { catalogPage++; state?.paged?loadRoute():renderCatalog(); });
 $('home-view-all').addEventListener('click', () => {
   $('all-token-search').value = '';
   $('all-token-network').value = 'all';
-  $('all-token-pricing').value = 'all';
+  $('all-token-pricing').value = 'priced';
   $('all-token-sort').value = 'value';
   $('all-token-testnets').checked = false;
   catalogPage = 1;catalogMinimum=0;

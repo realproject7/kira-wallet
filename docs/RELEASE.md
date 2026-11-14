@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.12.2**.
+Published npm release: **1.12.2**. Prepared candidate: **1.12.3**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -9,7 +9,32 @@ Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
 
-## Candidate 1.12.2
+## Candidate 1.12.3
+
+The All tokens list now starts with priced tokens, like the wallet and network
+lists. Its pricing filter starts at Priced each time the list is opened, after
+Clear filters and from the Home link. One line under the filters says how many
+unpriced tokens are left out and offers Show all, which switches the filter to
+Any pricing and clears a minimum value. A folder's token list follows the same
+rule. A priced list that is empty only because its tokens have no price says
+so instead of reporting no tokens. Saved data is unchanged and no chain read
+is added.
+
+A browser check covered the list at seven widths from 320 to 1440 px, the More
+filters panel, a folder's list, leaving and returning, and choosing unpriced
+tokens by hand. The page audits for content leaving its card and for squeezed
+text found nothing new.
+Review not selected. Earlier archives and operator wallet data remain
+preserved. Registry publication is operator-only.
+
+## Published 1.12.2
+
+The operator published 1.12.2 on November 14, 2026. The registry archive is
+byte-identical to the frozen one, and a clean registry installation matched
+all 130 members. Pull request 3 merged at
+`51931af399675fc3567bafb4d72e87b1e7043218`; a fresh pack from the merged tree
+reproduces the archive. SHA-256 is
+`1208f811332f2daf7ca8e8504f7a3eb5e654af16ad02bf3bcc864bf7aaf61d0c`.
 
 Wallet and network lists now start with priced holdings. A wallet with many
 unpriced tokens no longer opens with long runs of rows without a price. The

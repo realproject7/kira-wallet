@@ -48,7 +48,7 @@ function savedDisclosures(element){
 function restoreDisclosures(element,values){for(const node of element.querySelectorAll('[data-disclosure-key]'))if(values.has(node.dataset.disclosureKey))node.open=values.get(node.dataset.disclosureKey);}
 function clearCatalogFilters(){
   clearTimeout(catalogTimer);catalogPage=1;catalogMinimum=0;
-  for(const [id,value] of Object.entries({'all-token-search':'','all-token-network':'all','all-token-pricing':'all','all-token-sort':'value'}))$(id).value=value;
+  for(const [id,value] of Object.entries({'all-token-search':'','all-token-network':'all','all-token-pricing':'priced','all-token-sort':'value'}))$(id).value=value;
   $('all-token-testnets').checked=false;
   if(typeof KiraSelect!=='undefined')KiraSelect.refresh();
   state?.paged?loadRoute():renderCatalog();

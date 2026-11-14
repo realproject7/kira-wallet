@@ -20,7 +20,7 @@ const infoTip = (label,body) => `<details class="info-tip"><summary aria-label="
 const integer = value => value==null ? '—' : new Intl.NumberFormat('en-US').format(value);
 // Unpriced holdings stay out of a list until All is chosen. null means All.
 const valueFilter=min=>min==='all'?null:Number(min);
-const unpricedNote=count=>count?`<span>${integer(count)} unpriced hidden</span><button type="button" class="quiet-button" data-clear-value-filter>Show all</button>`:'';
+const unpricedNote=(count,action='data-clear-value-filter')=>count?`<span>${integer(count)} unpriced hidden</span><button type="button" class="quiet-button" ${action}>Show all</button>`:'';
 // A wallet's face: a small symmetric pattern drawn from a hash of its whole address, so no two wallets share one glyph.
 const walletAvatar = address => {const text=String(address||'').toLowerCase(),bytes=[];let hash=2166136261;for(let round=0;round<17;round++){for(let i=0;i<text.length;i++){hash^=text.charCodeAt(i)+round;hash=Math.imul(hash,16777619);}hash^=round+1;hash=Math.imul(hash,16777619);bytes.push((hash>>>16)&255);}const hue=Math.round(bytes[0]/255*360),ink=(hue+150+bytes[1]%90)%360;let cells='';for(let y=0;y<5;y++)for(let x=0;x<3;x++)if(bytes[2+y*3+x]%2)cells+=`<rect x="${x}" y="${y}" width="1" height="1"/>`+(x<2?`<rect x="${4-x}" y="${y}" width="1" height="1"/>`:'');return `<svg class="wallet-avatar" viewBox="-1 -1 7 7" aria-hidden="true" focusable="false"><rect x="-1" y="-1" width="7" height="7" rx="1.7" fill="hsl(${hue}, 60%, 91%)"/><g fill="hsl(${ink}, 42%, 46%)" shape-rendering="crispEdges">${cells||'<rect x="2" y="2" width="1" height="1"/>'}</g></svg>`;};
 // How much of a value an estimate reaches, as a bar with one short label.
