@@ -43,9 +43,25 @@ class CatalogTests(unittest.TestCase):
             with self.assertRaises(wallet.NetworkScopeError):wallet.source_check(self.networks,self.root)
 
     def test_malformed_or_duplicate_sources_cannot_bypass_validation(self):
-        for raw in [b'invalid',source([]),source([('base',ADDRESS),('base',OTHER)]),source([('base','malformed')])]:
+        unterminated=("  BOND: {\n    [base.id]: '"+ADDRESS+"',").encode()
+        mixed_quotes=("  BOND: {\n    [base.id]: '"+ADDRESS+"\",\n  },").encode()
+        for raw in [b'invalid',source([]),source([('base',ADDRESS),('base',OTHER)]),source([('base','malformed')]),unterminated,mixed_quotes]:
             with self.subTest(raw=raw),patch('urllib.request.urlopen',return_value=io.BytesIO(raw)):
                 with self.assertRaises(wallet.NetworkScopeError):wallet.source_check(self.networks[:1],self.root)
+        self.assertFalse((self.root/'mintclub-support.json').exists())
+
+    def test_entry_the_parser_cannot_read_blocks_instead_of_passing_as_removed(self):
+        partial=("  BOND: {\n    [base.id]: '"+ADDRESS+"',\n    [blast.id]: unresolvedAddress,\n  },").encode()
+        with patch('urllib.request.urlopen',side_effect=[io.BytesIO(partial),io.BytesIO(source([('base',ADDRESS),('blast',OTHER)]))]):
+            with self.assertRaises(wallet.NetworkScopeError):wallet.source_check(self.networks,self.root)
+        self.assertFalse((self.root/'mintclub-support.json').exists())
+
+    def test_either_quote_style_and_a_space_before_the_colon_are_read(self):
+        for quote in ("'",'"'):
+            raw=("  BOND: {\n    [base.id] : "+quote+ADDRESS+quote+",\n  },").encode()
+            with self.subTest(quote=quote),patch('urllib.request.urlopen',return_value=io.BytesIO(raw)):
+                wallet.source_check(self.networks[:1],self.root)
+                self.assertEqual(json.loads((self.root/'mintclub-support.json').read_text())['bond_deployments'],{'base':ADDRESS})
 
     def test_extra_sdk_network_does_not_expand_the_selected_catalog(self):
         with patch('urllib.request.urlopen',return_value=io.BytesIO(source([('base',ADDRESS),('extra',OTHER)]))) as fetch:
