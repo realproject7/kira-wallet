@@ -19,6 +19,12 @@ from token_images import IMAGE_HOSTS
 STATIC=Path(__file__).resolve().parent/'static'
 lock=threading.Lock()
 
+class LocalServer(ThreadingHTTPServer):
+    # One page load opens dozens of short connections at once. The default
+    # backlog of five resets some of them and leaves a script or stylesheet missing.
+    request_queue_size=128
+    daemon_threads=True
+
 
 class Handler(BaseHTTPRequestHandler):
     def application(self):
@@ -165,9 +171,8 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=8765);parser.add_argument('--controls',action='store_true');args=parser.parse_args()
-    server=ThreadingHTTPServer(('127.0.0.1',args.port),Handler)
+    server=LocalServer(('127.0.0.1',args.port),Handler)
     server.controls=args.controls;server.session_token=secrets.token_urlsafe(32)
-    server.daemon_threads=True
     server.application=Application(ROOT);server.jobs=server.application.jobs
     if args.controls:server.ows=OwsStore(ROOT)
     if args.controls:server.jobs.reconcile_idle()

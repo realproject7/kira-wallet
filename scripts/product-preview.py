@@ -5,7 +5,6 @@ OWS uses a separate disposable test vault.
 """
 import argparse
 from copy import deepcopy
-from http.server import ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
@@ -77,7 +76,7 @@ def main():
         # All research admissions remain queued and observable. No RPC is called.
         JobStore.launch=lambda _:None
         server.ROOT=root
-        http=ThreadingHTTPServer(('127.0.0.1',args.port),FixtureHandler)
+        http=server.LocalServer(('127.0.0.1',args.port),FixtureHandler)
         http.controls=True;http.session_token=secrets.token_urlsafe(32)
         http.daemon_threads=True
         http.application=Application(root);http.jobs=http.application.jobs
