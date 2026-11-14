@@ -1,9 +1,43 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.11.9**.
+Published npm release: **1.5.0**. Prepared candidate: **1.12.0**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.12.0
+
+The web app now shows one number per question. Home has one summary card with
+the total value, the sell-out estimate and the allocation bar. The same total
+is no longer repeated in a second card. Wallets and networks are ranked rows
+with share bars, and long lists open with the largest rows. A large portfolio
+no longer renders one card per wallet on Home.
+
+Token and network pages lead with the same summary card. Token holders are one
+line each, with route output and observation times on demand. Recorded markets
+are compact rows on the token page only. Holdings tables show one line per
+token and no longer repeat pool cards under every row. The All tokens page no
+longer repeats the portfolio allocation. A token held only in wallets shows no
+allocation panel. Narrow screens use two-line token rows without repeated
+labels. The sidebar marks routine wallet status with a dot and names only
+lookups that are running, waiting or failed.
+
+Method notes moved behind info buttons beside each figure. State that needs
+attention stays visible as chips: missing estimates, limited routes, unpriced
+assets, hidden or review assets and coverage gaps. Unknown values remain
+unknown. Saved research, API responses and research behavior are unchanged.
+
+Three defects found during this work are fixed. The local server accepted only
+five waiting connections, so a page load could lose a script or a stylesheet;
+it now accepts a full page load at once, and a test opens 48 connections at
+once. Paging a token's markets removed its allocation panel until the next
+navigation; a rebuilt page now restores it. The first-run checklist pushed its
+buttons off a phone screen; its stale phone rules are removed. Styles for
+retired components were removed after a pixel comparison of 21 captures showed
+no layout change.
+
+Review not selected. Earlier archives and operator wallet data remain
+preserved. Registry publication is operator-only.
 
 ## Candidate 1.11.9
 
