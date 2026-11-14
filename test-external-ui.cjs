@@ -153,3 +153,13 @@ test('portfolio status reaches all paged views, including the explicit all-recor
   h.run("selectedView='tokens';catalogFilters=()=>({page:1,status:'all'})");await h.run('loadRoute()');
   assert.equal(new URL(h.requests.at(-1).path,'http://localhost').searchParams.get('portfolio_status'),'all');
 });
+test('portfolio actions wait long enough for the server to admit every wallet',async()=>{
+  const h=jobHarness(),waits=[];
+  h.context.AbortSignal={timeout:ms=>{waits.push(ms);return AbortSignal.timeout(ms);}};
+  await h.run("submitOperation('portfolio.refresh',{scope:'fast'})").catch(()=>{});
+  assert.equal(waits[0],180000,'Admitting one job per wallet can take more than twelve seconds.');
+  const before=waits.length;
+  await h.run("submitOperation('wallet.refresh',{wallet:'0x1111111111111111111111111111111111111111',scope:'fast'})").catch(()=>{});
+  assert.equal(waits[before],12000,'Single-wallet actions keep the short limit.');
+  assert.equal(h.requests.filter(r=>r.path==='/api/operations').length,2);
+});

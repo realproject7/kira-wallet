@@ -11,6 +11,7 @@ import threading
 from unittest.mock import patch
 import wallet
 sys.path.insert(0,str(wallet.ASSETS/'viewer'))
+PORTFOLIO_IDS={name:cid for cid,name in wallet.PORTFOLIO.items()}
 
 
 class WalletPipelineTests(unittest.TestCase):
@@ -326,6 +327,100 @@ class WalletPipelineTests(unittest.TestCase):
         with patch.object(wallet,'fetch',return_value={'data':{'tokens':[]}}) as fetch:
             result=wallet.discover(self.address,{'chain_id':137},self.folder)
         self.assertTrue(result['complete']);self.assertEqual(fetch.call_args.args[1]['addresses'][0]['networks'],['matic-mainnet'])
+
+    def portfolio_reply(self, body, *, failed=(), pages=None):
+        """One token per requested network; a failed network is named in partialErrors and returns nothing."""
+        networks=body['addresses'][0]['networks']
+        tokens=[self.token('0x'+format(PORTFOLIO_IDS[n],'040x'),network=n) for n in networks if n not in failed]
+        reply={'data':{'tokens':tokens,'pageKey':None,'blockMetadata':{n:None if n in failed else {'blockNumber':1} for n in networks}}}
+        if failed:reply['error']={'message':'Failed to fetch tokens on certain networks','partialErrors':[{'network':n,'message':'timeout'} for n in failed]}
+        return reply
+
+    def test_alchemy_networks_share_one_request_per_five(self):
+        explorer={'chain_id':109,'environment':'mainnet'}
+        networks=[{'chain_id':cid,'environment':'mainnet'} for cid in wallet.ALCHEMY]+[explorer]
+        bodies=[]
+        def reply(url,body):
+            bodies.append(json.loads(json.dumps(body)))
+            return self.portfolio_reply(body) if body['addresses'][0]['networks']!=['blast-mainnet'] and body['addresses'][0]['networks']!=['blast-sepolia'] \
+                else {'transport_error':{'status':400,'message':'Unsupported network'}}
+        with patch.object(wallet,'fetch',side_effect=reply),patch.object(wallet,'free_sources',return_value={'complete':True,'tokens':[],'source':'explorer fixture'}) as free:
+            found=wallet.discover_all(self.address,networks,self.folder)
+        shared=[b['addresses'][0]['networks'] for b in bodies if len(b['addresses'][0]['networks'])>1]
+        alone=[b['addresses'][0]['networks'] for b in bodies if len(b['addresses'][0]['networks'])==1]
+        self.assertEqual(len(shared),3,'Fourteen Alchemy networks take three requests.')
+        self.assertTrue(all(len(group)<=5 for group in shared))
+        self.assertEqual(sorted(alone),[['blast-mainnet'],['blast-sepolia']],'Networks Alchemy refuses keep their own request.')
+        self.assertEqual(sorted(found),sorted(n['chain_id'] for n in networks))
+        free.assert_called_once()
+        for cid,network in wallet.PORTFOLIO.items():
+            row=found[cid]
+            if cid in wallet.PORTFOLIO_SEPARATE:
+                self.assertFalse(row['complete']);continue
+            self.assertTrue(row['complete']);self.assertEqual(row['discovery_status'],'checked')
+            self.assertEqual([t['address'] for t in row['tokens']],['0x'+format(PORTFOLIO_IDS[network],'040x')],'Each network keeps only its own tokens.')
+            saved=json.loads((self.folder/f'discovery-{cid}.json').read_text())
+            self.assertIn(network,saved['portfolio_networks'])
+            self.assertEqual({t['network'] for t in saved['pages'][0]['response']['data']['tokens']},{network})
+            self.assertEqual(list(saved['pages'][0]['response']['data']['blockMetadata']),[network])
+            self.assertNotIn('fixture-key',json.dumps(saved))
+
+    def test_a_network_failing_in_a_shared_read_is_read_again_alone(self):
+        networks=[{'chain_id':cid,'environment':'mainnet'} for cid in (1,8453,10)]
+        bodies=[]
+        def reply(url,body):
+            bodies.append(json.loads(json.dumps(body)));names=body['addresses'][0]['networks']
+            return self.portfolio_reply(body,failed=('base-mainnet',) if len(names)>1 else ())
+        with patch.object(wallet,'fetch',side_effect=reply):
+            found=wallet.discover_all(self.address,networks,self.folder)
+        self.assertEqual([b['addresses'][0]['networks'] for b in bodies],[['eth-mainnet','base-mainnet','opt-mainnet'],['base-mainnet']])
+        self.assertTrue(all(found[cid]['complete'] for cid in (1,8453,10)))
+        self.assertNotIn('portfolio_networks',found[8453],'The retried network records its own request.')
+        # An error that names none of the requested networks cannot pass any of them as complete.
+        bodies.clear();folder=self.folder/'unnamed';folder.mkdir()
+        def unnamed(url,body):
+            bodies.append(body['addresses'][0]['networks'])
+            reply=self.portfolio_reply(body)
+            if len(body['addresses'][0]['networks'])>1:reply['error']={'message':'Upstream error'}
+            return reply
+        with patch.object(wallet,'fetch',side_effect=unnamed):
+            found=wallet.discover_all(self.address,networks,folder)
+        self.assertEqual(bodies,[['eth-mainnet','base-mainnet','opt-mainnet'],['eth-mainnet'],['base-mainnet'],['opt-mainnet']])
+        self.assertTrue(all(found[cid]['complete'] for cid in (1,8453,10)))
+
+    def test_shared_pages_continue_for_the_networks_still_listing_tokens(self):
+        networks=[{'chain_id':cid,'environment':'mainnet'} for cid in (1,8453)]
+        second=self.token('0x'+'5'*40)
+        replies=[{'data':{'tokens':[self.token(network='eth-mainnet'),self.token()],'pageKey':'next'}},
+                 {'data':{'tokens':[second],'pageKey':None}}]
+        with patch.object(wallet,'fetch',side_effect=replies) as fetch:
+            found=wallet.discover_all(self.address,networks,self.folder)
+        self.assertEqual(fetch.call_count,2);self.assertEqual(fetch.call_args_list[1].args[1]['pageKey'],'next')
+        self.assertEqual(len(found[8453]['tokens']),2);self.assertEqual(len(found[1]['tokens']),1)
+        self.assertTrue(found[1]['complete'] and found[8453]['complete'])
+        self.assertEqual([len(p['response']['data']['tokens']) for p in found[8453]['pages']],[1,1])
+
+    def test_a_refused_shared_request_falls_back_to_one_request_per_network(self):
+        networks=[{'chain_id':cid,'environment':'mainnet'} for cid in (1,8453)]
+        def reply(url,body):
+            if len(body['addresses'][0]['networks'])>1:return {'transport_error':{'status':400,'message':'Unsupported network'}}
+            return self.portfolio_reply(body)
+        with patch.object(wallet,'fetch',side_effect=reply) as fetch:
+            found=wallet.discover_all(self.address,networks,self.folder)
+        self.assertEqual(fetch.call_count,3)
+        self.assertTrue(found[1]['complete'] and found[8453]['complete'])
+        self.assertEqual(len(found[8453]['pages']),1,'The refused shared read leaves no evidence behind.')
+
+    def test_saved_complete_networks_are_not_asked_for_again(self):
+        networks=[{'chain_id':cid,'environment':'mainnet'} for cid in (1,8453,10)]
+        with patch.object(wallet,'fetch',side_effect=lambda url,body:self.portfolio_reply(body)) as fetch:
+            wallet.discover_all(self.address,networks,self.folder)
+            wallet.discover_all(self.address,networks,self.folder)
+        self.assertEqual(fetch.call_count,1,'A resumed run reuses finished discovery.')
+        with patch.object(wallet,'fetch') as fetch,patch.object(wallet.h,'secrets',return_value={}),\
+                patch.object(wallet,'free_sources',return_value={'complete':False,'tokens':[],'discovery_status':'unsupported'}) as free:
+            wallet.discover_all(self.address,networks,self.folder/'nokey')
+        fetch.assert_not_called();self.assertEqual(free.call_count,3,'Without a key every network keeps its keyless route.')
 
     def test_supported_scope_changes_stop_before_analysis(self):
         class Response:
