@@ -625,8 +625,11 @@ class NetworkScopeError(ValueError):
 def bond_deployments(source):
     block=re.search(r'\bBOND:\s*\{(.*?)\n\s*\}',source,re.S)
     if not block:raise NetworkScopeError('Mint Club SDK deployment source could not be validated.')
-    rows=re.findall(r'''\[(\w+)\.id\]:\s*['"]([^'"]+)['"]''',block[1])
-    if not rows or len(rows)!=len(dict(rows)) or any(not re.fullmatch(r'0x[0-9a-fA-F]{40}',address) for _,address in rows):
+    rows=[(name,address) for name,_,address in re.findall(r'''\[(\w+)\.id\]\s*:\s*(['"])([^'"]+)\2''',block[1])]
+    # Every catalogue entry must be read. An entry this parser cannot read
+    # would otherwise pass as a network the SDK removed.
+    entries=len(re.findall(r'\[\w+\.id\]\s*:',block[1]))
+    if not rows or len(rows)!=entries or len(rows)!=len(dict(rows)) or any(not re.fullmatch(r'0x[0-9a-fA-F]{40}',address) for _,address in rows):
         raise NetworkScopeError('Mint Club SDK deployment source could not be validated.')
     return {name:address.lower() for name,address in rows}
 
