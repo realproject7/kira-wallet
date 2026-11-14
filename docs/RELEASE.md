@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.12.1**.
+Published npm release: **1.5.0**. Prepared candidate: **1.12.2**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -8,6 +8,42 @@ scope of their original release; they are not a current task list.
 Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
+
+## Candidate 1.12.2
+
+Wallet and network lists now start with priced holdings. A wallet with many
+unpriced tokens no longer opens with long runs of rows without a price. The
+value filter has four choices: All, Priced, ≥ $5 and ≥ $10. Priced is the
+default each time a page is opened. All shows every recorded holding again.
+One line under the filter says how many unpriced holdings are left out and
+offers Show all. The wallet summary keeps its own unpriced count, and a zero
+value still counts as a price. The All tokens page keeps its own pricing
+filter and is unchanged.
+
+The Mint Club deployment check now stops when it cannot read every entry of
+the SDK catalogue. An entry in a form it did not expect was skipped before, so
+a configured network could pass as removed and be compared with the pinned
+historical catalogue instead of the live one. The check also reads an entry
+with a space before the colon and requires the same quote on both sides of an
+address. The live catalogue and the pinned one are read in full, and the
+package's 24 configured networks still verify.
+
+The engine tests no longer need a saved Alchemy key. Sixteen price refresh
+tests stopped on a clean checkout before.
+
+`scripts/pre-push-check.py` runs the privacy rules as a pre-push hook, before
+a push instead of after it. It reads only the commits a remote lacks and
+stops on a registered wallet address or name, a personal path, a credential,
+a private runtime file, or a commit identity that is not the clone's noreply
+one. Docs no longer link pull requests and issues of the earlier repository,
+and the open quoting issue is issue 1 here.
+
+A browser check of the wallet and network lists at seven widths from 320 to
+1440 px covered the default, All and ≥ $5 states, a wallet with only unpriced
+holdings and one with none. The page audits for content leaving its card and
+for squeezed text found nothing new.
+Review not selected. Earlier archives and operator wallet data remain
+preserved. Registry publication is operator-only.
 
 ## Candidate 1.12.1
 
