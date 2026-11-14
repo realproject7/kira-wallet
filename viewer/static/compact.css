@@ -27,6 +27,24 @@
 .hero .sell-summary-value, .hero .figure-value { margin:0; font-size:1.6rem; line-height:1.3; font-weight:550; letter-spacing:-.03em; font-variant-numeric:tabular-nums; }
 .hero .sell-summary-value { color:#5f477c; }
 .hero .stat-note { font-size:var(--text-caption); color:var(--secondary); line-height:1.4; }
+/* With an allocation chart the card has two sides: the numbers, then where they sit. */
+.hero:has(.capital-chart) { display:grid; grid-template-columns:minmax(0,.82fr) minmax(0,1.18fr); gap:0 40px; align-items:center; }
+.hero:has(.capital-chart) > .hero-figures { grid-column:1; grid-template-columns:repeat(4,minmax(0,1fr)); gap:20px 20px; }
+.hero:has(.capital-chart) > .hero-figures > .figure-primary { grid-column:1/-1; }
+.hero:has(.capital-chart) > .hero-figures > .sell-figure { grid-column:span 2; }
+.hero:has(.capital-chart) > .hero-figures > .sell-figure:last-child { grid-column:1/-1; }
+.hero:has(.capital-chart) > .hero-figures > .figure + .figure { padding-left:0; border-left:0; }
+.hero:has(.capital-chart) > .capital-panel:not([hidden]) { display:contents; }
+.hero:has(.capital-chart) .capital-chart { grid-column:2; grid-row:1; }
+.hero:has(.capital-chart) .capital-rest { grid-column:1/-1; }
+.ratio { display:flex; align-items:center; gap:10px; max-width:260px; }
+.ratio .allocation-progress { flex:1; }
+.ratio small { flex:none; min-width:34px; font-size:12px; font-weight:550; color:#5f477c; font-variant-numeric:tabular-nums; text-align:right; }
+.ratio .allocation-progress::-webkit-progress-value { background:#7e62a8; }
+.ratio .allocation-progress::-moz-progress-bar { background:#7e62a8; }
+.figure-meter { display:block; max-width:120px; }
+.figure-meter:empty { display:none; }
+.wallet-avatar { display:block; width:30px; height:30px; flex:0 0 30px; border-radius:9px; stroke:none; }
 .hero .coverage-meter { display:inline-flex; flex-wrap:wrap; gap:3px; margin:2px 0 0; max-width:100%; }
 .hero .coverage-meter > span { flex:0 0 6px; width:6px; height:6px; min-width:0; border-radius:50%; }
 
@@ -44,7 +62,7 @@ button.chip.warn:hover { background:#f6e6c4; color:#6b4d0f; }
 
 /* Info tip: the method and limits behind a number. */
 .info-tip { position:relative; display:inline-flex; }
-.info-tip > summary { display:grid; place-items:center; width:24px; height:24px; margin:-3px -2px; border-radius:50%; list-style:none; cursor:pointer; color:#8d8296; }
+.info-tip > summary { display:grid; place-items:center; width:24px; height:24px; margin:-3px 0; border-radius:50%; list-style:none; cursor:pointer; color:#8d8296; }
 .info-tip > summary::-webkit-details-marker { display:none; }
 .info-tip > summary::before { content:"i"; display:grid; place-items:center; width:16px; height:16px; border:1.4px solid currentColor; border-radius:50%; font-size:11px; line-height:1; font-weight:600; font-style:normal; }
 .info-tip > summary:hover, .info-tip[open] > summary { color:var(--accent); }
@@ -88,8 +106,6 @@ button.chip.warn:hover { background:#f6e6c4; color:#6b4d0f; }
 .rank-value { display:flex; flex-direction:column; align-items:flex-end; min-width:0; }
 .rank-value strong { font-size:var(--text-ui); font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .rank-value small { font-size:12px; color:var(--secondary); font-variant-numeric:tabular-nums; }
-.rank-row .card-wallet-icon, .holder-row .card-wallet-icon { display:grid; place-items:center; width:30px; height:30px; flex:0 0 30px; border-radius:9px; background:#f1eaf8; color:#7a639d; }
-.rank-row .card-wallet-icon svg, .holder-row .card-wallet-icon svg { width:16px; height:16px; }
 .rank-row .chain-icon { flex:0 0 26px; }
 .allocation-progress { display:block; width:100%; height:6px; margin:0; border:0; border-radius:3px; overflow:hidden; background:#f1edf4; appearance:none; -webkit-appearance:none; }
 .allocation-progress::-webkit-progress-bar { background:#f1edf4; border-radius:3px; }
@@ -125,7 +141,7 @@ button.chip.warn:hover { background:#f6e6c4; color:#6b4d0f; }
 .token-title-line { display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px; }
 .detail-sub { display:flex; align-items:center; flex-wrap:wrap; gap:4px 10px; margin:4px 0 0; font-size:var(--text-secondary); line-height:1.5; color:var(--secondary); }
 .detail-sub > a:hover { color:var(--accent); text-decoration:underline; }
-.detail-sub > span:first-child::after, .detail-sub > a:not(.explorer-link)::after { content:"·"; margin-left:10px; color:#b3a9bc; }
+.detail-sub > span:first-child:not(:last-child)::after, .detail-sub > a:not(.explorer-link):not(:last-child)::after { content:"·"; margin-left:10px; color:#b3a9bc; }
 .address-chip { display:inline-flex; align-items:center; gap:2px; padding-left:9px; border-radius:8px; background:#f3f0f6; }
 .address-chip code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; color:#544a5f; }
 .address-chip .icon-button { min-width:28px; min-height:28px; width:28px; height:28px; padding:5px; }
@@ -166,7 +182,7 @@ button.chip.warn:hover { background:#f6e6c4; color:#6b4d0f; }
 .other-wallets { margin-top:10px; padding-top:10px; border-top:1px solid #f1edf4; }
 .other-wallets > summary { font-size:var(--text-secondary); font-weight:550; cursor:pointer; }
 .market-list { display:block; }
-.market-row { display:grid; grid-template-columns:auto minmax(0,1fr) minmax(64px,auto) minmax(110px,auto) 16px; align-items:center; gap:12px; min-height:52px; padding:7px 8px; border-top:1px solid #f1edf4; color:inherit; text-decoration:none; }
+.market-row { display:grid; grid-template-columns:auto minmax(0,1.1fr) minmax(60px,1fr) minmax(64px,auto) minmax(110px,auto) 16px; align-items:center; gap:12px; min-height:52px; padding:7px 8px; border-top:1px solid #f1edf4; color:inherit; text-decoration:none; }
 .market-row:first-child { border-top:0; }
 a.market-row:hover { background:#faf7fc; border-radius:10px; }
 .market-row .pool-art { display:flex; align-items:center; }
@@ -180,6 +196,10 @@ a.market-row:hover { background:#faf7fc; border-radius:10px; }
 .market-value strong { font-size:var(--text-ui); font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .market-value small { font-size:12px; color:var(--secondary); }
 .market-arrow { font-size:13px; color:#9a8fa5; }
+.market-size { min-width:0; }
+.catalog-chain .chain-link { display:inline-flex; align-items:center; gap:7px; min-width:0; }
+.catalog-chain .chain-icon { width:18px; height:18px; flex:0 0 18px; }
+.catalog-chain .chain-icon .chain-fallback { font-size:10px; }
 .record-risk, .record-reference { margin:0 0 12px; padding:0; border:1px solid #e5dfeb; border-radius:14px; background:#fff; }
 .record-risk > summary, .record-reference > summary { display:flex; align-items:center; gap:10px; min-height:48px; padding:10px 18px; font-size:var(--text-ui); font-weight:550; cursor:pointer; }
 .record-tabs { margin-bottom:16px; }
@@ -191,6 +211,10 @@ a.market-row:hover { background:#faf7fc; border-radius:10px; }
 .wallet-header > .wallet-status { flex:1 1 auto; margin:0; padding:0; border:0; background:none; min-width:0; }
 .wallet-header > .wallet-status[hidden] { display:none; }
 .wallet-header #wallet-name { font-size:1.75rem; line-height:1.2; letter-spacing:-.03em; }
+.wallet-identity { display:flex; align-items:center; gap:12px; min-width:0; }
+.wallet-identity h1 { min-width:0; overflow-wrap:anywhere; }
+.wallet-face { display:block; flex:none; }
+.wallet-face .wallet-avatar { width:40px; height:40px; flex-basis:40px; border-radius:12px; }
 .wallet-analysis { margin:0 0 12px; padding:10px 16px; border:1px solid #e5dfeb; border-radius:12px; background:#fff; }
 .wallet-analysis[hidden] { display:none; }
 .analysis-line { display:flex; align-items:center; flex-wrap:wrap; gap:6px 12px; font-size:var(--text-secondary); line-height:1.45; }
@@ -214,7 +238,7 @@ a.market-row:hover { background:#faf7fc; border-radius:10px; }
 /* Sidebar: a dot for routine status. */
 .wallet-button:not(.home-button) { grid-template-columns:22px minmax(0,1fr) 8px; min-height:42px; padding:8px 10px; gap:10px; }
 .wallet-button .wallet-glyph { width:22px; height:22px; }
-.wallet-button .wallet-glyph svg { width:19px; height:19px; }
+.wallet-button .wallet-glyph .wallet-avatar { width:22px; height:22px; flex-basis:22px; border-radius:7px; }
 .wallet-button .wallet-nav-address { display:block; margin-top:1px; font-size:12px; line-height:1.3; }
 .wallet-button > .wallet-status-dot { width:7px; height:7px; margin:0; }
 .wallet-status-dot[data-mode="saved"] { background:#4c8b67; }
@@ -235,6 +259,8 @@ a.market-row:hover { background:#faf7fc; border-radius:10px; }
   .hero-figures { grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); }
   .hero-figures > .figure:nth-child(3) { padding-left:0; border-left:0; }
   .dashboard-grid { grid-template-columns:1fr; }
+  .hero:has(.capital-chart) { grid-template-columns:1fr; gap:20px 0; }
+  .hero:has(.capital-chart) .capital-chart { grid-column:1; grid-row:auto; }
 }
 
 /* Narrow token tables: two lines per token, no repeated labels. */
@@ -298,11 +324,15 @@ a.market-row:hover { background:#faf7fc; border-radius:10px; }
   .holder-head { display:none; }
   .holder-row > .holder-share { display:none; }
   .market-row { grid-template-columns:auto minmax(0,1fr) auto; gap:10px; }
-  .market-flag, .market-arrow { display:none; }
+  .market-flag, .market-arrow, .market-size { display:none; }
   .notice-line-actions { margin-left:0; }
   .analysis-line .analysis-card-action { margin-left:0; width:100%; }
   .analysis-line .analysis-card-action .primary-button, .analysis-line .analysis-card-action .quiet-button { min-height:44px; flex:1; }
   .detail-identity > .coin-icon, .detail-identity > .chain-icon { width:38px; height:38px; flex-basis:38px; }
+  .hero:has(.capital-chart) > .hero-figures > .sell-figure { grid-column:1/-1; }
+  .hero:has(.capital-chart) > .hero-figures > .figure:not(.figure-primary):not(.sell-figure) { grid-column:span 2; }
+  .wallet-heading { flex-wrap:wrap; gap:10px; }
+  .wallet-identity { flex:1 1 100%; }
   #content .token-table tbody tr { grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) 36px; gap:1px 10px; padding:11px 12px; }
   #content .token-table tbody td:first-child { grid-area:1 / 1 / 2 / 2; }
   #content .token-table tbody td:first-child .token-description { display:none; }

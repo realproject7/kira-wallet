@@ -7,13 +7,14 @@ function harness(api){
  const allocation={groups:[{id:'wallet',name:'Wallet tokens',color:'#8a7aaf',value_usd:10,percent:25,position_count:0},{id:'uniswap',name:'Uniswap',color:'#ef5da8',logo:'/venues/uniswap.svg',value_usd:30,percent:75,position_count:1}],known_value_usd:40,wallets_checked:1,wallet_count:1,position_count:1};
  const state={data_revision:'r1',wallets:[{key:'0x'+'1'.repeat(40),capital_allocation:allocation}],dashboard:{capital_allocation:allocation},details:{networks:[]}};
  const calls=[],context={state,selectedView:'home',selectedWallet:null,selectedToken:null,selectedNetwork:null,routeData:{},activeJobs:[],localSession:{controls:false},document:{hidden:false},URLSearchParams,
-  $:()=>target,escapeHTML:x=>String(x??'').replaceAll('<','&lt;'),money:x=>x==null?'—':'$'+x,stamp:x=>x,quantity:x=>x,safeURL:x=>x,tokenHref:x=>'#/token/'+x,localAPI:async url=>{calls.push(url);return api?api(url,context):{data_revision:context.state.data_revision,positions:[],allocation,matched_count:0,next_offset:null};},currentWallet:()=>state.wallets[0],poll:async()=>{},};
+  $:()=>target,coinIcon:a=>'<i class="coin" data-symbol="'+a.symbol+'" data-address="'+a.address+'"></i>',escapeHTML:x=>String(x??'').replaceAll('<','&lt;'),money:x=>x==null?'—':'$'+x,stamp:x=>x,quantity:x=>x,safeURL:x=>x,tokenHref:x=>'#/token/'+x,localAPI:async url=>{calls.push(url);return api?api(url,context):{data_revision:context.state.data_revision,positions:[],allocation,matched_count:0,next_offset:null};},currentWallet:()=>state.wallets[0],poll:async()=>{},};
  vm.createContext(context);vm.runInContext(code,context);return {context,host,calls,allocation,render:()=>context.capital.render()};
 }
 test('segmented bar uses CSP-compatible SVG and bounded local reads coalesce',async()=>{
  const h=harness();for(let i=0;i<20;i++)h.render();await tick();
  assert.equal(h.calls.length,1);assert.match(h.calls[0],/^\/api\/positions\?/);assert.match(h.calls[0],/limit=25/);
- assert.match(h.host.innerHTML,/<svg class="capital-bar"/);assert.match(h.host.innerHTML,/width="750"/);assert.doesNotMatch(h.host.innerHTML,/style=/);
+ assert.match(h.host.innerHTML,/<svg class="capital-donut"/);assert.match(h.host.innerHTML,/stroke="#ef5da8"[^>]*stroke-dasharray="75\.000 25\.000" stroke-dashoffset="0\.000"/);assert.match(h.host.innerHTML,/stroke="#8a7aaf"[^>]*stroke-dasharray="25\.000 75\.000" stroke-dashoffset="25\.000"/);
+ assert.match(h.host.innerHTML,/class="donut-value"[^>]*>75%<\/text><text class="donut-label"[^>]*>Uniswap</);assert.doesNotMatch(h.host.innerHTML,/style=/);
  for(let i=0;i<20;i++)h.render();await tick();assert.equal(h.calls.length,1);
 });
 test('hidden tabs make no new saved-data requests until visible',async()=>{
@@ -71,7 +72,7 @@ test('a wallet with nothing to compare keeps one status line and its scan action
  const h=harness(()=>({data_revision:'r1',positions:[],allocation:single,matched_count:0,next_offset:null}));
  h.context.localSession.controls=true;h.context.selectedView='wallet';h.context.selectedWallet=h.context.state.wallets[0].key;h.context.state.wallets[0].capital_allocation=single;
  h.render();await tick();
- assert.doesNotMatch(h.host.innerHTML,/capital-bar|capital-legend|capital-positions/);
+ assert.doesNotMatch(h.host.innerHTML,/capital-donut|capital-chart|capital-legend|capital-positions/);
  assert.match(h.host.innerHTML,/Platform positions not scanned/);assert.match(h.host.innerHTML,/0\/1 wallets checked/);assert.match(h.host.innerHTML,/class="quiet-button capital-refresh" >Find platform positions/);
 });
 test('coverage gaps stay one chip until opened; position rows carry flags and evidence',async()=>{
@@ -83,7 +84,20 @@ test('coverage gaps stay one chip until opened; position rows carry flags and ev
  h.context.capitalGaps.render();await tick();
  assert.match(h.host.innerHTML,/class="chip warn capital-gaps" aria-expanded="false"[^>]*>3 coverage gaps/);assert.doesNotMatch(h.host.innerHTML,/class="capital-coverage"/);
  assert.match(h.host.innerHTML,/<li class="capital-position" title="NAV note\. Saved prices 2026-11-12T00:00:00Z\. Observed 2026-11-13T00:00:00Z\.">/);
- assert.match(h.host.innerHTML,/AAA \/ BBB/);assert.match(h.host.innerHTML,/Staked/);assert.match(h.host.innerHTML,/Retained/);assert.match(h.host.innerHTML,/Not in totals/);assert.match(h.host.innerHTML,/aria-label="View source for AAA \/ BBB"/);
+ assert.match(h.host.innerHTML,/AAA \/ BBB/);assert.match(h.host.innerHTML,/<small>Uniswap · v3<\/small>/);assert.match(h.host.innerHTML,/class="pos-art"[^>]*><i class="coin" data-symbol="AAA"[^>]*><\/i><i class="coin" data-symbol="BBB"/);assert.match(h.host.innerHTML,/Staked/);assert.match(h.host.innerHTML,/Retained/);assert.match(h.host.innerHTML,/Not in totals/);assert.match(h.host.innerHTML,/aria-label="View source for AAA \/ BBB"/);
  h.context.capitalGaps.toggleCoverage();
  assert.match(h.host.innerHTML,/aria-expanded="true"/);assert.match(h.host.innerHTML,/class="capital-coverage"[\s\S]*Source &lt;unchecked>\./);
+});
+
+test('two staking pools with the same stake are told apart by number and reward',async()=>{
+ const stake=(id,extra)=>({id:'8453:0xstake:'+id,platform:'mintclub-staking',version:'V1_0',label:'Staking pool #'+id,pool_id:String(id),chain_id:8453,wallet:'0x'+'1'.repeat(40),wallet_name:'Fixture',value_usd:21.5,observed_at:'2026-11-13T00:00:00Z',source_url:'https://mint.club/staking/base/'+id,assets:[{symbol:'STAKE',address:'0x'+'f'.repeat(40),amount:'1500'}],...extra});
+ const groups=[{id:'mintclub-staking',name:'Mint Club Staking',color:'#30876c',logo:'/venues/mintclub.png',value_usd:43,percent:100,position_count:2}];
+ const h=harness(()=>({data_revision:'r1',positions:[stake(41,{reward:{address:'0x'+'2'.repeat(40),symbol:null}}),stake(42,{reward:{address:'0x'+'3'.repeat(40),symbol:'DROP'}}),stake(43,{})],allocation:{groups,known_value_usd:43,wallets_checked:1,wallet_count:1,position_count:3},matched_count:3,next_offset:null}));
+ h.context.FolderUI={id:null,view:()=>null,path:route=>'#/'+route};h.context.selectedView='wallet';h.context.selectedWallet=h.context.state.wallets[0].key;
+ h.render();await tick();const rows=h.host.innerHTML.split('<li class="capital-position"').slice(1);
+ assert.equal(rows.length,3);
+ assert.match(rows[0],/Mint Club Staking · V1_0 · Pool #41/);assert.match(rows[0],/title="This pool pays 0x2{40}">earns <i class="coin"[^>]*data-address="0x2{40}"><\/i><\/span>/);
+ assert.match(rows[1],/Pool #42/);assert.match(rows[1],/title="This pool pays DROP">earns <i class="coin" data-symbol="DROP"[^>]*><\/i><strong>DROP<\/strong>/);assert.match(rows[1],/aria-label="View source for STAKE Pool #42"/);
+ assert.match(rows[2],/Pool #43/);assert.doesNotMatch(rows[2],/earns/,'An older saved claim without a reward token still shows its pool number.');
+ assert.match(rows[0],/<img class="pos-platform" src="\/venues\/mintclub\.png"/);
 });

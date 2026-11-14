@@ -13,7 +13,7 @@ const context={$:node,KiraView:require('./viewer/static/workspace-model.js'),cur
   localStorage:{setItem:(key,value)=>saved.set(key,value)},renderBreadcrumb(){},bindImages(){},
   assetRow:a=>'<tr>'+a.symbol+'</tr>',chainIcon:()=>'',networkHref:String,arrowGlyph:'',renderDetail(){}};
 vm.createContext(context);
-for(const helper of ['const infoTip =','const integer ='])vm.runInContext(source.split('\n').find(line=>line.startsWith(helper)),context);
+for(const helper of ['const infoTip =','const integer =','const walletAvatar =','const ratioBar =','const walletTokenValue ='])vm.runInContext(source.split('\n').find(line=>line.startsWith(helper)),context);
 vm.runInContext(source.slice(source.indexOf('function progress('),source.indexOf('function chainIcon(')),context);
 vm.runInContext(source.slice(source.indexOf('function policyBadge('),source.indexOf('function policyPanel(')),context);
 vm.runInContext(source.slice(source.indexOf('function sellSummary('),source.indexOf('function sellOutNote(')),context);

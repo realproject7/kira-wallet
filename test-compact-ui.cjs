@@ -11,7 +11,7 @@ function harness(){
  const ctx=vm.createContext({$,escapeHTML,money:v=>v==null?'—':'$'+v,stamp:String,shortAddress:a=>a.slice(0,6)+'…'+a.slice(-4),walletGlyph:'<svg></svg>',arrowGlyph:'',
   KiraView:require('./viewer/static/workspace-model.js'),networkHref:id=>'#/network/'+id,renderBreadcrumb(){},renderHomeCoverage(){},bindImages(){},chainIcon:()=>'<i class="chain-icon"></i>',
   selectedView:'home',selectedWallet:null,jobList:[],state:null,window:{addEventListener(){}},clearTimeout(){}});
- for(const helper of ['const infoTip =','const integer ='])vm.runInContext(source.split('\n').find(line=>line.startsWith(helper)),ctx);
+ for(const helper of ['const infoTip =','const integer =','const walletAvatar =','const ratioBar =','const walletTokenValue ='])vm.runInContext(source.split('\n').find(line=>line.startsWith(helper)),ctx);
  for(const [from,to] of [['function progress(','function chainIcon('],['function renderWallets(){','function renderView(){'],['function renderHome(){','function renderWallet(){'],['function sellSummary(','function sellOutNote('],['function policyNotice(','function policyButton(']])vm.runInContext(slice(from,to),ctx);
  vm.runInContext(design,ctx);
  return {ctx,$};
@@ -30,12 +30,12 @@ test('Home shows one total, state as chips, and wallets ranked by value',()=>{
  assert.match(meta,/<strong>3<\/strong> wallets/);assert.match(meta,/href="#\/tokens"><strong>1,234<\/strong> tokens/);assert.match(meta,/class="chip warn">1 awaiting analysis/);
  assert.match(meta,/data-policy-list="review"[^>]*>1 needs review/);assert.match(meta,/data-policy-list="excluded"[^>]*>2 hidden/);
  const sale=h.$('home-sell-out').innerHTML;
- assert.match(sale,/≈ \$80/);assert.match(sale,/2 missing/);assert.match(sale,/1 limited routes/);assert.match(sale,/<details class="info-tip">[\s\S]*Includes 3 native or stable spot references/);
+ assert.match(sale,/≈ \$80/);assert.match(sale,/value="80" max="100"[^>]*>80%<\/progress><small>80%<\/small>/,'The estimate shows how much of the wallet tokens it reaches.');assert.match(sale,/2 missing/);assert.match(sale,/1 limited routes/);assert.match(sale,/<details class="info-tip">[\s\S]*Includes 3 native or stable spot references/);
  assert.doesNotMatch(sale,/spot references<\/span>|Independent estimates/,'The method sits behind the info tip.');
  const rows=h.$('wallet-cards').innerHTML;
  assert.deepEqual([...rows.matchAll(/<strong>(Small|Large|Unchecked)<\/strong>/g)].map(m=>m[1]),['Large','Small','Unchecked']);
  assert.match(rows,/value="90" max="100" aria-label="Large share of priced value"/);assert.match(rows,/Not checked[\s\S]*class="allocation-empty"[\s\S]*<strong>—<\/strong>/);
- assert.equal((rows.match(/class="rank-row"/g)||[]).length,3);assert.doesNotMatch(rows,/wallet-card|Sell-out est\. sum/);
+ assert.equal((rows.match(/class="rank-row"/g)||[]).length,3);assert.equal((rows.match(/<svg class="wallet-avatar"/g)||[]).length,3);assert.doesNotMatch(rows,/wallet-card|Sell-out est\. sum/);
  const networks=h.$('network-allocation').innerHTML;
  assert.match(networks,/Quiet[\s\S]*class="allocation-empty"[\s\S]*<small>Unpriced<\/small>/);
  assert.equal(h.$('home-wallet-total').textContent,'3');assert.equal(h.$('home-network-more').hidden,true);
@@ -88,4 +88,23 @@ test('rebuilding a token page keeps its allocation panel',()=>{
  listeners.find(([direction])=>direction==='next')[1]();
  assert.equal(panels,2,'Paging markets rebuilds the view and restores the panel.');assert.match(h.$('detail-view').innerHTML,/6–7 of 7/);
  assert.match(h.$('detail-view').innerHTML,/<section class="hero detail-hero"/);assert.doesNotMatch(h.$('detail-view').innerHTML,/TOKEN OVERVIEW|record-address|page-footer/);
+});
+
+test('each wallet has a stable face from its address; bars state how far an estimate reaches',()=>{
+ const h=harness(),run=code=>vm.runInContext(code,h.ctx);
+ const first=run("walletAvatar('0x"+'1a'.repeat(20)+"')"),again=run("walletAvatar('0X"+'1A'.repeat(20)+"')"),other=run("walletAvatar('0x"+'c4'.repeat(20)+"')");
+ assert.equal(first,again,'The same address always draws the same face.');assert.notEqual(first,other);
+ const near=Array.from({length:6},(_,i)=>run("walletAvatar('0x"+String(i+1).padStart(40,'0')+"')"));
+ assert.equal(new Set(near).size,6,'Addresses that differ in one digit still get different faces.');
+ assert.match(first,/^<svg class="wallet-avatar" viewBox="-1 -1 7 7" aria-hidden="true"/);assert.doesNotMatch(first,/style=/,'The page allows no inline styles.');
+ for(const address of ['0x'+'1a'.repeat(20),'0x'+'c4'.repeat(20),'0x'+'7e'.repeat(20),'','not-an-address']){
+  const cells=[...run('walletAvatar('+JSON.stringify(address)+')').matchAll(/<rect x="(\d)" y="(\d)" width="1" height="1"\/>/g)].map(m=>m[1]+':'+m[2]);
+  assert.ok(cells.length>0,'Every wallet draws at least one cell.');
+  for(const cell of cells){const [x,y]=cell.split(':').map(Number);assert.ok(cells.includes((4-x)+':'+y),'The pattern mirrors left to right.');}
+ }
+ assert.match(run("ratioBar(91,100,'Reach')"),/<span class="ratio" title="Reach"><progress class="allocation-progress" value="91" max="100" aria-label="Reach">91%<\/progress><small>91%<\/small><\/span>/);
+ assert.match(run("ratioBar(0.001,100,'Reach')"),/<small>< 1%<\/small>/);assert.match(run("ratioBar(150,100,'Reach')"),/value="100" max="100"[^>]*>100%/,'A bar never passes its base.');
+ assert.equal(run("ratioBar(null,100,'Reach')"),'');assert.equal(run("ratioBar(5,0,'Reach')"),'');assert.equal(run("ratioBar(5,null,'Reach')"),'');
+ assert.equal(run("walletTokenValue({groups:[{id:'wallet',value_usd:10},{id:'mintclub',value_usd:5},{id:'uniswap',value_usd:99},{id:'wallet',value_usd:null}]},1)"),15,'Platform positions are not part of the base.');
+ assert.equal(run("walletTokenValue(null,7)"),7);assert.equal(run("walletTokenValue({groups:[{id:'uniswap',value_usd:3}]},undefined)"),null);
 });
