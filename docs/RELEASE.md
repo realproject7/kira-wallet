@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.12.2**. Prepared candidate: **1.12.3**.
+Published npm release: **1.12.3**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -9,7 +9,14 @@ Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
 
-## Candidate 1.12.3
+## Published 1.12.3
+
+The operator published 1.12.3 on November 14, 2026. The registry archive is
+byte-identical to the frozen one, and a clean registry installation matched
+all 130 members. Pull request 4 merged at
+`5f4727236fc627e796985d8ff5bc4eba2c86646d`; a fresh pack from the merged tree
+reproduces the archive. SHA-256 is
+`c2f14ffd3488ce545b6dd89f0f6a17f72ca7cc2cdc2efa6d016b619e7a63c9d0`.
 
 The All tokens list now starts with priced tokens, like the wallet and network
 lists. Its pricing filter starts at Priced each time the list is opened, after
