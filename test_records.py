@@ -42,6 +42,9 @@ class RecordsTest(unittest.TestCase):
             self.assertEqual(wallet['chains'][0]['rpc_status'],'retired')
             self.assertTrue(retired(666666666));self.assertFalse(retired(8453));self.assertFalse(retired(8217));self.assertTrue(retired(5112));self.assertTrue(retired(54176))
             self.assertEqual(lifecycle(5112)['confirmation'],'operator');self.assertFalse(lifecycle(5112)['verified'])
+            for cid in (81457,168587773,111557560):
+                self.assertTrue(retired(cid));self.assertEqual(lifecycle(cid)['confirmation'],'operator');self.assertEqual(lifecycle(cid)['reviewed_on'],'2026-11-15')
+            self.assertFalse(retired(7560),'Cyber mainnet still answers and stays in research.')
             self.assertEqual(lifecycle(8217)['provider_notice']['provider'],'The Graph')
             self.assertEqual(lifecycle(999999)['audit_result'],'not_reviewed')
 
