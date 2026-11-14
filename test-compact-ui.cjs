@@ -126,3 +126,38 @@ test('lists start with priced holdings and name what they leave out in one line'
  assert.match(css,/\.holdings-filter-note \{ flex-direction:row; align-items:center; justify-content:flex-start;[^}]*padding:0; border:0;/,'The count is a quiet line, not a card.');
  assert.match(css,/@media\(max-width:640px\) \{ \.holdings-filter-note \.quiet-button \{ min-height:40px;/,'The button stays easy to tap on a phone.');
 });
+test('the All tokens list starts with priced tokens and offers the unpriced ones in one line',()=>{
+ const workspace=fs.readFileSync('viewer/static/workspace.js','utf8'),nodes=new Map(),listeners={};
+ const $=id=>{if(!nodes.has(id))nodes.set(id,{id,value:'',hidden:false,disabled:false,checked:false,textContent:'',innerHTML:'',querySelector(kind){return $(id+'-'+kind);},addEventListener(type,fn){listeners[id+':'+type]=fn;}});return nodes.get(id);};
+ let loads=0;
+ const ctx=vm.createContext({$,KiraView:require('./viewer/static/workspace-model.js'),document:{querySelectorAll:()=>[]},bindImages(){},routeLoading:false,routeData:{},state:null,loadRoute(){loads++;},catalogRow:a=>'<tr>'+a.symbol+'</tr>'});
+ const run=code=>vm.runInContext(code,ctx);
+ for(const helper of ['const integer =','const unpricedNote='])run(source.split('\n').find(line=>line.startsWith(helper)));
+ run(workspace.slice(workspace.indexOf('let catalogPage'),workspace.indexOf('function catalogRow(')));
+ run(workspace.slice(workspace.indexOf('function renderCatalog()'),workspace.indexOf('function renderWorkspace()')));
+ run(workspace.split('\n').find(line=>line.startsWith("$('catalog-filter-note').addEventListener('click'")));
+ assert.match(html,/<option value="priced" selected>Priced<\/option>/);
+ assert.match(html,/<div id="catalog-filter-note" class="holdings-filter-note" role="status" hidden><\/div>/);
+ const token=(symbol,value_usd,extra={})=>({id:'1:'+symbol,chain_id:1,symbol,name:symbol,address:symbol,environment:'mainnet',value_usd,unpriced_count:value_usd==null?1:0,wallet_count:1,portfolio_status:'portfolio',...extra});
+ Object.assign($('all-token-status'),{value:'portfolio'});Object.assign($('all-token-network'),{value:'all'});Object.assign($('all-token-sort'),{value:'value'});$('all-token-pricing').value='priced';
+ // Saved records in the page: the model counts what the priced list leaves out.
+ ctx.state={paged:false,details:{tokens:[token('PRICED',9),token('ZERO',0),token('NOPRICE',null),token('ALSONONE',null),token('OTHERCHAIN',null,{chain_id:10})]}};
+ run('renderCatalog()');
+ assert.equal($('all-token-body').innerHTML,'<tr>PRICED</tr><tr>ZERO</tr>');assert.match($('all-token-result').textContent,/^2 tokens/);
+ assert.equal($('catalog-filter-note').hidden,false);
+ assert.equal($('catalog-filter-note').innerHTML,'<span>3 unpriced hidden</span><button type="button" class="quiet-button" data-show-all-tokens>Show all</button>');
+ $('all-token-network').value='10';run('renderCatalog()');
+ assert.equal($('all-token-empty').hidden,false);assert.equal($('all-token-empty-h3').textContent,'Only unpriced tokens here');assert.match($('all-token-empty-p').textContent,/Show all to see their balances/);
+ assert.match($('catalog-filter-note').innerHTML,/1 unpriced hidden/);
+ $('all-token-network').value='all';
+ // Show all switches the pricing filter, not only the note.
+ listeners['catalog-filter-note:click']({target:{closest:selector=>selector==='[data-show-all-tokens]'?{}:null}});
+ assert.equal($('all-token-pricing').value,'all');assert.match($('all-token-result').textContent,/^5 tokens/);assert.equal($('catalog-filter-note').hidden,true);
+ listeners['catalog-filter-note:click']({target:{closest:()=>null}});assert.equal(loads,0,'A click beside the button changes nothing.');
+ // A server page already leaves unpriced rows out, so the count arrives with the page.
+ $('all-token-pricing').value='priced';
+ ctx.state={paged:true};ctx.routeData={page:{assets:[token('PRICED',9)],matched_count:1,offset:0,unpriced_hidden_count:3224}};run('renderCatalog()');
+ assert.match($('catalog-filter-note').innerHTML,/3,224 unpriced hidden/);assert.equal($('all-token-empty').hidden,true);
+ listeners['catalog-filter-note:click']({target:{closest:()=>({})}});assert.equal(loads,1);assert.equal($('all-token-pricing').value,'all');
+ ctx.routeData={page:{assets:[],matched_count:0,offset:0,unpriced_hidden_count:0}};run('renderCatalog()');assert.equal($('catalog-filter-note').hidden,true);
+});

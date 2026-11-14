@@ -174,7 +174,7 @@ for(const id of ['all-token-network','all-token-pricing','all-token-sort','all-t
 node('all-token-testnets').checked=true;context.catalogPage=8;context.jobsPage=9;
 vm.runInContext(workspaceSource.slice(workspaceSource.indexOf('function resetRouteFilters()'),workspaceSource.indexOf('\n}',workspaceSource.indexOf('function resetRouteFilters()'))+2),context);
 context.resetRouteFilters();
-assert.equal(node('all-token-network').value,'all');assert.equal(node('all-token-pricing').value,'all');
+assert.equal(node('all-token-network').value,'all');assert.equal(node('all-token-pricing').value,'priced','The All tokens list starts with priced tokens too.');
 assert.equal(node('all-token-sort').value,'value');assert.equal(node('all-token-search').value,'');
 assert.equal(node('all-token-testnets').checked,false);assert.equal(node('job-filter').value,'all');
 assert.equal(context.catalogMinimum,0);assert.equal(context.catalogPage,1);assert.equal(context.jobsPage,1);
