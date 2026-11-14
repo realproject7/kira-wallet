@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.12.3**. Prepared candidate: **1.13.1**.
+Published npm release: **1.12.3**. Prepared candidate: **1.13.2**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -9,15 +9,18 @@ Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
 
-## Candidate 1.13.1
+## Candidate 1.13.2
 
 Holdings refreshes make fewer, larger reads. One aggregate read now carries up
 to 1,024 balance calls instead of 128. When a provider refuses a large read,
 it is retried in halves, and the size that works is kept for the rest of the
 run. Large checkpoints are saved at most every two seconds and always when a
-step ends. Up to six networks are checked at once. Alchemy reads keep at least
-250 ms between starts but may have up to four in flight, so a slow large read
-no longer delays the next one. What a full refresh checks is unchanged.
+step ends. All networks start at once, and each provider keeps its own pace.
+Alchemy reads keep at least 250 ms between starts but may have up to four in
+flight, so a slow large read no longer delays the next one. What a full
+refresh checks is unchanged. On a wallet whose refresh took 186 seconds, a
+full refresh took 65 seconds and a fast refresh 43 seconds in 1.13.1, with the
+same holdings.
 
 Fast refresh is a second button beside the full refresh on Home, a folder's
 Home and each wallet page, with an info button that explains it. It rereads

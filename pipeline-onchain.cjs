@@ -1073,12 +1073,13 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
     if(pending)save();return {tokens,market_pending:pending};
   }finally{flush();}
 }
-async function scanNetworks(input,output,baseline=false,{maxBatches=8,maxRounds=Infinity,scan=scanChain,workers=6}={}) {
+async function scanNetworks(input,output,baseline=false,{maxBatches=8,maxRounds=Infinity,scan=scanChain,workers=12}={}) {
   const results=new Map(),lastProgress=new Map(),stalls=new Map();
   let queue=input.networks;
   let rounds=0;
   while(queue.length&&rounds++<maxRounds) {
-    // Chains on different hosts have separate limits; Alchemy chains share one paced lane.
+    // Every network starts at once. Each provider lane keeps its own spacing, so a slow
+    // public network no longer waits for a free worker while Alchemy networks share their lane.
     const rows=await parallel(queue,workers,n=>scan(input,n,output,baseline,{maxBatches}));
     const next=[];
     rows.forEach((row,i)=>{

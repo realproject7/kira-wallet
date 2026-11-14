@@ -1,6 +1,6 @@
 # Kira release status
 
-Updated: 2026-11-14. The operator published Kira 1.12.3. Candidate 1.13.1 makes
+Updated: 2026-11-14. The operator published Kira 1.12.3. Candidate 1.13.2 makes
 holdings refreshes read in larger groups and adds Fast refresh, which reads
 Alchemy transfer history instead of the full Mint Club token list on large networks.
 1.12.3 made the All tokens list start with priced tokens as well. 1.12.2 made wallet and
