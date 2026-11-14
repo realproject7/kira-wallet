@@ -1,9 +1,12 @@
 # Kira release status
 
-Updated: 2026-11-14. The operator published Kira 1.5.0. Candidate 1.12.1 adds
-a compact, visual-first web app on top of 1.11.9: one summary card per page
+Updated: 2026-11-14. The operator published Kira 1.5.0. Candidate 1.12.2 makes
+wallet and network lists start with priced holdings, tightens the deployment
+catalogue check and adds a pre-push privacy check. It builds on 1.12.1, a
+compact, visual-first web app on top of 1.11.9: one summary card per page
 with an allocation donut, wallet faces, ranked rows, one-line holdings, markets
-on token pages, and saved wrapped-token pools for native assets. PR #62 prepares
+on token pages, and saved wrapped-token pools for native assets. PR #62 of the
+earlier repository prepared
 1.11.9: balance-aware sell-analysis reuse, immediate name edits,
 bounded worker admission, wallet search and folders, and a consistent local
 workspace design, including corrected main-pool sell quotes on Base bounded sell-route retries, PancakeSwap BNB quotes, upgraded Aero pools, recoverable bulk wallet removal, visible token markets, and saved protocol positions with exclusive platform allocation. Previous snapshots and frozen archives remain preserved.
@@ -19,7 +22,7 @@ Earlier plans and reports preserve historical evidence, not active release gates
 | Continuation performance | Published 1.0.1 fixes repeated completed-review work and excessive local checkpoint writes. Real continuation and restart acceptance passed. |
 | 1.0.2 corrections | Home uses mainnet asset scope, saved analyses favor final records, and price refresh exposes actual phases and completed request counts. |
 | npm publication and installation | The operator published 1.0.2 on October 27. Registry hashes and all 93 installed members match the frozen archive. Clean reinstall, desktop/mobile, history preservation, restart and CLI/MCP checks passed. |
-| Repository integration | [PR #56](https://github.com/realproject7/kira-wallet/pull/56) merged into `codex/kira-release` on October 28. The landed tree matches the tested 1.0.2 source. |
+| Repository integration | PR #56 of the earlier repository merged into `codex/kira-release` on October 28. The landed tree matches the tested 1.0.2 source. |
 | Public website | [kirawallet.app](https://kirawallet.app) presents the external-agent workflow. Its setup guide follows the maintained release branch. The site hosts no wallet or model API. |
 
 The [release notes](RELEASE.md#published-102) retain source identity, checksums
@@ -44,7 +47,7 @@ Candidate registry publication remains an operator action. Review not selected.
 | --- | --- |
 | Gemini and Grok host acceptance | No pass is recorded. The last attempts on October 25 were blocked by account eligibility or signed-out access. Retry after the operator makes a usable host available. Codex and Claude acceptance does not establish other-host compatibility. |
 | Additional operating systems | macOS is verified. Research and background processes require POSIX. Linux and Windows acceptance is not established. |
-| Full-route net recovery | [Issue #11](https://github.com/realproject7/kira-wallet/issues/11) remains optional research. Supported amount-specific quotes already exist; full settlement conversion, gas, nested exits and shared-liquidity portfolio aggregation are not a completed net-recovery capability. |
+| Full-route net recovery | [Issue #1](https://github.com/realproject7/kira-wallet/issues/1) remains optional research. Supported amount-specific quotes already exist; full settlement conversion, gas, nested exits and shared-liquidity portfolio aggregation are not a completed net-recovery capability. |
 | Imported wallets and execution | Deferred to post-MVP under the [wallet capability decision](WALLET_CAPABILITIES.md#post-mvp-decision-imported-wallets-and-execution-2026-10-19). Automatic signing, transfers and trading are not implemented. |
 | External pilot and a separate product video | Proposed in earlier plans; completed pilot results and an accepted product-video deliverable are not recorded. The website's fictional HTML demonstration is already delivered. |
 

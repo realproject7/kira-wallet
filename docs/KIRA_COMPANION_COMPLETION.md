@@ -96,4 +96,4 @@ The next package version is 0.1.1. Packing, verification and source integration
 are agent work; npm authentication and publication remain operator-only.
 No npm publish command was run.
 
-Further full-balance DEX and settlement quoting is tracked in [issue #11](https://github.com/realproject7/kira-wallet/issues/11).
+Further full-balance DEX and settlement quoting is tracked in [issue #1](https://github.com/realproject7/kira-wallet/issues/1).

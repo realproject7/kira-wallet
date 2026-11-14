@@ -86,6 +86,6 @@ showcase illustrations use the authorized anonymized recorded cases.
 
 Actual MetaMask extension approval, locking, account events and human OWS
 passphrase entry remain device acceptance checks. Financial signing and execution
-are outside this change. Full-balance DEX exit quoting remains issue 11.
+are outside this change. Full-balance DEX exit quoting remains issue 1 (issue 11 in the earlier repository).
 The registry still serves 0.1.0; the reviewed source candidate is 0.1.1.
 Publication remains operator-only. No npm publish is run.

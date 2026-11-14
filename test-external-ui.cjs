@@ -50,7 +50,7 @@ function jobHarness(){
 test('wallet pages keep filters, cap rows and cache only the same revision',async()=>{
   const h=routeHarness();h.run("walletOffset=100;selectedChain='1';minimum=5");await h.run('loadRoute()');
   const first=new URL(h.requests[0].path,'http://localhost');assert.equal(first.pathname,'/api/wallet');
-  assert.deepEqual(Object.fromEntries(first.searchParams),{wallet:A,offset:'100',limit:'100',chain_id:'1',minimum_value_usd:'5',sort:'value',portfolio_status:'portfolio'});
+  assert.deepEqual(Object.fromEntries(first.searchParams),{wallet:A,offset:'100',limit:'100',chain_id:'1',minimum_value_usd:'5',pricing:'priced',sort:'value',portfolio_status:'portfolio'});
   assert.equal(h.requests[0].options.headers['X-Kira-Session'],'synthetic');assert(h.requests[0].options.signal instanceof AbortSignal);
   await h.run('loadRoute()');assert.equal(h.requests.length,1);
   h.run("selectedWallet=B");await h.run('loadRoute()');h.run('selectedWallet=A');await h.run('loadRoute()');assert.equal(h.requests.length,2);
@@ -58,10 +58,24 @@ test('wallet pages keep filters, cap rows and cache only the same revision',asyn
   assert(h.writes.every(write=>write.path==='/api/ui-context'));
   assert.deepEqual(h.writes.at(-1).body,{view:'wallet',wallet:A});
 });
+test('wallet and network lists ask for priced holdings until All is chosen',async()=>{
+  const h=routeHarness(),last=()=>Object.fromEntries(new URL(h.requests.at(-1).path,'http://localhost').searchParams);
+  await h.run('loadRoute()');
+  assert.deepEqual(last(),{wallet:A,offset:'0',limit:'100',minimum_value_usd:'0',pricing:'priced',sort:'value',portfolio_status:'portfolio'});
+  h.run('minimum=null');await h.run('loadRoute()');
+  assert.deepEqual(last(),{wallet:A,offset:'0',limit:'100',minimum_value_usd:'0',sort:'value',portfolio_status:'portfolio'});
+  h.run("selectedView='network';selectedNetwork=1");await h.run('loadRoute()');
+  assert.deepEqual(last(),{chain_id:'1',offset:'0',limit:'100',minimum_value_usd:'0',include_testnets:'1',sort:'value',portfolio_status:'portfolio'});
+  h.run('minimum=0');await h.run('loadRoute()');
+  assert.deepEqual(last(),{chain_id:'1',offset:'0',limit:'100',minimum_value_usd:'0',pricing:'priced',include_testnets:'1',sort:'value',portfolio_status:'portfolio'});
+  const source=fs.readFileSync('viewer/static/app.js','utf8'),reset=source.slice(source.indexOf('function readRoute(){')).split('\n',3).join('\n');
+  assert.match(reset,/if\(identity!==routeIdentity\)\{selectedChain='all';minimum=0;/,'Opening another page starts from priced holdings again.');
+  assert.match(fs.readFileSync('viewer/static/index.html','utf8'),/<button data-min="all" aria-pressed="false">All<\/button><button data-min="0" aria-pressed="true">Priced<\/button>/);
+});
 test('network, token, catalog and home load only their focused records and bounded holdings',async()=>{
   const h=routeHarness();h.run("selectedView='network';selectedNetwork=1;networkOffset=100;tokenSearch='ETH';minimum=10");await h.run('loadRoute()');
   const paths=h.requests.map(request=>new URL(request.path,'http://localhost'));
-  assert.equal(paths[0].pathname,'/api/network');assert.deepEqual(Object.fromEntries(paths[1].searchParams),{chain_id:'1',offset:'100',limit:'100',query:'ETH',minimum_value_usd:'10',include_testnets:'1',sort:'value',portfolio_status:'portfolio'});
+  assert.equal(paths[0].pathname,'/api/network');assert.deepEqual(Object.fromEntries(paths[1].searchParams),{chain_id:'1',offset:'100',limit:'100',query:'ETH',minimum_value_usd:'10',pricing:'priced',include_testnets:'1',sort:'value',portfolio_status:'portfolio'});
   h.run("selectedView='token';selectedToken='1:native'");await h.run('loadRoute()');assert.equal(h.requests.at(-1).path,'/api/token?chain_id=1&address=native');
   h.run("selectedView='tokens'");await h.run('loadRoute()');
   assert.deepEqual(Object.fromEntries(new URL(h.requests.at(-1).path,'http://localhost').searchParams),{offset:'100',limit:'50',chain_id:'1',query:'saved token',minimum_value_usd:'5',sort:'wallets',pricing:'unpriced',include_testnets:'1'});

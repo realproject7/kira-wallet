@@ -19,7 +19,7 @@ Kira supplies wallet tools and a full-window
 management app. Your agent host manages its own conversations, models, files and
 approvals. Kira does not launch a model CLI or require a model login.
 
-Published npm release: **1.5.0**. This source prepares **1.12.1**.
+Published npm release: **1.5.0**. This source prepares **1.12.2**.
 [Release notes](docs/RELEASE.md) ·
 [Implementation status and follow-ups](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_NEXT_STEPS.md).
 
@@ -149,5 +149,14 @@ python3 scripts/check-public.py
 
 From source, replace `kira` with `node bin/kira.cjs`.
 [Viewer guide](viewer/README.md) · [Release preparation](docs/RELEASE.md).
+
+To run a privacy check before every push, install the hook once per clone.
+It stops a push whose new commits hold a registered wallet address or name, a
+personal path, a credential or a commit identity that is not a noreply one.
+
+```sh
+cp scripts/pre-push-check.py "$(git rev-parse --git-common-dir)/hooks/pre-push"
+chmod +x "$(git rev-parse --git-common-dir)/hooks/pre-push"
+```
 Original code and Kira character assets use the [MIT license](LICENSE).
 See [third-party notices](THIRD_PARTY_NOTICES.md) for other assets and references.

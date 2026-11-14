@@ -46,12 +46,13 @@ members including `clarity.css`. This does not change the already published
 
 ## Findings and tickets
 
-[#5](https://github.com/realproject7/kira-wallet/issues/5) records stale installation copy,
-[#6](https://github.com/realproject7/kira-wallet/issues/6) covers no-context chat,
-[#7](https://github.com/realproject7/kira-wallet/issues/7) tracks guided first-wallet
-and discovery setup, and [#8](https://github.com/realproject7/kira-wallet/issues/8)
+Issue numbers in this section refer to the earlier repository.
+#5 records stale installation copy,
+#6 covers no-context chat,
+#7 tracks guided first-wallet
+and discovery setup, and #8
 covers character clipping and scene copy.
-[#9](https://github.com/realproject7/kira-wallet/issues/9) records literal Markdown
+#9 records literal Markdown
 in real assistant answers and requests a safe, readable renderer.
 Installation copy, no-context settings entry and artwork presentation are addressed
 by this PR. Guided wallet/indexer onboarding and chat Markdown remain follow-up work.
@@ -111,7 +112,7 @@ whitespace corrections were completed before the commit.
 The reviewed design is live at [kirawallet.app](https://kirawallet.app).
 Reviewed design deployment: `dpl_EDxXu898KrcLXvnUrS8M2QwEhaaF`.
 The site setup guide is pinned to the updated public source so it remains
-accurate while [PR #10](https://github.com/realproject7/kira-wallet/pull/10)
+accurate while PR #10 of the earlier repository
 awaits source integration. The guide-link correction is deployed separately.
 
 The existing local viewer was restarted with the reviewed source at port 8765.

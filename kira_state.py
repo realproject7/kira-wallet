@@ -76,6 +76,17 @@ def filter_assets(rows, *, query='', chain_id=None, minimum_value_usd='0',
     return result
 
 
+def unpriced_hidden(rows, **filters):
+    """Count unpriced holdings that only the price filter keeps off the page.
+
+    A list that shows priced holdings must still say how many it leaves out:
+    an unknown value is not a zero balance.
+    """
+    if filters.get('pricing', 'all') != 'priced' and not Decimal(str(filters.get('minimum_value_usd', '0'))):
+        return 0
+    return len(filter_assets(rows, **{**filters, 'minimum_value_usd': '0', 'pricing': 'unpriced'}))
+
+
 class StateCache:
     def __init__(self, root):
         self.root = Path(root).resolve()
@@ -199,12 +210,14 @@ class StateCache:
             key = JobStore(self.root).wallet(selector)['address_key']
             wallet = next(w for w in state['wallets'] if w['key'] == key)
             return {**wallet, 'positions':[], **page(filter_assets(wallet['assets'], **filters), offset, limit),
+                    'unpriced_hidden_count': unpriced_hidden(wallet['assets'], **filters),
                     'asset_count': len(wallet['assets']), 'data_revision': self.revision}
 
     def holdings(self, offset=0, limit=100, *, folder_id=None, **filters):
         with self.lock:
             tokens = self.scoped(folder_id)['details']['tokens']
             return {**page(filter_assets(tokens, **filters), offset, limit),
+                    'unpriced_hidden_count': unpriced_hidden(tokens, **filters),
                     'asset_count': len(tokens), 'data_revision': self.revision}
 
     def positions(self, wallet=None, folder_id=None, token_id=None, chain_id=None, platform=None, offset=0, limit=50):

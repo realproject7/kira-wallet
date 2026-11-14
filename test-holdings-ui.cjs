@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync('viewer/static/app.js','utf8');
-const nodes=new Map(),buttons=[0,5,10].map(min=>({dataset:{min:String(min)},setAttribute(){}}));
+const nodes=new Map(),pressed={},buttons=['all',0,5,10].map(min=>({dataset:{min:String(min)},setAttribute(name,value){pressed[min]=value;}}));
 const node=id=>{if(!nodes.has(id))nodes.set(id,{dataset:{},textContent:'',innerHTML:'',hidden:false,querySelector:kind=>node(id+'-'+kind)});return nodes.get(id);};
 let click;const saved=new Map();
 const wallet={name:'Fixture',address:'0x'+'1'.repeat(40),tags:['Fixture'],analysed_at:'2026-10-04',known_value_usd:null,unpriced_count:3,
@@ -13,7 +13,8 @@ const context={$:node,KiraView:require('./viewer/static/workspace-model.js'),cur
   localStorage:{setItem:(key,value)=>saved.set(key,value)},renderBreadcrumb(){},bindImages(){},
   assetRow:a=>'<tr>'+a.symbol+'</tr>',chainIcon:()=>'',networkHref:String,arrowGlyph:'',renderDetail(){}};
 vm.createContext(context);
-for(const helper of ['const infoTip =','const integer =','const walletAvatar =','const ratioBar =','const walletTokenValue ='])vm.runInContext(source.split('\n').find(line=>line.startsWith(helper)),context);
+const valueHelpers=['const integer =','const valueFilter=','const unpricedNote='];
+for(const helper of ['const infoTip =','const walletAvatar =','const ratioBar =','const walletTokenValue =',...valueHelpers])vm.runInContext(source.split('\n').find(line=>line.startsWith(helper)),context);
 vm.runInContext(source.slice(source.indexOf('function progress('),source.indexOf('function chainIcon(')),context);
 vm.runInContext(source.slice(source.indexOf('function policyBadge('),source.indexOf('function policyPanel(')),context);
 vm.runInContext(source.slice(source.indexOf('function sellSummary('),source.indexOf('function sellOutNote(')),context);
@@ -23,8 +24,8 @@ vm.runInContext(source.split('\n').find(line=>line.startsWith("document.addEvent
 context.renderWallet();
 assert.equal(node('total-value').textContent,'—');
 assert.equal(node('visible-count').textContent,0);
-assert.match(node('holdings-filter-note').innerHTML,/3 unpriced holdings are hidden/);
-assert.match(node('empty-h3').textContent,/hidden by the value filter/);
+assert.match(node('holdings-filter-note').innerHTML,/3 unpriced hidden/);
+assert.match(node('empty-h3').textContent,/Only unpriced holdings here/);
 assert.match(node('coverage-note').textContent,/^0 of 3 checked$/);
 assert.equal(node('discovery-notice').hidden,false);
 assert.match(node('discovery-notice-title').textContent,/Network coverage/);
@@ -76,6 +77,30 @@ assert.equal(saved.size,0,'View filters stay temporary.');assert.equal(node('vis
 assert.equal(node('holdings-filter-note').hidden,true);assert.equal(node('empty').hidden,true);
 assert.match(node('asset-groups').innerHTML,/ETH/);assert.match(node('asset-groups').innerHTML,/APE/);assert.match(node('asset-groups').innerHTML,/BNB/);
 console.log('Unknown wallet value and explicit filter recovery preserve all recorded holdings.');
+// Priced is the default. Unpriced holdings stay out of the list until All is chosen.
+const unpricedOnly=wallet.assets,choose=min=>click({target:{closest:()=>({hasAttribute:()=>false,dataset:{min}})}});
+wallet.assets=[['PRICED',7],['ZERO',0],['NOPRICE',null]].map(([symbol,value_usd])=>({id:'1:'+symbol,chain_id:1,environment:'mainnet',value_usd,symbol}));
+context.minimum=0;context.renderHoldings();
+assert.equal(node('visible-count').textContent,2);assert.match(node('asset-groups').innerHTML,/PRICED/);
+assert.match(node('asset-groups').innerHTML,/ZERO/,'A zero value is a price.');assert.doesNotMatch(node('asset-groups').innerHTML,/NOPRICE/);
+assert.equal(node('holdings-filter-note').hidden,false);
+assert.match(node('holdings-filter-note').innerHTML,/<span>1 unpriced hidden<\/span><button[^>]*data-clear-value-filter>Show all<\/button>/);
+assert.deepEqual(pressed,{all:'false',0:'true',5:'false',10:'false'});
+choose('all');assert.equal(context.minimum,null);
+assert.equal(node('visible-count').textContent,3);assert.match(node('asset-groups').innerHTML,/NOPRICE/);assert.equal(node('holdings-filter-note').hidden,true);
+assert.deepEqual(pressed,{all:'true',0:'false',5:'false',10:'false'});
+choose('5');assert.equal(node('visible-count').textContent,1);assert.match(node('holdings-filter-note').innerHTML,/1 unpriced hidden/);
+choose('0');assert.equal(node('visible-count').textContent,2);
+// A server page already leaves unpriced rows out, so their count arrives with the page.
+const priced=wallet.assets.filter(a=>a.value_usd!=null);
+Object.assign(context,{state:{demo:false,paged:true},routeData:{wallet},renderPagination(){}});
+Object.assign(wallet,{assets:priced,matched_count:2,unpriced_hidden_count:1234});context.renderHoldings();
+assert.equal(node('visible-count').textContent,2);assert.match(node('holdings-filter-note').innerHTML,/1,234 unpriced hidden/);
+Object.assign(wallet,{assets:[],matched_count:0,unpriced_hidden_count:3});context.renderHoldings();
+assert.equal(node('empty').hidden,false);assert.match(node('empty-h3').textContent,/Only unpriced holdings here/);assert.match(node('empty-p').textContent,/Show all to see their balances/);
+Object.assign(wallet,{assets:priced,matched_count:2,unpriced_hidden_count:0});context.renderHoldings();assert.equal(node('holdings-filter-note').hidden,true);
+context.state={demo:false};delete wallet.matched_count;delete wallet.unpriced_hidden_count;wallet.assets=unpricedOnly;
+console.log('Lists show priced holdings first, count the unpriced ones they leave out, and All restores them.');
 const savedAssets=wallet.assets,savedAnalysis=wallet.analysed_at;
 wallet.assets=[];wallet.analysed_at=null;context.minimum=0;context.renderWallet();
 assert.equal(node('total-value').textContent,'—');
@@ -215,6 +240,7 @@ delete wallet.report_url;controls.localSession.controls=true;controls.state.demo
 // Render empty network copy from actual recorded counts rather than inactive filters.
 const networkContext={...context,state:{details:{tokens:[]}},tokenSearch:'',minimum:0,aggregateRow:a=>a.symbol};
 vm.createContext(networkContext);vm.runInContext(source.slice(source.indexOf('function renderNetworkTokens('),source.indexOf('function renderDetail(')),networkContext);
+for(const helper of valueHelpers)vm.runInContext(source.split('\n').find(line=>line.startsWith(helper)),networkContext);
 const network={id:42161,wallets:[{coverage:'Research pending'}]};
 networkContext.renderNetworkTokens(network);assert.match(node('network-token-empty').innerHTML,/Research is pending/);assert.match(node('network-token-empty').innerHTML,/#\/activity/);
 network.lifecycle={status:'retired'};
@@ -222,6 +248,13 @@ networkContext.renderNetworkTokens(network);assert.match(node('network-token-emp
 delete network.lifecycle;
 networkContext.state.details.tokens=[{chain_id:42161,symbol:'SAMPLE',name:'Sample',value_usd:null}];networkContext.minimum=10;
 networkContext.renderNetworkTokens(network);assert.match(node('network-token-empty').innerHTML,/filters/);assert(!node('network-token-empty').innerHTML.includes('#/activity'));
+assert.equal(node('network-filter-note').hidden,false);assert.match(node('network-filter-note').innerHTML,/1 unpriced hidden/);
+networkContext.minimum=0;networkContext.renderNetworkTokens(network);
+assert.equal(node('network-token-table').hidden,true,'A network list also starts with priced tokens.');assert.match(node('network-filter-note').innerHTML,/1 unpriced hidden/);
+networkContext.minimum=null;networkContext.renderNetworkTokens(network);
+assert.equal(node('network-token-table').hidden,false);assert.equal(node('network-token-body').innerHTML,'SAMPLE');assert.equal(node('network-filter-note').hidden,true);
+Object.assign(networkContext,{state:{paged:true},routeData:{page:{assets:[],matched_count:0,unpriced_hidden_count:9}},renderPagination(){}});networkContext.minimum=0;
+networkContext.renderNetworkTokens({...network,unique_asset_count:9});assert.match(node('network-filter-note').innerHTML,/9 unpriced hidden/);
 
 const paired=context.tokenMarkets({id:'8453:plot',symbol:'PLOT',chain_id:8453,environment:'mainnet',wallets:[],market_pools:[],links:[{label:'Mint Club',url:'https://mint.club/token/base/PLOT'}],curve_reserve:{symbol:'HUNT',address:'0x'+'2'.repeat(40),amount:'9'}});
 assert.match(paired,/PLOT \/ HUNT/);assert.match(paired,/venues\/mintclub.png/);
