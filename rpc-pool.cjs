@@ -24,8 +24,10 @@ function retryAfter(error) {
   }
   return 0;
 }
+// A gate admits up to `capacity` holders at once; the default is a mutex.
 class Gate {
-  constructor() { this.busy = false; this.queue = []; }
+  constructor(capacity = 1) { this.capacity = capacity; this.active = 0; this.queue = []; }
+  get busy() { return this.active > 0; }
   acquire(signal) {
     return new Promise((resolve, reject) => {
       const ticket = {resolve, reject, signal, abort: null};
@@ -36,11 +38,12 @@ class Gate {
     });
   }
   drain() {
-    if (this.busy || !this.queue.length) return;
+    if (this.active >= this.capacity || !this.queue.length) return;
     const ticket = this.queue.shift(); ticket.signal.removeEventListener('abort', ticket.abort);
     if (ticket.signal.aborted) { ticket.reject(ticket.signal.reason); this.drain(); return; }
-    this.busy = true;
-    ticket.resolve(() => { this.busy = false; this.drain(); });
+    this.active++;
+    let released = false;
+    ticket.resolve(() => { if (released) return; released = true; this.active--; this.drain(); });
   }
 }
 function wait(ms, signal) {
@@ -85,10 +88,11 @@ class RouteRecorder {
   snapshot(){return [...this.rows.values(),...this.overflow.values()].map(row=>({...row}));}
 }
 class RpcPool {
-  constructor({publicUrls = [], healthFile = null, interval = 2000, alchemyInterval = null, deadline = 12000, attemptTimeout = 4000, cooldown = 60000} = {}) {
+  constructor({publicUrls = [], healthFile = null, interval = 2000, alchemyInterval = null, alchemySlots = 1, deadline = 12000, attemptTimeout = 4000, cooldown = 60000} = {}) {
     this.publicUrls = new Set(publicUrls); this.healthFile = healthFile;
     this.interval = interval; this.deadline = deadline; this.attemptTimeout = attemptTimeout; this.cooldown = cooldown;
     this.alchemyInterval = Number.isFinite(alchemyInterval) && alchemyInterval >= 0 ? alchemyInterval : null;
+    this.alchemySlots = Number.isSafeInteger(alchemySlots) && alchemySlots >= 1 && alchemySlots <= 8 ? alchemySlots : 1;
     this.states = new Map(); this.families = new Map(); this.pins = new Map(); this.pending = new Map(); this.cache = new Map();
     this.saved = {};
     try { if (healthFile && fs.statSync(healthFile).size <= 65536) {
@@ -120,7 +124,9 @@ class RpcPool {
       // a shared paced lane; an account throttle cools that whole lane.
       const family = alchemy ? 'provider:alchemy' : publicEndpoint ? host.endsWith('publicnode.com') ? 'publicnode' : host.endsWith('drpc.org') ? 'drpc' : host.endsWith('1rpc.io') ? '1rpc' : host : host;
       const pacingInterval=alchemy?this.alchemyInterval:this.interval;
-      if (!this.families.has(family)) this.families.set(family, {gate:new Gate(), next:0, interval:pacingInterval, until:0});
+      // Starts stay spaced by the interval. Alchemy may keep a few reads in flight, so a
+      // slow large read does not hold the next start; other lanes keep one at a time.
+      if (!this.families.has(family)) this.families.set(family, {gate:new Gate(), slots:new Gate(alchemy ? this.alchemySlots : 1), next:0, interval:pacingInterval, until:0});
       this.states.set(key, {id, publicEndpoint, family, alchemy, interval:pacingInterval, gate:new Gate(), until, strikes:until ? Math.min(Number(saved.strikes) || 1, 5) : 0,
         methods:new Map(), verified:false, blocks:new Set(), inner:transport(url,{timeout:this.attemptTimeout,retryCount:0})(options)});
     }
@@ -145,18 +151,21 @@ class RpcPool {
     this.pins.set(key, hash.toLowerCase()); if (state) state.blocks.add(tag);
   }
   async send(state, request, signal, timeout = this.attemptTimeout) {
-    const family = this.families.get(state.family), release = await family.gate.acquire(signal);
+    const family = this.families.get(state.family), slot = await family.slots.acquire(signal);
+    let release;
     try {
+      release = await family.gate.acquire(signal);
       if(family.until>Date.now())throw failure('Provider is cooling down.','RpcFamilyCooldown');
       await wait(family.next - Date.now(), signal);
       if(family.until>Date.now())throw failure('Provider is cooling down.','RpcFamilyCooldown');
       family.next = Date.now() + family.interval;
+      if (family.slots.capacity > 1) { release(); release = null; }
       const controller = new AbortController(), abort = () => controller.abort(signal.reason);
       signal.addEventListener('abort', abort, {once:true});
       const timer = setTimeout(() => controller.abort(failure('RPC read timed out.', 'TimeoutError')), timeout);
       try { return await within(state.inner.request(request, {signal:controller.signal}), controller.signal); }
       finally { clearTimeout(timer); signal.removeEventListener('abort', abort); }
-    } finally { release(); }
+    } finally { release?.(); slot(); }
   }
   async run(chain, choices, request, transport, options, onSuccess, signal, deadlineAt, onOutcome) {
     let last = failure('RPC providers are temporarily unavailable. Retry holdings shortly.');

@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict');
 const fs=require('fs'),os=require('os'),path=require('path');
 const h=require('./onchain.cjs');
-const {calls,registry,connect,scanChain,balanceReads,factReads,dexChain,reserveChain,MarketBudget}=require('./pipeline-onchain.cjs');
+const {calls,registry,connect,scanChain,balanceReads,factReads,dexChain,reserveChain,MarketBudget,setGroupSize}=require('./pipeline-onchain.cjs');
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'wallet-registry-test-'));
 const original=h.root;h.root=root;
 const addresses=['0x0000000000000000000000000000000000000001','0x0000000000000000000000000000000000000002','0x0000000000000000000000000000000000000003'];
@@ -137,10 +137,13 @@ const seed=()=>{fs.mkdirSync(path.dirname(cacheFile),{recursive:true});fs.writeF
   const plans=Array.from({length:257},(_,i)=>({address:'0x'+(i+100).toString(16).padStart(40,'0'),token_type:'ERC20'}));
   let balanceCalls=0;
   const interrupted={multicall:async({contracts,blockNumber})=>{assert.equal(blockNumber,103n);if(++balanceCalls===2)throw new MarketBudget();return contracts.map(()=>({status:'success',result:7n}));}};
+  // Two small groups: the budget stops the second, and the first stays saved.
+  setGroupSize(interrupted,128);
   await assert.rejects(balanceReads(interrupted,plans,addresses[0],103n,checkpoint,balanceFile,network),MarketBudget);
   assert.equal(Object.keys(JSON.parse(fs.readFileSync(balanceFile)).balances).length,128);
   balanceCalls=0;
   const resumed={multicall:async({contracts,blockNumber})=>{assert.equal(blockNumber,103n);balanceCalls++;return contracts.map(()=>({status:'success',result:7n}));}};
+  setGroupSize(resumed,128);
   assert((await balanceReads(resumed,plans,addresses[0],103n,JSON.parse(fs.readFileSync(balanceFile)),balanceFile,network)).every(r=>r.result===7n));
   assert.equal(balanceCalls,2);
   let freshReads=0;
