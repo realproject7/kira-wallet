@@ -1,9 +1,39 @@
 # Releases and preparation
 
-Published npm release: **1.5.0**. Prepared candidate: **1.12.0**.
+Published npm release: **1.5.0**. Prepared candidate: **1.12.1**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.12.1
+
+The web app uses more picture and fewer words. Each summary card draws its
+allocation as a donut with the largest share in the middle. A bar under the
+sell-out estimate shows how much of the wallet token value it reaches. Every
+wallet has a small face drawn from its address, so wallets can be told apart
+at a glance in the sidebar, lists and headers. Position rows show the token
+pair's artwork. Market rows draw each pool's size against the largest one. The
+token page shows the recorded price, and the All tokens table shows chain
+artwork.
+
+A native asset such as BNB or ETH now shows markets. It has no contract, so no
+pool was recorded under it and its page said none existed. The page now lists
+the saved pools of its wrapped token, such as WBNB, and direct pairs. Pools
+saved under another token count only when their other side is a catalogued
+token, so an unknown token's reported liquidity cannot stand in for the native
+market. No chain read is added.
+
+Two Mint Club staking pools that hold the same token and amount looked like
+one position shown twice. A direct read confirmed they are separate pools.
+Each row now shows its pool number. New position scans also record the pool's
+reward token from the pool read they already make, and the row names it.
+Earlier saved claims show the reward after their next position refresh.
+
+A browser check of every page and dialog looked for content that leaves its
+card, cut text, overlapping items and sideways scrolling at eleven widths from
+320 to 2560 px. It found and fixed a legend that left its chart at 1280 px.
+Review not selected. Earlier archives and operator wallet data remain
+preserved. Registry publication is operator-only.
 
 ## Candidate 1.12.0
 
