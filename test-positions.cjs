@@ -53,6 +53,15 @@ test('Mint Club staking finds principal without requiring loose-token ownership'
   if(c.functionName==='pools')return {stakingToken:T0,isStakingTokenERC20:true};if(c.functionName==='isVault')return false;return tokenCalls(c);
  });const rows=Object.values((await finish(h)).positions);assert.equal(rows[0].platform,'mintclub-staking');assert.equal(rows[0].assets[0].amount,'100');assert.equal(rows[0].source_url,'https://mint.club/staking/base/37');assert.equal(rows[0].pool_id,'37');
  const nft=harness({kind:'stake',address,pool_id:'38',shares:'2',version:'V1_2'},()=>({stakingToken:T0,isStakingTokenERC20:false}));assert.equal(Object.values((await finish(nft)).positions)[0].assets[0].amount,'2');
+ assert.equal('reward_token' in rows[0],false,'An unreported reward token stays absent.');
+ // Two pools can hold the same token and amount. The reward token from the same pool read tells them apart.
+ const REWARD='0x'+'Ab'.repeat(20);let poolReads=0;
+ const paid=harness({kind:'stake',address,pool_id:'41',shares:String(5n*10n**18n),version:'V1_2'},c=>{
+  if(c.functionName==='pools'){poolReads++;return {stakingToken:T0,isStakingTokenERC20:true,rewardToken:REWARD};}if(c.functionName==='isVault')return false;return tokenCalls(c);
+ });const claim=Object.values((await finish(paid)).positions)[0];
+ assert.equal(claim.reward_token,REWARD.toLowerCase());assert.equal(claim.label,'Staking pool #41');assert.equal(poolReads,1,'The reward token costs no extra read.');
+ const none=harness({kind:'stake',address,pool_id:'42',shares:'1',version:'V1_2'},c=>c.functionName==='pools'?{stakingToken:T0,isStakingTokenERC20:true,rewardToken:'0x'+'0'.repeat(40)}:c.functionName==='isVault'?false:tokenCalls(c));
+ assert.equal('reward_token' in Object.values((await finish(none)).positions)[0],false);
 });
 test('pruned chain state is rebuilt once at a fresh pin without mixing epochs',async()=>{
  const cid=4663,h=harness({kind:'nft-count',manager:MANAGER},c=>c.functionName==='balanceOf'||c.functionName==='poolCount'?0n:tokenCalls(c),{cid});

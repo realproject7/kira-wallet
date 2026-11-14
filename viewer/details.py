@@ -47,6 +47,32 @@ def coverage_status(wallet, coverage):
     return 'Researched'
 
 
+def native_markets(chain_id, tokens, catalog, limit=50):
+    """Recorded pools that trade a chain's native asset, directly or through its wrapped token.
+
+    A native asset has no contract, so no pool is recorded under it. Saved research
+    already holds these pools under the wrapped token. Pools saved under another token
+    count only when their other side is a catalogued token, so an unknown token's
+    reported liquidity cannot stand in for the native market. No chain read.
+    """
+    from native_assets import wrapped_native
+    wrapped = wrapped_native(chain_id, catalog)
+    address = wrapped['address'].lower() if wrapped else None
+    targets = {'0x' + '0' * 40} | ({address} if address else set())
+    known = {str(t['address']).lower() for t in catalog if t.get('chain_id') == chain_id}
+    pools = {}
+    for token in tokens:
+        if token.get('chain_id') != chain_id: continue
+        own = address is not None and token.get('id') == str(chain_id) + ':' + address
+        for pool in token.get('market_pools') or []:
+            coins = [str(coin.get('address') or '').lower() for coin in pool.get('pair') or []]
+            if not any(coin in targets for coin in coins): continue
+            if not own and not all(coin in targets or coin in known for coin in coins): continue
+            identity = pool_identity(pool); previous = pools.get(identity)
+            if previous is None or (pool.get('observed_at') or '') > (previous.get('observed_at') or ''): pools[identity] = pool
+    rows = sorted(pools.values(), key=lambda p: (-(p.get('liquidity_usd') or 0), str(p.get('pool'))))[:limit]
+    return rows, ({'symbol': wrapped['symbol'], 'address': address} if wrapped and rows else None)
+
 def observed_range(rows, key):
     dates = [r[key] for r in rows if r.get(key)]
     return {'from': min(dates, default=None), 'to': max(dates, default=None)}
