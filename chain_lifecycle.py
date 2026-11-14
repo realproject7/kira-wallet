@@ -25,6 +25,9 @@ NOTICES={
     **{cid:{'status':'retired','verified':False,'confirmation':'operator','reviewed_on':'2026-10-19',
         'notice_url':None,'note':'Excluded from new research by operator confirmation. Historical observations are preserved; no independent closure notice is claimed.'}
         for cid in (5112,54176)},
+    **{cid:{'status':'retired','verified':False,'confirmation':'operator','reviewed_on':'2026-11-15',
+        'notice_url':None,'note':'Excluded from new research by operator confirmation after its RPC and token endpoints stopped answering. Historical observations are preserved; no independent closure notice is claimed.'}
+        for cid in (81457,168587773,111557560)},
 }
 
 

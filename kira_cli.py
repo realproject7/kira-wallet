@@ -211,7 +211,7 @@ def main():
     ui=sub.add_parser('ui',help="Read the app's last recorded selection.");ui.add_argument('action',choices=['context'])
     archive=sub.add_parser('archive',help='Read earlier conversations and generated files.');archive.add_argument('action',choices=['list','read','workspaces','files','export']);archive.add_argument('conversation',nargs='?');archive.add_argument('--path');archive.add_argument('--output')
     connection=sub.add_parser('connect',help='Enter an Alchemy key at a hidden local prompt.');connection.add_argument('provider',choices=['alchemy'])
-    d=sub.add_parser('doctor',help='Check RPC settings, optionally with live probes.');d.add_argument('--live',action='store_true');d.add_argument('--chains',default='1,8453,81457');d.add_argument('--budget',type=int,default=30)
+    d=sub.add_parser('doctor',help='Check RPC settings, optionally with live probes.');d.add_argument('--live',action='store_true');d.add_argument('--chains',default='1,8453,10');d.add_argument('--budget',type=int,default=30)
     demo=sub.add_parser('demo',help='Open a sample portfolio.');demo.add_argument('--port',type=int,default=8790)
     add=sub.add_parser('add',help='Register a public wallet and run its first holdings lookup.');add.add_argument('address');add.add_argument('--tag',required=True);add.add_argument('--resume')
     refresh=sub.add_parser('refresh',help='Run a new holdings lookup for a wallet.');refresh.add_argument('wallet');refresh.add_argument('--resume')

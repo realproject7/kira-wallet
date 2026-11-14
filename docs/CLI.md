@@ -205,7 +205,7 @@ alone does not establish complete ERC20 discovery.
 ```sh
 kira rpc public
 kira doctor
-kira doctor --live --chains 1,8453,81457 --budget 30
+kira doctor --live --chains 1,8453,10 --budget 30
 ```
 
 `doctor` is local by default. `--live` explicitly makes bounded provider probes

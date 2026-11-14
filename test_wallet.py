@@ -165,9 +165,10 @@ class WalletPipelineTests(unittest.TestCase):
         def scan(mode,source,destination,on_chain=None):
             self.assertEqual(mode,'scan')
             network_ids=[n['chain_id'] for n in wallet.read(source)['networks']]
-            self.assertEqual(set(network_ids),{n['chain_id'] for n in wallet.read(self.folder/'networks.json')['networks'] if n['chain_id'] not in (5112,54176)})
+            self.assertEqual(set(network_ids),{n['chain_id'] for n in wallet.read(self.folder/'networks.json')['networks'] if n['chain_id'] not in (5112,54176,81457,168587773,111557560)})
             self.assertEqual(wallet.read(source)['inventory_policy'],'full_registry')
             wallet.atomic(destination/'chain-8453.json',chain)
+            for name in ('balance-checkpoint-8453.json','registry-checkpoint-8453.json'):wallet.atomic(destination/name,{'entries':[]})
             on_chain({'stage':'chain','chain_id':8453})
             wallet.atomic(destination/'onchain-summary.json',{'chains':[chain]})
         with patch.object(wallet,'ROOT',self.folder.resolve()),patch('kira_config.require_alchemy'),patch.object(wallet,'source_check',side_effect=verify_catalog) as catalog_check,patch.object(wallet,'validate_address',return_value=self.address),patch.object(wallet,'run_node',side_effect=scan),patch.object(wallet,'discover',return_value={'chain_id':8453,'complete':False,'tokens':[]}),patch('native_assets.market_metadata',return_value={'prices':{}}),patch.object(wallet,'fetch',return_value=[]),patch('token_images.refresh_catalog',return_value={}) as images,patch.object(sys,'argv',['wallet.py','add',self.address,'--tag','Fixture','--phase','baseline']),contextlib.redirect_stdout(io.StringIO()):
@@ -184,11 +185,40 @@ class WalletPipelineTests(unittest.TestCase):
         self.assertEqual(entry['latest_snapshot']['directory'],str(failed.parent.relative_to(self.folder)))
         folder=self.folder/entry['latest_snapshot']['directory']
         self.assertIn('completed_at',wallet.read(folder/'run.json'))
+        self.assertEqual(sorted(p.name for p in folder.glob('*checkpoint*')),[],'A published run drops its resume checkpoints.')
+        self.assertTrue((folder/'chain-8453.json').exists())
         self.assertEqual(wallet.read(folder/'results.json')['pipeline']['phase'],'holdings')
         self.assertEqual(wallet.read(folder/'initial/results.json')['tokens'][0]['wallet_balance'],'1')
         self.assertEqual(len(wallet.read(self.folder/'wallets.json')['research_runs']),2)
         images.assert_called_once()
         self.assertTrue((folder/'token-market-metadata.json').exists())
+
+    def test_resume_checkpoints_leave_finished_runs_and_stay_with_unfinished_ones(self):
+        other='0x'+'9'*40
+        runs={'finished':(self.address,True),'older':(self.address,True),'paused':(self.address,False),'someone-else':(other,True)}
+        names=('balance-checkpoint-8453.json','registry-checkpoint-8453.json','baseline-balance-checkpoint-1.json','balance-checkpoint-1.json.tmp',
+               'market-checkpoint-8453.json','chain-8453.json','results.json','discovery-8453.json')
+        research=[]
+        for label,(address,done) in runs.items():
+            folder=self.folder/'snapshots/jobs'/label
+            for name in names:wallet.atomic(folder/name,{'fixture':label})
+            wallet.atomic(folder/'run.json',{'wallet_address':address,**({'completed_at':'2026-11-15T00:00:00Z'} if done else {'status':'failed'})})
+            research.append({'address_key':address.lower(),'snapshot':f'snapshots/jobs/{label}'})
+            research.append({'address_key':address.lower(),'snapshot':f'snapshots/jobs/{label}/holdings-initial-0001'})
+        outside=self.folder.parent/(self.folder.name+'-outside');research.append({'address_key':self.address.lower(),'snapshot':f'../{outside.name}'})
+        wallet.atomic(outside/'balance-checkpoint-1.json',{});wallet.atomic(outside/'run.json',{'wallet_address':self.address,'completed_at':'x'})
+        import shutil
+        self.addCleanup(shutil.rmtree,outside,True)
+        wallet.atomic(self.folder/'wallets.json',{'wallets':[],'research_runs':research})
+        with patch.object(wallet,'ROOT',self.folder.resolve()):
+            removed=wallet.prune_resume_checkpoints({'address_key':self.address.lower()})
+        self.assertEqual(removed,8,'Four resume files in each of two finished runs.')
+        kept={'market-checkpoint-8453.json','chain-8453.json','results.json','discovery-8453.json','run.json'}
+        for label in ('finished','older'):
+            self.assertEqual({p.name for p in (self.folder/'snapshots/jobs'/label).iterdir()},kept)
+        for label in ('paused','someone-else'):
+            self.assertEqual({p.name for p in (self.folder/'snapshots/jobs'/label).iterdir()},set(names)|{'run.json'})
+        self.assertTrue((outside/'balance-checkpoint-1.json').exists(),'Only folders inside snapshots/ are touched.')
 
     def test_basic_metadata_prices_a_curve_from_its_reserve_without_full_market_review(self):
         reserve='0x'+'2'*40;child='0x'+'3'*40;unpriced='0x'+'4'*40
@@ -337,26 +367,28 @@ class WalletPipelineTests(unittest.TestCase):
         return reply
 
     def test_alchemy_networks_share_one_request_per_five(self):
+        from chain_lifecycle import retired
         explorer={'chain_id':109,'environment':'mainnet'}
-        networks=[{'chain_id':cid,'environment':'mainnet'} for cid in wallet.ALCHEMY]+[explorer]
+        # Research reads only networks that are not retired, as wallet.main() does.
+        researched={cid:name for cid,name in wallet.PORTFOLIO.items() if not retired(cid)}
+        networks=[{'chain_id':cid,'environment':'mainnet'} for cid in researched]+[explorer]
         bodies=[]
         def reply(url,body):
             bodies.append(json.loads(json.dumps(body)))
-            return self.portfolio_reply(body) if body['addresses'][0]['networks']!=['blast-mainnet'] and body['addresses'][0]['networks']!=['blast-sepolia'] \
-                else {'transport_error':{'status':400,'message':'Unsupported network'}}
+            return self.portfolio_reply(body)
         with patch.object(wallet,'fetch',side_effect=reply),patch.object(wallet,'free_sources',return_value={'complete':True,'tokens':[],'source':'explorer fixture'}) as free:
             found=wallet.discover_all(self.address,networks,self.folder)
         shared=[b['addresses'][0]['networks'] for b in bodies if len(b['addresses'][0]['networks'])>1]
         alone=[b['addresses'][0]['networks'] for b in bodies if len(b['addresses'][0]['networks'])==1]
+        self.assertEqual(len(researched),14)
         self.assertEqual(len(shared),3,'Fourteen Alchemy networks take three requests.')
         self.assertTrue(all(len(group)<=5 for group in shared))
-        self.assertEqual(sorted(alone),[['blast-mainnet'],['blast-sepolia']],'Networks Alchemy refuses keep their own request.')
+        self.assertEqual(alone,[],'No network needs a request of its own.')
+        self.assertNotIn('blast-mainnet',sum(shared,[]));self.assertNotIn('blast-sepolia',sum(shared,[]))
         self.assertEqual(sorted(found),sorted(n['chain_id'] for n in networks))
         free.assert_called_once()
-        for cid,network in wallet.PORTFOLIO.items():
+        for cid,network in researched.items():
             row=found[cid]
-            if cid in wallet.PORTFOLIO_SEPARATE:
-                self.assertFalse(row['complete']);continue
             self.assertTrue(row['complete']);self.assertEqual(row['discovery_status'],'checked')
             self.assertEqual([t['address'] for t in row['tokens']],['0x'+format(PORTFOLIO_IDS[network],'040x')],'Each network keeps only its own tokens.')
             saved=json.loads((self.folder/f'discovery-{cid}.json').read_text())
@@ -385,7 +417,9 @@ class WalletPipelineTests(unittest.TestCase):
             return reply
         with patch.object(wallet,'fetch',side_effect=unnamed):
             found=wallet.discover_all(self.address,networks,folder)
-        self.assertEqual(bodies,[['eth-mainnet','base-mainnet','opt-mainnet'],['eth-mainnet'],['base-mainnet'],['opt-mainnet']])
+        # The single-network reads run in parallel, so they can arrive in any order.
+        self.assertEqual(bodies[0],['eth-mainnet','base-mainnet','opt-mainnet'])
+        self.assertEqual(sorted(bodies[1:]),[['base-mainnet'],['eth-mainnet'],['opt-mainnet']])
         self.assertTrue(all(found[cid]['complete'] for cid in (1,8453,10)))
 
     def test_shared_pages_continue_for_the_networks_still_listing_tokens(self):

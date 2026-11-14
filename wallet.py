@@ -176,9 +176,6 @@ PORTFOLIO_SOURCE='Alchemy Portfolio Tokens By Wallet'
 # Alchemy reads at most five networks per wallet in one Tokens By Wallet request,
 # and one request costs the same 360 compute units for one network or five.
 PORTFOLIO_GROUP=5
-# Tokens By Wallet answers "Unsupported network" for these (seen 2026-11-14), which
-# would fail a shared request. They keep their own request until they are retired.
-PORTFOLIO_SEPARATE={81457,168587773}
 
 
 def saved_discovery(wallet, evidence, indexed_only=False):
@@ -294,7 +291,7 @@ def portfolio_groups(wallet, networks, folder, key):
     requests instead of fourteen.
     """
     if not key:return []
-    wanted=[n['chain_id'] for n in networks if n['chain_id'] in PORTFOLIO and n['chain_id'] not in PORTFOLIO_SEPARATE
+    wanted=[n['chain_id'] for n in networks if n['chain_id'] in PORTFOLIO
             and not saved_discovery(wallet,folder/f"discovery-{n['chain_id']}.json")]
     return [wanted[i:i+PORTFOLIO_GROUP] for i in range(0,len(wanted),PORTFOLIO_GROUP)] if len(wanted)>1 else []
 
@@ -499,6 +496,34 @@ def publish_snapshot(wallet, folder, result):
         if not any(r['snapshot']==relative for r in runs):
             runs.append({'address_key':wallet['address_key'],'tags':entry['tags'],'completed_at':result['compiled_at'],'status':result['status'],'snapshot':relative,'counts':result['counts']})
         atomic(ROOT/'wallets.json',registry)
+
+
+# Resume checkpoints only let an unfinished run continue where it stopped. A finished,
+# published run never reads them again, and they were most of each refresh's disk use.
+RESUME_CHECKPOINTS=tuple(prefix+'checkpoint-*.json'+suffix for prefix in ('balance-','baseline-balance-','registry-') for suffix in ('','.tmp'))
+
+
+def prune_resume_checkpoints(wallet):
+    """Delete resume checkpoints from this wallet's finished, published runs.
+
+    Results, chain files and discovery evidence stay. A run that failed or paused
+    keeps its checkpoints so it can still resume. Earlier finished runs are swept
+    too, so one refresh also clears what older versions left behind.
+    """
+    snapshots=(ROOT/'snapshots').resolve()
+    runs={r.get('snapshot') for r in read(ROOT/'wallets.json').get('research_runs',[]) if r.get('address_key')==wallet['address_key']}
+    removed=0
+    for relative in sorted(r for r in runs if isinstance(r,str)):
+        folder=(ROOT/relative).resolve()
+        if not folder.is_relative_to(snapshots):continue
+        try:run=read(folder/'run.json')
+        except (OSError,ValueError):continue
+        if not isinstance(run,dict) or not run.get('completed_at') or str(run.get('wallet_address','')).lower()!=wallet['address_key']:continue
+        for pattern in RESUME_CHECKPOINTS:
+            for path in folder.glob(pattern):
+                try:path.unlink();removed+=1
+                except FileNotFoundError:pass
+    return removed
 
 
 def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_prices=False, supplemental=False):
@@ -1182,6 +1207,9 @@ def main():
                 result=finish(wallet,folder,networks,discovered)
             publish_snapshot(wallet,folder,result)
             atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,'refresh_scope':scope,'completed_at':h.now(),'status':result['status']})
+            # Clean-up never fails a published run; a leftover file only costs disk space.
+            try:prune_resume_checkpoints(wallet)
+            except (OSError,ValueError,KeyError):pass
             event('published',snapshot=relative,counts=result['counts'],status=result['status'],viewer='http://127.0.0.1:8765')
         except Exception as error:
             atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,'refresh_scope':scope,**({'holdings_snapshot':args.holdings_snapshot or (manifest or {}).get('holdings_snapshot')} if args.phase=='sell' else {}),'failed_at':h.now(),'status':'failed','error_code':getattr(error,'code','engine_failed'),'error':h.redact(str(error))})

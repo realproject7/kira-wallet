@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.13.2**. Prepared candidate: **1.13.4**.
+Published npm release: **1.13.2**. Prepared candidate: **1.13.5**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -9,7 +9,21 @@ Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
 
-## Candidate 1.13.4
+## Candidate 1.13.5
+
+Blast, Blast Sepolia and Cyber Testnet are excluded from new research by
+operator confirmation on November 15, 2026. Their RPC and token endpoints
+stopped answering, so every refresh ended partial on them. Earlier snapshots
+keep what was observed there, and current totals leave it out, as for Ham and
+OverProtocol. `kira doctor --live` now samples Ethereum, Base and Optimism by
+default.
+
+A finished holdings refresh deletes its resume checkpoints: the balance and
+Mint Club registry files that only let an unfinished run continue. They were
+most of the disk space a refresh wrote. Results, chain files, discovery
+evidence and the run record stay. Each refresh also clears the checkpoints
+that earlier finished runs of the same wallet left behind. A run that failed
+or paused keeps its checkpoints so it can resume.
 
 Holdings refreshes ask Alchemy for a wallet's token list five networks at a
 time. Alchemy charges a Tokens By Wallet request 360 compute units whether it
@@ -19,8 +33,7 @@ requests instead of fourteen; a wallet with hundreds of tokens still needs more
 pages. In a fast refresh of a large workspace, a typical wallet made 4 requests
 instead of 16, and every network listed the same tokens as before. A network
 that fails inside a shared request is read again on its own, and a refused
-shared request falls back to one request per network. Blast and Blast Sepolia
-keep their own request because Alchemy reports them as unsupported.
+shared request falls back to one request per network.
 
 A token that the index lists but that reads as zero is checked again on a
 second node. That node can be a block behind the newest block, which on Base
@@ -33,9 +46,9 @@ for the app to accept each wallet. Before, the page stopped waiting after 12
 seconds and showed "signal timed out" while the wallets were still being
 queued.
 
-Version 1.13.3 was prepared and not published. Review not selected. Earlier
-archives and operator wallet data remain preserved. Registry publication is
-operator-only.
+Versions 1.13.3 and 1.13.4 were prepared and not published. Review not
+selected. Earlier archives and operator wallet data remain preserved. Registry
+publication is operator-only.
 
 ## Published 1.13.2
 
