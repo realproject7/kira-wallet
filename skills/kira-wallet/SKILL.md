@@ -157,7 +157,9 @@ kira prices 'Daily wallet' --idempotency-key prices-daily-001 --json
 ```
 
 `kira add` registers the wallet and runs its first full holdings lookup. Use
-`refresh` later for an update, not right after `add`.
+`refresh` later for an update, not right after `add`. `refresh --fast` (tool
+scope `fast`) rereads current tokens and tokens moved since the last complete
+check; use it for routine updates and the full refresh for a complete check.
 
 Replace placeholders and choose a unique idempotency key per intended action.
 Reuse the same key for retries of that action. The first tag is the display

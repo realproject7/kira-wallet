@@ -72,7 +72,7 @@ conversation, general tools and approvals. Kira does not start a model process.
 
 ## Portfolio research actions
 
-From Home, use **Refresh all holdings** or **Update sell estimates (N)**.
+From Home, use **Refresh all holdings**, **Fast refresh** or **Update sell estimates (N)**.
 Both queue ordinary per-wallet jobs and preserve previous snapshots. Work runs
 one wallet at a time. Active wallets are skipped. Sell analysis requires a
 finished current holdings scan; interrupted analysis is resumed and completed
@@ -89,6 +89,7 @@ Agents use the same actions:
 
 ```sh
 kira call portfolio_holdings_refresh --arguments '{"idempotency_key":"portfolio-refresh-001"}' --json
+kira call portfolio_holdings_refresh --arguments '{"scope":"fast","idempotency_key":"portfolio-fast-001"}' --json
 kira call portfolio_sell_routes_analyze --arguments '{"idempotency_key":"portfolio-sell-001"}' --json
 ```
 
@@ -221,8 +222,17 @@ kira add '<public-evm-address>' --tag 'Daily wallet' --idempotency-key add-daily
 kira wallets --json
 kira wallets tags 'Daily wallet' --tag 'Daily wallet' --tag 'Savings' --idempotency-key tags-daily-001 --json
 kira refresh 'Daily wallet' --idempotency-key refresh-daily-001 --json
+kira refresh 'Daily wallet' --fast --idempotency-key fast-daily-001 --json
 kira prices 'Daily wallet' --idempotency-key prices-daily-001 --json
 ```
+
+**Fast refresh** rechecks the tokens a wallet holds and any token it sent or
+received since its last full refresh. On networks with a large Mint Club token
+list, such as Base, it reads that transfer history instead of every listed
+token. Smaller networks are checked as in a full refresh. Test networks keep
+their last saved balances. A wallet without a saved full refresh is checked in
+full. Use the full refresh for a complete check. Fast refresh is on Home, a
+folder's Home and each wallet page, beside the full refresh.
 
 The first tag is the display name. Exact names and registered addresses select
 wallets. `add` runs the first full holdings lookup itself; use `refresh` for

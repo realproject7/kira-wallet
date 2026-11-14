@@ -146,6 +146,14 @@ with an `idempotency_key`. Read `jobs`, `skipped` and `errors` from the batch
 receipt, then inspect each job for completion. These tools use the ordinary
 per-wallet queue and share the browser controls' admission rules.
 
+`holdings_refresh` and `portfolio_holdings_refresh` accept an optional `scope`.
+`full` is the default. `fast` rereads the tokens each wallet holds and the tokens
+it sent or received since its last complete check, on networks whose Mint Club
+token list is large, and keeps test networks as last saved. Each network's
+`mintclub_registry_scan` names the method: a fast check has `method:
+transfer_delta`, `from_block` and the last `full_check_block`. A wallet without
+a complete saved check is checked in full.
+
 Saved portfolio, wallet, token and network views include `sell_out_summary`:
 `value_usd`, `quoted_count`, `position_count`, `missing_count`, `observed_from`,
 `observed_to`, `basis`, `gas_included` and `combined_execution_verified`. The

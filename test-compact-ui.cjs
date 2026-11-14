@@ -161,3 +161,17 @@ test('the All tokens list starts with priced tokens and offers the unpriced ones
  listeners['catalog-filter-note:click']({target:{closest:()=>({})}});assert.equal(loads,1);assert.equal($('all-token-pricing').value,'all');
  ctx.routeData={page:{assets:[],matched_count:0,offset:0,unpriced_hidden_count:0}};run('renderCatalog()');assert.equal($('catalog-filter-note').hidden,true);
 });
+test('fast refresh sits beside each full refresh, with its explanation behind an info button',()=>{
+ assert.match(html,/>Refresh all holdings<\/button><span class="fast-refresh"><button id="fast-refresh-portfolio" class="quiet-button" type="button" data-ui-icon="bolt">Fast refresh<\/button><details class="info-tip fast-refresh-info"><summary aria-label="About fast refresh"><\/summary>/);
+ assert.match(html,/>Refresh holdings<\/button><span class="fast-refresh"><button id="fast-refresh-wallet" class="quiet-button" type="button" data-ui-icon="bolt">Fast refresh<\/button><details class="info-tip fast-refresh-info">/);
+ assert.equal((html.match(/Fast refresh rechecks the tokens a wallet holds and any token it sent or received since its last full refresh\./g)||[]).length,2);
+ assert.match(html,/keeps test networks as last saved\./);assert.match(html,/A wallet without a saved full refresh is checked in full\./);
+ assert.match(css,/\[data-ui-icon="bolt"\] \{ --control-icon:url\(/);assert.match(css,/\.fast-refresh \{ display:inline-flex;/);
+ const jobs=fs.readFileSync('viewer/static/jobs.js','utf8');
+ assert.match(jobs,/\$\('fast-refresh-wallet'\)\.addEventListener\('click',async\(\)=>\{[^\n]*submitOperation\('wallet\.refresh',\{wallet:selectedWallet,scope:'fast'\}\)/);
+ assert.match(jobs,/\$\('fast-refresh-wallet'\)\.disabled=\$\('refresh-wallet'\)\.disabled;/,'Fast refresh follows the same control rules as the full refresh.');
+ const activity=fs.readFileSync('viewer/static/activity.js','utf8'),ctx=vm.createContext({jobLabels:{}});
+ vm.runInContext(activity.split('\n').find(line=>line.startsWith('function activityTask(')),ctx);
+ assert.equal(vm.runInContext("activityTask({operation:'wallet.refresh',input:{wallet:'a',scope:'fast'}})",ctx),'Fast refresh');
+ assert.equal(vm.runInContext("activityTask({operation:'wallet.refresh',input:{wallet:'a'}})",ctx),'Holdings refresh');
+});

@@ -53,12 +53,12 @@ READ_TOOLS += [tool('network_read','Read saved network allocation and coverage.'
 MUTATIONS={
     'positions_refresh':('positions.refresh',{'wallet':STRING,'discover':{'type':'boolean'}}),
     'portfolio_positions_refresh':('portfolio.positionsRefresh',{'folder_id':FOLDER_ID,'discover':{'type':'boolean'}}),
-    'portfolio_holdings_refresh':('portfolio.refresh',{'folder_id':FOLDER_ID}),
+    'portfolio_holdings_refresh':('portfolio.refresh',{'folder_id':FOLDER_ID,'scope':{'type':'string','enum':['full','fast']}}),
     'portfolio_sell_routes_analyze':('portfolio.analyzeSell',{'folder_id':FOLDER_ID}),
     'settings_h402':('settings.h402',{'enabled':{'type':'boolean'}}),
     'wallet_add':('wallet.add',{'address':STRING,'tag':STRING}),
     'wallet_tags':('wallet.setTags',{'wallet':STRING,'tags':{'type':'array','items':STRING,'minItems':1,'maxItems':20}}),
-    'holdings_refresh':('wallet.refresh',{'wallet':STRING}),
+    'holdings_refresh':('wallet.refresh',{'wallet':STRING,'scope':{'type':'string','enum':['full','fast']}}),
     'prices_refresh':('prices.refresh',{'wallet':STRING}),
     'job_cancel':('job.cancel',{'job_id':STRING}),
     'job_resume':('job.resume',{'job_id':STRING}),
@@ -85,7 +85,7 @@ READ_TOOLS.append(tool('wallets_removed','Read a bounded page of removed registr
 READ_TOOLS.append(tool('positions_read','Read saved protocol positions and exclusive platform allocation. Amounts are principal/NAV, not sell proceeds. Reads never start discovery.',
     {'wallet':STRING,'folder_id':FOLDER_ID,'token_id':STRING,'platform':STRING,'chain_id':{'type':'integer','minimum':1},'offset':INTEGER,'limit':{'type':'integer','minimum':1,'maximum':100}},required=[]))
 WRITE_TOOLS=[tool(name,'Submit '+operation+' as a durable local job. Returns a receipt, not a completed result.',
-    {**props,'idempotency_key':{'type':'string','minLength':8,'maxLength':200}},required=[k for k in props if k not in ('priority','explorers','discover') and not (name.startswith('portfolio_') and k=='folder_id') and not (k=='expected_revision' and name not in ('folder_set_members',*WALLET_ACTIONS))]+['idempotency_key'],write=True)
+    {**props,'idempotency_key':{'type':'string','minLength':8,'maxLength':200}},required=[k for k in props if k not in ('priority','explorers','discover','scope') and not (name.startswith('portfolio_') and k=='folder_id') and not (k=='expected_revision' and name not in ('folder_set_members',*WALLET_ACTIONS))]+['idempotency_key'],write=True)
     for name,(operation,props) in MUTATIONS.items()]
 
 for descriptor in WRITE_TOOLS:
@@ -102,6 +102,9 @@ for descriptor in WRITE_TOOLS:
         descriptor['description']='Save exact wallet names immediately without waiting for research. Returns a durable job receipt; inspect its state for completion. Prior snapshots retain their original names.'
     if descriptor['name'] in TOKEN_ACTIONS:
         descriptor['description']='Apply a durable local token valuation preference immediately across every registered wallet.' if descriptor['name']=='token_policy' else 'Explicitly query GoPlus for a recorded token contract and save dated risk observations. Sends only chain and contract identity. No transaction, simulation or safety guarantee. Runs immediately; saved reads never call providers.'
+    if descriptor['name'] in ('holdings_refresh','portfolio_holdings_refresh'):
+        descriptor['description']+=(' Optional scope: full (default) reads every configured network and the complete Mint Club catalogue.'
+            ' fast rereads earlier holdings and tokens moved since the last complete check where the catalogue is large, and keeps test networks as last saved.')
     if descriptor['name'].startswith('portfolio_'):
         descriptor['description']='Queue research for all registered wallets or one explicit folder using existing per-wallet jobs. Folder membership is captured at admission; retries retain that target set. Returns a durable batch receipt with jobs, skipped wallets and errors. Inspect each job for completion.'
 

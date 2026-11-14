@@ -500,7 +500,7 @@ def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_p
     return market
 
 
-def initial_result(wallet, folder, networks, discovered, chains, *, phase='baseline', prices=False):
+def initial_result(wallet, folder, networks, discovered, chains, *, phase='baseline', prices=False, pipeline=None):
     """Publish first balances, then bounded price and artwork metadata."""
     by_chain={c['chain_id']:c for c in chains};by_discovery={d['chain_id']:d for d in discovered}
     coverage=[];tokens=[{**t,'dex_liquidity_found':t.get('dex_liquidity_found',False)} for c in chains for t in c['tokens']]
@@ -521,6 +521,7 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
             'candidate_scan':c.get('candidate_scan'),'mintclub_registry_scan':c.get('registry_scan'),
             'inventory_policy':c.get('inventory_policy','full_registry'),'mintclub_wallet_discovery':id0_coverage(d),
             'mintclub_membership_scan':c.get('mintclub_membership_scan'),
+            **({'retained_from':c['retained_from']} if c.get('retained_from') else {}),
             'notes':['Holdings lookup is still running. Remaining balances, prices and artwork are pending.']})
     result={'schema_version':1,'wallet_address':wallet['address'],'tags':wallet['tags'],'compiled_at':h.now(),
         'status':'completed_with_coverage_gaps','scope':'Recorded initial direct holdings. Unchecked holdings and prices remain unknown.',
@@ -533,7 +534,7 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
         'limitations':['Holdings lookup is still running across all configured networks. Missing balances and prices remain unknown.',
             'Indexers and unavailable networks can omit holdings. Testnet assets are excluded from USD totals.'],
         'actions':{'signatures':0,'approvals':0,'swaps':0,'transfers':0,'rpc_read_only':True},
-        'pipeline':{'version':2,'phase':phase,'holdings_scope':'all_configured','enrichment_pending':True,'resumable':True},'evidence_files':['onchain-summary.json']}
+        'pipeline':{'version':2,'phase':phase,'holdings_scope':'all_configured','enrichment_pending':True,'resumable':True,**(pipeline or {})},'evidence_files':['onchain-summary.json']}
     refs={}
     native_market={}
     if prices:
@@ -570,13 +571,58 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
     return result
 
 
-def research_holdings(wallet, folder, networks):
-    """Enumerate all configured networks and all candidates, without market-route work."""
+def fast_plan(wallet, networks):
+    """What a fast refresh may build on: this wallet's latest saved holdings.
+
+    Test networks keep their saved rows. A mainnet whose saved check was complete
+    gives the block to read transfer history from and the tokens held then.
+    """
+    plan={'retained':{},'chains':{}}
+    latest=wallet.get('latest_snapshot') or {}
+    try:
+        directory=(ROOT/latest['directory']).resolve()
+        if not directory.is_relative_to((ROOT/'snapshots').resolve()):return plan
+        summary=read(directory/'onchain-summary.json')
+    except (KeyError,TypeError,OSError,ValueError):return plan
+    if not isinstance(summary,dict) or str(summary.get('wallet','')).lower()!=wallet['address_key'] or not isinstance(summary.get('chains'),list):return plan
+    rows={c.get('chain_id'):c for c in summary['chains'] if isinstance(c,dict)}
+    relative=str(directory.relative_to(ROOT.resolve()))
+    for n in networks:
+        cid=n['chain_id'];row=rows.get(cid)
+        if not row or str(row.get('wallet','')).lower()!=wallet['address_key']:continue
+        if n.get('environment')=='testnet':
+            try:found=read(directory/f'discovery-{cid}.json')
+            except (OSError,ValueError):found=None
+            if isinstance(found,dict) and str(found.get('wallet','')).lower()==wallet['address_key']:
+                plan['retained'][cid]=({**row,'retained_from':row.get('retained_from') or relative},found)
+            continue
+        scan=row.get('registry_scan') or {}
+        if n.get('environment')!='mainnet' or scan.get('complete') is not True or not re.fullmatch(r'[0-9]{1,20}',str(scan.get('block_number',''))):continue
+        prior=[{'address':t['token_address'],'token_type':t['token_type']} for t in row.get('tokens',[])
+               if isinstance(t,dict) and t.get('token_type') in ('ERC20','ERC1155') and re.fullmatch(r'0x[0-9a-fA-F]{40}',str(t.get('token_address','')))]
+        plan['chains'][str(cid)]={'from_block':str(int(scan['block_number'])+1),'full_check_block':str(scan.get('full_check_block') or scan['block_number']),
+            'full_checked_at':scan.get('full_checked_at') or row.get('observed_at'),'prior':prior}
+    return plan
+
+
+def research_holdings(wallet, folder, networks, scope='full'):
+    """Enumerate all configured networks and all candidates, without market-route work.
+
+    A fast refresh keeps test networks as last saved and, where the Mint Club
+    catalogue is large, reads transfer history since the last complete check.
+    """
+    plan=fast_plan(wallet,networks) if scope=='fast' else {'retained':{},'chains':{}}
+    active=[n for n in networks if n['chain_id'] not in plan['retained']]
     with ThreadPoolExecutor(max_workers=5) as executor:
-        discovered=list(executor.map(lambda n:discover(wallet['address'],n,folder,indexed_only=True),networks))
+        fresh=dict(zip((n['chain_id'] for n in active),executor.map(lambda n:discover(wallet['address'],n,folder,indexed_only=True),active)))
+    for cid,(_,found) in plan['retained'].items():
+        atomic(folder/f'discovery-{cid}.json',found);fresh[cid]=found
+    discovered=[fresh[n['chain_id']] for n in networks]
     event('discovery',complete_chains=sum(d['complete'] for d in discovered),candidates=sum(len(d['tokens']) for d in discovered))
     known=read(ASSETS/'sources/known-tokens.json')['tokens']
-    atomic(folder/'scan-input.json',candidate_input(wallet['address'],networks,'full_registry',discovered,prior_candidates(wallet),known))
+    scan_input=candidate_input(wallet['address'],active,'full_registry',[fresh[n['chain_id']] for n in active],prior_candidates(wallet),known)
+    if plan['chains']:scan_input['fast']={'chains':plan['chains']}
+    atomic(folder/'scan-input.json',scan_input)
     published={}
     def first_evidence(message):
         path=folder/f"chain-{message.get('chain_id')}.json"
@@ -595,7 +641,13 @@ def research_holdings(wallet, folder, networks):
         initial_result(wallet,first,networks,discovered,chains,phase='initial')
         event('first_evidence',snapshot=str(first.relative_to(ROOT)),tokens=sum(len(c['tokens']) for c in chains))
     run_node('scan',folder/'scan-input.json',folder,on_chain=first_evidence)
-    return initial_result(wallet,folder,networks,discovered,read(folder/'onchain-summary.json')['chains'],phase='holdings',prices=True)
+    chains=read(folder/'onchain-summary.json')['chains']
+    if plan['retained']:
+        scanned={c['chain_id']:c for c in chains}
+        chains=[plan['retained'][n['chain_id']][0] if n['chain_id'] in plan['retained'] else scanned[n['chain_id']]
+                for n in networks if n['chain_id'] in plan['retained'] or n['chain_id'] in scanned]
+    return initial_result(wallet,folder,networks,discovered,chains,phase='holdings',prices=True,
+        pipeline={'refresh_scope':scope,**({'retained_networks':sorted(plan['retained'])} if plan['retained'] else {})})
 
 
 def saved_holdings(wallet, snapshot_id, folder):
@@ -957,6 +1009,7 @@ def main():
     sub=parser.add_subparsers(dest='command',required=True)
     add=sub.add_parser('add');add.add_argument('address');add.add_argument('--tag',required=True)
     refresh=sub.add_parser('refresh');refresh.add_argument('wallet',help='Registered address or exact tag')
+    refresh.add_argument('--scope',choices=('full','fast'),default='full',help='fast rereads earlier holdings and tokens moved since the last complete check where the Mint Club catalogue is large, and keeps test networks as last saved.')
     for p in (add,refresh):
         p.add_argument('--resume',help='Existing snapshot directory relative to the research root')
         p.add_argument('--phase',choices=('holdings','sell','baseline','enrichment','full'),default='holdings')
@@ -994,8 +1047,10 @@ def main():
             published=any(w.get('latest_snapshot',{}).get('directory')==relative for w in registry['wallets']) or any(r.get('snapshot')==relative for r in registry.get('research_runs',[]))
             if manifest.get('completed_at') or published:raise ValueError('Published snapshots are immutable. Use refresh without --resume for a new analysis.')
             policy=inventory_policy(args.inventory,manifest)
+            scope=manifest.get('refresh_scope','full')
         else:
             policy=inventory_policy('full' if args.phase in ('holdings','baseline','sell') else args.inventory)
+            scope=getattr(args,'scope','full')
             if os.environ.get('KIRA_JOB_SNAPSHOT'):
                 folder=(ROOT/os.environ['KIRA_JOB_SNAPSHOT']).resolve()
                 if not folder.is_relative_to(ROOT/'snapshots'):raise ValueError('Job path must be within snapshots/.')
@@ -1004,14 +1059,14 @@ def main():
                 folder=ROOT/'snapshots'/slug/(time.strftime('%Y-%m-%dT%H%M%S')+'-'+wallet['address_key'][2:10])
             folder.mkdir(parents=True,exist_ok=bool(os.environ.get('KIRA_JOB_SNAPSHOT')))
         relative=str(folder.relative_to(ROOT))
-        atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,**({'holdings_snapshot':args.holdings_snapshot or (manifest or {}).get('holdings_snapshot')} if args.phase=='sell' else {}),'started_or_resumed_at':h.now(),'status':'running'})
+        atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,'refresh_scope':scope,**({'holdings_snapshot':args.holdings_snapshot or (manifest or {}).get('holdings_snapshot')} if args.phase=='sell' else {}),'started_or_resumed_at':h.now(),'status':'running'})
         event('registered',wallet=wallet['address'],tags=wallet['tags'],snapshot=str(folder.relative_to(ROOT)))
         try:
             if args.phase in ('holdings','baseline'):
                 # Validate the full deployment catalog. Retirement only changes
                 # the research scope, not the SDK's historical deployments.
                 source_check(registered,folder)
-                result=research_holdings(wallet,folder,networks)
+                result=research_holdings(wallet,folder,networks,scope=scope)
             elif args.phase=='sell':
                 source=args.holdings_snapshot or (manifest or {}).get('holdings_snapshot')
                 if not source:raise ValueError('Sell-route analysis requires a saved holdings source.')
@@ -1037,10 +1092,10 @@ def main():
                 if not market:run_node('scan',folder/'scan-input.json',folder)
                 result=finish(wallet,folder,networks,discovered)
             publish_snapshot(wallet,folder,result)
-            atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,'completed_at':h.now(),'status':result['status']})
+            atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,'refresh_scope':scope,'completed_at':h.now(),'status':result['status']})
             event('published',snapshot=relative,counts=result['counts'],status=result['status'],viewer='http://127.0.0.1:8765')
         except Exception as error:
-            atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,**({'holdings_snapshot':args.holdings_snapshot or (manifest or {}).get('holdings_snapshot')} if args.phase=='sell' else {}),'failed_at':h.now(),'status':'failed','error_code':getattr(error,'code','engine_failed'),'error':h.redact(str(error))})
+            atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,'refresh_scope':scope,**({'holdings_snapshot':args.holdings_snapshot or (manifest or {}).get('holdings_snapshot')} if args.phase=='sell' else {}),'failed_at':h.now(),'status':'failed','error_code':getattr(error,'code','engine_failed'),'error':h.redact(str(error))})
             event('market_paused' if isinstance(error,MarketPause) else 'research_paused' if isinstance(error,ResearchPause) else 'failed',error=h.redact(str(error)),resume=str(folder.relative_to(ROOT)))
             raise SystemExit(1)
 

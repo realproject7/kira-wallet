@@ -28,6 +28,19 @@ vm.createContext(context);vm.runInContext(fs.readFileSync('viewer/static/portfol
   context.localSession.controls=false;context.renderPortfolioActions();assert.equal($('portfolio-actions').hidden,true);
   await context.submitPortfolio('portfolio.refresh');assert.equal(requests,1);
   context.localSession.controls=true;context.state.demo=true;context.renderPortfolioActions();assert.equal($('portfolio-actions').hidden,true);
+  // Fast refresh sends the same bulk action with the fast scope, for all wallets or the open folder.
+  let sent=null;context.submitOperation=async(operation,input)=>{sent={operation,input};return {jobs:[{job_id:'fast'}],skipped:[],errors:[]};};
+  context.state={wallets:[{key:'synthetic'}],demo:false};context.setupReadiness.discovery_key_available=true;context.renderPortfolioActions();
+  assert.equal($('fast-refresh-portfolio').disabled,false);
+  await $('fast-refresh-portfolio').listeners.click();
+  const plain=value=>JSON.parse(JSON.stringify(value));
+  assert.deepEqual(plain(sent),{operation:'portfolio.refresh',input:{scope:'fast'}});
+  assert.match($('portfolio-action-status').textContent,/1 wallet jobs accepted/);
+  context.FolderUI={id:'folder-1',label:()=>'Team',view:()=>({wallets:[{key:'synthetic'}]})};
+  await context.submitPortfolio('portfolio.refresh',{scope:'fast'});assert.deepEqual(plain(sent.input),{folder_id:'folder-1',scope:'fast'});
+  await $('refresh-portfolio').listeners.click();assert.deepEqual(plain(sent.input),{folder_id:'folder-1'},'The full refresh keeps its request.');
+  delete context.FolderUI;
+  context.localSession.controls=false;context.renderPortfolioActions();assert.equal($('fast-refresh-portfolio').disabled,true);context.localSession.controls=true;
   console.log('Portfolio controls prevent double submission, retain errors and honor read-only and sample modes.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
 const activity={$,selectedView:'home',jobList:[{job_id:'queued',state:'queued',created_at:'2026-11-01',input:{}},{job_id:'running',state:'running',created_at:'2026-11-02',input:{}},{job_id:'later',state:'queued',created_at:'2026-11-03',input:{}}],state:{wallets:[]},KiraView:{active:j=>['queued','running'].includes(j.state),jobPresentation:()=>({}),jobTimeText:()=>''},jobsConnected:true,escapeHTML:String,jobStage:j=>j.job_id,jobControls:()=>'',jobLabels:{},Date};

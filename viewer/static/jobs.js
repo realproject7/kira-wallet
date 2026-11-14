@@ -109,7 +109,7 @@ async function submitOperation(operation,input,{refresh=true}={}){
     if(operation.startsWith('token.')){if(refresh)await pollWorkspace();return result;}
     const scanMessage=operation==='job.deepen'?(['succeeded','partial'].includes(result.state)?'Holdings unchanged. Saved sell estimates retained.':'Sell estimate update queued. Your holdings stay available.'):operation==='job.resume'?'Scan queued to resume from saved work.':operation==='job.cancel'?'Pause requested. Saved results stay available.':null;
     if(result.batch_id){toast(result.jobs.length+' wallet jobs · '+result.skipped.length+' skipped · '+result.errors.length+' need attention');}
-    else toast(scanMessage||(operation==='wallet.setTags'?(result.state==='succeeded'?'Wallet names saved':'Wallet name change queued'):(operation.startsWith('settings.')?'Queued ':'Saved ')+(jobLabels[operation]||'job').toLowerCase()));await pollJobs();await pollWorkspace();return result;
+    else toast(scanMessage||(operation==='wallet.setTags'?(result.state==='succeeded'?'Wallet names saved':'Wallet name change queued'):(operation.startsWith('settings.')?'Queued ':'Saved ')+(input?.scope==='fast'?'fast refresh':(jobLabels[operation]||'job').toLowerCase())));await pollJobs();await pollWorkspace();return result;
   }finally{pendingActions.delete(fingerprint);}
 }
 function refreshControlState(){
@@ -131,6 +131,7 @@ function refreshControlState(){
     $(id).title=sample?'Sample research cannot contact providers.':active?(prices?'A price refresh is already '+active.state+' for this wallet.':'A research job is already active for this wallet.'):missing?'Wait for the first saved report before refreshing prices.':prices?'Update prices for the saved report. Detailed research pauses briefly and resumes automatically.':'';
   }
   $('discovery-refresh').disabled=$('refresh-wallet').disabled;
+  $('fast-refresh-wallet').disabled=$('refresh-wallet').disabled;$('fast-refresh-wallet').title=$('refresh-wallet').title;
   if(typeof renderWatching==='function')renderWatching();
 }
 let jobsPage=1, jobsConnected=true, lastJobsPoll=null;
@@ -248,6 +249,7 @@ $('wallet-form').addEventListener('submit',async event=>{
   finally{watchingSubmitting=false;renderWatching();}
 });
 $('refresh-wallet').addEventListener('click',async()=>{if(setupReadiness?.discovery_key_available!==true){await openDataConnections(false,true,selectedWallet);return;}try{await submitOperation('wallet.refresh',{wallet:selectedWallet});}catch(error){toast(error.message);}});
+$('fast-refresh-wallet').addEventListener('click',async()=>{if(setupReadiness?.discovery_key_available!==true){await openDataConnections(false,true,selectedWallet);return;}try{await submitOperation('wallet.refresh',{wallet:selectedWallet,scope:'fast'});}catch(error){toast(error.message);}});
 $('refresh-prices').addEventListener('click',async()=>{if(setupReadiness?.discovery_key_available!==true){await openDataConnections(false,true,selectedWallet);return;}try{await submitOperation('prices.refresh',{wallet:selectedWallet});}catch(error){toast(error.message);}});
 $('edit-tags').addEventListener('click',()=>{if(!currentWallet())return;$('tags-dialog').dataset.wallet=selectedWallet;$('tag-values').value=currentWallet().tags.join('\n');$('tags-error').textContent='';$('tags-dialog').showModal();});
 formAction($('tags-form'),$('tags-error'),async()=>{const result=await submitOperation('wallet.setTags',{wallet:$('tags-dialog').dataset.wallet,tags:$('tag-values').value.split('\n').filter(t=>t.length)});if(result.state!=='succeeded')throw Error(result.errors?.at(-1)?.message||'Name change is queued. Check Activity before saving another change.');$('tags-dialog').close();});

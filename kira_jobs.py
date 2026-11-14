@@ -185,6 +185,9 @@ class JobStore:
             'settings.rpc':['mode','chains','allow_public_fallback'],'settings.discovery':['provider','key_env'],'settings.provider':['provider','key_env'],'settings.importEnv':['import_id','key_env'],'settings.h402':['enabled'],'positions.refresh':['wallet','discover']}[job['operation']]
         if job['operation']=='settings.rpc' and 'priority' in job['input']:names=names+['priority']
         if job['operation']=='settings.discovery' and 'explorers' in job['input']:names=names+['explorers']
+        if job['operation']=='wallet.refresh' and 'scope' in job['input']:
+            names=names+['scope']
+            if job['input']['scope']!='fast':raise JobError('invalid_envelope','Invalid refresh scope.')
         fields(job['input'],names)
         if job['operation']=='positions.refresh' and type(job['input']['discover']) is not bool:raise JobError('invalid_envelope','Invalid position discovery mode.')
         if job['operation']=='settings.h402' and type(job['input']['enabled']) is not bool:raise JobError('invalid_envelope','Invalid h402 preference.')
@@ -368,11 +371,15 @@ class JobStore:
             if address.lower() in read(self.root/'wallets.json').get('removed_wallets',{}):raise JobError('wallet_removed','This wallet was removed. Restore it in Manage wallets to keep its saved research.')
             return {'address': address, 'tag': value['tag']}
         if operation in {'wallet.refresh', 'prices.refresh', 'positions.refresh', 'wallet.setTags'}:
-            fields(value, ['wallet', 'tags'] if operation == 'wallet.setTags' else ['wallet'])
+            scoped = operation == 'wallet.refresh' and isinstance(value, dict) and 'scope' in value
+            fields(value, ['wallet', 'tags'] if operation == 'wallet.setTags' else ['wallet', 'scope'] if scoped else ['wallet'])
+            if scoped and value['scope'] not in ('full', 'fast'):
+                raise JobError('invalid_scope', 'Use scope full or fast.')
             wallet = self.wallet(value['wallet'])
             if operation == 'prices.refresh' and not wallet.get('latest_snapshot'):
                 raise JobError('no_snapshot', 'Analyse this wallet before refreshing prices.')
             result = {'wallet': wallet['address_key']}
+            if scoped and value['scope'] == 'fast':result['scope'] = 'fast'
             if operation == 'wallet.setTags':
                 tags = value['tags']
                 if not isinstance(tags, list) or not 1 <= len(tags) <= 20 or any(not isinstance(t, str) or not t.strip() or len(t) > 200 or any(ord(c) < 32 for c in t) for t in tags) or len(set(tags)) != len(tags):
@@ -844,6 +851,7 @@ class JobStore:
                     parent=self.get(job['parent_job_id'])
                     command+=['--holdings-snapshot',parent['result']['snapshot_id']]
             command += ['--phase',phase]
+            if phase=='holdings' and job['input'].get('scope')=='fast':command += ['--scope','fast']
             if (self.root / job['checkpoint'] / 'run.json').exists(): command += ['--resume', job['checkpoint']]
         return command
 
