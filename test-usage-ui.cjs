@@ -81,7 +81,7 @@ test('a refused check names the fix and keeps the last good numbers; tiny use re
 
 test('Check now asks the local app once, shows the new totals or the reason it could not',async()=>{
   const h=harness({kira,official:null,access_key:true,networks_not_enabled:[],schema_version:1});
-  await h.run('loadUsage(true)');
+  await h.run('usageAutoAt=Date.now();loadUsage(true)');
   h.context.answer=(path,options)=>path==='/api/operations'?{status:'completed',operation:'alchemy.usageCheck',usage:{kira,official,access_key:true,networks_not_enabled:[],schema_version:1}}:null;
   const first=h.node('usage-check').listeners.click();h.node('usage-check').listeners.click();
   assert.equal(h.node('usage-check').disabled,true);assert.equal(h.node('usage-checked').textContent,'Checking with Alchemy…');
@@ -120,6 +120,32 @@ test('the top bar reads saved usage at start, when tasks change and every five m
   await h.run('usageReadAt=Date.now()-299000;pollUsage(false)');assert.equal(h.calls.length,2);
   await h.run('usageReadAt=Date.now()-300000;pollUsage(false)');assert.equal(h.calls.length,3,'Five minutes later it reads again.');
   assert.ok(h.calls.every(([path])=>path==='/api/usage'),'Polling reads saved records only.');
+});
+
+test('with an Access Key a visible app asks Alchemy again once the saved check is 15 minutes old',async()=>{
+  const stale={...official,checked_at:ago(20),summary_checked_at:ago(20)};
+  const fresh={...official,checked_at:ago(0),summary_checked_at:ago(0),summary:{...official.summary,month_to_date:{cu:5000000,usd:'0.00'}}};
+  const saved={kira,official:stale,allowance,access_key:true,networks_not_enabled:[],schema_version:1};
+  const h=harness(saved);
+  h.context.answer=path=>path==='/api/operations'?{status:'completed',operation:'alchemy.usageCheck',checked:true,usage:{...saved,official:fresh,allowance:{...allowance,used:5000000}}}:saved;
+  await h.run('loadUsage(true)');await settle();
+  const posts=()=>h.calls.filter(([path])=>path==='/api/operations');
+  assert.deepEqual(posts(),[['/api/operations',{schema_version:1,operation:'alchemy.usageCheck',input:{stale_seconds:900},idempotency_key:'uuid-1'}]]);
+  assert.equal(h.node('usage-meter-value').textContent,'17%');assert.match(h.node('usage-meter').title,/Checked just now\.$/);
+  // The page waits 15 minutes before it asks again, even if a read still finds an older check.
+  await h.run('loadUsage(true)');await settle();assert.equal(posts().length,1);
+  await h.run('usageAutoAt=Date.now()-900000;loadUsage(true)');await settle();assert.equal(posts().length,2);
+  // A fresh check, no Access Key or a hidden page asks nothing.
+  for(const [view,hidden] of [[{...saved,official:fresh},false],[{...saved,access_key:false},false],[saved,true]]){
+    const other=harness(view);if(hidden)other.context.document={hidden:true};
+    await other.run('loadUsage(true)');await settle();
+    assert.equal(other.calls.filter(([path])=>path==='/api/operations').length,0);
+  }
+  // A quiet check that fails keeps the saved numbers and frees Check now.
+  const failing=harness(saved);failing.context.answer=path=>{if(path==='/api/operations')throw new Error('offline');return saved;};
+  await failing.run('loadUsage(true)');await settle();
+  assert.equal(failing.node('usage-checked').textContent,'Checked 20 min ago');assert.equal(failing.node('usage-check').disabled,false);
+  assert.equal(failing.node('usage-meter-value').textContent,'14%');
 });
 
 test('a sample or read-only workspace never asks for usage',async()=>{

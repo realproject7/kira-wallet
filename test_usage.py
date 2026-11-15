@@ -293,6 +293,26 @@ class ApplicationUsageTest(unittest.TestCase):
         self.assertNotIn(KEY, json.dumps(result))
         self.assertEqual(self.app.jobs.page(0, 50)['jobs'], [])
 
+    def test_an_open_app_asks_alchemy_only_when_the_saved_check_is_older_than_it_says(self):
+        kira_usage.save_access_key(KEY, self.root)
+        auto = {**self.request(), 'input': {'stale_seconds': 900}}
+        with patch.object(kira_usage, 'read_summary', return_value=(200, SUMMARY)) as read:
+            first = self.app.submit(auto)
+            again = self.app.submit(auto)
+        self.assertEqual(read.call_count, 1, 'A check younger than stale_seconds is answered from the saved one.')
+        self.assertEqual((first['checked'], again['checked']), (True, False))
+        self.assertEqual(again['usage']['official']['summary']['month_to_date']['cu'], 4210000)
+        record = json.loads((self.root / kira_usage.OFFICIAL_CACHE).read_text())
+        record['checked_at'] = '2026-11-01T00:00:00Z'; atomic(self.root / kira_usage.OFFICIAL_CACHE, record)
+        with patch.object(kira_usage, 'read_summary', return_value=(200, SUMMARY)) as read:
+            self.assertTrue(self.app.submit(auto)['checked'])
+            self.assertTrue(self.app.submit(self.request())['checked'], 'Check now always asks.')
+        self.assertEqual(read.call_count, 2)
+        for bad in (59, 86401, '900', 900.0, True, None):
+            with self.subTest(bad=bad), self.assertRaises(JobError) as error:
+                self.app.submit({**self.request(), 'input': {'stale_seconds': bad}})
+            self.assertEqual(error.exception.code, 'invalid_input')
+
     def test_a_sample_workspace_never_checks_usage(self):
         registry = json.loads((self.root / 'wallets.json').read_text()); registry['demo'] = True
         atomic(self.root / 'wallets.json', registry)

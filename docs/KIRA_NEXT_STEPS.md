@@ -1,8 +1,9 @@
 # Kira release status
 
-Updated: 2026-11-15. Candidate 1.15.6 shows Alchemy usage in the top bar (the
-share of the month's allowance) and the reset day on the Activity tile. It
-contains the unpublished 1.15.5, which shows the running version in the
+Updated: 2026-11-15. Candidate 1.15.7 keeps Alchemy usage current while the app
+is open (a check once the last is 15 minutes old). It contains the unpublished
+1.15.6, which shows Alchemy usage in the top bar (the share of the month's
+allowance) and the reset day on the Activity tile, and 1.15.5, which shows the running version in the
 sidebar footer. The operator published Kira 1.15.4. It updates platform positions at the end of
 every holdings refresh, reading every chain and wallet at once, and finds new
 Aero gauge stakes (Aeromax ranges) without a full discovery. It contains the
