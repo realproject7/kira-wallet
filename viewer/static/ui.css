@@ -16,7 +16,6 @@ h2,.section-heading h2,.activity-history-heading h2 { font-size:1.375rem; line-h
 .workspace-tabs { min-height:60px; }
 .workspace-tabs a { font-size:var(--text-ui); min-height:52px; display:inline-flex; align-items:center; gap:8px; }
 .breadcrumb a,.breadcrumb [aria-current] { max-width:28ch; }
-.sync-status { font-size:var(--text-caption); line-height:1.4; }
 .sidebar-product-note { font-size:var(--text-secondary); line-height:1.5; }
 .wallet-nav-name { font-size:var(--text-ui); font-weight:500; }
 .wallet-nav-address,.folder-link,.sidebar-bottom { font-size:var(--text-caption); }
@@ -188,7 +187,6 @@ input:focus-visible,textarea:focus-visible { outline:3px solid #ac92c44d; outlin
   .home-heading p,.view-heading p,.activity-heading p { font-size:var(--text-ui); }
   .content { padding:26px 18px; }
   .topbar { min-height:64px; padding:12px 18px; gap:8px; flex-wrap:wrap; }
-  .sync-status { flex-basis:100%; justify-content:flex-end; }
   .workspace-tabs { padding-inline:18px; gap:22px; }
   .home-summary { padding:22px; gap:22px; }
   .home-summary .total-value { font-size:2.5rem; }

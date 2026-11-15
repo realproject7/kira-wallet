@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.15.4**. Prepared candidate: **1.15.5**.
+Published npm release: **1.15.4**. Prepared candidate: **1.15.6**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -8,6 +8,29 @@ scope of their original release; they are not a current task list.
 Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
+
+## Candidate 1.15.6
+
+- **Alchemy usage in the top bar.** The status text at the right of the top bar
+  (such as "6 of 6 wallets analysed" or "Local research history") repeated what
+  each page heading already shows. A usage meter takes its place, read like the
+  usage bar in Alchemy's dashboard: the share of the month's allowance, with
+  the amounts, the reset day and the check time on hover. It opens the usage
+  details in Workspace settings. It needs the account totals from an Access Key
+  and is hidden at phone widths.
+- **Allowance and reset day.** The Activity tile now reads, for example, "41%
+  of 30M CU" and "Alchemy · resets Dec 1", and Workspace settings adds the
+  reset day. Alchemy's usage summary names a limit only when a team sets a hard
+  cap, so a month that has used compute units at no cost is measured against
+  the Free plan's 30 million compute units a month. A paid month without a cap
+  shows its total without a bar. The month resets when Alchemy's billing period
+  ends (UTC).
+- The app reads saved usage at start, when tasks change and every five minutes.
+  Reading never contacts Alchemy; the account totals still change after
+  research and with **Check now**.
+
+Version 1.15.5 was prepared and not published; 1.15.6 contains its changes,
+listed below.
 
 ## Candidate 1.15.5
 

@@ -32,7 +32,7 @@ svg {stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:r
 .wallet-nav-name {font-size:var(--text-ui);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wallet-nav-address {color:#8b92a3;font-size:var(--text-secondary);letter-spacing:0;margin-top:5px}
 .sidebar-bottom {margin-top:auto;border-top:1px solid #e5e8ed;padding-top:18px;display:flex;align-items:center;gap:6px;font-size:var(--text-caption);color:#848994;letter-spacing:0}
-.status-dot, .sync-dot {width:5px;height:5px;background:#6e9c83;border-radius:50%;flex-shrink:0}
+.status-dot {width:5px;height:5px;background:#6e9c83;border-radius:50%;flex-shrink:0}
 .read-only {margin-left:auto;color:#a0a5ae}
 main {width:calc(100% - 232px);margin-left:232px;min-width:0}
 .topbar {height:56px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 56px;color:var(--secondary);font-size:var(--text-ui)}
@@ -45,8 +45,6 @@ main {width:calc(100% - 232px);margin-left:232px;min-width:0}
 .breadcrumb a {color:var(--secondary)}
 .breadcrumb a:hover {color:var(--accent)}
 .breadcrumb [aria-current] {color:#50535e;font-weight:500}
-.sync-status {display:flex;gap:8px;align-items:center;font-size:var(--text-secondary)}
-.sync-status .sync-dot {background:var(--accent);opacity:.6}
 .content {max-width:1432px;padding:48px 56px 24px;margin:auto}
 .eyebrow {font-size:var(--text-caption);letter-spacing:.105em;font-weight:600;color:#8b8f98;margin-bottom:12px}
 .wallet-heading {display:flex;align-items:center;justify-content:space-between;gap:16px}
@@ -156,7 +154,6 @@ main {margin-left:200px;width:calc(100% - 200px)}
 main {margin-left:176px;width:calc(100% - 176px)}
 .content {padding:26px 24px 20px}
 .topbar {padding:0 24px}
-.sync-status {font-size:var(--text-caption)}
 .wallet-address {font-size:var(--text-caption)}
 h1 {font-size:34px}
 
@@ -192,7 +189,6 @@ h1 {font-size:34px}
 .wallet-nav-name {font-size:var(--text-secondary)}
 main {margin-left:0;width:100%}
 .topbar {height:48px;padding:0 24px;font-size:var(--text-caption);gap:0}
-.topbar .sync-status {display:none}
 .content {padding:24px 24px 18px}
 .wallet-heading {align-items:flex-start}
 .eyebrow {font-size:var(--text-caption);margin-bottom:10px}
@@ -468,7 +464,6 @@ main {background:#fcfbf8}
 .sidebar-label span {background:#eae5de}
 .sidebar-bottom {border-color:#e3ded6;color:#79717e}
 .read-only {color:#817a87}
-.sync-status {color:#79717e}
 .breadcrumb [aria-current] {color:#4c4654}
 .topbar {background:#fcfbf8}
 .eyebrow {color:#776885;letter-spacing:.12em;font-size:var(--text-caption)}

@@ -215,7 +215,6 @@ function renderHome(){
   const s=home.dashboard,all=s.capital_allocation?s.capital_allocation.known_value_usd:s.known_value_usd,lens=lensGroup(),total=lens?lens.value_usd:all;$('home-summary').hidden=false;
   // One platform's view: its value, the wallets and networks that hold it, its positions and tokens.
   const lensRow=allocation=>lens?(allocation?.groups||[]).find(g=>g.id===lens.id):null;
-  $('sync-label').textContent=s.analysed_wallet_count+' of '+s.wallet_count+' '+(s.wallet_count===1?'wallet':'wallets')+' analysed';
   $('home-value-label').textContent=lens?lens.name:'Total value';
   $('home-total').textContent=money(total);
   const lensSale=routeData.page?.platform_sell_out_summary;
@@ -281,7 +280,6 @@ function renderWallet(){
   const coverage=mainnets.filter(c=>c.complete).length;
   $('coverage-note').textContent=coverage+' of '+mainnets.length+' checked';if(typeof coverageVisual==='function')$('wallet-coverage-meter').innerHTML=coverageVisual(w.chains,true);
   $('coverage-note').title='Token discovery and on-chain balance checks are separate. See network coverage details for failures.';
-  $('sync-label').textContent=w.analysed_at?'Analysis '+stamp(w.analysed_at):'Not checked';
   $('price-time').textContent=w.prices_at?'Prices '+stamp(w.prices_at):'';
   const chainOptions=w.chains.filter(c=>c.assets>0||KiraView.coverageGap(c));
   if(selectedChain!=='all'&&!chainOptions.some(c=>String(c.id)===selectedChain))selectedChain='all';
@@ -517,13 +515,13 @@ function renderDetail(){
   const network=token?.network||(state.paged?routeData.network:state.details.networks.find(c=>c.id===selectedNetwork));
   const record=selectedView==='token'?token:network;
   if(!record){
-    renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Portfolio',href:'#/home'}]),{label:'Research detail'}]);$('sync-label').textContent='Latest recorded research';
+    renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Portfolio',href:'#/home'}]),{label:'Research detail'}]);
     $('detail-view').innerHTML=routeLoading?'<div class="empty"><h3>Loading saved detail…</h3></div>':'<div class="empty"><h3>No recorded detail for this selection</h3><p>Return Home or retry the saved research above.</p></div>';
     document.title='Research detail · Wallets';return;
   }
   const label=token?token.symbol:network.name,isTestnet=record.environment==='testnet';
   renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Portfolio',href:'#/home'}]),...(token?[{label:network.name,href:networkHref(network.id)}]:[]),{label}]);
-  $('sync-label').textContent='Across '+context.wallets.length+' registered wallets';document.title=label+' · Kira Wallet';
+  document.title=label+' · Kira Wallet';
   const excluded=token&&token.included_in_totals===false;
   const note=excluded?'Reported spot estimate, excluded from portfolio totals. Sellability unverified.':isTestnet?'Testnet holdings are excluded from USD totals.':'Recorded spot estimates. '+integer(record.unpriced_count)+' unpriced holdings are excluded.';
   const value=excluded?record.value_usd:record.capital_allocation?record.capital_allocation.known_value_usd:record.value_usd;

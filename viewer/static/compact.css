@@ -578,7 +578,16 @@ a.market-row:hover { background:#faf7fc; border-radius:10px; }
 .activity-usage strong { white-space:nowrap; }
 .activity-usage > span:last-child { flex:1; min-width:0; }
 .activity-usage .usage-tile-bar { width:100%; max-width:160px; height:4px; margin:8px 0 0; }
+.usage-tile-figure { display:flex; align-items:baseline; flex-wrap:wrap; gap:0 6px; }
+.activity-summary .usage-tile-figure small { margin:0; white-space:nowrap; }
 .activity-facts > .activity-usage-fact { grid-column:1/-1; }
+/* Alchemy usage in the global bar, read like the usage bar in Alchemy's dashboard. It opens the usage details. */
+.usage-meter { display:inline-flex; align-items:center; gap:8px; flex:none; min-height:40px; padding:0 12px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--secondary); font:inherit; font-size:var(--text-caption); white-space:nowrap; cursor:pointer; }
+.usage-meter:hover { border-color:#cfc3db; color:var(--ink); }
+.usage-meter .usage-meter-bar { width:64px; height:6px; }
+.usage-meter-value { color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums; }
+/* On a phone the bar has no room beside search and Connect wallet; the Activity tile keeps the usage. */
+@media(max-width:480px) { .usage-meter { display:none; } }
 @media(max-width:1180px) { .activity-summary:has(> .activity-usage:not([hidden])) { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 .usage-facts span { white-space:nowrap; }
 @media(max-width:480px) {

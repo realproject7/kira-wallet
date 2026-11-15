@@ -55,7 +55,7 @@
 .catalog-filter-label { display: block; font-size: var(--text-caption); color: var(--muted); margin-bottom: 4px; }
 .token-catalog-controls { align-items: end; }
 .connection-button { margin-left: auto; white-space: nowrap; }
-@media (max-width: 600px) {.topbar .sync-status { display: none; }
+@media (max-width: 600px) {
 .catalog-chain { grid-column: 1 / -1; }
 .sidebar-product-note { display: none; }
 }

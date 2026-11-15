@@ -224,7 +224,9 @@ async function pollWorkspace(){
     if(!localSession){const response=await fetch('/api/session',{cache:'no-store',signal:AbortSignal.timeout(5000)});if(!response.ok)throw Error('Local session unavailable');localSession=await response.json();if(state)renderView();}
     const next=await readAPI('/api/status');workspaceStatus=next;
     if((!state||state.data_revision!==next.data_revision)&&await poll()===false)throw Error('Saved research unavailable');
-    if(localSession.controls&&(lastJobsRevision!==next.jobs_revision||!jobsConnected)){await pollJobs();if(jobsConnected)lastJobsRevision=next.jobs_revision;}
+    const jobsChanged=lastJobsRevision!==next.jobs_revision;
+    if(localSession.controls&&(jobsChanged||!jobsConnected)){await pollJobs();if(jobsConnected)lastJobsRevision=next.jobs_revision;}
+    if(localSession.controls&&typeof pollUsage==='function')pollUsage(jobsChanged);
     if(localSession.controls&&typeof loadSetupReadiness==='function'&&!setupReadiness&&Date.now()>=setupRetryAfter)await loadSetupReadiness();
     if(localSession.controls&&typeof loadOws==='function'&&!owsState&&!state?.demo)await loadOws().catch(()=>{});
     refreshControlState();$('connection').textContent='Connected';
@@ -349,23 +351,44 @@ function usageAgo(value){
 }
 function usagePercent(value){return value>0&&value<1?'<1%':Math.round(value)+'%';}
 function usageNames(rows){const names=rows.map(row=>row.name||'Network '+row.chain_id);return names.length<3?names.join(' and '):names.slice(0,-1).join(', ')+' and '+names.at(-1);}
+// The month's allowance from the app: the team's cap, or the Free plan's monthly compute units
+// when the month has cost nothing. The month resets when Alchemy's billing period ends (UTC).
+function usageAllowance(view){
+  const a=view?.allowance,limit=Number(a?.limit),used=Number(a?.used);
+  return a&&limit>0&&a.used!=null&&Number.isFinite(used)?{...a,limit,used,percent:Math.min(100,Math.max(0,used/limit*100))}:null;
+}
+function usageLimit(a){return a.unit==='USD'?'$'+usageCompact.format(a.limit):usageCompact.format(a.limit)+' CU';}
+function usageOf(a){return (a.unit==='USD'?'$':'')+usageCompact.format(a.used)+' of '+usageLimit(a);}
+function usageReset(view){const at=Date.parse(view?.allowance?.resets_at||'');return Number.isFinite(at)?new Date(at).toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'UTC'}):'';}
 function loadUsage(force=false){
   if(!localSession?.controls||typeof state!=='undefined'&&state?.demo===true)return Promise.resolve(null);
   if(!force&&usageView&&Date.now()-usageReadAt<30000)return Promise.resolve(usageView);
   if(!usageReading)usageReading=localAPI('/api/usage').then(view=>{usageView=view;usageReadAt=Date.now();return view;},()=>usageView).finally(()=>{usageReading=null;renderUsage();});
   return usageReading;
 }
+// The top bar meter reads saved usage when the app starts, when tasks change and every five minutes.
+// Reading never contacts Alchemy; the account totals change after research or Check now.
+function pollUsage(changed){return changed||!usageReadAt||Date.now()-usageReadAt>=300000?loadUsage():Promise.resolve(usageView);}
+function renderUsageMeter(view,allowance,reset){
+  const official=view?.official,summary=official?.summary,meter=$('usage-meter');
+  meter.hidden=!summary;if(!summary)return;
+  const checked=official.summary_checked_at||official.checked_at;
+  $('usage-meter-bar').hidden=!allowance;$('usage-meter-bar').value=allowance?.percent??0;
+  $('usage-meter-value').textContent=allowance?usagePercent(allowance.percent):usageAmount(summary.month_to_date?.cu);
+  const text=(allowance?usageOf(allowance)+(allowance.basis==='free_plan'?' (Free plan)':''):usageAmount(summary.month_to_date?.cu))+' used this month.'+(reset?' Resets '+reset+'.':'')+(checked?' Checked '+usageAgo(checked)+'.':'');
+  meter.title=text;meter.setAttribute('aria-label','Alchemy usage. '+text+' Open usage details.');
+}
 function renderUsage(){
-  const view=usageView,missing=view?.networks_not_enabled||[];
+  const view=usageView,missing=view?.networks_not_enabled||[],allowance=usageAllowance(view),reset=usageReset(view);
   $('alchemy-usage').hidden=!view;$('activity-usage').hidden=!view;$('usage-networks').hidden=!missing.length;
+  renderUsageMeter(view,allowance,reset);
   if(!view)return;
   const totals=view.kira?.totals||{},last=view.kira?.last_run,official=view.official,summary=official?.summary;
-  const limit=summary?.usage_limit,cap=Number(limit?.limit),used=Number(limit?.used??summary?.month_to_date?.cu);
-  const percent=cap>0&&Number.isFinite(used)?Math.min(100,used/cap*100):null,usd=Number(summary?.month_to_date?.usd);
+  const percent=allowance?.percent??null,usd=Number(summary?.month_to_date?.usd);
   $('usage-account').hidden=!summary;
   $('usage-account').innerHTML=summary?'<div class="usage-account-top"><span>Alchemy account · this month</span><strong>'+escapeHTML(usageAmount(summary.month_to_date?.cu))+'</strong></div>'
-    +(percent!=null?'<progress class="allocation-progress usage-progress" value="'+Math.min(used,cap)+'" max="'+cap+'" aria-label="'+escapeHTML(usagePercent(percent)+' of the monthly limit used')+'"></progress>':'')
-    +'<p class="form-note usage-facts">'+[percent!=null?usagePercent(percent)+' of '+usageCompact.format(cap)+' CU':null,usd>0?'$'+usd.toFixed(2):null,'7 days '+usageAmount(summary.last_7_days?.cu),'30 days '+usageAmount(summary.last_30_days?.cu)].filter(Boolean).map(text=>'<span>'+escapeHTML(text)+'</span>').join(' · ')+'</p>':'';
+    +(allowance?'<progress class="allocation-progress usage-progress" value="'+Math.min(allowance.used,allowance.limit)+'" max="'+allowance.limit+'" aria-label="'+escapeHTML(usagePercent(percent)+' of the monthly limit used')+'"></progress>':'')
+    +'<p class="form-note usage-facts">'+[allowance?usagePercent(percent)+' of '+usageLimit(allowance)+(allowance.basis==='free_plan'?' (Free plan)':''):null,reset?'Resets '+reset:null,usd>0?'$'+usd.toFixed(2):null,'7 days '+usageAmount(summary.last_7_days?.cu),'30 days '+usageAmount(summary.last_30_days?.cu)].filter(Boolean).map(text=>'<span>'+escapeHTML(text)+'</span>').join(' · ')+'</p>':'';
   $('usage-kira').innerHTML=[['Today',totals.today],['7 days',totals.last_7_days],['This month',totals.this_month]].map(([label,row])=>'<div><dt>'+label+'</dt><dd>'+escapeHTML(usageAmount(row?.cu??0,true))+'</dd></div>').join('');
   $('usage-last-run').textContent=last?'Last run '+usageAmount(last.cu,true)+(last.wallets>1?' for '+last.wallets+' wallets':'')+' · '+usageAgo(last.last):'No Alchemy requests recorded yet.';
   $('usage-basis').textContent=view.kira?.basis||'';
@@ -373,10 +396,15 @@ function renderUsage(){
   const checked=summary&&(official.summary_checked_at||official.checked_at);
   $('usage-checked').textContent=!view.access_key?'':official?.ok===false?(official.error?.hint||official.error?.message||'The last check failed.')+(checked?' Showing the check from '+usageAgo(checked)+'.':''):checked?'Checked '+usageAgo(checked):'Not checked yet';
   $('usage-networks-text').textContent=missing.length?usageNames(missing)+(missing.length===1?' is':' are')+' not enabled in your Alchemy app. Kira reads '+(missing.length===1?'it':'them')+' from public RPC.':'';
-  // The Activity tile: the account's month when connected, otherwise Kira's own estimate.
-  $('activity-usage-value').textContent=summary?usageAmount(summary.month_to_date?.cu):usageAmount(totals.this_month?.cu??0,true);
+  // The Activity tile: the share of the month's allowance and the reset day when known,
+  // otherwise the account's month, otherwise Kira's own estimate.
+  $('activity-usage-value').textContent=allowance?usagePercent(percent):summary?usageAmount(summary.month_to_date?.cu):usageAmount(totals.this_month?.cu??0,true);
+  $('activity-usage-of').hidden=!allowance;$('activity-usage-of').textContent=allowance?'of '+usageLimit(allowance):'';
+  $('activity-usage-label').textContent=summary&&reset?'Alchemy · resets '+reset:'Alchemy this month';
+  $('activity-usage').title=summary?(allowance?usageOf(allowance):usageAmount(summary.month_to_date?.cu))+' used this month'+(reset?'. Resets '+reset:'')+'.':'Kira\'s own estimate this month. Other apps on the same account are not included.';
   const bar=$('activity-usage-bar');bar.hidden=percent==null;bar.value=percent??0;bar.setAttribute('aria-label',percent==null?'':usagePercent(percent)+' of the monthly limit used');
 }
+function showUsageDetails(){openWorkspaceSettings('data');requestAnimationFrame(()=>$('alchemy-usage').scrollIntoView?.({block:'nearest'}));}
 $('usage-check').addEventListener('click',async()=>{
   if(usageChecking||!localSession?.controls)return;
   usageChecking=true;$('usage-check').disabled=true;$('usage-checked').textContent='Checking with Alchemy…';
@@ -387,7 +415,8 @@ $('usage-check').addEventListener('click',async()=>{
   }catch(error){message=error.message;}
   usageChecking=false;$('usage-check').disabled=false;renderUsage();if(message)$('usage-checked').textContent=message;
 });
-$('activity-usage').addEventListener('click',()=>{openWorkspaceSettings('data');requestAnimationFrame(()=>$('alchemy-usage').scrollIntoView?.({block:'nearest'}));});
+$('activity-usage').addEventListener('click',showUsageDetails);
+$('usage-meter').addEventListener('click',showUsageDetails);
 $('rpc-add').addEventListener('click',()=>{
   $('rpc-error').textContent='';const chain_id=Number($('rpc-network').value),url_env=$('rpc-reference').value.trim();
   if(!rpcNetworks.some(network=>network.chain_id===chain_id)){$('rpc-error').textContent='Choose a supported network.';return;}

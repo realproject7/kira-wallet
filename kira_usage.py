@@ -282,6 +282,37 @@ def official(root=None):
         return None
 
 
+# Alchemy's Free plan includes 30 million compute units each calendar month (UTC), per its
+# support article "What is included in the Free Tier?" (2026-08-25). The usage summary names a
+# limit only when the team set a hard cap, and Pay As You Go bills from the first unit, so a
+# month that has used compute units without cost is measured against the Free plan allowance.
+FREE_PLAN_CU = 30_000_000
+
+
+def allowance(record):
+    """What the month's usage counts against and when the month resets, from the last good check."""
+    summary = (record or {}).get('summary') if isinstance(record, dict) else None
+    if not isinstance(summary, dict):
+        return None
+    month = summary.get('month_to_date') or {}
+    period = summary.get('billing_period') or {}
+    result = {'unit': None, 'limit': None, 'used': None, 'basis': None, 'resets_at': period.get('endTime')}
+    cap = summary.get('usage_limit')
+    if isinstance(cap, dict) and (cap.get('limit') or 0) > 0:
+        unit = cap.get('unit') or 'CU'
+        used = cap.get('used') if cap.get('used') is not None else (month.get('cu') if unit == 'CU' else None)
+        result.update(unit=unit, limit=cap['limit'], used=used, basis='cap')
+        return result
+    try:
+        unpaid = month.get('cu') is not None and month['cu'] > 0 and float(month.get('usd')) == 0
+    except (TypeError, ValueError):
+        unpaid = False
+    if unpaid:
+        result.update(unit='CU', limit=FREE_PLAN_CU, used=month['cu'], basis='free_plan')
+    return result
+
+
 def view(root=None):
     """Everything the app shows about usage, from saved records only."""
-    return {'kira': summary(root), 'official': official(root), 'access_key': access_key(root) is not None}
+    record = official(root)
+    return {'kira': summary(root), 'official': record, 'allowance': allowance(record), 'access_key': access_key(root) is not None}
