@@ -2,6 +2,7 @@
 import contextlib
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -86,6 +87,11 @@ class BatchRefreshTest(unittest.TestCase):
                 patch('token_images.refresh_catalog') as artwork, contextlib.redirect_stdout(output):
             code = batch_refresh.run(self.jobs, 'fast')
         self.assertEqual(code, 1, 'A failed wallet is reported.')
+        # The batch names its jobs in the usage ledger, and its id does not outlive the run.
+        usage = [json.loads(line) for path in (self.root / 'usage').glob('alchemy-*.jsonl') for line in path.read_text().splitlines()]
+        self.assertEqual([(row['source'], row['jobs'], row['scope']) for row in usage], [('batch', self.jobs, 'fast')])
+        self.assertTrue(usage[0]['batch'].startswith('batch-'))
+        self.assertNotIn('KIRA_BATCH_ID', os.environ)
         lines = [json.loads(line) for line in output.getvalue().splitlines()]
         folders = [self.root / 'snapshots/jobs' / job for job in self.jobs]
         # The cancelled wallet was not prepared; every other wallet ran under its own job.

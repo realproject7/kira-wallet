@@ -174,6 +174,15 @@ or enter the key at the hidden local terminal prompt:
 kira connect alchemy
 ```
 
+To show the account's own Alchemy usage in Workspace settings, enter an Access
+Key with Usage read access at the same kind of hidden prompt:
+
+```sh
+kira connect alchemy-usage
+```
+
+`kira connect alchemy-usage --remove` forgets it.
+
 See [Alchemy setup](ALCHEMY_SETUP.md). Keep credentials out of agent messages
 and command arguments. An agent can configure references to environment names
 that the human has already prepared:

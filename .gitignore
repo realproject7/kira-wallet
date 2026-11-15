@@ -27,6 +27,7 @@ measure-discovered-pools.cjs
 build-report.py
 docs/BL*.md
 /jobs/
+/usage/
 .jobs.lock
 .job-worker.lock
 .jobs-worker.log

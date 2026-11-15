@@ -62,6 +62,9 @@ def atomic(path, data):
 # A batch refresh works on several wallets in threads. Each thread names its job here,
 # so progress lines and publications go to the right wallet.
 CONTEXT=threading.local()
+# Usage lines name the job a request served, also inside a batch's worker threads.
+import kira_usage
+kira_usage.current_job=lambda:getattr(CONTEXT,'job_id',None) or os.environ.get('KIRA_JOB_ID')
 PRINT_LOCK=threading.Lock()
 
 
@@ -808,7 +811,7 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
             'rpc_status':c.get('rpc_status','unavailable' if c else 'pending'),'native_symbol':NATIVE.get(n['chain_id'],'ETH'),
             'native_balance':c.get('native_balance'),'native_observed_at':c.get('observed_at'),
             'native_block_number':c.get('block_number'),'native_block_hash':c.get('block_hash'),
-            'rpc_endpoint_indices':c.get('rpc_endpoint_indices',[]),'rpc_routes':c.get('rpc_routes',[]),
+            'rpc_endpoint_indices':c.get('rpc_endpoint_indices',[]),'rpc_routes':c.get('rpc_routes',[]),'endpoint_issues':c.get('endpoint_issues',[]),
             'head_age_seconds':c.get('head_age_seconds'),'head_status':c.get('head_status'),
             'general_erc20_discovery':'indexer_checked' if d.get('complete') else 'incomplete',
             'indexer_source':d.get('source'),'indexer_complete':d.get('complete',False),'indexer_pages':len(d.get('pages',[])),
@@ -1159,7 +1162,7 @@ def finish(wallet, folder, networks, discovered, *, holdings_source=None):
              'native_observed_at':c['observed_at'],'native_block_number':c.get('block_number'),
              'native_block_hash':c.get('block_hash'),
              'rpc_endpoint_indices':c.get('rpc_endpoint_indices',[]),
-             'rpc_routes':c.get('rpc_routes',[]),
+             'rpc_routes':c.get('rpc_routes',[]),'endpoint_issues':c.get('endpoint_issues',[]),
              'head_age_seconds':c.get('head_age_seconds'),'head_status':c.get('head_status'),
              'general_erc20_discovery':'indexer_checked' if d['complete'] else 'incomplete',
              'indexer_source':d['source'],'indexer_pages':len(d['pages']),'indexer_complete':d['complete'],

@@ -129,6 +129,8 @@ edit agent-host configuration unless the user requested that change.
 
 Alchemy is required for new research. A human connects it in the local app or
 through `kira connect alchemy`, which uses a hidden local terminal prompt.
+An Access Key for the account's usage totals goes through
+`kira connect alchemy-usage` the same way.
 Do not request, inspect or include credential values in messages or arguments.
 You can configure already-prepared references:
 

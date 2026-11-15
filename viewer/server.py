@@ -125,7 +125,7 @@ class Handler(BaseHTTPRequestHandler):
                 elif path=='/api/network':result=app.views.network(integer('chain_id'),folder_id=text('folder_id'))
                 else:result=app.views.holdings(integer('offset',0),integer('limit',100),folder_id=text('folder_id'),**filters())
                 self.json(result);return
-            if path.startswith('/api/jobs') or path in ('/api/job-history','/api/onboarding','/api/snapshots','/api/snapshot','/api/compare','/api/settings','/api/ows','/api/removed-wallets'):
+            if path.startswith('/api/jobs') or path in ('/api/job-history','/api/onboarding','/api/snapshots','/api/snapshot','/api/compare','/api/settings','/api/ows','/api/removed-wallets','/api/usage'):
                 if not self.authenticated():return
                 app=self.application()
                 if path=='/api/jobs':result=app.jobs.page(integer('offset',0),integer('limit',50))['jobs']
@@ -142,6 +142,9 @@ class Handler(BaseHTTPRequestHandler):
                     from onboarding import readiness
                     result=readiness()
                 elif path=='/api/settings':result=app.settings()
+                elif path=='/api/usage':
+                    import kira_usage
+                    result=app.usage() if not text('job') else {'job':kira_usage.job_usage(text('job'),app.root),'schema_version':1}
                 elif path=='/api/removed-wallets':
                     from kira_wallets import removed_page
                     result=removed_page(app.root,integer('offset',0),integer('limit',50),text('query',''))

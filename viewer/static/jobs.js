@@ -332,9 +332,61 @@ async function openWorkspaceSettings(section='data'){
   if(!$('workspace-settings-dialog').open)$('workspace-settings-dialog').showModal();
   rpcLoaded=false;$('rpc-fields').disabled=true;$('rpc-error').textContent='';$('rpc-status').textContent='';$('rpc-activity').hidden=true;
   $('workspace-data-summary').textContent='Checking the saved connection…';
+  loadUsage(true);
   try{const request=localAPI('/api/settings');if(typeof loadH402Settings==='function')loadH402Settings(false,request);const config=await request;if(revision===workspaceSettingsRevision&&$('workspace-settings-dialog').open){$('workspace-data-summary').textContent=connectionSummary(config);loadRpcSettings(config);}}
   catch{if(revision===workspaceSettingsRevision)$('workspace-data-summary').textContent='Could not check the data connection. Reopen to retry.';}
 }
+// Alchemy usage. Kira's estimate comes from its own request ledger; the account totals come
+// from the last official check, which needs an Access Key entered in the terminal.
+const usageCompact=new Intl.NumberFormat('en-US',{notation:'compact',maximumSignificantDigits:3});
+let usageView=null,usageReadAt=0,usageReading=null,usageChecking=false;
+function usageAmount(cu,estimate=false){return typeof cu!=='number'?'—':(estimate&&cu>0?'≈ ':'')+usageCompact.format(cu)+' CU';}
+function usageAgo(value){
+  const at=Date.parse(value||'');if(!Number.isFinite(at))return '';
+  const minutes=Math.max(0,Math.round((Date.now()-at)/60000));
+  return minutes<1?'just now':minutes<60?minutes+' min ago':minutes<1440?Math.round(minutes/60)+' h ago':stamp(value);
+}
+function usagePercent(value){return value>0&&value<1?'<1%':Math.round(value)+'%';}
+function usageNames(rows){const names=rows.map(row=>row.name||'Network '+row.chain_id);return names.length<3?names.join(' and '):names.slice(0,-1).join(', ')+' and '+names.at(-1);}
+function loadUsage(force=false){
+  if(!localSession?.controls||typeof state!=='undefined'&&state?.demo===true)return Promise.resolve(null);
+  if(!force&&usageView&&Date.now()-usageReadAt<30000)return Promise.resolve(usageView);
+  if(!usageReading)usageReading=localAPI('/api/usage').then(view=>{usageView=view;usageReadAt=Date.now();return view;},()=>usageView).finally(()=>{usageReading=null;renderUsage();});
+  return usageReading;
+}
+function renderUsage(){
+  const view=usageView,missing=view?.networks_not_enabled||[];
+  $('alchemy-usage').hidden=!view;$('activity-usage').hidden=!view;$('usage-networks').hidden=!missing.length;
+  if(!view)return;
+  const totals=view.kira?.totals||{},last=view.kira?.last_run,official=view.official,summary=official?.summary;
+  const limit=summary?.usage_limit,cap=Number(limit?.limit),used=Number(limit?.used??summary?.month_to_date?.cu);
+  const percent=cap>0&&Number.isFinite(used)?Math.min(100,used/cap*100):null,usd=Number(summary?.month_to_date?.usd);
+  $('usage-account').hidden=!summary;
+  $('usage-account').innerHTML=summary?'<div class="usage-account-top"><span>Alchemy account · this month</span><strong>'+escapeHTML(usageAmount(summary.month_to_date?.cu))+'</strong></div>'
+    +(percent!=null?'<progress class="allocation-progress usage-progress" value="'+Math.min(used,cap)+'" max="'+cap+'" aria-label="'+escapeHTML(usagePercent(percent)+' of the monthly limit used')+'"></progress>':'')
+    +'<p class="form-note usage-facts">'+[percent!=null?usagePercent(percent)+' of '+usageCompact.format(cap)+' CU':null,usd>0?'$'+usd.toFixed(2):null,'7 days '+usageAmount(summary.last_7_days?.cu),'30 days '+usageAmount(summary.last_30_days?.cu)].filter(Boolean).map(text=>'<span>'+escapeHTML(text)+'</span>').join(' · ')+'</p>':'';
+  $('usage-kira').innerHTML=[['Today',totals.today],['7 days',totals.last_7_days],['This month',totals.this_month]].map(([label,row])=>'<div><dt>'+label+'</dt><dd>'+escapeHTML(usageAmount(row?.cu??0,true))+'</dd></div>').join('');
+  $('usage-last-run').textContent=last?'Last run '+usageAmount(last.cu,true)+(last.wallets>1?' for '+last.wallets+' wallets':'')+' · '+usageAgo(last.last):'No Alchemy requests recorded yet.';
+  $('usage-basis').textContent=view.kira?.basis||'';
+  $('usage-check').hidden=!view.access_key;$('usage-connect').hidden=view.access_key===true;
+  const checked=summary&&(official.summary_checked_at||official.checked_at);
+  $('usage-checked').textContent=!view.access_key?'':official?.ok===false?(official.error?.hint||official.error?.message||'The last check failed.')+(checked?' Showing the check from '+usageAgo(checked)+'.':''):checked?'Checked '+usageAgo(checked):'Not checked yet';
+  $('usage-networks-text').textContent=missing.length?usageNames(missing)+(missing.length===1?' is':' are')+' not enabled in your Alchemy app. Kira reads '+(missing.length===1?'it':'them')+' from public RPC.':'';
+  // The Activity tile: the account's month when connected, otherwise Kira's own estimate.
+  $('activity-usage-value').textContent=summary?usageAmount(summary.month_to_date?.cu):usageAmount(totals.this_month?.cu??0,true);
+  const bar=$('activity-usage-bar');bar.hidden=percent==null;bar.value=percent??0;bar.setAttribute('aria-label',percent==null?'':usagePercent(percent)+' of the monthly limit used');
+}
+$('usage-check').addEventListener('click',async()=>{
+  if(usageChecking||!localSession?.controls)return;
+  usageChecking=true;$('usage-check').disabled=true;$('usage-checked').textContent='Checking with Alchemy…';
+  let message=null;
+  try{
+    const result=await localAPI('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schema_version:1,operation:'alchemy.usageCheck',input:{},idempotency_key:crypto.randomUUID()}),signal:AbortSignal.timeout(25000)});
+    if(result.usage){usageView=result.usage;usageReadAt=Date.now();}
+  }catch(error){message=error.message;}
+  usageChecking=false;$('usage-check').disabled=false;renderUsage();if(message)$('usage-checked').textContent=message;
+});
+$('activity-usage').addEventListener('click',()=>{openWorkspaceSettings('data');requestAnimationFrame(()=>$('alchemy-usage').scrollIntoView?.({block:'nearest'}));});
 $('rpc-add').addEventListener('click',()=>{
   $('rpc-error').textContent='';const chain_id=Number($('rpc-network').value),url_env=$('rpc-reference').value.trim();
   if(!rpcNetworks.some(network=>network.chain_id===chain_id)){$('rpc-error').textContent='Choose a supported network.';return;}

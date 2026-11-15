@@ -249,5 +249,20 @@ class JobsHTTPTest(unittest.TestCase):
         self.assertEqual(len(registry['wallets']),2)
         self.assertEqual(registry['wallets'][-1]['tags'],['  Synthetic exact name  '])
         self.assertNotIn('latest_snapshot',registry['wallets'][-1])
+    def test_usage_needs_the_session_and_reads_saved_records_only(self):
+        import kira_usage
+        self.assertEqual(self.request('/api/usage',headers={'X-Kira-Session':''},method='GET')[0],403)
+        kira_usage.append({'at':kira_usage.now(),'source':'node','job':'job-1','batch':None,'cu':120,'requests':5,'methods':{'eth_call':[5,120]}},self.root)
+        with patch.dict('os.environ',{}),patch.object(kira_usage,'read_summary',side_effect=AssertionError('Reading usage contacted Alchemy')):
+            __import__('os').environ.pop(kira_usage.ACCESS_ENV,None)
+            status,view=self.request('/api/usage',method='GET')
+            self.assertEqual(status,200)
+            self.assertEqual(view['kira']['totals']['this_month'],{'cu':120,'requests':5})
+            self.assertEqual((view['access_key'],view['official'],view['networks_not_enabled']),(False,None,[]))
+            self.assertEqual(self.request('/api/usage?job=job-1',method='GET'),(200,{'job':{'cu':120,'requests':5},'schema_version':1}))
+            self.assertEqual(self.request('/api/usage?job=other',method='GET'),(200,{'job':None,'schema_version':1}))
+            self.assertEqual(self.request('/api/usage?job=a&job=b',method='GET')[0],400)
+            status,refused=self.request(body=json.dumps({'schema_version':1,'operation':'alchemy.usageCheck','input':{},'idempotency_key':'usage-1'}).encode())
+            self.assertEqual(status,400);self.assertIn('usage_key_missing',refused)
 
 if __name__=='__main__':unittest.main()

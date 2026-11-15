@@ -68,6 +68,9 @@ def fetch_bounded(url, timeout, body=None, *, headers=None, envelope=False):
         reader.start();outgoing.close()
         if not incoming.poll(max(0,end-time.monotonic())):return {'error':{'code':'deadline'}}
         body=incoming.recv_bytes(4_000_000)
+        # A body arrived, so the provider answered (and may bill it).
+        from kira_usage import note_request
+        note_request(url)
         if time.monotonic()>end:return {'error':{'code':'deadline'}}
         try:return json.loads(body)
         except ValueError:

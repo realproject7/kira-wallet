@@ -160,6 +160,17 @@ class Application:
     def status(self):
         return {'schema_version':1,'data_revision':self.views.data_revision(),**self.jobs.status()}
 
+    def usage(self):
+        """Alchemy usage from saved records only: Kira's ledger, the last official check, networks to enable."""
+        import kira_usage
+        names={n['chain_id']:n.get('name',n['network']) for n in json.loads((Path(__file__).resolve().parent/'sources/rpc-candidates.json').read_text())}
+        found={}
+        for wallet in self.views.refresh()['wallets']:
+            for chain in wallet.get('chains',[]):
+                for issue in chain.get('endpoint_issues') or []:
+                    found.setdefault(issue['network'],{'network':issue['network'],'name':names.get(chain['id'],chain.get('name')),'chain_id':chain['id']})
+        return {**kira_usage.view(self.root),'networks_not_enabled':sorted(found.values(),key=lambda row:row['name'] or ''),'schema_version':1}
+
     def submit(self,request,*,launch=True):
         registry=json.loads((self.root/'wallets.json').read_text())
         operation=request.get('operation') if isinstance(request,dict) else None
@@ -169,6 +180,13 @@ class Application:
         if operation in {row[0] for row in FOLDER_ACTIONS.values()}:
             from kira_folders import action
             with self.jobs.locked():return action(self.jobs,request)
+        if operation=='alchemy.usageCheck':
+            if registry.get('demo'):raise JobError('demo_read_only','Sample workspaces never contact providers.')
+            fields(request,['schema_version','operation','input','idempotency_key']);fields(request['input'],[])
+            import kira_usage
+            if not kira_usage.access_key(self.root):raise JobError('usage_key_missing','Connect an Alchemy Access Key first: run kira connect alchemy-usage in your terminal.')
+            kira_usage.check_official(self.root)
+            return {'status':'completed','operation':operation,'usage':self.usage()}
         if operation in ('token.policy','token.riskCheck'):
             if registry.get('demo') and operation=='token.riskCheck':raise JobError('demo_read_only','Sample portfolios never contact risk providers.')
             fields(request,['schema_version','operation','input','idempotency_key'])

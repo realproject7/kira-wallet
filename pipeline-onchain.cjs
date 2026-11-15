@@ -629,7 +629,7 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity,
     }
   }
   row.rpc_endpoint_indices=h.rpcEndpointsUsed(rpcClient);
-  row.rpc_routes=h.rpcRoutes(rpcClient);
+  row.rpc_routes=h.rpcRoutes(rpcClient);row.endpoint_issues=h.endpointIssues(n.chain_id);
   row.endpoint_index=row.rpc_endpoint_indices.length===1?row.rpc_endpoint_indices[0]:null;
   write(file,row);
   emitChain(row,batch?.job_id);
@@ -1185,7 +1185,7 @@ async function prefetch(c,contracts,block,lanes){
 }
 function unavailableRow(w,n,error){
   const row={wallet:w.input.wallet,chain_id:n.chain_id,network:n.network,inventory_policy:w.input.inventory_policy||'full_registry',phase:'enrichment',
-    observed_at:stamp(),status:'unavailable',tokens:[],native_balance:null,error:h.safeError(error),rpc_endpoint_indices:[],rpc_routes:[],endpoint_index:null};
+    observed_at:stamp(),status:'unavailable',tokens:[],native_balance:null,error:h.safeError(error),rpc_endpoint_indices:[],rpc_routes:[],endpoint_issues:h.endpointIssues(n.chain_id),endpoint_index:null};
   write(path.join(w.folder,`chain-${n.chain_id}.json`),row);emitChain(row,w.job_id);
   return row;
 }

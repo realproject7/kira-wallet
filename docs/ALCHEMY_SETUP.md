@@ -57,6 +57,42 @@ unknown. Bounded checks leave time to save their completed results.
 original blocks to estimate a representative sale or redemption. It is not
 required for tokens, prices or logos and does not expand the holdings inventory.
 
+## 4. Check usage
+
+Workspace settings → Connection shows **Alchemy usage**:
+
+- **Kira estimate**: today, the last seven days, this month and the last run.
+  Kira records its own Alchemy requests in `usage/alchemy-YYYY-MM.jsonl` in
+  the workspace and prices them from Alchemy's
+  [compute unit costs](https://www.alchemy.com/docs/reference/compute-unit-costs).
+  Refused (403) and throttled (429) requests cost nothing and are not counted.
+  Other apps on the same account are not included.
+- **Alchemy account**: the account's own month to date, last 7 and 30 days
+  and, when the plan has one, the monthly limit. This needs an Access Key with
+  Usage read access. Create one in the dashboard **Security** tab, then run:
+
+  ```sh
+  kira connect alchemy-usage
+  ```
+
+  Paste it at the hidden prompt. Kira checks it once and stores it in the
+  workspace's private `.secrets` folder. It asks Alchemy again after research
+  finishes (at most once a minute) and when you choose **Check now**. The app
+  API key from step 1 cannot read usage. `kira connect alchemy-usage --remove`
+  forgets the Access Key.
+
+Activity shows the month's total on a tile, and each task's details show what
+it used. A batch refresh shares one total across its wallets.
+
+## Networks your app has not enabled
+
+An Alchemy app serves only the networks enabled for it. For any other network,
+Alchemy refuses the request ("... is not enabled for this app"). Kira sets
+that endpoint aside for the rest of the run and reads the network from its
+public RPC, waiting for it instead of retrying Alchemy. Workspace settings
+names these networks. Enable them for the app in the Alchemy dashboard to give
+Kira a second node for them.
+
 ## Troubleshooting
 
 - Run the command in the workspace you are viewing.

@@ -216,6 +216,21 @@ def main(argv=None):
 
 
 def run(job_ids, scope):
+    """Every Alchemy request of this batch, here and in its Node helper, counts toward one usage group."""
+    import uuid, kira_usage
+    previous = os.environ.get('KIRA_BATCH_ID')
+    os.environ['KIRA_BATCH_ID'] = 'batch-' + uuid.uuid4().hex[:16]
+    try:
+        kira_usage.note_batch(os.environ['KIRA_BATCH_ID'], list(dict.fromkeys(job_ids)), scope, ROOT)
+        return refresh(job_ids, scope)
+    finally:
+        if previous is None:
+            os.environ.pop('KIRA_BATCH_ID', None)
+        else:
+            os.environ['KIRA_BATCH_ID'] = previous
+
+
+def refresh(job_ids, scope):
     started = time.monotonic()
     timings = {}
     registry = read(ROOT / 'wallets.json')

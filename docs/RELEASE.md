@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.13.2**. Prepared candidate: **1.15.1**.
+Published npm release: **1.13.2**. Prepared candidate: **1.15.2**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -8,6 +8,30 @@ scope of their original release; they are not a current task list.
 Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
+
+## Candidate 1.15.2
+
+- **Networks the Alchemy app has not enabled.** Alchemy refuses a request for
+  such a network with "... is not enabled for this app". A run now sets that
+  endpoint aside after the first refusal and reads the network from its public
+  RPC, waiting for it while it cools instead of returning to Alchemy. The
+  second-node check for a suspicious zero skips it too. Results record which
+  networks were refused, and Workspace settings names them with a link to
+  enable them. Before, a run with custom-first priority went back to the
+  refused endpoint whenever the public node cooled, and those reads failed
+  ("JSON is not a valid request object").
+- **Alchemy usage.** Kira records the Alchemy requests it makes, priced from
+  Alchemy's compute unit costs, in a monthly ledger in the workspace
+  (`usage/alchemy-YYYY-MM.jsonl`). Workspace settings shows today, the last
+  seven days, this month and the last run. Activity shows the month on a tile,
+  and each task's details show what it used; a batch shares one total. With
+  an Access Key that has Usage read access (`kira connect alchemy-usage`), it
+  also shows the account's own totals and monthly limit, checked after
+  research finishes and with **Check now**.
+- Holdings, token and network lists add a **≥ $1** value filter.
+
+Version 1.15.1 was prepared and not published; 1.15.2 contains its changes,
+listed below.
 
 ## Candidate 1.15.1
 

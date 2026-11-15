@@ -27,10 +27,13 @@ def secrets():
 def fetch(url, body=None, timeout=20):
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json', 'User-Agent': 'wallet-research'})
+    from kira_usage import note_request
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
+            note_request(url, response.status)
             return json.load(response)
     except urllib.error.HTTPError as error:
+        note_request(url, error.code)
         return {'transport_error': {'status': error.code, 'message': redact(error.read().decode())[:2500]}}
     except Exception as error:
         return {'transport_error': {'type': type(error).__name__, 'message': redact(str(error))[:500]}}
