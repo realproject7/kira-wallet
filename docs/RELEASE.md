@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.15.4**.
+Published npm release: **1.15.4**. Prepared candidate: **1.15.5**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -8,6 +8,14 @@ scope of their original release; they are not a current task list.
 Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
+
+## Candidate 1.15.5
+
+- The sidebar footer names the running version, under the connection status:
+  "Version 1.15.5". The app had no place that showed which installed release a
+  page came from; only `kira --version` in a terminal did.
+- `/api/session` and `/api/health` report the package version that the server
+  started from.
 
 ## Published 1.15.4
 

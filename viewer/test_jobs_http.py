@@ -233,6 +233,13 @@ class JobsHTTPTest(unittest.TestCase):
         self.assertEqual(self.request(body=body)[0],400)
         self.assertEqual(self.http.jobs.get(job['job_id'])['state'],'interrupted')
         self.http.jobs.launch.assert_not_called()
+    def test_session_and_health_report_the_installed_version(self):
+        version=json.loads((Path(server.__file__).resolve().parents[1]/'package.json').read_text())['version']
+        self.assertEqual(server.VERSION,version)
+        for path in ('/api/session','/api/health'):
+            code,value=self.request(path,method='GET');self.assertEqual(code,200);self.assertEqual(value['version'],version)
+        self.http.controls=False
+        code,value=self.request('/api/session',method='GET');self.assertEqual(value['version'],version);self.assertIsNone(value['token'])
     def test_origin_cannot_read_session(self):
         self.assertEqual(self.request('/api/session',headers={'Origin':'https://foreign.test'},method='GET')[0],403)
     def test_watching_registration_keeps_origin_session_and_idempotency_boundary(self):

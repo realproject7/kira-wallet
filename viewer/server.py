@@ -19,6 +19,12 @@ from token_images import IMAGE_HOSTS
 STATIC=Path(__file__).resolve().parent/'static'
 lock=threading.Lock()
 
+def package_version():
+    # The installed package version, read once at start so the page shows what is running.
+    try:return json.loads((Path(__file__).resolve().parents[1]/'package.json').read_text()).get('version')
+    except (OSError,ValueError):return None
+VERSION=package_version()
+
 class LocalServer(ThreadingHTTPServer):
     # One page load opens dozens of short connections at once. The default
     # backlog of five resets some of them and leaves a script or stylesheet missing.
@@ -88,9 +94,9 @@ class Handler(BaseHTTPRequestHandler):
         path=urlparse(self.path).path
         try:
             if path=='/api/health':
-                self.json({'api_version':2,'instance':os.environ.get('KIRA_INSTANCE_ID'),'read_only':not getattr(self.server,'controls',False),'controls':getattr(self.server,'controls',False)});return
+                self.json({'api_version':2,'version':VERSION,'instance':os.environ.get('KIRA_INSTANCE_ID'),'read_only':not getattr(self.server,'controls',False),'controls':getattr(self.server,'controls',False)});return
             if path=='/api/session':
-                self.json({'controls':getattr(self.server,'controls',False),'token':self.server.session_token if getattr(self.server,'controls',False) else None});return
+                self.json({'controls':getattr(self.server,'controls',False),'token':self.server.session_token if getattr(self.server,'controls',False) else None,'version':VERSION});return
             query=parse_qs(urlparse(self.path).query)
             def text(name,default=None):
                 values=query.get(name,[default])

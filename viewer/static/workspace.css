@@ -65,6 +65,7 @@ button:disabled { opacity: .55; }
 .user-controls p { font-size: var(--text-caption); color: #bcb0cb; line-height: 1.6; text-align: left; margin: 4px 2px 16px; }
 .sidebar-bottom { margin-top: 0; border-color: #4d445b; color: #c8bdd5; font-size: var(--text-caption); gap: 7px; flex-wrap: wrap; }
 .read-only { color: #bcb0cb; font-size: var(--text-caption); }
+.app-version { flex-basis: 100%; padding-left: 12px; color: #bcb0cb; font-size: var(--text-caption); }
 .status-dot { background: #abcdb7; }
 main { margin-left: 232px; width: calc(100% - 232px); }
 .topbar { height: 60px; background: #fbfaf7; border-color: var(--line); padding: 0 28px; gap: 12px; }

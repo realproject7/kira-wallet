@@ -124,6 +124,7 @@ function refreshControlState(){
   $('wallet-secondary-actions').hidden=!enabled;
   $('wallet-tools').hidden=!enabled&&!currentWallet()?.report_url;
   $('service-mode').textContent=enabled?'Local controls':'Watch only';
+  const version=localSession?.version;$('app-version').hidden=!version;$('app-version').textContent=version?'Version '+version:'';
   const sample=state?.demo===true;
   for(const id of ['open-wallet','empty-add-wallet','refresh-wallet','refresh-prices']){
     const prices=id==='refresh-prices';
