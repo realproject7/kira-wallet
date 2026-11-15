@@ -54,7 +54,7 @@ def append(line, root=None):
     """One write per line, so lines from several processes and threads never interleave."""
     path = ledger(root, line['at'][:7])
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         data = (json.dumps(line, separators=(',', ':')) + '\n').encode()
         fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
         try:

@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.13.2**. Prepared candidate: **1.15.2**.
+Published npm release: **1.13.2**. Prepared candidate: **1.15.3**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -8,6 +8,18 @@ scope of their original release; they are not a current task list.
 Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
+
+## Candidate 1.15.3
+
+- The Alchemy usage estimate leaves out data requests that Alchemy throttled
+  (429) or refused (403) and requests that never reached it. One reader path
+  counted them in 1.15.2. A live fast refresh of a whole portfolio recorded
+  every request under its batch, and Robinhood Chain was complete for every
+  wallet but one, whose suspicious zeros wait for a second node.
+- The usage folder is created private to the operator's account.
+
+Version 1.15.2 was prepared and not published; 1.15.3 contains its changes,
+listed below.
 
 ## Candidate 1.15.2
 
