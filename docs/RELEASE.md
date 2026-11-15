@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.13.2**. Prepared candidate: **1.15.0**.
+Published npm release: **1.13.2**. Prepared candidate: **1.15.1**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -8,6 +8,29 @@ scope of their original release; they are not a current task list.
 Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
+
+## Candidate 1.15.1
+
+A design pass over the 1.15.0 layout:
+
+- The global bar and the page column share one gutter, so the search starts
+  where the page starts and the status ends where the page ends, at every
+  width.
+- Every area heading has the same shape: title, folder menu and Manage wallets
+  on top with the sell-estimate status under the title, then the refresh
+  actions. Wrapped actions start at the left edge instead of floating right
+  with an empty gap.
+- Token and network pages show their path above their own heading instead of
+  a row of tabs without one. Manage tokens shares the status tab row, and
+  Activity shows its connection state at the end of the section row.
+- On phones the platform menu sits under the tab line, so the open tab's
+  underline stays on it; wallet refresh buttons keep one-line labels down to
+  320 px. At medium widths the chain and order filters share a row.
+- Sidebar folders, search and wallet rows share one edge. One limited route
+  reads in the singular.
+
+Version 1.15.0 was prepared and not published; 1.15.1 contains its changes,
+listed below.
 
 ## Candidate 1.15.0
 

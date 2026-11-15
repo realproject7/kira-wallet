@@ -151,7 +151,7 @@ function renderAreaBar(){
   const bar=$('area-bar');if(!bar||!state)return;
   // Counts come from the saved summary, so every tab of a wallet shows the same number.
   const detail=['token','network'].includes(selectedView),tab=areaTab(),w=areaWallet?state.wallets.find(x=>x.key===areaWallet)||currentWallet():null;
-  bar.dataset.area=areaWallet?'wallet':detail?'detail':'portfolio';
+  bar.dataset.area=areaWallet?'wallet':detail?'detail':'portfolio';bar.dataset.tab=detail?'':tab;
   for(const link of bar.querySelectorAll('[data-tab]')){link.href=areaHref(link.dataset.tab);if(!detail&&link.dataset.tab===tab)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');}
   const context=typeof FolderUI!=='undefined'?FolderUI.view():state;
   $('all-token-count').textContent=areaWallet?(w?integer(w.mainnet_asset_count??w.asset_count??0):''):context?integer(context.dashboard.unique_asset_count):'';
@@ -372,7 +372,7 @@ function saleValue(a){return a.sell_out_summary?a.sell_out_summary.value_usd:(a.
 function sellSummary(summary,base){
   if(!summary)return '';
   const missing=summary.missing_count,refs=summary.reference_count||0;
-  return `<div class="summary-label">Sell-out estimate${infoTip('About sell-out estimates','<p>'+(refs?'Includes '+integer(refs)+' native or stable spot references. ':'')+'Sum of independent saved estimates, not a combined exit quote. Gas excluded. Shared liquidity may change combined proceeds. Missing estimates remain unknown. Platform positions have separate NAV observations and are excluded from this sum.</p>')}</div><strong class="sell-summary-value">${summary.value_usd==null?'—':'≈ '+money(summary.value_usd)}</strong>${ratioBar(summary.value_usd,base,'Share of wallet token value this estimate reaches')}<span class="chip-row estimate-badges">${missing?'<span class="chip warn" title="No saved sell estimate. Unknown, not zero.">'+integer(missing)+' missing</span>':''}${summary.limited_count?'<span class="chip warn" title="A larger known pool was not quoted.">'+integer(summary.limited_count)+' limited routes</span>':''}</span>`;
+  return `<div class="summary-label">Sell-out estimate${infoTip('About sell-out estimates','<p>'+(refs?'Includes '+integer(refs)+' native or stable spot references. ':'')+'Sum of independent saved estimates, not a combined exit quote. Gas excluded. Shared liquidity may change combined proceeds. Missing estimates remain unknown. Platform positions have separate NAV observations and are excluded from this sum.</p>')}</div><strong class="sell-summary-value">${summary.value_usd==null?'—':'≈ '+money(summary.value_usd)}</strong>${ratioBar(summary.value_usd,base,'Share of wallet token value this estimate reaches')}<span class="chip-row estimate-badges">${missing?'<span class="chip warn" title="No saved sell estimate. Unknown, not zero.">'+integer(missing)+' missing</span>':''}${summary.limited_count?'<span class="chip warn" title="A larger known pool was not quoted.">'+integer(summary.limited_count)+(summary.limited_count===1?' limited route':' limited routes')+'</span>':''}</span>`;
 }
 function sellOutNote(a){
   if(a.cashout_eligibility?.balance_changed)return a.cashout_eligibility.reason;

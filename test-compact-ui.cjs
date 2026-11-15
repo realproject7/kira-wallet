@@ -31,7 +31,7 @@ test('Home shows one total, state as chips, and wallets ranked by value',()=>{
  assert.match(meta,/<strong>3<\/strong> wallets/);assert.match(meta,/href="#\/tokens"><strong>1,234<\/strong> tokens/);assert.match(meta,/class="chip warn">1 awaiting analysis/);
  assert.match(meta,/data-policy-list="review"[^>]*>1 needs review/);assert.match(meta,/data-policy-list="excluded"[^>]*>2 hidden/);
  const sale=h.$('home-sell-out').innerHTML;
- assert.match(sale,/≈ \$80/);assert.match(sale,/value="80" max="100"[^>]*>80%<\/progress><small>80%<\/small>/,'The estimate shows how much of the wallet tokens it reaches.');assert.match(sale,/2 missing/);assert.match(sale,/1 limited routes/);assert.match(sale,/<details class="info-tip">[\s\S]*Includes 3 native or stable spot references/);
+ assert.match(sale,/≈ \$80/);assert.match(sale,/value="80" max="100"[^>]*>80%<\/progress><small>80%<\/small>/,'The estimate shows how much of the wallet tokens it reaches.');assert.match(sale,/2 missing/);assert.match(sale,/1 limited route/);assert.match(sale,/<details class="info-tip">[\s\S]*Includes 3 native or stable spot references/);
  assert.doesNotMatch(sale,/spot references<\/span>|Independent estimates/,'The method sits behind the info tip.');
  const rows=h.$('wallet-cards').innerHTML;
  assert.deepEqual([...rows.matchAll(/<strong>(Small|Large|Unchecked)<\/strong>/g)].map(m=>m[1]),['Large','Small','Unchecked']);
