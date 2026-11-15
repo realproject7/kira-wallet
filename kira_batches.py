@@ -93,4 +93,5 @@ def submit_batch(store, request):
     return {'schema_version': 1, 'batch_id': batch_id, 'operation': operation, 'wallet_count': plan['wallet_count'],
             **({'folder_id':plan['folder_id']} if 'folder_id' in plan else {}),
             'jobs': admitted, 'skipped': skipped, 'errors': errors,
-            'note': 'Per-wallet job receipts. Research runs sequentially; inspect Activity for completion.'}
+            'note': 'Per-wallet job receipts. Holdings refreshes queued together are read in one batch; other research runs one wallet at a time. Inspect Activity for completion.' if operation == 'portfolio.refresh'
+                    else 'Per-wallet job receipts. Research runs sequentially; inspect Activity for completion.'}

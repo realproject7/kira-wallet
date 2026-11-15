@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.13.2**. Prepared candidate: **1.13.5**.
+Published npm release: **1.13.2**. Prepared candidate: **1.14.0**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -8,6 +8,50 @@ scope of their original release; they are not a current task list.
 Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
+
+## Candidate 1.14.0
+
+Holdings refreshes of several wallets run as one batch. Refresh all, Fast
+refresh and a folder's refresh used to research one wallet at a time, and each
+wallet read every network again. Now the worker hands every queued holdings
+refresh of the same scope to one run:
+
+- Token lists come from Alchemy's Token Balances By Wallet: one request reads
+  a wallet's fourteen Alchemy networks for 200 compute units, where Tokens By
+  Wallet took three requests of 360. On ten wallets of every size it listed
+  every token the old request listed; its extra rows are zero balances, which
+  are skipped. A held token that no market lists is priced from Alchemy's
+  price index, as the old token list carried. The index is asked only about
+  tokens it priced before or that are new to the wallet, and a token it
+  answered without a price waits a day: the Free plan allows 300 price
+  requests an hour, and most unlisted tokens never have a price.
+- Each network is read once, at one pinned block, for every wallet: native
+  balances in one read, earlier holdings and discovered tokens packed up to
+  4,096 balance calls to a read, a small Mint Club catalogue packed across
+  wallets, and bond membership and the details of every held token once.
+  Every suspicious zero (a token the index lists that reads zero) is read
+  again on both nodes in one call each. A large catalogue fills each read
+  already and is read wallet by wallet, eight at a time. Each wallet still gets
+  the chain file, snapshot, job and result a single refresh writes.
+- Prices, DEX factory pools and artwork are looked up once per token instead
+  of once per wallet, paced under DEX Screener's 300 requests a minute.
+- Alchemy node reads spend from one budget of 250 compute units a second, under
+  the Free plan's 300, instead of a fixed 250 ms between reads.
+- Fast refresh reads only incoming transfers since the last complete check. A
+  token that left a wallet was held at that check and is read again anyway.
+- Public explorers are paced per host instead of one request a second across
+  all of them.
+- Alchemy endpoints take up to eight reads at once. A read waits for a cooling
+  endpoint within its deadline instead of failing at once, and a 4,096-call
+  read has ten seconds.
+
+A single wallet's refresh keeps the single-wallet engine, which gains the same
+token list, read sizes and budget. A resumed run keeps its saved checkpoints
+and runs alone. Saving a retried token detail no longer rewrites the whole
+checkpoint every eight reads.
+
+Versions 1.13.3, 1.13.4 and 1.13.5 were prepared and not published; 1.14.0
+contains their changes, listed below.
 
 ## Candidate 1.13.5
 

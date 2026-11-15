@@ -17,7 +17,7 @@ def index_prices(identities, folder, deadline=None):
     wanted=sorted({(cid,address.lower()) for cid,address in identities
                    if cid in ALCHEMY and isinstance(address,str) and re.fullmatch(r'0x[0-9a-fA-F]{40}',address)})
     key=h.secrets().get('ALCHEMY_CUSTOM_APY_KEY') if wanted else None
-    prices={}
+    prices={};answered=set()
     for start in range(0,len(wanted) if key else 0,25):
         batch=wanted[start:start+25]
         requests=[{'network':ALCHEMY[cid],'address':address} for cid,address in batch]
@@ -33,9 +33,10 @@ def index_prices(identities, folder, deadline=None):
             if not isinstance(row,dict) or row.get('error') or not isinstance(row.get('network'),str) or not isinstance(row.get('address'),str):continue
             identity=expected.get((row['network'],row['address'].lower()))
             if identity is None or not isinstance(row.get('prices'),list):continue
+            answered.add(identity)
             price=dex_price({'token_address':identity[1],'indexer_price_references':[p for p in row['prices'] if isinstance(p,dict)]},None)
             if price:prices[identity]={'chain_id':identity[0],'address':identity[1],**price}
-    return {'tokens':list(prices.values()),'status':'partial' if len(prices)<len(wanted) else 'checked'}
+    return {'tokens':list(prices.values()),'status':'partial' if len(prices)<len(wanted) else 'checked','answered':answered}
 
 
 def resolve(graph, prices):

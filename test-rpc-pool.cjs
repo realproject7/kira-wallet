@@ -293,3 +293,37 @@ test('Alchemy reads may overlap up to the slot count while starts keep their spa
  const other=fresh({alchemyInterval:20,alchemySlots:4}),state=other.state(1,'https://rpc.example/v2/test-key',transport(async()=> '0x1'),{});
  assert.equal(other.families.get(state.family).slots.capacity,1,'Other lanes keep one read at a time.');
 });
+test('Alchemy reads spend from one compute-unit budget across hosts',async()=>{
+ const {throughputCost}=require('./rpc-pool.cjs');
+ assert.equal(throughputCost('eth_call'),26);assert.equal(throughputCost('eth_chainId'),5);
+ assert.equal(throughputCost('alchemy_getAssetTransfers'),120);assert.equal(throughputCost('unlisted_method'),26);
+ const urls=['https://eth-mainnet.g.alchemy.com/v2/test-key','https://base-mainnet.g.alchemy.com/v2/test-key'],chains=[1,8453];
+ // 1,000 compute units a second, starting with 100: twelve 26-unit reads need about 0.21 s more.
+ const pool=fresh({alchemyInterval:0,alchemySlots:8,alchemyBudget:{rate:1000,capacity:200}}),starts=[];
+ const fn=async(url,r)=>{starts.push(Date.now());return r.method==='eth_chainId'?'0x'+chains[urls.indexOf(url)].toString(16):'0x1';};
+ chains.forEach((chain,i)=>{pool.state(chain,urls[i],transport(fn),{}).verified=true;});
+ const lane=pool.families.get(pool.states.get('1:'+urls[0]).family);
+ assert.deepEqual({rate:lane.budget.rate,capacity:lane.budget.capacity,tokens:lane.budget.tokens},{rate:1000,capacity:200,tokens:100});
+ const began=Date.now();
+ const reads=Array.from({length:12},(_,i)=>viem.createPublicClient({transport:pool.transport(chains[i%2],[urls[i%2]],transport(fn),undefined,undefined,{cache:false})})
+  .call({to:A,data:'0x'+i.toString(16).padStart(2,'0')}));
+ await Promise.all(reads);
+ const elapsed=Date.now()-began;
+ assert(elapsed>=180,`The budget paces the reads (${elapsed} ms).`);
+ assert(elapsed<1500,'Reads still overlap; only the budget sets the pace.');
+ const other=fresh({alchemyBudget:{rate:1000,capacity:200}}),plain=other.state(1,'https://rpc.example/v2/test-key',transport(async()=>'0x1'),{});
+ assert.equal(other.families.get(plain.family).budget,null,'Other lanes have no compute-unit budget.');
+ assert.equal(fresh({alchemyInterval:0,alchemyBudget:{rate:0,capacity:200}}).alchemyBudget,null,'An invalid budget is ignored.');
+});
+test('a read waits for a cooling endpoint within its deadline instead of failing at once',async()=>{
+ const url='https://cooling.example';
+ const pool=fresh({deadline:2000}),fn=async(_,r)=>r.method==='eth_chainId'?'0x1':'0x5';
+ const state=pool.state(1,url,transport(fn),{});state.verified=true;state.until=Date.now()+300;state.error=new Error('earlier transport failure');
+ const began=Date.now();
+ assert.equal(await client(pool,[url],fn).getBlockNumber({cacheTime:0}),5n);
+ assert(Date.now()-began>=280,'The read waited for the cooldown to end.');
+ const short=fresh({deadline:200}),cold=short.state(1,url,transport(fn),{});cold.verified=true;cold.until=Date.now()+5000;cold.error=new Error('earlier transport failure');
+ const started=Date.now();
+ await assert.rejects(client(short,[url],fn).getBlockNumber({cacheTime:0}));
+ assert(Date.now()-started<1000,'A cooldown past the deadline still fails at once.');
+});

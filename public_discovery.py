@@ -7,13 +7,17 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 # Individually verified keyless routes. Never use the paid multichain `all` route.
 CHAINS = {1, 43114, 81457}
 DOCS = 'https://routescan.io/docs/api/addresses'
 _permit = threading.Lock()
-_last = 0.0
+# Each host keeps its own pace: one request a second for keyless indexers, four a
+# second for the Blockscout explorers (explorer_discovery.HOSTS), whose public APIs
+# allow far more. A batch refresh asks each explorer once per wallet.
+_last = {}
+EXPLORER_HOSTS = {'shibariumscan.io', 'cyberscan.co', 'explorer.hsk.xyz', 'puppyscan.shib.io'}
 
 
 def _fetch_body(url, timeout, output, body, extra_headers=None, envelope=False):
@@ -37,15 +41,17 @@ def _fetch_body(url, timeout, output, body, extra_headers=None, envelope=False):
 
 
 def fetch_page(url, timeout, body=None):
-    global _last
     end=time.monotonic()+timeout
+    host=(urlparse(url).hostname or '').lower()
+    interval=.25 if host in EXPLORER_HOSTS else 1
     if not _permit.acquire(timeout=max(0,timeout)):return {'error':{'code':'deadline'}}
     try:
-        wait=max(0,_last+1-time.monotonic())
-        if wait>=end-time.monotonic():return {'error':{'code':'deadline'}}
-        if wait:time.sleep(wait)
-        _last=time.monotonic()
+        # Reserve this host's next turn, then wait outside the lock so other hosts proceed.
+        slot=max(time.monotonic(),_last.get(host,0)+interval)
+        if slot>=end:return {'error':{'code':'deadline'}}
+        _last[host]=slot
     finally:_permit.release()
+    if slot>time.monotonic():time.sleep(slot-time.monotonic())
     remaining=end-time.monotonic()
     if remaining<=0:return {'error':{'code':'deadline'}}
     return fetch_bounded(url,remaining,body)

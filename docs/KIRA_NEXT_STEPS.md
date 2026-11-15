@@ -1,11 +1,13 @@
 # Kira release status
 
-Updated: 2026-11-15. Candidate 1.13.5 stops researching Blast, Blast Sepolia
-and Cyber Testnet by operator confirmation, deletes a finished refresh's resume
-checkpoints, asks Alchemy for a wallet's token list five networks per request,
-which cuts the largest part of a refresh's Alchemy usage, rechecks a
-suspicious zero on a node that is a block behind, and lets Refresh all wait
-for every wallet to be queued. The operator
+Updated: 2026-11-15. Candidate 1.14.0 refreshes the holdings of several
+wallets as one batch: one token list request per wallet, each network read
+once at one block for every wallet, prices and markets looked up once per
+token, and Alchemy reads paced by a compute-unit budget. It also contains the
+unpublished 1.13.3 to 1.13.5: Blast, Blast Sepolia and Cyber Testnet leave
+research by operator confirmation, a finished refresh deletes its resume
+checkpoints, a suspicious zero is rechecked on a node that is a block behind,
+and Refresh all waits for every wallet to be queued. The operator
 published Kira 1.13.2. It makes
 holdings refreshes read in larger groups and adds Fast refresh, which reads
 Alchemy transfer history instead of the full Mint Club token list on large networks.

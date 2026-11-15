@@ -116,7 +116,7 @@ class PublicDiscoveryTests(unittest.TestCase):
         server=ThreadingHTTPServer(('127.0.0.1',0),Slow)
         thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
         try:
-            with patch.object(public,'_last',0):
+            with patch.object(public,'_last',{}):
                 start=time.monotonic();row=public.fetch_page('http://127.0.0.1:'+str(server.server_port),.4)
             self.assertLess(time.monotonic()-start,1);self.assertIn('error',row)
             start=time.monotonic();row=wallet.fetch('http://127.0.0.1:'+str(server.server_port),deadline=time.monotonic()+.4)

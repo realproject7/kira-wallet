@@ -59,8 +59,21 @@ def atomic(path, data):
     finally:os.close(descriptor)
 
 
+# A batch refresh works on several wallets in threads. Each thread names its job here,
+# so progress lines and publications go to the right wallet.
+CONTEXT=threading.local()
+PRINT_LOCK=threading.Lock()
+
+
+def emit(message):
+    line=json.dumps(message,ensure_ascii=False)+'\n'
+    with PRINT_LOCK:
+        sys.stdout.write(line);sys.stdout.flush()
+
+
 def event(stage, **data):
-    print(json.dumps({'stage':stage, **data}, ensure_ascii=False), flush=True)
+    job=getattr(CONTEXT,'job_id',None)
+    emit({**({'job_id':job} if job else {}),'stage':stage,**data})
 
 
 def fetch(url, body=None, deadline=None):
@@ -172,22 +185,27 @@ def acquire_candidate_slices(wallet, networks, folder, policy, acquire, prior, k
     return ordered
 
 
-PORTFOLIO_SOURCE='Alchemy Portfolio Tokens By Wallet'
-# Alchemy reads at most five networks per wallet in one Tokens By Wallet request,
-# and one request costs the same 360 compute units for one network or five.
-PORTFOLIO_GROUP=5
+PORTFOLIO_SOURCE='Alchemy Portfolio Token Balances By Wallet'
+# Saved evidence from 1.13 and earlier, still a complete token list for a resumed run.
+LEGACY_PORTFOLIO_SOURCE='Alchemy Portfolio Tokens By Wallet'
+# Token Balances By Wallet answers up to 20 wallet-network pairs per request for 200
+# compute units, so one request reads a wallet's fourteen Alchemy networks. Tokens By
+# Wallet took five networks for 360 units. Balances come without names or prices: the
+# chain read supplies names and decimals, and refresh_metadata asks the price index
+# for held tokens no market prices (seen 2026-11-15: no token missing on ten wallets).
+PORTFOLIO_GROUP=20
 
 
 def saved_discovery(wallet, evidence, indexed_only=False):
     if not evidence.exists():return None
     cached=read(evidence)
-    if cached['wallet'].lower()==wallet.lower() and cached['complete'] and cached.get('coverage_version')==2 and (not indexed_only or cached.get('source')==PORTFOLIO_SOURCE or cached.get('provider')=='explorer'):
+    if cached['wallet'].lower()==wallet.lower() and cached['complete'] and cached.get('coverage_version')==2 and (not indexed_only or cached.get('source') in (PORTFOLIO_SOURCE,LEGACY_PORTFOLIO_SOURCE) or cached.get('provider')=='explorer'):
         return cached
     return None
 
 
 def portfolio_read(wallet, chain_ids, key, deadline=None):
-    """Read one wallet's Alchemy token list on up to five networks, page by page.
+    """Read one wallet's Alchemy token balances on up to twenty networks, page by page.
 
     A network that fails or returns a malformed record stops there and stays
     incomplete; the other networks keep paging, as Alchemy's pageKey does.
@@ -196,9 +214,8 @@ def portfolio_read(wallet, chain_ids, key, deadline=None):
     rows={cid:{'wallet':wallet,'chain_id':cid,'observed_at':h.now(),'complete':False,'tokens':[],'native':[],'pages':[],
                'source':PORTFOLIO_SOURCE,'discovery_status':'incomplete',**({'portfolio_networks':list(names)} if shared else {})}
           for cid in chain_ids}
-    endpoint=f'https://api.g.alchemy.com/data/v1/{key}/assets/tokens/by-address'
-    body={'addresses':[{'address':wallet,'networks':list(names)}], 'withMetadata':True,'withPrices':True,
-          'includeNativeTokens':True,'includeErc20Tokens':True,'includeBlockMetadata':True}
+    endpoint=f'https://api.g.alchemy.com/data/v1/{key}/assets/tokens/balances/by-address'
+    body={'addresses':[{'address':wallet,'networks':list(names)}],'includeNativeTokens':True,'includeErc20Tokens':True}
     active=set(names);seen=set()
     def stop(networks,error):
         for name in list(networks):rows[names[name]]['error']=error
@@ -285,10 +302,10 @@ def portfolio_key():
 
 
 def portfolio_groups(wallet, networks, folder, key):
-    """Alchemy networks still to read, five to a request.
+    """Alchemy networks still to read, up to twenty to a request.
 
-    Tokens By Wallet is priced per request, so fourteen networks take three
-    requests instead of fourteen.
+    Token Balances By Wallet is priced per request, so fourteen networks take
+    one request instead of fourteen.
     """
     if not key:return []
     wanted=[n['chain_id'] for n in networks if n['chain_id'] in PORTFOLIO
@@ -304,7 +321,7 @@ def read_portfolio_group(wallet, group, folder, key):
 
 
 def discover_all(wallet, networks, folder):
-    """Indexed discovery for every network, Alchemy networks read five per request."""
+    """Indexed discovery for every network, Alchemy networks read in one request."""
     key=portfolio_key()
     groups=portfolio_groups(wallet,networks,folder,key);grouped={cid for group in groups for cid in group}
     find=lambda n:discover(wallet,n,folder,indexed_only=True)
@@ -451,7 +468,74 @@ def id0_coverage(row):
     return {key:value for key,value in (row.get('mintclub_id0_discovery') or {}).items() if key not in ('wallet','tokens','pages','native')}
 
 
+class NodeHelper:
+    """One Node process for a batch refresh (node-helper.cjs).
+
+    Threads send requests concurrently. Node runs them together, so every read
+    in the batch spends from one Alchemy budget and shares one read cache.
+    """
+    def __init__(self):
+        self.child=subprocess.Popen(['node',str(ASSETS/'node-helper.cjs')],cwd=ASSETS,stdin=subprocess.PIPE,stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL,text=True,bufsize=1)
+        self.lock=threading.Lock();self.waiting={};self.sequence=0
+        self.reader=threading.Thread(target=self.read,daemon=True);self.reader.start()
+
+    def read(self):
+        for line in self.child.stdout:
+            try:message=json.loads(line)
+            except ValueError:continue
+            if not isinstance(message,dict):continue
+            if 'helper_id' in message:
+                with self.lock:slot=self.waiting.pop(message['helper_id'],None)
+                if slot:slot['answer']=message;slot['done'].set()
+            elif message.get('job_id'):emit(message)
+        with self.lock:
+            stranded=list(self.waiting.values());self.waiting.clear()
+        for slot in stranded:slot['done'].set()
+
+    def call(self, mode, source, destination=None, timeout=None):
+        with self.lock:
+            if self.child.poll() is not None:raise ValueError('The batch Node process stopped.')
+            self.sequence+=1;ident=self.sequence;slot={'done':threading.Event(),'answer':None};self.waiting[ident]=slot
+            self.child.stdin.write(json.dumps({'id':ident,'mode':mode,'input':str(source),'output':str(destination) if destination else None})+'\n')
+            self.child.stdin.flush()
+        if not slot['done'].wait(timeout):
+            with self.lock:self.waiting.pop(ident,None)
+            raise TimeoutError(mode)
+        answer=slot['answer']
+        if not answer or not answer.get('ok'):
+            raise ValueError(h.redact(str((answer or {}).get('error',{}).get('message','The batch Node process stopped.'))))
+
+    def close(self):
+        try:self.child.stdin.close()
+        except OSError:pass
+        try:self.child.wait(timeout=5)
+        except subprocess.TimeoutExpired:self.child.kill();self.child.wait()
+
+    def __enter__(self):return self
+
+    def __exit__(self,*_):self.close()
+
+
+# Set by a batch refresh for its whole run; single refreshes start Node per step.
+NODE_HELPER=None
+
+
+def node_script(mode, script, source, destination, timeout):
+    """Run a Node script; inside a batch the shared Node process runs it. Returns an exit code."""
+    if NODE_HELPER:
+        try:NODE_HELPER.call(mode,source,destination,timeout);return 0
+        except TimeoutError:raise subprocess.TimeoutExpired(script,timeout) from None
+        except ValueError:return 1
+    return subprocess.run(['node',str(ASSETS/script),str(source),str(destination)],cwd=ASSETS,capture_output=True,timeout=timeout,check=False).returncode
+
+
 def run_node(mode, source, destination, on_chain=None, deadline=None):
+    if NODE_HELPER and mode in ('reserves','dex','liquidate'):
+        try:NODE_HELPER.call(mode,source,destination,None if deadline is None else max(1,deadline-time.monotonic()+2))
+        except TimeoutError:raise MarketPause('Market verification time budget reached. Resume saved checks in Activity.') from None
+        except ValueError:raise ValueError('On-chain research stopped before completing this phase.') from None
+        return
     child=subprocess.Popen(['node',str(ASSETS/'pipeline-onchain.cjs'),mode,str(source),str(destination)],cwd=ASSETS,stdout=subprocess.PIPE,text=True)
     timer=None
     if deadline is not None:
@@ -462,7 +546,7 @@ def run_node(mode, source, destination, on_chain=None, deadline=None):
             try: message=json.loads(line)
             except ValueError: continue
             if not isinstance(message,dict):continue
-            print(json.dumps(message),flush=True)
+            emit(message)
             if on_chain and message.get('stage')=='chain':on_chain(message)
         if child.wait():
             if deadline is not None and time.monotonic()>=deadline:raise MarketPause('Market verification time budget reached. Resume saved checks in Activity.')
@@ -486,8 +570,8 @@ def publish_snapshot(wallet, folder, result):
         registry=read(ROOT/'wallets.json')
         if wallet['address_key'] in registry.get('removed_wallets',{}):raise ValueError('Wallet removed from Kira. Publication cannot restore it.')
         entry=next(w for w in registry['wallets'] if w['address_key']==wallet['address_key'])
-        generation=os.environ.get('KIRA_RESEARCH_GENERATION')
-        job_id=os.environ.get('KIRA_JOB_ID')
+        generation=getattr(CONTEXT,'generation',None) or os.environ.get('KIRA_RESEARCH_GENERATION')
+        job_id=getattr(CONTEXT,'job_id',None) or os.environ.get('KIRA_JOB_ID')
         if not generation and job_id and (ROOT/'jobs'/f'{job_id}.json').is_file():
             job=read(ROOT/'jobs'/f'{job_id}.json');generation=job.get('parent_job_id',job_id)
         if not generation or entry.get('research_generation') in (None,generation):
@@ -503,7 +587,7 @@ def publish_snapshot(wallet, folder, result):
 RESUME_CHECKPOINTS=tuple(prefix+'checkpoint-*.json'+suffix for prefix in ('balance-','baseline-balance-','registry-') for suffix in ('','.tmp'))
 
 
-def prune_resume_checkpoints(wallet):
+def prune_resume_checkpoints(wallet, registry=None):
     """Delete resume checkpoints from this wallet's finished, published runs.
 
     Results, chain files and discovery evidence stay. A run that failed or paused
@@ -511,7 +595,7 @@ def prune_resume_checkpoints(wallet):
     too, so one refresh also clears what older versions left behind.
     """
     snapshots=(ROOT/'snapshots').resolve()
-    runs={r.get('snapshot') for r in read(ROOT/'wallets.json').get('research_runs',[]) if r.get('address_key')==wallet['address_key']}
+    runs={r.get('snapshot') for r in (registry or read(ROOT/'wallets.json')).get('research_runs',[]) if r.get('address_key')==wallet['address_key']}
     removed=0
     for relative in sorted(r for r in runs if isinstance(r,str)):
         folder=(ROOT/relative).resolve()
@@ -526,7 +610,104 @@ def prune_resume_checkpoints(wallet):
     return removed
 
 
-def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_prices=False, supplemental=False):
+# Lookups a batch refresh made once for all its wallets. Empty for a single refresh.
+BATCH={}
+BATCH_LOCK=threading.Lock()
+
+
+def batch_value(key, compute):
+    """In a batch, compute a shared lookup once; otherwise compute it each time."""
+    if not BATCH.get('active'):return compute()
+    with BATCH_LOCK:
+        if key not in BATCH:BATCH[key]=compute()
+        return BATCH[key]
+
+
+def market_wanted(tokens, mainnets):
+    """Tokens a refresh prices from markets: held mainnet ERC20s and Mint Club reserve tokens."""
+    wanted={(t['chain_id'],t['token_address'].lower()):t for t in tokens if t['chain_id'] in mainnets and t.get('token_type')!='ERC1155'}
+    for t in tokens:
+        mint=t.get('mintclub')
+        if mint and t['chain_id'] in mainnets:
+            key=(t['chain_id'],mint['reserve_token'].lower())
+            wanted.setdefault(key,{'chain_id':key[0],'token_address':key[1]})
+    return wanted
+
+
+def dex_requests(keys):
+    """DEX Screener token lookups, thirty contracts per request."""
+    requests=[]
+    for cid,slug in DEX.items():
+        addresses=sorted(address for chain,address in keys if chain==cid)
+        requests.extend((cid,slug,set(addresses[i:i+30]),'https://api.dexscreener.com/tokens/v1/'+slug+'/'+','.join(addresses[i:i+30])) for i in range(0,len(addresses),30))
+    return requests
+
+
+# A token the price index answered without a price is not asked again for a day.
+INDEX_MISS_SECONDS=86400
+MISS_LOCK=threading.Lock()
+
+
+def index_misses():
+    try:saved=read(ROOT/'cache/index-price-misses.json')
+    except (OSError,ValueError):return {}
+    tokens=saved.get('tokens') if isinstance(saved,dict) else None
+    return {k:v for k,v in tokens.items() if isinstance(k,str) and isinstance(v,(int,float))} if isinstance(tokens,dict) else {}
+
+
+def unasked(keys):
+    """Keys the price index has not answered without a price within the last day."""
+    recent,now=index_misses(),time.time()
+    return [key for key in keys if now-recent.get(f'{key[0]}:{key[1]}',0)>=INDEX_MISS_SECONDS]
+
+
+def remember_index_answers(answered, priced):
+    with MISS_LOCK:
+        misses,now=index_misses(),time.time()
+        for key in answered:
+            if key in priced:misses.pop(f'{key[0]}:{key[1]}',None)
+            else:misses[f'{key[0]}:{key[1]}']=now
+        try:atomic(ROOT/'cache/index-price-misses.json',{'schema_version':1,'tokens':{k:v for k,v in misses.items() if now-v<7*86400}})
+        except OSError:pass
+
+
+def index_hint(wallet):
+    """What the wallet's last snapshot says about the price index: the tokens it held
+    and those it priced from the index. A token held before without an index price
+    needs no new question; Tokens By Wallet carried these prices until 1.14."""
+    latest=(wallet.get('latest_snapshot') or {}).get('directory')
+    try:
+        snapshot=read(ROOT/latest/'results.json')
+        market=read(ROOT/latest/'market-prices.json') if (ROOT/latest/'market-prices.json').exists() else {}
+    except (OSError,ValueError,TypeError):return None
+    held={(t.get('chain_id'),str(t.get('token_address','')).lower()) for t in snapshot.get('tokens',[]) if isinstance(t,dict)}
+    priced={(t.get('chain_id'),str(t.get('token_address','')).lower()) for t in snapshot.get('tokens',[]) if isinstance(t,dict) and t.get('indexer_price_references')}
+    priced|={(p.get('chain_id'),str(p.get('address','')).lower()) for p in market.get('tokens',[]) if isinstance(p,dict) and p.get('basis')=='Market index'}
+    return {'held':held,'priced':priced}
+
+
+def worth_asking(keys, hint):
+    """Tokens the index may price: priced from it before, or new to this wallet."""
+    return list(keys) if hint is None else [key for key in keys if key in hint['priced'] or key not in hint['held']]
+
+
+def index_lookup(keys, folder, deadline):
+    """Alchemy price index rows for (chain, contract) keys. A batch asked once for all wallets."""
+    shared=BATCH.get('index')
+    if shared is None:rest=unasked(keys);found=[]
+    else:
+        found=[shared['prices'][key] for key in keys if key in shared['prices']]
+        rest=[key for key in keys if key not in shared['asked']]
+        if found:atomic(folder/'index-prices.json',{'source':'Alchemy token prices by address','observed_at':shared['observed_at'],'tokens':found})
+    if rest:
+        from curve_pricing import index_prices
+        answer=index_prices(rest,folder,deadline)
+        found+=answer['tokens']
+        remember_index_answers(answer.get('answered',set()),{(p['chain_id'],p['address'].lower()) for p in answer['tokens']})
+    return found
+
+
+def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_prices=False, supplemental=False, index=None):
     """Price and illustrate saved holdings independently of deep market review."""
     from curve_pricing import enrich, resolve
     sys.path.insert(0,str(ASSETS/'viewer'))
@@ -537,38 +718,44 @@ def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_p
     tokens=[canonical_token(t) for t in snapshot['tokens']];rows={(p['chain_id'],p['address'].lower()):checked_price(p) for p in market.get('tokens',[])}
     markets={p['id']:p for p in market.get('markets',[])}
     mainnets={c['chain_id'] for c in snapshot.get('coverage',[]) if c.get('environment')=='mainnet'}
-    wanted={(t['chain_id'],t['token_address'].lower()):t for t in tokens
-            if t['chain_id'] in mainnets and t.get('token_type')!='ERC1155'}
-    for t in tokens:
-        mint=t.get('mintclub')
-        if mint and t['chain_id'] in mainnets:
-            key=(t['chain_id'],mint['reserve_token'].lower())
-            wanted.setdefault(key,{'chain_id':key[0],'token_address':key[1]})
+    wanted=market_wanted(tokens,mainnets)
     metadata=read(folder/'token-market-metadata.json') if (folder/'token-market-metadata.json').exists() else []
     if discover_prices and wanted:
         event('dex_discovery',tokens=len(wanted))
-        requests=[]
-        for cid,slug in DEX.items():
-            addresses=sorted(address for chain,address in wanted if chain==cid)
-            requests.extend((cid,slug,set(addresses[i:i+30]),'https://api.dexscreener.com/tokens/v1/'+slug+'/'+','.join(addresses[i:i+30])) for i in range(0,len(addresses),30))
+        work=[];shared=BATCH.get('dex')
+        if shared:
+            # A batch looked every held token up once. Use the records that list this wallet's tokens.
+            used={}
+            for key in wanted:
+                position=shared['by_token'].get(key)
+                if position is not None:used.setdefault(position,set()).add(key[1])
+            work=[(shared['records'][position]['chain_id'],addresses,shared['records'][position]['record']) for position,addresses in sorted(used.items())]
+        covered={(cid,address) for cid,addresses,_ in work for address in addresses}
         def get(request):
             response=fetch(request[3],deadline=price_deadline)
             return request,{'source':request[3],'observed_at':h.now(),'response':response}
-        evidence=[]
         with ThreadPoolExecutor(max_workers=4) as executor:
-            for (cid,slug,addresses,source),record in executor.map(get,requests):
-                evidence.append(record)
-                markets={row['id']:row for row in collected_markets([record],DEX,wanted,markets.values())}
-                for address in addresses:
-                    group=markets.get(f'{cid}:{address}',{}).get('pools',[])
-                    p=dex_price({'token_address':address,'dex_pools':group},record['observed_at'])
-                    if p:rows[(cid,address)]={'chain_id':cid,'address':address,**p}
+            for (cid,slug,addresses,source),record in executor.map(get,dex_requests([key for key in wanted if key not in covered])):
+                work.append((cid,addresses,record))
+        evidence=[]
+        for cid,addresses,record in work:
+            evidence.append(record)
+            markets={row['id']:row for row in collected_markets([record],DEX,wanted,markets.values())}
+            for address in addresses:
+                group=markets.get(f'{cid}:{address}',{}).get('pools',[])
+                p=dex_price({'token_address':address,'dex_pools':group},record['observed_at'])
+                if p:rows[(cid,address)]={'chain_id':cid,'address':address,**p}
         atomic(folder/'token-market-metadata.json',evidence)
         metadata=evidence
         for key,t in wanted.items():
             if key not in rows:
                 p=dex_price(t,None)
                 if p:rows[key]={'chain_id':key[0],'address':key[1],**p}
+        # A held token no market lists keeps Alchemy's index price, which the token list
+        # used to carry. Ask the price index for those tokens only.
+        unpriced=worth_asking([key for key,t in wanted.items() if key not in rows and key[0] in ALCHEMY and t.get('token_type')=='ERC20'],index)
+        if unpriced and time.monotonic()<price_deadline:
+            for p in index_lookup(unpriced,folder,price_deadline):rows[(p['chain_id'],p['address'].lower())]=p
     graph=[]
     for t in tokens:
         mint=t.get('mintclub')
@@ -595,7 +782,8 @@ def refresh_metadata(snapshot, market, folder, *, native_images=None, discover_p
                         rows[(p['chain_id'],p['address'].lower())]=p
                     market['tokens']=list(rows.values())
                 except (OSError,ValueError):pass
-    if tokens or native_images:
+    # A batch refreshes the shared artwork catalogue once for all its wallets.
+    if (tokens or native_images) and not BATCH.get('images'):
         try:
             event('token_images',tokens=len(tokens))
             event('token_images',**refresh_catalog([snapshot],ROOT,native_images=native_images or {},market_metadata=metadata,fetch=lambda url:fetch(url,deadline=deadline)))
@@ -649,13 +837,13 @@ def initial_result(wallet, folder, networks, discovered, chains, *, phase='basel
     native_market={}
     if prices:
         from native_assets import market_metadata
-        native_market=market_metadata(coverage,fetch=lambda url:h.fetch(url,timeout=8))
+        native_market=batch_value(('native',tuple(sorted(c['chain_id'] for c in coverage))),lambda:market_metadata(coverage,fetch=lambda url:h.fetch(url,timeout=8)))
         refs=native_market['prices']
         result['price_references']=refs
         if native_market.get('evidence'):atomic(folder/'native-market.json',native_market['evidence'])
     market={'observed_at':result['compiled_at'],'wallet_address':wallet['address'],
         'native_usd':{k.removesuffix('_USD'):{'usd':float(v['value']),'observed_at':v.get('observed_at'),'basis':v.get('basis'),'source':v.get('source')} for k,v in refs.items()},'tokens':[]}
-    if prices:market=refresh_metadata(result,market,folder,native_images=native_market.get('images'),discover_prices=True,supplemental=True)
+    if prices:market=refresh_metadata(result,market,folder,native_images=native_market.get('images'),discover_prices=True,supplemental=True,index=index_hint(wallet))
     if prices and phase=='holdings':
         from sell_quotes import enrich as enrich_sell_quotes
         market=enrich_sell_quotes(result,market,folder/'sell-quotes')
@@ -720,8 +908,8 @@ def fast_plan(wallet, networks):
     return plan
 
 
-def research_holdings(wallet, folder, networks, scope='full'):
-    """Enumerate all configured networks and all candidates, without market-route work.
+def prepare_holdings(wallet, folder, networks, scope='full'):
+    """Token lists and the chain scan input for one wallet.
 
     A fast refresh keeps test networks as last saved and, where the Mint Club
     catalogue is large, reads transfer history since the last complete check.
@@ -737,6 +925,25 @@ def research_holdings(wallet, folder, networks, scope='full'):
     scan_input=candidate_input(wallet['address'],active,'full_registry',[fresh[n['chain_id']] for n in active],prior_candidates(wallet),known)
     if plan['chains']:scan_input['fast']={'chains':plan['chains']}
     atomic(folder/'scan-input.json',scan_input)
+    return {'plan':plan,'discovered':discovered,'scope':scope}
+
+
+def finish_holdings(wallet, folder, networks, prepared, *, pipeline=None):
+    """Prices, markets and publication once the chain scan has saved onchain-summary.json."""
+    plan=prepared['plan']
+    chains=read(folder/'onchain-summary.json')['chains']
+    if plan['retained']:
+        scanned={c['chain_id']:c for c in chains if isinstance(c,dict)}
+        chains=[plan['retained'][n['chain_id']][0] if n['chain_id'] in plan['retained'] else scanned[n['chain_id']]
+                for n in networks if n['chain_id'] in plan['retained'] or n['chain_id'] in scanned]
+    return initial_result(wallet,folder,networks,prepared['discovered'],chains,phase='holdings',prices=True,
+        pipeline={'refresh_scope':prepared['scope'],**({'retained_networks':sorted(plan['retained'])} if plan['retained'] else {}),**(pipeline or {})})
+
+
+def research_holdings(wallet, folder, networks, scope='full'):
+    """Enumerate all configured networks and all candidates, without market-route work."""
+    prepared=prepare_holdings(wallet,folder,networks,scope)
+    discovered=prepared['discovered']
     published={}
     def first_evidence(message):
         path=folder/f"chain-{message.get('chain_id')}.json"
@@ -755,13 +962,7 @@ def research_holdings(wallet, folder, networks, scope='full'):
         initial_result(wallet,first,networks,discovered,chains,phase='initial')
         event('first_evidence',snapshot=str(first.relative_to(ROOT)),tokens=sum(len(c['tokens']) for c in chains))
     run_node('scan',folder/'scan-input.json',folder,on_chain=first_evidence)
-    chains=read(folder/'onchain-summary.json')['chains']
-    if plan['retained']:
-        scanned={c['chain_id']:c for c in chains}
-        chains=[plan['retained'][n['chain_id']][0] if n['chain_id'] in plan['retained'] else scanned[n['chain_id']]
-                for n in networks if n['chain_id'] in plan['retained'] or n['chain_id'] in scanned]
-    return initial_result(wallet,folder,networks,discovered,chains,phase='holdings',prices=True,
-        pipeline={'refresh_scope':scope,**({'retained_networks':sorted(plan['retained'])} if plan['retained'] else {})})
+    return finish_holdings(wallet,folder,networks,prepared)
 
 
 def saved_holdings(wallet, snapshot_id, folder):

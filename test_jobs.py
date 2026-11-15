@@ -641,6 +641,56 @@ class JobsTest(JobFixtures, unittest.TestCase):
             with self.assertRaises(JobError):self.store.submit(self.request('settings.provider',value,'invalid-provider'))
 
 
+class BatchWorkerTest(JobFixtures, unittest.TestCase):
+    def wallets(self,count):
+        registry=json.loads((self.root/'wallets.json').read_text())
+        for i in range(count):
+            key='0x'+format(0xb0+i,'040x')
+            registry['wallets'].append({'address':key,'address_key':key,'tags':[f'Batch {i}']})
+        atomic(self.root/'wallets.json',registry)
+        return [w['address_key'] for w in registry['wallets']]
+
+    def test_fresh_refreshes_of_one_scope_run_together_and_others_run_alone(self):
+        wallets=self.wallets(4)
+        fast=[self.store.submit(self.request(value={'wallet':w,'scope':'fast'},key=f'fast-batch-{i}'))['job_id'] for i,w in enumerate(wallets[:3])]
+        lone=self.store.submit(self.request(value={'wallet':wallets[3]},key='full-alone'))['job_id']
+        resumed=self.store.submit(self.request(value={'wallet':wallets[4]},key='resumed-full'))['job_id']
+        atomic(self.root/'snapshots/jobs'/resumed/'run.json',{'wallet_address':wallets[4],'status':'running'})
+        groups=[];singles=[]
+        def batch(jobs,*args):
+            groups.append(sorted(j['job_id'] for j in jobs))
+            self.assertTrue(all(self.store.get(j['job_id'])['state']=='running' for j in jobs),'Every wallet of the batch is claimed first.')
+            return {j['job_id']:{'snapshot_id':j['checkpoint'],'status':'completed'} for j in jobs[:-1]}|{jobs[-1]['job_id']:JobError('engine_failed','synthetic stop')}
+        def single(job,*args):
+            singles.append(job['job_id']);return {'snapshot_id':job['checkpoint'],'status':'completed'}
+        with patch.object(self.store,'execute_batch',side_effect=batch),patch.object(self.store,'execute',side_effect=single):self.store.worker()
+        self.assertEqual(groups,[sorted(fast)])
+        self.assertEqual(sorted(singles),sorted([lone,resumed]),'A lone wallet and a resumed run keep the single-wallet engine.')
+        states=[self.store.get(j)['state'] for j in fast]
+        self.assertEqual(sorted(states),['failed','succeeded','succeeded'])
+        failed=next(self.store.get(j) for j in fast if self.store.get(j)['state']=='failed')
+        self.assertEqual(failed['errors'][0]['code'],'engine_failed')
+
+    def test_a_batch_refused_before_it_starts_fails_every_wallet(self):
+        wallets=self.wallets(2)
+        jobs=[self.store.submit(self.request(value={'wallet':w,'scope':'fast'},key=f'refused-batch-{i}'))['job_id'] for i,w in enumerate(wallets[:3])]
+        with patch.object(self.store,'execute_batch',side_effect=JobError('connection_required','Connect Alchemy first.')):self.store.worker()
+        for job in jobs:
+            saved=self.store.get(job)
+            self.assertEqual((saved['state'],saved['errors'][0]['code']),('failed','connection_required'))
+
+    def test_batch_progress_is_saved_per_job_in_one_write(self):
+        job=self.store.submit(self.request(value={'wallet':ADDRESS,'scope':'fast'},key='batched-events'))
+        events=[{'stage':'discovery','complete_chains':3,'candidates':4},{'stage':'chain','chain_id':8453,'status':'complete','block_number':'7'},
+                {'stage':'not_a_stage'},{'stage':'chain','chain_id':1,'status':'partial','block_number':'9'}]
+        saves=[];save=self.store.save
+        with patch.object(self.store,'save',side_effect=lambda value:(saves.append(value['job_id']),save(value))):self.store.events(job['job_id'],events)
+        self.assertEqual(saves,[job['job_id']])
+        saved=self.store.get(job['job_id'])
+        self.assertEqual([e['stage'] for e in saved['events']],['discovery','chain','chain'])
+        self.assertEqual(saved['chains']['8453']['status'],'complete');self.assertEqual(saved['chains']['1']['status'],'partial')
+
+
 class WorkerProcessTest(JobFixtures, unittest.TestCase):
     # Inherit the synthetic fixture setup, but only run process-specific cases.
     def worker_process(self,case):

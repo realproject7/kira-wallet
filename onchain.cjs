@@ -10,7 +10,11 @@ const root=runtime.data_root;
 const networks=JSON.parse(fs.readFileSync(path.join(assets,'sources/rpc-candidates.json')));
 const bondAbi=JSON.parse(fs.readFileSync(path.join(assets,'sources/mintclub-bond-abi.json')));
 const {RpcPool,RouteRecorder}=require('./rpc-pool.cjs');
-const pool=new RpcPool({publicUrls:networks.flatMap(n=>n.public_rpc||[]),healthFile:runtime.health_file,alchemyInterval:250,alchemySlots:4});
+// Alchemy reads spend from one compute-unit budget below the Free plan's 300 per second.
+// Other hosts keep one read in flight, a second apart.
+// A 4,096-call read can take several seconds, and a read may queue behind the budget.
+const pool=new RpcPool({publicUrls:networks.flatMap(n=>n.public_rpc||[]),healthFile:runtime.health_file,interval:1000,
+  alchemyInterval:40,alchemySlots:8,alchemyBudget:{rate:250,capacity:1500},attemptTimeout:10000,deadline:30000});
 function endpoints(chainId){return runtime.endpoints[String(chainId)] || [];}
 const endpointReads=new WeakMap();
 const endpointOutcomes=new WeakMap();

@@ -119,8 +119,8 @@ def enrich(snapshot, market, folder, *, previous=None, run=None, now=None):
             source, destination = folder/'sell-quote-input.json', folder/'sell-quote-result.json'
             h.save(source, payload)
             try:
-                subprocess.run(['node', str(Path(__file__).with_name('sell-quotes.cjs')), str(source), str(destination)],
-                               capture_output=True, text=True, timeout=BUDGET_MS/1000+5, check=False)
+                import wallet as engine
+                engine.node_script('sell-quotes', 'sell-quotes.cjs', source, destination, BUDGET_MS/1000+5)
             except (subprocess.TimeoutExpired, OSError):
                 pass
             try:

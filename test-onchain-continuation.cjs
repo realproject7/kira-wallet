@@ -2,7 +2,9 @@
 // Bounded work, durable holes and chain scheduling. No live provider calls.
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-const h=require('./onchain.cjs'),{registry,balanceReads,mintclubMembership,scanChain,scanNetworks,setGroupSize,setPeerLagWait,calls,GROUP,MIN_GROUP}=require('./pipeline-onchain.cjs');
+const h=require('./onchain.cjs'),{registry,balanceReads,mintclubMembership,scanChain,scanNetworks,setGroupSize,setPeerLagWait,setTransportPause,calls,GROUP,MIN_GROUP}=require('./pipeline-onchain.cjs');
+// Synthetic transport failures need no real endpoint cooldown.
+setTransportPause(0);
 // Slice tests use small groups so a few hundred fixtures span several slices.
 const small=client=>setGroupSize(client,128);
 const HASH='0x'+'a'.repeat(64),WALLET='0x'+'1'.repeat(40);
@@ -215,13 +217,13 @@ test('bounded membership retries cannot starve unread candidates and successful 
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 
-test('one aggregate read carries up to 1024 calls and a failing endpoint is retried in halves',async()=>{
- assert.equal(GROUP,1024);assert.equal(MIN_GROUP,128);
+test('one aggregate read carries up to 4096 calls and a failing endpoint is retried in halves',async()=>{
+ assert.equal(GROUP,4096);assert.equal(MIN_GROUP,128);
  const sizes=[];
  const roomy={multicall:async({contracts})=>{sizes.push(contracts.length);return contracts.map(()=>({status:'success',result:1n}));}};
- const contracts=Array.from({length:3000},(_,i)=>({address:address(i),functionName:'balanceOf',args:[WALLET]}));
+ const contracts=Array.from({length:9000},(_,i)=>({address:address(i),functionName:'balanceOf',args:[WALLET]}));
  const {batches}=require('./pipeline-onchain.cjs');
- assert.equal((await batches(roomy,contracts,7n)).length,3000);assert.deepEqual(sizes,[1024,1024,952]);
+ assert.equal((await batches(roomy,contracts,7n)).length,9000);assert.deepEqual(sizes,[4096,4096,808]);
  // A provider that refuses large aggregates under any wording is retried with halves,
  // and the working size is kept for later groups of this run.
  sizes.length=0;
@@ -229,9 +231,9 @@ test('one aggregate read carries up to 1024 calls and a failing endpoint is retr
    // viem reports a failed aggregate read as the same error on every row.
    if(contracts.length>256){const error=new Error('gas required exceeds allowance');return contracts.map(()=>({status:'failure',error}));}
    return contracts.map(()=>({status:'success',result:2n}));}};
- const rows=await batches(strict,contracts.slice(0,2048),7n);
- assert.equal(rows.length,2048);assert(rows.every(r=>r.status==='success'));
- assert.deepEqual(sizes.slice(0,3),[1024,512,256]);assert(sizes.slice(3).every(size=>size<=256));
+ const rows=await batches(strict,contracts.slice(0,8192),7n);
+ assert.equal(rows.length,8192);assert(rows.every(r=>r.status==='success'));
+ assert.deepEqual(sizes.slice(0,5),[4096,2048,1024,512,256]);assert(sizes.slice(5).every(size=>size<=256));
  // Throttling is not a size problem: the group fails as one and is retried later.
  sizes.length=0;
  const throttled={multicall:async({contracts})=>{sizes.push(contracts.length);throw Object.assign(new Error('Too Many Requests'),{status:429});}};
@@ -275,24 +277,24 @@ test('fast refresh reads earlier holdings and moved tokens instead of a large ca
   };
   const input=extra=>({wallet:WALLET,candidates:[],networks:[n],fast:{chains:{'999':{from_block:'90',full_check_block:'89',full_checked_at:'2026-11-14T00:00:00Z',
    prior:[{address:address(4),token_type:'ERC20'},{address:address(5),token_type:'ERC1155'}],...extra}}}});
-  // Sent: a non-Mint Club ERC20 (second page). Received: a catalogued ERC20, an ERC1155 and an ERC721 (ignored).
+  // Received: a catalogued ERC20, an ERC1155 and an ERC721 (ignored). Outgoing transfers are not asked for:
+  // a token that left was either held at the last check, and is reread, or arrived later.
   const transfer=(category,a)=>({category,rawContract:{address:a}});
   const history=(method,query)=>{
    assert.equal(method,'alchemy_getAssetTransfers');assert.deepEqual(query.category,['erc20','erc1155']);
-   if(query.fromAddress)return query.pageKey?{transfers:[transfer('erc20',address(8888))]}:{transfers:[],pageKey:'next'};
-   return {transfers:[transfer('erc20',address(10)),transfer('erc1155',address(11)),transfer('erc721',address(7777))]};
+   assert.equal(query.fromAddress,undefined,'Only incoming transfers are read.');
+   return query.pageKey?{transfers:[transfer('erc1155',address(11))]}:{transfers:[transfer('erc20',address(10)),transfer('erc721',address(7777))],pageKey:'next'};
   };
   let seen=build({history});
   let row=await scanChain(input(),n,path.join(root,'fast'));
-  assert.equal(seen.queries.length,3,'Two directions, one of them on two pages.');
-  assert(seen.queries.every(q=>q.fromBlock==='0x5a'&&q.toBlock==='0x64'&&(q.fromAddress===WALLET||q.toAddress===WALLET)));
-  assert.deepEqual([...seen.balances].sort(),[address(4),address(5),address(10),address(11),address(8888)].sort(),'Only earlier and moved tokens are read.');
+  assert.equal(seen.queries.length,2,'Incoming transfers on two pages.');
+  assert(seen.queries.every(q=>q.fromBlock==='0x5a'&&q.toBlock==='0x64'&&q.toAddress===WALLET));
+  assert.deepEqual([...seen.balances].sort(),[address(4),address(5),address(10),address(11)].sort(),'Only earlier and received tokens are read.');
   assert.equal(row.registry_scan.method,'transfer_delta');assert.equal(row.registry_scan.complete,true);
-  assert.equal(row.registry_scan.moved,3);assert.equal(row.registry_scan.prior,2);assert.equal(row.registry_scan.catalogue_count,3000);
-  assert.equal(row.registry_scan.from_block,'90');assert.equal(row.registry_scan.full_check_block,'89');assert.equal(row.registry_scan.log_requests,3);
+  assert.equal(row.registry_scan.moved,2);assert.equal(row.registry_scan.prior,2);assert.equal(row.registry_scan.catalogue_count,3000);
+  assert.equal(row.registry_scan.from_block,'90');assert.equal(row.registry_scan.full_check_block,'89');assert.equal(row.registry_scan.log_requests,2);
   const held=row.tokens.map(t=>t.token_address.toLowerCase()).sort();
-  assert.deepEqual(held,[address(5),address(10),address(11),address(8888)].sort(),'A token sold to zero leaves the list.');
-  assert.equal(row.tokens.find(t=>t.token_address.toLowerCase()===address(8888)).mintclub_membership_status,undefined);
+  assert.deepEqual(held,[address(5),address(10),address(11)].sort(),'A token sold to zero leaves the list.');
   // A provider without the transfer history, or a history too long for the budget, falls back to the full walk.
   for(const failing of [()=>{throw Object.assign(new Error('Unsupported method: alchemy_getAssetTransfers'),{code:-32601});},()=>({transfers:[],pageKey:'again'})]){
    seen=build({history:failing,walk:true});
