@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.13.2**. Prepared candidate: **1.15.4**.
+Published npm release: **1.15.4**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -9,7 +9,16 @@ Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
 
-## Candidate 1.15.4
+## Published 1.15.4
+
+The operator published 1.15.4 on November 15, 2026. The registry archive is
+byte-identical to the frozen one, and a clean registry installation matched
+all 134 members. Pull request 15 merged at
+`90c8b0a96055366ffd1865595723bf23bcd74669`; a fresh pack from the merged tree
+reproduces the archive. SHA-256 is
+`ea4f54ed1fed23f0b2cf92390fe51e6f86a89024b8f10ed2fa3a397cfb97553c`.
+Versions 1.13.3 to 1.13.5, 1.14.0 and 1.15.0 to 1.15.3 were prepared and not
+published; 1.15.4 contains their changes.
 
 - A holdings refresh now ends by updating platform positions under the same
   job, for one wallet, a portfolio batch and a new wallet alike. Positions had
