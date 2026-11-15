@@ -67,9 +67,9 @@ Workspace settings → Connection shows **Alchemy usage**:
   [compute unit costs](https://www.alchemy.com/docs/reference/compute-unit-costs).
   Refused (403) and throttled (429) requests cost nothing and are not counted.
   Other apps on the same account are not included.
-- **Alchemy account**: the account's own month to date, last 7 and 30 days
-  and, when the plan has one, the monthly limit. This needs an Access Key with
-  Usage read access. Create one in the dashboard **Security** tab, then run:
+- **Alchemy account**: the account's own month to date, last 7 and 30 days,
+  the share of the month's allowance and the day it resets. This needs an
+  Access Key with Usage read access. Create one in the dashboard **Security** tab, then run:
 
   ```sh
   kira connect alchemy-usage
@@ -81,8 +81,17 @@ Workspace settings → Connection shows **Alchemy usage**:
   API key from step 1 cannot read usage. `kira connect alchemy-usage --remove`
   forgets the Access Key.
 
-Activity shows the month's total on a tile, and each task's details show what
-it used. A batch refresh shares one total across its wallets.
+With the Access Key, the top bar shows the share of the month's allowance as a
+bar, and the Activity tile shows it with the reset day, for example "41% of 30M
+CU" and "Alchemy · resets Dec 1". Without it, the tile shows Kira's own estimate.
+Each task's details show what it used. A batch refresh shares one total across
+its wallets.
+
+The allowance is the team's hard cap when Alchemy reports one. Otherwise a month
+that has used compute units at no cost is measured against the Free plan's
+30 million compute units a month, and a paid month without a cap shows its
+total without a bar. The month resets when Alchemy's billing period ends, at
+midnight UTC on the first day of the month.
 
 ## Networks your app has not enabled
 

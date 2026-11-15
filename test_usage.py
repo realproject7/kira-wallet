@@ -218,6 +218,29 @@ class OfficialUsageTest(unittest.TestCase):
         record = kira_usage.store_official(200, {'data': {'totals': {'monthToDate': {'amount': 'n/a'}}}}, self.root)
         self.assertEqual(record['summary']['month_to_date'], {'cu': None, 'usd': None})
         self.assertIsNone(record['summary']['usage_limit'])
+        self.assertEqual(kira_usage.allowance(record), {'unit': None, 'limit': None, 'used': None, 'basis': None, 'resets_at': None})
+
+    def test_the_allowance_is_the_cap_or_the_free_plan_and_the_month_resets_at_the_period_end(self):
+        period = {'startTime': '2026-11-01T00:00:00.000Z', 'endTime': '2026-12-01T00:00:00.000Z'}
+        def checked(usd, limit=None):
+            data = {'billingPeriod': period, 'totals': {'monthToDate': {'amount': '12000000', 'usd': usd}}}
+            if limit: data['usageLimit'] = limit
+            return kira_usage.store_official(200, {'data': data}, self.root)
+        free = kira_usage.allowance(checked('0.00'))
+        self.assertEqual(free, {'unit': 'CU', 'limit': kira_usage.FREE_PLAN_CU, 'used': 12000000, 'basis': 'free_plan', 'resets_at': '2026-12-01T00:00:00.000Z'})
+        capped = kira_usage.allowance(checked('6.30', {'unit': 'CU', 'limit': '50000000', 'used': '12000000', 'percentUsed': 24}))
+        self.assertEqual((capped['limit'], capped['used'], capped['basis']), (50000000, 12000000, 'cap'))
+        dollars = kira_usage.allowance(checked('6.30', {'unit': 'USD', 'limit': '25', 'used': '6.30'}))
+        self.assertEqual((dollars['unit'], dollars['limit'], dollars['used']), ('USD', 25, 6))
+        # Pay As You Go without a cap, or a month without a stated cost: no allowance to measure against.
+        for usd in ('6.30', None):
+            self.assertEqual(kira_usage.allowance(checked(usd))['limit'], None)
+        self.assertEqual(kira_usage.allowance(checked('6.30'))['resets_at'], '2026-12-01T00:00:00.000Z')
+        # A failed check keeps the last good summary, so the allowance stays readable.
+        failed = kira_usage.store_official(401, {'message': 'denied'}, self.root)
+        self.assertEqual(kira_usage.allowance(failed)['resets_at'], '2026-12-01T00:00:00.000Z')
+        self.assertIsNone(kira_usage.allowance(None))
+        self.assertEqual(kira_usage.view(self.root)['allowance'], kira_usage.allowance(kira_usage.official(self.root)))
 
 
 class ApplicationUsageTest(unittest.TestCase):

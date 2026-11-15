@@ -51,16 +51,16 @@ function renderWorkspace() {
   if (selectedView === 'tokens') {
     renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Portfolio',href:'#/home'}]),{label:'All tokens'}]);
     document.title = 'All tokens · Kira Wallet';
-    if(!context){$('sync-label').textContent='Loading folder holdings…';renderCatalog();return;}
+    if(!context){renderCatalog();return;}
     const network = $('all-token-network').value;
     const recordedChains = new Set(state.paged?context.details.networks.filter(n=>n.position_count>0).map(n=>n.id):state.details.tokens.map(t=>t.chain_id));
     $('all-token-network').innerHTML = '<option value="all">All chains</option>' + context.details.networks.filter(n => recordedChains.has(n.id)).map(n => `<option value="${n.id}" data-chain-id="${n.id}">${escapeHTML(n.name)}${n.environment === 'testnet' ? ' · Testnet' : ''}</option>`).join('');
     $('all-token-network').value = [...$('all-token-network').options].some(o => o.value === network) ? network : 'all';
-    $('sync-label').textContent = 'Latest recorded holdings'; renderCatalog();
+    renderCatalog();
   } else if (selectedView === 'activity') {
     const area=typeof areaWallet!=='undefined'?areaWallet:null;
     if(!area)renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Portfolio',href:'#/home'}]),{label:'Activity'}]);
-    document.title = (area?(currentWallet()?.name||'Wallet')+' activity':'Activity')+' · Kira Wallet'; $('sync-label').textContent = 'Local research history';
+    document.title = (area?(currentWallet()?.name||'Wallet')+' activity':'Activity')+' · Kira Wallet';
     if(typeof renderActivity==='function')renderActivity();
   }
 }

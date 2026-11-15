@@ -72,8 +72,6 @@ main { margin-left: 232px; width: calc(100% - 232px); }
 .breadcrumb { font-size: var(--text-ui); }
 .breadcrumb a { min-height: 44px; display: flex; align-items: center; }
 .breadcrumb [aria-current] { color: #51465d; }
-.sync-status { font-size: var(--text-secondary); color: var(--secondary); }
-.sync-status .sync-dot { background: #806692; }
 .demo-badge { font-size: var(--text-caption); letter-spacing: .06em; color: #69527b; }
 .workspace-tabs { min-height: 56px; border-bottom: 1px solid var(--line); display: flex; align-items: stretch; gap: 28px; padding: 0 28px; background: #fbfaf7; }
 .workspace-tabs > a { position: relative; display: flex; align-items: center; gap: 8px; color: var(--secondary); font-size: var(--text-ui); white-space: nowrap; min-height: 56px; }
@@ -313,7 +311,6 @@ main { margin-left: 216px; width: calc(100% - 216px); }
 .app { display: block; }
 main { width: 100%; margin: 0; }
 .topbar { height: 44px; padding: 0 20px; }
-.sync-status { display: none; }
 .demo-badge { font-size: var(--text-caption); margin: 0; }
 .workspace-tabs { height: auto; min-height: 52px; padding: 0 20px; gap: 24px; flex-wrap: wrap; }
 .workspace-tabs > a { min-height: 52px; }

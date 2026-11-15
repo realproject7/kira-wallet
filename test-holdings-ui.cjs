@@ -105,7 +105,8 @@ console.log('Lists show priced holdings first, count the unpriced ones they leav
 const savedAssets=wallet.assets,savedAnalysis=wallet.analysed_at;
 wallet.assets=[];wallet.analysed_at=null;context.minimum=0;context.renderWallet();
 assert.equal(node('total-value').textContent,'—');
-assert.equal(node('sync-label').textContent,'Not checked');
+// The global bar holds Alchemy usage now; the wallet's own status says it was never checked.
+assert.equal(nodes.has('sync-label'),false);
 assert.equal(node('valuation-note').textContent,'No holdings lookup saved yet.');
 assert.match(node('empty-p').textContent,/Use Refresh holdings/);
 wallet.assets=savedAssets;wallet.analysed_at=savedAnalysis;
