@@ -8,6 +8,8 @@ from kira_jobs import JobStore
 class SyntheticStore(JobStore):
     def engine_command(self,job):
         return [sys.executable,str(Path(__file__).with_name('engine.py')),sys.argv[2]]
+    def batch_command(self,jobs):
+        return [sys.executable,str(Path(__file__).with_name('engine.py')),sys.argv[2]]+[x for job in jobs for x in ('--job',job['job_id'])]
 
 signal.signal(signal.SIGTERM,lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
 SyntheticStore(sys.argv[1]).worker()

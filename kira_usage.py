@@ -149,12 +149,14 @@ def summary(root=None, now_at=None):
 
 
 def job_usage(job_id, root=None):
-    """What one job spent, or the batch it ran in."""
+    """What one job spent, or the batches it ran in. A sell estimate that stepped aside for
+    shorter work resumes in a later batch; both count."""
     rows = lines(root)
-    batch = next((r for r in rows if r.get('source') == 'batch' and job_id in (r.get('jobs') or [])), None)
-    if batch:
-        spent = [r for r in rows if r.get('batch') == batch['batch']]
-        return {'cu': sum(r['cu'] for r in spent), 'requests': sum(r.get('requests', 0) for r in spent), 'batch_wallets': len(batch.get('jobs') or [])}
+    joined = [r for r in rows if r.get('source') == 'batch' and job_id in (r.get('jobs') or [])]
+    if joined:
+        ids = {r['batch'] for r in joined}
+        spent = [r for r in rows if r.get('batch') in ids]
+        return {'cu': sum(r['cu'] for r in spent), 'requests': sum(r.get('requests', 0) for r in spent), 'batch_wallets': len(joined[-1].get('jobs') or [])}
     spent = [r for r in rows if r.get('job') == job_id and not r.get('batch')]
     if not spent:
         return None

@@ -17,7 +17,7 @@ function renderPortfolioActions(){
     const dates=wallets.map(w=>w.sell_analysis?.last_analyzed_at).filter(Boolean).sort();
     $('analyze-portfolio').textContent=eligible?'Update sell estimates ('+eligible+')':busy.size?'Research in progress':pending?'Waiting for holdings':'Sell estimates saved';
     $('portfolio-sell-status').textContent=retained+' unchanged'+(busy.size?' · '+busy.size+' in progress':'')+(!busy.size&&pending?' · '+pending+' awaiting holdings':'')+(dates.length?' · Last analysis '+stamp(dates.at(-1)):'');
-    $('portfolio-sell-status').title=eligible+' wallets need analysis. Unchanged wallets are skipped. '+pending+' await verified holdings. Research runs one wallet at a time.';
+    $('portfolio-sell-status').title=eligible+' wallets need analysis. Unchanged wallets are skipped. '+pending+' await verified holdings. Wallets are checked together.';
   }
 }
 async function submitPortfolio(operation,options={}){
@@ -35,7 +35,7 @@ async function submitPortfolio(operation,options={}){
     const skipped=Object.entries(counts).map(([reason,count])=>count+' '+(reasons[reason]||reason)).join(' · ');
     $('portfolio-action-status').textContent=scopeName+': '+receipt.jobs.length+' wallet jobs accepted. '+(skipped?skipped+'. ':'')+
       (receipt.errors.length?receipt.errors.length+' could not be queued. Retry this action or check Activity. ':'')+
-      (operation==='portfolio.refresh'?'Follow progress in Activity; wallets are read together.':'Follow progress in Activity; wallets run one at a time.');
+      'Follow progress in Activity; wallets are read together.';
     if(receipt.jobs.length)navigate('#/activity');
   }catch(error){$('portfolio-action-status').textContent=error.message;}
   finally{portfolioSubmitting=false;renderPortfolioActions();}

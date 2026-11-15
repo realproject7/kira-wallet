@@ -1,6 +1,10 @@
 # Kira release status
 
-Updated: 2026-11-15. The operator published Kira 1.15.7. It keeps Alchemy usage
+Updated: 2026-11-16. Candidate 1.16.0 runs queued sell estimates as one batch:
+one DEX Screener listing for every wallet's tokens, pool lookups only for listed
+tokens and once per token, and one Node process that shares reads between
+wallets. On a copy of a large workspace every wallet took 3.2 minutes and about
+27,000 compute units, and route lookups are no longer rate limited. The operator published Kira 1.15.7. It keeps Alchemy usage
 current while the app is open (a check once the last is 15 minutes old). It contains the unpublished
 1.15.6, which shows Alchemy usage in the top bar (the share of the month's
 allowance) and the reset day on the Activity tile, and 1.15.5, which shows the running version in the

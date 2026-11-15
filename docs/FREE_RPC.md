@@ -99,7 +99,11 @@ Market pool attempts have a durable frontier: unread pools receive a turn before
 failed retry holes. Repeated failures cannot continuously consume the budget
 ahead of the same untested pools, and retries alone do not count as new evidence.
 
-Each market publication slice has a 180-second budget. It expands already
+A sell estimate run on its own (`wallet.py --phase sell`) works in slices with a
+180-second budget. The app's worker runs queued sell estimates as one batch
+(`batch_sell.py`) instead, which gives each wallet up to 30 minutes and shares
+its lookups; the slice rules below still apply when a wallet reaches that limit
+or the batch steps aside for shorter work. Each slice or turn expands already
 funded Mint Club burns first, then budgets general market discovery and pool
 verification separately, reserving time for output prices. Unfinished pool
 checks cannot block every completed burn from being valued. A usable funded

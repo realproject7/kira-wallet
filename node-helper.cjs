@@ -1,5 +1,5 @@
 'use strict';
-// One Node process for a batch holdings refresh. Requests arrive as JSON lines on
+// One Node process for a batch holdings refresh or sell estimate batch. Requests arrive as JSON lines on
 // stdin and run concurrently, so every read in the batch shares one Alchemy budget,
 // one endpoint health view and one read cache. Each answer is a JSON line carrying the
 // request's helper_id; any other line is progress for the job named in it.
@@ -16,6 +16,8 @@ const scripts = {
 const reply = value => process.stdout.write(JSON.stringify(value) + '\n');
 
 p.setQuiet(true);
+// Every wallet of the batch reads at the same pinned blocks; share those answers.
+p.setSharedReads(true);
 // A timed-out provider read can settle after its request has answered. It must not
 // stop the helper while other wallets are still being read.
 process.on('unhandledRejection', () => {});

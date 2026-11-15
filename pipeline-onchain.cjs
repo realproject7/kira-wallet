@@ -638,6 +638,56 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity,
 function deployment(chain,protocol,name) {
   return deployments.find(r=>r.chainId===chain && r.protocol===protocol && r.contract.toLowerCase()===name.toLowerCase())?.address;
 }
+// Assets one wallet's market step checks at once on an Alchemy network. Reads still go through
+// the RPC pool's lanes and compute unit budget, so this only fills idle time between replies.
+// A public endpoint reads one at a time; more lanes would only wait past its read deadline.
+const POOL_LANES=8;
+const poolLanes=n=>{const first=h.endpoints(n.chain_id)[0];return first&&h.alchemyEndpoint(first)?POOL_LANES:1;};
+// Single reads that parallel asset checks send at about the same time, mostly full-balance
+// quotes, travel together in one aggregate call. Quoters revert their internal swap, so each
+// call in the aggregate sees the same pinned state, as the fallback-amount batches already rely on.
+// Only Alchemy networks gather; their call gas cap is high. In a batch's Node process (shared
+// reads on), gathering is per network and block, so the batch's wallets share aggregates too.
+const READ_GROUP=16,READ_GATHER_MS=20;
+let SHARED_READS=false;
+const setSharedReads=value=>{SHARED_READS=!!value;};
+const gatherers=new Map(),ownGatherers=new WeakMap();
+function gatherer(chain,client,block){
+  const shared=SHARED_READS,key=chain+':'+block;let g=shared?gatherers.get(key):ownGatherers.get(client);
+  if(!g){g={waiting:[],timer:null};if(shared)gatherers.set(key,g);else ownGatherers.set(client,g);}
+  // Every client of a network reads the same pinned state; the newest one carries the aggregate.
+  g.client=client;
+  const flush=()=>{
+    clearTimeout(g.timer);g.timer=null;
+    const group=g.waiting.splice(0,READ_GROUP);
+    if(g.waiting.length)g.timer=setTimeout(flush,READ_GATHER_MS);
+    calls(g.client,group.map(x=>x.query),block).then(rows=>rows.forEach((row,i)=>row?.status==='success'?group[i].resolve(row.result):group[i].reject(row?.error||new Error('Read unavailable'))),
+      error=>group.forEach(x=>x.reject(error)));
+  };
+  const one=({blockNumber,...query})=>new Promise((resolve,reject)=>{
+    g.waiting.push({query,resolve,reject});
+    if(g.waiting.length>=READ_GROUP)flush();else if(!g.timer)g.timer=setTimeout(flush,READ_GATHER_MS);
+  });
+  // A small aggregate (a pool's few state reads, three fallback quote amounts) joins the same group.
+  one.many=queries=>Promise.allSettled(queries.map(query=>one(query))).then(rows=>rows.map(r=>r.status==='fulfilled'?{status:'success',result:r.value}:{status:'failure',error:r.reason}));
+  return one;
+}
+// In a batch's Node process, identical reads that wallets send at the same moment wait for one answer.
+const inflight=new Map();
+const once=(key,read)=>{
+  if(!SHARED_READS)return read();
+  if(!inflight.has(key)){const pending=read().finally(()=>{if(inflight.get(key)===pending)inflight.delete(key);});inflight.set(key,pending);}
+  return inflight.get(key);
+};
+// A read at one block hash answers the same for every wallet. A batch's Node process keeps
+// successful answers per network and block hash, so wallets holding the same tokens, and
+// route checks through the same pool at different amounts, read each pool's state once.
+// Elsewhere each market step keeps only its own checkpoint's answers.
+const pinned=new Map();
+const pinnedReads=(chain,hash)=>{
+  if(!SHARED_READS)return new Map();
+  const key=chain+':'+String(hash).toLowerCase();if(!pinned.has(key))pinned.set(key,new Map());return pinned.get(key);
+};
 class MarketBudget extends Error {
   constructor(){super('Market verification time budget reached. Saved checks can be resumed.');this.code='market_budget';}
 }
@@ -658,7 +708,10 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
       ||cacheDecode(cache.tokens).some(t=>!identities.has(identity(t)))))
     throw new Error('Market checkpoint does not match this research request.');
   if(cache)cache.fingerprint=fingerprint;
-  const save=()=>{if(file)write(file,cache);};
+  // The checkpoint holds every token and read of this request; writing it after each read
+  // grew with the wallet. It is written at most every two seconds and at every exit.
+  let savedAt=0;
+  const save=(force=false)=>{if(!file||!cache||!force&&Date.now()-savedAt<2000)return;cache.tokens=cacheEncode(tokens);write(file,cache);savedAt=Date.now();};
   try {
   if(Date.now()>=deadline)throw new MarketBudget();
   const pinned=tokens.find(t=>t.balance_block_hash&&t.balance_block_number!=null);
@@ -691,20 +744,24 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
   }
   const requestKey=(name,args)=>crypto.createHash('sha256').update(h.serialize({name,args})).digest('hex');
   const deferred=new Map();
+  const lanes=representative?poolLanes(n):1,gathered=gatherer(n.chain_id,client,block),shared=pinnedReads(n.chain_id,snapshot.hash);
+  const known=key=>{if(cache.requests[key]===undefined&&shared.has(key))cache.requests[key]=shared.get(key);return cache.requests[key]!==undefined;};
   const c=new Proxy(client,{get(target,name){
     if(!['multicall','readContract'].includes(name))return Reflect.get(target,name);
     return async args=>{
       const key=requestKey(name,args);
-      if(cache.requests[key]!==undefined)return cacheDecode(cache.requests[key]);
+      if(known(key))return cacheDecode(cache.requests[key]);
       if(representative&&name==='readContract'&&deferred.has(key))throw deferred.get(key);
       if(representative&&name==='multicall'){
         const keys=args.contracts.map(q=>requestKey('readContract',{...q,blockNumber:args.blockNumber}));
-        if(keys.every(k=>cache.requests[k]!==undefined||deferred.has(k)))return keys.map(k=>cache.requests[k]!==undefined?{status:'success',result:cacheDecode(cache.requests[k])}:{status:'failure',error:deferred.get(k)});
+        if(keys.every(k=>known(k)||deferred.has(k)))return keys.map(k=>cache.requests[k]!==undefined?{status:'success',result:cacheDecode(cache.requests[k])}:{status:'failure',error:deferred.get(k)});
       }
       if(Date.now()>=deadline)throw new MarketBudget();
-      const result=await boundedMarket(target[name](args),deadline);
+      const together=lanes>1&&args.blockNumber===block&&(name==='readContract'||args.contracts.length<=READ_GROUP/2);
+      const read=()=>together?(name==='readContract'?gathered(args):gathered.many(args.contracts)):target[name](args);
+      const result=await boundedMarket(once(n.chain_id+':'+snapshot.hash+':'+key,read),deadline);
       const safe=name==='multicall'?result.map(r=>r.status==='success'?{status:'success',result:r.result}:{status:'failure',error:h.safeError(r.error)}):result;
-      if(name!=='multicall'||safe.every(r=>r.status==='success')){cache.requests[key]=cacheEncode(safe);save();}
+      if(name!=='multicall'||safe.every(r=>r.status==='success')){cache.requests[key]=cacheEncode(safe);shared.set(key,cache.requests[key]);save();}
       return result;
     };
   }});
@@ -765,14 +822,14 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
     };
     const warm=async plans=>{
       const needed=key=>[...(warmOwners.get(key)||[])].some(t=>!done(t));
-      const pending=[...new Map(plans.map(q=>[requestKey('readContract',{...q,blockNumber:block}),q])).entries()].filter(([k])=>cache.requests[k]===undefined&&needed(k));
+      const pending=[...new Map(plans.map(q=>[requestKey('readContract',{...q,blockNumber:block}),q])).entries()].filter(([k])=>!known(k)&&needed(k));
       for(let start=0;start<pending.length;start+=128){
         const group=pending.slice(start,start+128).filter(([k])=>needed(k));if(!group.length)continue;
         if(Date.now()>=deadline)throw new MarketBudget();
         const rows=await boundedMarket(calls(client,group.map(([,q])=>q),block),deadline);
         rows.forEach((r,i)=>{
           const key=group[i][0];
-          if(r.status==='success'){cache.requests[key]=cacheEncode(r.result);return;}
+          if(r.status==='success'){cache.requests[key]=cacheEncode(r.result);shared.set(key,cache.requests[key]);return;}
           deferred.set(key,r.error);
           for(const t of warmOwners.get(key)||[]){
             const asset=assetKey(t);warmFailures.add(asset);
@@ -787,7 +844,7 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
               if(pool)pool.rpc_verification={...pool.rpc_verification,verification:'unverified',error:{message:review.reason}};
             }
           }
-        });cache.tokens=cacheEncode(tokens);save();
+        });save();
       }
     };
     const value=q=>{const raw=cache.requests[requestKey('readContract',{...q,blockNumber:block})];return raw===undefined?undefined:cacheDecode(raw);};
@@ -818,34 +875,36 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
       return [{address:output,abi:erc20,functionName:'balanceOf',args:[p.pool]},{address:output,abi:erc20,functionName:'decimals'},{address:output,abi:erc20,functionName:'symbol'}].map(q=>owned(t,q));
     }));
   }
-  for(const {t,p} of poolQueue) {
-    if(!supported(t).includes(p))continue;
-    if(representative&&done(t)){emitProgress(n,'pool_checks',++poolChecked,poolTotal);continue;}
+  // Assets are checked several at a time; one asset's pools keep their order. A stop (the
+  // time budget) lets the checks in flight end their step, then the run pauses as before.
+  const checkPool=async ({t,p})=>{
+    if(!supported(t).includes(p))return;
+    if(representative&&done(t)){emitProgress(n,'pool_checks',++poolChecked,poolTotal);return;}
     const identity=poolKey(t,p);
-    if(cache.completed_pools.includes(identity)){if(representative)cache.asset_reviews[assetKey(t)].done=true;emitProgress(n,'pool_checks',++poolChecked,poolTotal);continue;}
+    if(cache.completed_pools.includes(identity)){if(representative)cache.asset_reviews[assetKey(t)].done=true;emitProgress(n,'pool_checks',++poolChecked,poolTotal);return;}
     if(Date.now()>=deadline)throw new MarketBudget();
     cache.pool_attempts[identity]=(cache.pool_attempts[identity]||0)+1;
     let retry=false,paused=false;
     try {
       if(p.pool.length===66) {
         const sv=deployment(n.chain_id,'v4','StateView');
-        if(!sv){p.rpc_verification={verification:'official_state_view_unavailable'};continue;}
+        if(!sv){p.rpc_verification={verification:'official_state_view_unavailable'};return;}
         const r=await calls(c,['getSlot0','getLiquidity'].map(functionName=>({address:sv,abi:poolAbi,functionName,args:[p.pool]})),block);
         if(r.some(x=>x.status==='failure'))retry=true;
         p.rpc_verification={verification:r[0].status==='success'&&r[0].result[0]>0n?'initialized_at_official_v4_state_view':'unverified',block_number:block,observed_at:stamp(),state_view:sv};
         if(r[1].status==='success')p.factory_measurement={active_liquidity_verified:r[1].result>0n,state:{liquidity:r[1].result}};
         const key=r[0].status==='success'?v4Key(p,r[0].result[3]):null;
-        if(!key){p.cashout_quote={status:'unknown',reason:'V4 pool key or hooks unsupported; other pools do not establish its exit value.'};continue;}
+        if(!key){p.cashout_quote={status:'unknown',reason:'V4 pool key or hooks unsupported; other pools do not establish its exit value.'};return;}
         const output=key.currency0===t.token_address.toLowerCase()?key.currency1:key.currency0;
-        if(![key.currency0,key.currency1].includes(t.token_address.toLowerCase()))continue;
+        if(![key.currency0,key.currency1].includes(t.token_address.toLowerCase()))return;
         const native=nativeCurrency(n.chain_id);
         const metadata=output===v.zeroAddress&&native?[{status:'success',result:native.decimals},{status:'success',result:native.symbol}]:await calls(c,[{address:output,abi:erc20,functionName:'decimals'},{address:output,abi:erc20,functionName:'symbol'}],block);
-        if(metadata.some(x=>x.status==='failure')){retry=true;continue;}
+        if(metadata.some(x=>x.status==='failure')){retry=true;return;}
         Object.assign(p.factory_measurement,{quote_token:output,quote_decimals:metadata[0].result,quote_symbol:metadata[1].result,
           state:{...p.factory_measurement.state,token0:key.currency0,token1:key.currency1,pool_key:key,pool_manager:deployment(n.chain_id,'v4','PoolManager')}});
         p.cashout_quote=await quotePool(c,n,t,p,block,snapshot.hash,deployments,{batchRead:contracts=>calls(c,contracts,block),fullOnly});
         if(p.cashout_quote.status==='unknown'&&p.cashout_quote.reason.startsWith('Pool quote failed'))retry=true;
-        continue;
+        return;
       }
       let baseState=null;
       if(p.venue!=='uniswap'){
@@ -899,23 +958,44 @@ async function dexChain(n, tokens, {file,wallet,deadline=Date.now()+180_000,repr
       if(!paused&&Date.now()<deadline){if(!retry)cache.completed_pools.push(identity);poolChecked++;}
       if(representative&&!paused&&Date.now()<deadline){const review=cache.asset_reviews[assetKey(t)];if(retry&&!warmFailures.has(assetKey(t)))review.failures++;review.done=!retry||review.failures>=2;}
       if(retry)p.rpc_verification={...p.rpc_verification,error:{message:'Some pool reads failed. Remaining price and execution details are unknown.'}};
-      cache.tokens=cacheEncode(tokens);save();emitProgress(n,'pool_checks',poolChecked,poolTotal);
+      save();emitProgress(n,'pool_checks',poolChecked,poolTotal);
     }
-  }
+  };
+  const units=[];
+  if(representative){const byToken=new Map();for(const item of poolQueue){if(!byToken.has(item.t)){byToken.set(item.t,[]);units.push(byToken.get(item.t));}byToken.get(item.t).push(item);}}
+  else for(const item of poolQueue)units.push([item]);
+  let stop=null;
+  await parallel(units,lanes,async unit=>{
+    for(const item of unit){if(stop)return;try{await checkPool(item);}catch(error){stop=stop||error;return;}}
+  });
+  if(stop)throw stop;
   if(representative){
     tokens.forEach(t=>{if(done(t))delete t.market_pending;else t.market_pending=true;});
-    cache.tokens=cacheEncode(tokens);save();return tokens;
+    save(true);return tokens;
   }
   if(Date.now()>=deadline)throw new MarketBudget();
-  tokens.forEach(t=>{delete t.market_pending;if(t.dex_pools.some(p=>p.rpc_verification?.error)||t.factory_discovery?.errors)t.dex_verification_error={message:'Some market reads failed. Missing pool and price evidence remains unknown.'};else delete t.dex_verification_error;});cache.tokens=cacheEncode(tokens);save();
+  tokens.forEach(t=>{delete t.market_pending;if(t.dex_pools.some(p=>p.rpc_verification?.error)||t.factory_discovery?.errors)t.dex_verification_error={message:'Some market reads failed. Missing pool and price evidence remains unknown.'};else delete t.dex_verification_error;});save(true);
   return tokens;
   }catch(e){
     if(e.code!=='market_budget')throw e;
     tokens.forEach(t=>{if(representative&&cache?.asset_reviews?.[t.token_address.toLowerCase()+':'+t.token_type]?.done)delete t.market_pending;else t.market_pending=true;});
-    if(cache){cache.tokens=cacheEncode(tokens);save();}
+    if(cache)save(true);
     return tokens;
   }
 }
+// A single read at a pinned block. In a batch's Node process the answer is shared with every
+// wallet, identical reads in flight wait for one answer, and Alchemy reads are gathered.
+async function pinnedSingle(n,client,block,hash,query){
+  if(!SHARED_READS)return client.readContract(query);
+  const shared=pinnedReads(n.chain_id,hash),key='single:'+crypto.createHash('sha256').update(h.serialize(query)).digest('hex');
+  if(shared.has(key))return cacheDecode(shared.get(key));
+  const gathered=poolLanes(n)>1?gatherer(n.chain_id,client,block):null;
+  const value=await once(n.chain_id+':'+hash+':'+key,()=>gathered?gathered(query):client.readContract(query));
+  shared.set(key,cacheEncode(value));return value;
+}
+// In a batch's Node process every wallet reads curve reserves at the block the first one read,
+// so their shared reserve tokens are read once.
+const reservePins=new Map();
 async function reserveChain(n,input,outputPath,deadline=Date.now()+180_000) {
   const rows=[];
   const file=path.join(path.dirname(outputPath),`reserve-checkpoint-${n.chain_id}.json`);
@@ -924,7 +1004,16 @@ async function reserveChain(n,input,outputPath,deadline=Date.now()+180_000) {
   try {
     if(cache&&(cache.wallet!==input.wallet.toLowerCase()||cache.chain_id!==n.chain_id||cache.bond!==n.mintclub_bond_address.toLowerCase()))throw new Error('Reserve checkpoint does not match this research request.');
     if(Date.now()>=deadline)throw new MarketBudget();
-    const c=await boundedMarket(connect(n),deadline),snapshot=await boundedMarket(h.snapshotBlock(c,cache),deadline),block=snapshot.number;
+    const c=await boundedMarket(connect(n),deadline),pin=cache||(SHARED_READS?reservePins.get(n.chain_id):null);
+    let snapshot;
+    try{snapshot=await boundedMarket(h.snapshotBlock(c,pin),deadline);}
+    catch(error){
+      // A shared pin that is no longer canonical gives way to the newest block.
+      if(cache||!pin||error.code==='market_budget')throw error;
+      reservePins.delete(n.chain_id);snapshot=await boundedMarket(h.snapshotBlock(c,null),deadline);
+    }
+    const block=snapshot.number;
+    if(SHARED_READS&&!reservePins.has(n.chain_id))reservePins.set(n.chain_id,{block_number:block.toString(),block_hash:snapshot.hash});
     cache=cache||{wallet:input.wallet.toLowerCase(),chain_id:n.chain_id,bond:n.mintclub_bond_address.toLowerCase(),block_number:block.toString(),block_hash:snapshot.hash,nodes:{}};save();
     const queue=input.tokens.filter(t=>t.chain_id===n.chain_id&&t.mintclub).map(t=>t.token_address),seen=new Set();
     for(let i=0;i<queue.length;i++) {
@@ -934,9 +1023,9 @@ async function reserveChain(n,input,outputPath,deadline=Date.now()+180_000) {
       try {
         if(cache.nodes[key]){const saved=cacheDecode(cache.nodes[key]);rows.push(saved);if(saved.is_curve)queue.push(saved.reserve_token);emitProgress(n,'reserves',rows.length,queue.length);continue;}
         if(Date.now()>=deadline)throw new MarketBudget();
-        const exists=await boundedMarket(c.readContract({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'exists',args:[address],blockNumber:block}),deadline);
+        const exists=await boundedMarket(pinnedSingle(n,c,block,snapshot.hash,{address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'exists',args:[address],blockNumber:block}),deadline);
         if(!exists){const saved={chain_id:n.chain_id,address,is_curve:false,block_number:block,observed_at:stamp()};rows.push(saved);cache.nodes[key]=cacheEncode(saved);save();emitProgress(n,'reserves',rows.length,queue.length);continue;}
-        const d=await boundedMarket(c.readContract({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getDetail',args:[address],blockNumber:block}),deadline);
+        const d=await boundedMarket(pinnedSingle(n,c,block,snapshot.hash,{address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getDetail',args:[address],blockNumber:block}),deadline);
         const info=d.info;
         rows.push({chain_id:n.chain_id,address,is_curve:true,symbol:info.symbol,price_in_reserve:v.formatUnits(info.priceForNextMint,info.reserveDecimals),
           reserve_token:info.reserveToken,reserve_symbol:info.reserveSymbol,curve_reserve:v.formatUnits(info.reserveBalance,info.reserveDecimals),
@@ -949,8 +1038,19 @@ async function reserveChain(n,input,outputPath,deadline=Date.now()+180_000) {
   return {tokens:rows,market_pending:false};
 }
 let nextRouteDiscovery=0;
+// Within one process (a sell estimate batch's helper), a token's pools are asked once for
+// every wallet. An answer that left the pools unknown is asked again.
+const routeLookups=new Map();
 async function routePools(chain,address,deadline) {
   if(!chain)return {pools:[],unknown:'DEX discovery does not admit this network.'};
+  const key=chain+':'+address.toLowerCase(),shared=routeLookups.get(key);
+  if(shared){try{const answer=await boundedMarket(shared,deadline);if(!answer.unknown)return structuredClone(answer);}catch(error){if(error.code==='market_budget')throw error;}}
+  const pending=lookupRoutePools(chain,address,deadline);
+  routeLookups.set(key,pending);
+  try{const answer=await pending;if(answer.unknown&&routeLookups.get(key)===pending)routeLookups.delete(key);return structuredClone(answer);}
+  catch(error){if(routeLookups.get(key)===pending)routeLookups.delete(key);throw error;}
+}
+async function lookupRoutePools(chain,address,deadline) {
   const wait=Math.max(0,nextRouteDiscovery-Date.now());nextRouteDiscovery=Math.max(Date.now(),nextRouteDiscovery)+300;
   if(wait)await boundedMarket(new Promise(resolve=>setTimeout(resolve,wait)),deadline);
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),Math.min(8000,Math.max(1,deadline-Date.now())));
@@ -999,26 +1099,29 @@ async function liquidationChain(n,input,outputPath,deadline=Date.now()+180_000) 
     if(typeof cache.asset_reviews!=='object'||Array.isArray(cache.asset_reviews)||Object.values(cache.asset_reviews).some(r=>!r||typeof r!=='object'||typeof r.done!=='boolean'||!Number.isSafeInteger(r.failures)||r.failures<0))throw new Error('Invalid saved asset review frontier.');
     let assetDeadline=deadline,assetAdvanced=false;
     const queryKey=args=>crypto.createHash('sha256').update(h.serialize({...args,blockNumber:block})).digest('hex');
-    const deferred=new Map();
+    const deferred=new Map(),shared=pinnedReads(n.chain_id,snapshot.hash);
+    const gathered=SHARED_READS&&poolLanes(n)>1?gatherer(n.chain_id,client,block):null;
+    const known=key=>{if(cache.requests[key]===undefined&&shared.has(key))cache.requests[key]=shared.get(key);return cache.requests[key]!==undefined;};
     const read=async args=>{
       const query={...args,blockNumber:block},key=queryKey(args);
-      if(cache.requests[key]!==undefined)return cacheDecode(cache.requests[key]);
+      if(known(key))return cacheDecode(cache.requests[key]);
       if(deferred.has(key))throw deferred.get(key);
       flush();
-      const value=await boundedMarket(client.readContract(query),assetDeadline);cache.requests[key]=cacheEncode(value);save(true);return value;
+      const value=await boundedMarket(once(n.chain_id+':'+snapshot.hash+':'+key,()=>gathered?gathered(query):client.readContract(query)),assetDeadline);
+      cache.requests[key]=cacheEncode(value);shared.set(key,cache.requests[key]);save(true);return value;
     };
     // Warm exact per-query facts with small Multicalls. Rich curve metadata is
     // unnecessary; a healthy member set needs a few paced RPCs instead of one
     // paced round trip for every getter of every held asset. Only successful
     // cells enter the cache. A failed transport is deferred, never fanned out.
     const prefetch=async plans=>{
-      const pending=[...new Map(plans.map(p=>[queryKey(p),p])).entries()].filter(([key])=>cache.requests[key]===undefined);
+      const pending=[...new Map(plans.map(p=>[queryKey(p),p])).entries()].filter(([key])=>!known(key));
       for(let start=0;start<pending.length;start+=32){
         if(Date.now()>=deadline)throw new MarketBudget();
         const group=pending.slice(start,start+32);flush();
         const rows=await boundedMarket(calls(client,group.map(([,p])=>p),block),deadline);
         rows.forEach((r,i)=>{
-          if(r.status==='success')cache.requests[group[i][0]]=cacheEncode(r.result);
+          if(r.status==='success'){cache.requests[group[i][0]]=cacheEncode(r.result);shared.set(group[i][0],cache.requests[group[i][0]]);}
           else {const failure=rpcFailure(r.error);if(failure.transportFailure||failure.schedulingFailure)deferred.set(group[i][0],r.error);}
         });save(true);
       }
@@ -1331,6 +1434,9 @@ async function batchScan(batch){
     write(path.join(w.folder,'onchain-summary.json'),{wallet:w.input.wallet,observed_at:stamp(),chains:w.input.networks.map(n=>byChain.get(n.chain_id).get(w.job_id))});
   }
 }
+// The caller sets each market step's budget: a single wallet's slice, or the longer turn a
+// sell estimate batch gives every wallet. This cap only bounds a runaway input.
+const MODE_BUDGET_CAP=1_800_000;
 // One mode run. A pending market result tells a one-shot process to exit at once.
 async function runMode(mode,inputPath,outputPath) {
   if(mode==='batch-scan'){await batchScan(JSON.parse(fs.readFileSync(inputPath)));return {pending:false};}
@@ -1341,7 +1447,7 @@ async function runMode(mode,inputPath,outputPath) {
     write(path.join(outputPath,'onchain-summary.json'),{wallet:input.wallet,observed_at:stamp(),chains:rows});
     return {pending:false};
   }else if(mode==='dex') {
-    const deadline=Date.now()+Math.min(180_000,Math.max(0,input.market_budget_ms??180_000));
+    const deadline=Date.now()+Math.min(MODE_BUDGET_CAP,Math.max(0,input.market_budget_ms??180_000));
     const result=await parallel(input.networks.filter(n=>input.tokens.some(t=>t.chain_id===n.chain_id)),2,async n=>{
       const group=input.tokens.filter(t=>t.chain_id===n.chain_id);
       if(input.market_scope==='representative_v1'&&n.environment!=='mainnet')return group;
@@ -1351,13 +1457,13 @@ async function runMode(mode,inputPath,outputPath) {
     write(outputPath,{wallet:input.wallet,observed_at:stamp(),tokens,market_pending:pending});
     return {pending};
   }else if(mode==='liquidate') {
-    const deadline=Date.now()+Math.min(180_000,Math.max(0,input.market_budget_ms??180_000));
+    const deadline=Date.now()+Math.min(MODE_BUDGET_CAP,Math.max(0,input.market_budget_ms??180_000));
     const rows=await parallel(input.networks.filter(n=>input.tokens.some(t=>t.chain_id===n.chain_id)),2,n=>liquidationChain(n,input,outputPath,deadline));
     const pending=rows.some(row=>row.market_pending);
     write(outputPath,{wallet:input.wallet,observed_at:stamp(),tokens:rows.flatMap(row=>row.tokens),market_pending:pending});
     return {pending};
   }else if(mode==='reserves') {
-    const deadline=Date.now()+Math.min(180_000,Math.max(0,input.market_budget_ms??180_000));
+    const deadline=Date.now()+Math.min(MODE_BUDGET_CAP,Math.max(0,input.market_budget_ms??180_000));
     const result=await parallel(input.networks.filter(n=>input.tokens.some(t=>t.chain_id===n.chain_id&&t.mintclub)),2,n=>reserveChain(n,input,outputPath,deadline));
     const pending=result.some(r=>r.market_pending);
     write(outputPath,{wallet:input.wallet,observed_at:stamp(),tokens:result.flatMap(r=>r.tokens),market_pending:pending});
@@ -1377,4 +1483,4 @@ const setFastFallbackPause=ms=>{FAST_FALLBACK_PAUSE=ms;};
 const setPeerLagWait=ms=>{PEER_LAG_WAIT=ms;};
 const setQuiet=value=>{QUIET=!!value;};
 const setTransportPause=ms=>{TRANSPORT_PAUSE=ms;};
-module.exports={GROUP,MIN_GROUP,setGroupSize,setFastFallbackPause,setPeerLagWait,setQuiet,setTransportPause,runMode,batchScan,scanNetworkBatch,scanNetworks,parallel,calls,callsLive,registry,connect,scanChain,batches,balanceReads,factReads,mintclubMembership,dexChain,reserveChain,liquidationChain,routePools,boundedMarket,MarketBudget};
+module.exports={GROUP,MIN_GROUP,setGroupSize,setSharedReads,setFastFallbackPause,setPeerLagWait,setQuiet,setTransportPause,runMode,batchScan,scanNetworkBatch,scanNetworks,parallel,calls,callsLive,registry,connect,scanChain,batches,balanceReads,factReads,mintclubMembership,dexChain,reserveChain,liquidationChain,routePools,boundedMarket,MarketBudget};

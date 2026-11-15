@@ -930,7 +930,7 @@ class JobStore:
                     cancelled = True; stop_child(); break
                 if (job.get('analysis_phase')=='enrichment' or job['operation']=='positions.refresh') and time.monotonic()>=next_check:
                     next_check=time.monotonic()+2
-                    if any(j['state']=='queued' and (j.get('analysis_phase')=='baseline' or j['operation']=='prices.refresh' or j['operation'].startswith('settings.')) for j in self.list()):
+                    if self.shorter_work_queued():
                         yielded=True;stop_child();break
                 for key, _ in selector.select(.2):
                     chunk = os.read(key.fileobj.fileno(), 65536)
@@ -990,23 +990,42 @@ class JobStore:
     # A batch refresh reads every network once for all its wallets (batch_refresh.py).
     BATCH_LIMIT = 200
 
+    def batch_kind(self, job):
+        """The batch a queued job joins, or None. A fresh holdings refresh runs with the others
+        queued for the same scope; a resumed one keeps its saved checkpoints and runs alone.
+        Sell estimate jobs, fresh or resumed, run together in one sell batch."""
+        if job['operation']!='wallet.refresh' or job.get('scan_policy')!='alchemy_inventory_v1' or job['cancel_requested']:return None
+        if job.get('analysis_phase')=='enrichment' and job.get('parent_job_id'):return 'sell'
+        if job.get('analysis_phase')=='baseline' and not (self.root/job['checkpoint']/'run.json').exists():
+            return 'holdings:'+job['input'].get('scope','full')
+        return None
+
     def batchable(self, job):
-        """A fresh holdings refresh runs with the others queued for the same scope.
-        A resumed one keeps its saved checkpoints and runs alone, as does a lone wallet."""
-        return (job['operation']=='wallet.refresh' and job.get('scan_policy')=='alchemy_inventory_v1'
-                and job.get('analysis_phase')=='baseline' and not job['cancel_requested']
-                and not (self.root/job['checkpoint']/'run.json').exists())
+        return (self.batch_kind(job) or '').startswith('holdings:')
+
+    def superseded(self, job):
+        """A sell estimate job whose holdings research a newer refresh replaced."""
+        return self.wallet(job['input']['wallet']).get('research_generation') not in (None,job.get('parent_job_id'))
+
+    def shorter_work_queued(self):
+        """Holdings, price and settings work goes before sell estimates and position checks."""
+        return any(j['state']=='queued' and (j.get('analysis_phase')=='baseline' or j['operation']=='prices.refresh' or j['operation'].startswith('settings.')) for j in self.list())
+
+    def batch_command(self, jobs):
+        ids=[x for job in jobs for x in ('--job',job['job_id'])]
+        if self.batch_kind(jobs[0])=='sell':return [sys.executable,str(ASSETS/'batch_sell.py')]+ids
+        return [sys.executable,str(ASSETS/'batch_refresh.py'),'--scope',jobs[0]['input'].get('scope','full')]+ids
 
     def execute_batch(self, jobs, lease, writer):
-        """Run fresh holdings refreshes together. Returns each job's receipt or error."""
+        """Run holdings refreshes or sell estimates together. Returns each job's receipt or error."""
         self.require_connection()
         ids=[j['job_id'] for j in jobs]
         env={**os.environ,'KIRA_DATA_DIR':str(self.root),'KIRA_ANALYSIS_FD':str(writer.fileno()),'PYTHONUNBUFFERED':'1'}
-        command=[sys.executable,str(ASSETS/'batch_refresh.py'),'--scope',jobs[0]['input'].get('scope','full')]+[x for i in ids for x in ('--job',i)]
-        child=subprocess.Popen(command,env=env,cwd=ASSETS,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,
+        sell=self.batch_kind(jobs[0])=='sell'
+        child=subprocess.Popen(self.batch_command(jobs),env=env,cwd=ASSETS,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,
             start_new_session=True,pass_fds=(lease.fileno(),writer.fileno()))
         selector=selectors.DefaultSelector();selector.register(child.stdout,selectors.EVENT_READ)
-        buffer=b'';pending={};flushed=checked=time.monotonic();stopped=False
+        buffer=b'';pending={};flushed=checked=time.monotonic();stopped=False;yielded=False
         def stop_child():
             nonlocal stopped
             if stopped:return
@@ -1035,6 +1054,8 @@ class JobStore:
                 if time.monotonic()-checked>=2:
                     checked=time.monotonic()
                     if all(self.get(i)['cancel_requested'] for i in ids):stop_child();break
+                    # Sell estimates step aside for shorter work; every wallet resumes from its saved checks.
+                    if sell and self.shorter_work_queued():yielded=True;stop_child();break
                 for key,_ in selector.select(.2):
                     chunk=os.read(key.fileobj.fileno(),65536)
                     if not chunk:selector.unregister(key.fileobj);continue
@@ -1053,6 +1074,9 @@ class JobStore:
             job=self.get(job_id);receipt=self.publication(job)
             if receipt:outcomes[job_id]=receipt
             elif job['cancel_requested']:outcomes[job_id]=JobError('cancelled','Job stopped. Previous published results and saved evidence were preserved.')
+            elif yielded:outcomes[job_id]=JobError('yielded','Detailed research yielded to a short operation. Saved checkpoints are retained and detailed research resumes automatically.')
+            elif job['stage']=='market_paused':outcomes[job_id]=JobError('market_budget','Balances are saved. Market verification reached its time budget. Resume this job in Activity to continue saved checks. Pending pools are not verified absent.')
+            elif job['stage']=='research_paused':outcomes[job_id]=JobError('research_pending','Research has saved unfinished ranges ready for continuation.')
             else:outcomes[job_id]=self.engine_failure(job)
         return outcomes
 
@@ -1094,18 +1118,21 @@ class JobStore:
                             return
                     if job and job['operation'] in USAGE_OPERATIONS:usage_due=True
                     if job and job.get('analysis_phase')=='enrichment':
-                        entry=self.wallet(job['input']['wallet'])
-                        if entry.get('research_generation') not in (None,job.get('parent_job_id')):
+                        if self.superseded(job):
                             job.update(state='cancelled',stage='stopped',errors=[{'code':'superseded','message':'Newer holdings research replaced this detailed run. Earlier evidence is preserved.'}]);self.save(job);writer.close();continue
                     group=[];batch=False
                     if job:
-                        group=[job];batch=self.batchable(job)
+                        group=[job];kind=self.batch_kind(job);batch=bool(kind)
                         if batch:
-                            scope=job['input'].get('scope','full')
-                            group+=[j for j in queued if j is not job and j['state']=='queued' and self.batchable(j)
-                                    and j['input'].get('scope','full')==scope and j.get('continuation',{}).get('not_before',0)<=time.time()][:self.BATCH_LIMIT-1]
-                            # One wallet alone gains nothing from sharing reads; it keeps the single-wallet engine.
-                            batch=len(group)>1
+                            for j in queued:
+                                if j is job or j['state']!='queued' or self.batch_kind(j)!=kind or j.get('continuation',{}).get('not_before',0)>time.time():continue
+                                if kind=='sell' and self.superseded(j):
+                                    j.update(state='cancelled',stage='stopped',errors=[{'code':'superseded','message':'Newer holdings research replaced this detailed run. Earlier evidence is preserved.'}]);self.save(j);continue
+                                if len(group)<self.BATCH_LIMIT:group.append(j)
+                            # One wallet alone gains nothing from sharing reads, so a holdings refresh keeps the
+                            # single-wallet engine. Sell estimates always use the sell batch, which runs each
+                            # wallet until done instead of in slices.
+                            batch=len(group)>1 or kind=='sell'
                         # Research records the settings it ran with. Settings jobs report their result instead.
                         if not job['operation'].startswith('settings.'):
                             from kira_config import load_config
@@ -1126,6 +1153,8 @@ class JobStore:
                                 member=self.get(job_id)
                                 if isinstance(outcome,dict):member.update(result=outcome,state='succeeded' if outcome['status']=='completed' else 'partial',stage='published')
                                 elif member['cancel_requested'] or outcome.code=='cancelled':member.update(state='cancelled',stage='stopped',errors=[{'code':'cancelled','message':'Job stopped at your request. Resume saved evidence explicitly.'}])
+                                elif outcome.code=='yielded':member.update(state='queued',stage='queued',errors=[])
+                                elif outcome.code in ('market_budget','research_pending'):self.queue_continuation(member,outcome)
                                 else:member.update(state='failed',stage='stopped',errors=[{'code':outcome.code,'message':str(outcome)}])
                                 self.save(member)
                         self.continue_research()

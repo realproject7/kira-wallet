@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.15.7**.
+Published npm release: **1.15.7**. Prepared candidate: **1.16.0**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -8,6 +8,51 @@ scope of their original release; they are not a current task list.
 Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
+
+## Candidate 1.16.0
+
+- **Sell estimates run as one batch.** **Update sell estimates** on Home or a
+  folder, and the button on a wallet page, queue one job per wallet as before.
+  The worker now runs every queued sell estimate job in one process
+  (`batch_sell.py`) instead of one wallet at a time in three-minute slices.
+  Each wallet keeps its own job, folder, events and published result.
+- **Fewer lookups.** The batch first asks DEX Screener which held tokens any
+  pool lists, thirty tokens a request for every wallet at once. Only listed
+  tokens get a pool lookup of their own (token-pairs), once per token for all
+  wallets and at most four a second; a token listed in no pool keeps the
+  listing answer as its evidence. Per-token lookups of 150 unlisted tokens
+  found no pool either. Route lookups for intermediate tokens are shared too.
+- **Shared reads.** One Node process runs every wallet's market steps, so
+  Alchemy reads spend from one compute unit budget and each saved block header
+  is read once per run instead of at every step. Reads at the same block are
+  shared between wallets, curve reserves are read at one block per network,
+  and single reads sent at about the same time travel in one aggregate call.
+  Each wallet checks up to eight assets at a time on Alchemy networks, and
+  market checkpoints are written at most every two seconds instead of after
+  every pool. Artwork is refreshed once at the end.
+- **Shorter work still goes first.** A queued holdings refresh, price refresh
+  or settings change stops the batch; the stopped wallets queue again and
+  resume from their saved checks. A pool read that fails once gets its second
+  try in the same run, and a wallet takes at most three turns of 30 minutes
+  before the usual continuation takes over.
+- **Measured on a copy of a large workspace** (the app's own Alchemy key; the
+  operator's data untouched; same saved holdings for both engines):
+  - Every wallet's sell estimates in one batch: 3.2 minutes and about 27,000
+    compute units, with 128 listing requests and 355 pool lookups.
+  - The previous engine, for six of those wallets including the three
+    largest: 22 minutes and about 38,000 compute units, one wallet at a time,
+    with up to nine slices for the largest. By the same rates per wallet and
+    per token, every wallet would take about 45 minutes and 95,000 compute
+    units, before the waits between slices.
+  - One wallet with a few hundred tokens on its own (`wallet.py --phase sell`):
+    31 seconds and 1,900 compute units in one slice, instead of 105 seconds
+    and 3,000 in two.
+  - Where both engines produced an estimate, 240 of 241 matched to the unit;
+    one picked another pool after a liquidity change. The new engine also
+    produced 129 estimates the previous one missed in those six wallets:
+    DEX Screener had rate limited the previous engine's route lookups (47 of
+    56 failed), so funded Mint Club burns could not be followed to a cash
+    asset. Each new estimate is at most 1.06 times the token's spot value.
 
 ## Published 1.15.7
 

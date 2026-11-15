@@ -214,6 +214,21 @@ and supersession prevent a queued slice from returning to running state.
 Every continuation preserves earlier interim snapshots. Pending pools remain
 unknown. A time budget is distinct from failed provider reads.
 
+Sell estimate jobs run through one batch process (`batch_sell.py`), one wallet or
+many; each keeps its own job, folder, events and published result. The batch
+first asks DEX Screener which held tokens any pool lists, thirty tokens a request
+for every wallet at once, and looks up pools only for listed tokens, once per
+token for all wallets and at most four lookups a second. A token the listing
+answered without a pool keeps that answer (`token-listings.json`, reused for an
+hour on resume) as its evidence. One Node process runs every wallet's market
+steps: Alchemy reads share one compute unit budget, each saved block header is
+read once, reads at the same block are shared between wallets, and single reads
+sent at about the same time travel in one aggregate call. Each wallet checks up
+to eight assets at a time on Alchemy networks and runs until it finishes, up to
+three turns of 30 minutes. The worker stops the batch when holdings, price or
+settings work is queued; the stopped wallets queue again and resume from their
+saved checks.
+
 Market checkpoints accept added identities and input reordering only when each
 previous token retains its chain, type, token ID, balance block and raw balance.
 Changed quantities or blocks require a new analysis. Registry and balance
