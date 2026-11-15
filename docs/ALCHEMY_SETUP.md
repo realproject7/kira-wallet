@@ -77,7 +77,8 @@ Workspace settings → Connection shows **Alchemy usage**:
 
   Paste it at the hidden prompt. Kira checks it once and stores it in the
   workspace's private `.secrets` folder. It asks Alchemy again after research
-  finishes (at most once a minute) and when you choose **Check now**. The app
+  finishes (at most once a minute), while the app is open once the last check
+  is 15 minutes old, and when you choose **Check now**. The app
   API key from step 1 cannot read usage. `kira connect alchemy-usage --remove`
   forgets the Access Key.
 

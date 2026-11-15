@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.15.4**. Prepared candidate: **1.15.6**.
+Published npm release: **1.15.4**. Prepared candidate: **1.15.7**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -8,6 +8,20 @@ scope of their original release; they are not a current task list.
 Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
+
+## Candidate 1.15.7
+
+- **Usage stays current while the app is open.** With a usage Access Key, a
+  visible app asks Alchemy for the account's usage once the last check is 15
+  minutes old, so the top bar meter follows the dashboard's own bar. The
+  operator chose this on November 15, 2026; until then the totals changed only
+  after research and with **Check now**. The local app answers from the saved
+  check when another page asked more recently, a failed automatic check stays
+  quiet and waits the same 15 minutes, and a hidden page asks nothing. It reads
+  the usage summary only, never wallets, balances or prices.
+
+Version 1.15.6 was prepared and not published; 1.15.7 contains its changes,
+listed below.
 
 ## Candidate 1.15.6
 

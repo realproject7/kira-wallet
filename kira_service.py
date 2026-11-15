@@ -182,11 +182,18 @@ class Application:
             with self.jobs.locked():return action(self.jobs,request)
         if operation=='alchemy.usageCheck':
             if registry.get('demo'):raise JobError('demo_read_only','Sample workspaces never contact providers.')
-            fields(request,['schema_version','operation','input','idempotency_key']);fields(request['input'],[])
+            fields(request,['schema_version','operation','input','idempotency_key'])
+            value=request['input'];auto=isinstance(value,dict) and 'stale_seconds' in value
+            fields(value,['stale_seconds'] if auto else [])
+            # Check now always asks Alchemy. An open app sends stale_seconds and is answered from
+            # the saved check unless that check is older (operator's choice, 2026-11-15: 15 minutes).
+            stale=value['stale_seconds'] if auto else None
+            if auto and (type(stale) is not int or not 60<=stale<=86400):raise JobError('invalid_input','stale_seconds must be a whole number of seconds from 60 to 86400.')
             import kira_usage
             if not kira_usage.access_key(self.root):raise JobError('usage_key_missing','Connect an Alchemy Access Key first: run kira connect alchemy-usage in your terminal.')
-            kira_usage.check_official(self.root)
-            return {'status':'completed','operation':operation,'usage':self.usage()}
+            checked=not auto or not kira_usage.recently_checked(self.root,stale)
+            if checked:kira_usage.check_official(self.root)
+            return {'status':'completed','operation':operation,'checked':checked,'usage':self.usage()}
         if operation in ('token.policy','token.riskCheck'):
             if registry.get('demo') and operation=='token.riskCheck':raise JobError('demo_read_only','Sample portfolios never contact risk providers.')
             fields(request,['schema_version','operation','input','idempotency_key'])

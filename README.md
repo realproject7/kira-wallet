@@ -19,7 +19,7 @@ Kira supplies wallet tools and a full-window
 management app. Your agent host manages its own conversations, models, files and
 approvals. Kira does not launch a model CLI or require a model login.
 
-Published npm release: **1.15.4**. This source prepares **1.15.6**.
+Published npm release: **1.15.4**. This source prepares **1.15.7**.
 [Release notes](docs/RELEASE.md) ·
 [Implementation status and follow-ups](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_NEXT_STEPS.md).
 
@@ -108,6 +108,8 @@ portfolio totals.
 - **Refresh when needed.** Provider research starts with an explicit action.
   Opening a page or querying records does not refresh blockchain or price data.
   The app notices saved changes made by your agent and displays job progress.
+  With a usage Access Key, an open app checks the account's Alchemy usage once
+  the last check is 15 minutes old.
 - **Keep records locally.** Wallets, snapshots and provider references survive
   upgrades and agent sessions. Your agent host controls which facts it sends to
   its model service and how it stores conversations.

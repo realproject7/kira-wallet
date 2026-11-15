@@ -363,12 +363,22 @@ function usageReset(view){const at=Date.parse(view?.allowance?.resets_at||'');re
 function loadUsage(force=false){
   if(!localSession?.controls||typeof state!=='undefined'&&state?.demo===true)return Promise.resolve(null);
   if(!force&&usageView&&Date.now()-usageReadAt<30000)return Promise.resolve(usageView);
-  if(!usageReading)usageReading=localAPI('/api/usage').then(view=>{usageView=view;usageReadAt=Date.now();return view;},()=>usageView).finally(()=>{usageReading=null;renderUsage();});
+  if(!usageReading)usageReading=localAPI('/api/usage').then(view=>{usageView=view;usageReadAt=Date.now();recheckUsage(view);return view;},()=>usageView).finally(()=>{usageReading=null;renderUsage();});
   return usageReading;
 }
 // The top bar meter reads saved usage when the app starts, when tasks change and every five minutes.
-// Reading never contacts Alchemy; the account totals change after research or Check now.
+// Reading is local. Alchemy is asked after research, with Check now, and by an open app below.
 function pollUsage(changed){return changed||!usageReadAt||Date.now()-usageReadAt>=300000?loadUsage():Promise.resolve(usageView);}
+// With a usage Access Key, a visible app asks Alchemy again once the saved check is 15 minutes old
+// (the operator's choice, 2026-11-15). The local app answers from the saved check when another
+// page asked more recently, and a failed check waits the same 15 minutes.
+const USAGE_STALE_SECONDS=900;let usageAutoAt=0;
+function recheckUsage(view){
+  if(!view?.access_key||usageChecking||typeof document!=='undefined'&&document.hidden)return;
+  const checked=Date.parse(view.official?.checked_at||''),wait=USAGE_STALE_SECONDS*1000;
+  if(Number.isFinite(checked)&&Date.now()-checked<wait||Date.now()-usageAutoAt<wait)return;
+  usageAutoAt=Date.now();checkUsage(USAGE_STALE_SECONDS);
+}
 function renderUsageMeter(view,allowance,reset){
   const official=view?.official,summary=official?.summary,meter=$('usage-meter');
   meter.hidden=!summary;if(!summary)return;
@@ -405,16 +415,18 @@ function renderUsage(){
   const bar=$('activity-usage-bar');bar.hidden=percent==null;bar.value=percent??0;bar.setAttribute('aria-label',percent==null?'':usagePercent(percent)+' of the monthly limit used');
 }
 function showUsageDetails(){openWorkspaceSettings('data');requestAnimationFrame(()=>$('alchemy-usage').scrollIntoView?.({block:'nearest'}));}
-$('usage-check').addEventListener('click',async()=>{
+// Check now always asks Alchemy; an automatic check (stale) is quiet when it fails.
+async function checkUsage(stale){
   if(usageChecking||!localSession?.controls)return;
   usageChecking=true;$('usage-check').disabled=true;$('usage-checked').textContent='Checking with Alchemy…';
   let message=null;
   try{
-    const result=await localAPI('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schema_version:1,operation:'alchemy.usageCheck',input:{},idempotency_key:crypto.randomUUID()}),signal:AbortSignal.timeout(25000)});
+    const result=await localAPI('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schema_version:1,operation:'alchemy.usageCheck',input:stale?{stale_seconds:stale}:{},idempotency_key:crypto.randomUUID()}),signal:AbortSignal.timeout(25000)});
     if(result.usage){usageView=result.usage;usageReadAt=Date.now();}
-  }catch(error){message=error.message;}
+  }catch(error){message=stale?null:error.message;}
   usageChecking=false;$('usage-check').disabled=false;renderUsage();if(message)$('usage-checked').textContent=message;
-});
+}
+$('usage-check').addEventListener('click',()=>checkUsage());
 $('activity-usage').addEventListener('click',showUsageDetails);
 $('usage-meter').addEventListener('click',showUsageDetails);
 $('rpc-add').addEventListener('click',()=>{
