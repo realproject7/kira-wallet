@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.15.4**. Prepared candidate: **1.15.7**.
+Published npm release: **1.15.7**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -9,7 +9,16 @@ Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
 
-## Candidate 1.15.7
+## Published 1.15.7
+
+The operator published 1.15.7 on November 15, 2026. The registry archive is
+byte-identical to the frozen one, and a clean registry installation matched
+all 134 members. Pull request 19 merged at
+`01541d0da6a9c99d820308bce61ea7a359780a44`; a fresh pack from the merged tree
+reproduces the archive. SHA-256 is
+`a98e1c97daf2b21a3afc854f9ef2f374e30d3b9d8b073c0dd09513f8d431b159`.
+Versions 1.15.5 and 1.15.6 were prepared and not published; 1.15.7 contains
+their changes.
 
 - **Usage stays current while the app is open.** With a usage Access Key, a
   visible app asks Alchemy for the account's usage once the last check is 15
