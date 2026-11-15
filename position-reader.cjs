@@ -1,10 +1,13 @@
 'use strict';
 // Explicit, bounded, read-only position collection. No signer or transaction API.
-const fs=require('node:fs'),path=require('node:path'),v=require('viem');
+const fs=require('node:fs'),path=require('node:path'),v=require('viem'),{AsyncLocalStorage}=require('node:async_hooks');
 const math=require('./position-math.cjs'),protocols=require('./sources/position-protocols.json');
 const uni=require('./sources/uniswap-deployments.json').records,stakeAbi=require('./sources/position-staking-abi.json');
 const sugarAbi=require('./sources/position-sugar-abi.json');
 const BATCH=32,NFT_BATCH=8,MAX_TASKS=50000,MAX_POSITIONS=5000,ZERO=v.zeroAddress;
+// A concurrent run sends the reads that reach one pinned chain together as one multicall.
+// New Aero gauge directories are small; one hour of reuse covers a whole portfolio refresh.
+const COALESCE=256,COALESCE_SPLIT=128,COALESCE_WAIT=30,COALESCE_INFLIGHT=4,DIRECTORY_PAGE=200,GAUGE_TTL=3600000;
 const abi=v.parseAbi([
  'function balanceOf(address) view returns(uint256)','function balanceOf(address,uint256) view returns(uint256)',
  'function decimals() view returns(uint8)','function symbol() view returns(string)','function factory() view returns(address)',
@@ -56,12 +59,50 @@ function factories(cid){
  return rows;
 }
 function atomic(file,value){fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});fs.writeFileSync(file+'.tmp',JSON.stringify(value,(_,x)=>typeof x==='bigint'?String(x):x),{mode:0o600});fs.renameSync(file+'.tmp',file);}
+// Reads for the same pinned context that arrive within a few milliseconds share one
+// provider multicall. Each caller receives exactly its own rows, in order. At most a
+// few multicalls per context are in flight; reads that arrive meanwhile wait and join
+// larger ones, so no request outlives the provider pool's queue deadline. A large
+// aggregate that fails as a whole is sent once more as two halves.
+function coalescer(io,limit=COALESCE,{wait=COALESCE_WAIT,split=COALESCE_SPLIT,inflight=COALESCE_INFLIGHT}={}){
+ const lanes=new Map();
+ const whole=rows=>rows.length>0&&rows.every(r=>r?.status!=='success'&&!['contract','historical_state'].includes(r?.reason));
+ const send=(c,waiters,again)=>{
+  const calls=waiters.flatMap(w=>w.calls),retry=again&&waiters.length>1&&calls.length>split;
+  const halves=()=>{const mid=Math.ceil(waiters.length/2);return Promise.all([send(c,waiters.slice(0,mid),false),send(c,waiters.slice(mid),false)]);};
+  return Promise.resolve().then(()=>io.multi(c,calls)).then(rows=>{
+   if(!Array.isArray(rows)||rows.length!==calls.length)throw Error('Position multicall result mismatch');
+   if(retry&&whole(rows))return halves();
+   let at=0;for(const w of waiters){w.resolve(rows.slice(at,at+w.calls.length));at+=w.calls.length;}
+  }).catch(error=>{if(retry)return halves();for(const w of waiters)w.reject(error);});
+ };
+ const pump=(c,l)=>{
+  while(l.busy<inflight&&l.waiters.length&&(l.ready||l.size>=limit)){
+   let take=0,size=0;
+   while(take<l.waiters.length&&(take===0||size+l.waiters[take].calls.length<=limit)){size+=l.waiters[take].calls.length;take++;}
+   const batch=l.waiters.splice(0,take);l.size-=size;l.busy++;
+   send(c,batch,true).finally(()=>{l.busy--;pump(c,l);});
+  }
+  if(!l.waiters.length){l.ready=false;if(!l.busy)lanes.delete(c);}
+ };
+ return (c,calls)=>new Promise((resolve,reject)=>{
+  let l=lanes.get(c);if(!l){l={waiters:[],size:0,busy:0,ready:false,timer:null};lanes.set(c,l);}
+  l.waiters.push({calls,resolve,reject});l.size+=calls.length;
+  if(l.size>=limit)pump(c,l);
+  else if(!l.ready&&!l.timer)l.timer=setTimeout(()=>{l.timer=null;l.ready=true;pump(c,l);},wait);
+ });
+}
 class SliceEnd extends Error{}
 class Reader{
  constructor(input,state,io,shared={}){
   this.input=input;this.io=io;this.shared=shared;this.contexts=new Map();this.started=Date.now();this.reads=0;
   this.priorIds=new Set((input.known_positions||[]).map(p=>p.id));
-  this.maxReads=Math.min(input.max_reads||48,48);this.budget=Math.min(input.budget_ms||25000,30000);
+  // One read at a time keeps the resumable slice order. Concurrent runs (holdings
+  // refreshes, saved-claim updates) work on every chain at once within a larger budget.
+  this.concurrency=Math.max(1,Math.min(Math.floor(Number(input.concurrency))||1,32));
+  const wide=this.concurrency>1;
+  this.maxReads=Math.min(input.max_reads||48,wide?20000:48);this.budget=Math.min(input.budget_ms||25000,wide?300000:30000);
+  this.coalesce=wide?(io.coalesce||coalescer(io)):null;
   this.state=state||{schema_version:1,wallet:key(input.wallet),tasks:[],cursor:0,positions:{},coverage:{},blocks:{},done:0};
   if(this.state.schema_version!==1||this.state.wallet!==key(input.wallet)||!Array.isArray(this.state.tasks)||this.state.tasks.length>MAX_TASKS)throw Error('Position checkpoint identity mismatch');
   if(!state)for(const n of input.networks){if(n.environment==='mainnet')this.enqueue({kind:'seed',chain_id:n.chain_id,scope:String(n.chain_id)+':discovery'});}
@@ -69,22 +110,31 @@ class Reader{
  enqueue(t){
   if(this.state.tasks.length>=MAX_TASKS)throw Error('Position task limit reached');t={...t};
   if(t.kind==='aeromax'){
-   const pending=this.state.tasks.slice(this.state.cursor+1).find(p=>p.kind==='aeromax'&&p.manager===t.manager&&new Set([...p.ids,...t.ids]).size<=100);
+   // Merge only into an attribution request that has not started yet.
+   const pending=this.state.tasks.slice(this.state.cursor+(this.begun?0:1)).find(p=>p.kind==='aeromax'&&p.manager===t.manager&&!this.begun?.has(p)&&new Set([...p.ids,...t.ids]).size<=100);
    if(pending){pending.ids=[...new Set([...pending.ids,...t.ids])];return;}
   }
   if(!['vault-discover','pair-discover'].includes(t.kind))delete t.tokens;
   if(!['nft','nft-history','aeromax'].includes(t.kind))delete t.ids;
   if(t.kind!=='nft-history')for(const k of ['seen_pages','seen_hashes','page','expected'])delete t[k];
   if(!['gauge-basic','gauge-cl'].includes(t.kind))delete t.pools;
-  this.state.tasks.push(t);
+  // A concurrent task's follow-ups join the queue only when it finishes, as a
+  // sequential slice drops the follow-ups of a task its budget interrupted.
+  const lane=this.lanes?.getStore();
+  if(lane)lane.children.push(t);else this.state.tasks.push(t);
  }
  scope(t){return this.state.coverage[t.scope] ||= {id:t.scope,chain_id:t.chain_id,status:'checked',errors:0};}
  async context(cid){
-  if(!this.contexts.has(cid)){this.tick(2);const c=await this.io.context(cid,this.state.blocks[cid]);this.contexts.set(cid,c);this.state.blocks[cid]=c.block;}
+  // Concurrent tasks of one chain wait for the same connection and block pin.
+  if(!this.contexts.has(cid)){
+   this.tick(2);
+   const pending=Promise.resolve(this.io.context(cid,this.state.blocks[cid])).then(c=>{this.state.blocks[cid]=c.block;return c;});
+   this.contexts.set(cid,pending);pending.catch(()=>{if(this.contexts.get(cid)===pending)this.contexts.delete(cid);});
+  }
   return this.contexts.get(cid);
  }
  tick(n=1){if(this.reads+n>this.maxReads||Date.now()-this.started>=this.budget)throw new SliceEnd();this.reads+=n;}
- async multi(t,calls){if(calls.length>BATCH)throw Error('Position multicall limit exceeded');if(!calls.length)return [];const c=await this.context(t.chain_id);this.tick();return this.io.multi(c,calls);}
+ async multi(t,calls){if(calls.length>BATCH)throw Error('Position multicall limit exceeded');if(!calls.length)return [];const c=await this.context(t.chain_id);this.tick();return this.coalesce&&t.kind!=='aero-sugar'?this.coalesce(c,calls):this.io.multi(c,calls);}
  async read(t,call){const rows=await this.multi(t,[call]);if(rows[0]?.status!=='success')throw Object.assign(Error('Position read unavailable'),{read_function:call.functionName,reason:rows[0]?.reason||'unknown'});return rows[0].result;}
  good(row){if(row?.status!=='success')throw Object.assign(Error('Position read unavailable'),{read_function:row?.function,reason:row?.reason||'unknown'});return row.result;}
  async token(t,address){
@@ -160,6 +210,9 @@ class Reader{
    if(this.input.discover!==false)for(const a of protocols.aero.filter(p=>p.chain_id===cid))this.enqueue({...t,...a,kind:'aero-count',scope:cid+':aero:'+key(a.factory)});
    else{
     this.state.coverage[cid+':new-position-discovery']={id:cid+':new-position-discovery',chain_id:cid,status:'not_requested',errors:0,message:'Saved positions refreshed. Use Find new positions to search all pool and farm registries.'};
+    // New Aero gauge directories are small and cached, so every refresh also finds new
+    // gauge stakes such as Aeromax ranges. Legacy registries stay with Find new positions.
+    for(const a of protocols.aero.filter(p=>p.chain_id===cid&&valid(p.registry)&&!p.version.startsWith('legacy-')))this.enqueue({...t,...a,kind:'aero-gauges',scope:cid+':aero:'+key(a.factory)});
     for(const p of this.input.known_positions||[]){
      if(p.chain_id!==cid)continue;
      if(p.manager){const m=managers(cid).find(m=>key(m.manager)===key(p.manager));if(m)this.enqueue({...t,...m,scope:p.scope,kind:'nft',ids:[p.token_id],gauge:p.gauge,pool:p.pool,inventory_address:p.farm});}
@@ -317,6 +370,11 @@ class Reader{
     if(row){row.platform='aeromax';row.protocol='aerodrome';row.source_url='https://aeromax.fun';row.attribution={source:'https://aeromax.fun/api/positions',indexed_through_block:response.indexedThroughBlock};}
    }return;
   }
+  if(t.kind==='aero-gauges'){
+   const pools=await this.gaugeDirectory(t);
+   for(const page of chunks(pools,BATCH))this.enqueue({...t,kind:t.type==='cl'?'gauge-cl':'gauge-basic',pools:page.map(([pool,gauge])=>({pool,gauge})),...(t.type==='cl'?{}:{staked_only:true})});
+   return;
+  }
   if(t.kind==='aero-count'){
    const modern=t.version.startsWith('aero-'),count=Number(await this.read(t,spec(t.factory,modern?'poolsIndexLength':'allPoolsLength')));
    if(!Number.isSafeInteger(count)||count>50000)throw Error('Pool directory exceeds supported bound');
@@ -357,12 +415,36 @@ class Reader{
    for(let i=0;i<t.pools.length;i++){const ids=this.good(rows[i]);if(ids.length>MAX_POSITIONS)throw Error('Gauge result exceeds supported bound');for(const page of chunks(ids,NFT_BATCH))this.enqueue({...t,...t.pools[i],platform:'aerodrome',kind:'nft',ids:page.map(String)});}return;
   }
   if(t.kind==='gauge-basic'){
-   for(const batch of chunks(t.pools,16)){
-    const rows=await this.multi(t,batch.flatMap(p=>[spec(p.pool,'balanceOf',[this.input.wallet]),...(key(p.gauge)!==ZERO?[spec(p.gauge,'balanceOf',[this.input.wallet])]:[])]));let at=0;
-    for(const p of batch){const held=BigInt(this.good(rows[at++])),staked=key(p.gauge)!==ZERO?BigInt(this.good(rows[at++])):0n;if(held||staked)this.enqueue({...t,...p,kind:'pair',platform:'aerodrome'});}
+   // A gauge sweep reads stakes only: loose LP tokens are found among the wallet's tokens.
+   const loose=!t.staked_only;
+   for(const batch of chunks(t.pools,loose?16:BATCH)){
+    const rows=await this.multi(t,batch.flatMap(p=>[...(loose?[spec(p.pool,'balanceOf',[this.input.wallet])]:[]),...(key(p.gauge)!==ZERO?[spec(p.gauge,'balanceOf',[this.input.wallet])]:[])]));let at=0;
+    for(const p of batch){const held=loose?BigInt(this.good(rows[at++])):0n,staked=key(p.gauge)!==ZERO?BigInt(this.good(rows[at++])):0n;if(held||staked)this.enqueue({...t,...p,kind:'pair',platform:'aerodrome'});}
    }return;
   }
   throw Error('Unknown position task');
+ }
+ async gaugeDirectory(t){
+  // Pools with a gauge, from the canonical registry. Wallets share one read per hour.
+  const id=t.chain_id+':'+key(t.factory),table=this.shared.gauge_directories ||= {},saved=table[id];
+  if(saved&&Array.isArray(saved.pools)&&Date.now()-Date.parse(saved.at)<GAUGE_TTL)return saved.pools;
+  // Readers in one process wait for a read already in progress. A reader whose own
+  // budget ended that read does not end the others; they read it themselves.
+  const memo=this.io.memo||(this.memo ||= new Map()),current=memo.get(id);
+  if(current){try{return await current.promise;}catch(error){if(current.owner===this)throw error;}}
+  const promise=(async()=>{
+   const count=Number(await this.read(t,spec(t.factory,'poolsIndexLength')));
+   if(!Number.isSafeInteger(count)||count<0||count>50000)throw Error('Pool directory exceeds supported bound');
+   const starts=Array.from({length:Math.ceil(count/DIRECTORY_PAGE)},(_,i)=>i*DIRECTORY_PAGE);
+   const pages=await Promise.all(chunks(starts,BATCH).map(group=>this.multi(t,group.map(s=>spec(t.factory,'poolsIndexPaginated',[BigInt(s),BigInt(Math.min(s+DIRECTORY_PAGE,count))])))));
+   const pools=pages.flat().flatMap(row=>this.good(row)).map(p=>p.pool??p[0]);
+   if(pools.length!==count||pools.some(a=>!valid(a)||key(a)===ZERO))throw Error('Pool directory is incomplete');
+   const gauges=(await Promise.all(chunks(pools,BATCH).map(group=>this.multi(t,group.map(pool=>spec(t.registry,'targetToGauge',[pool])))))).flat().map(row=>this.good(row));
+   const rows=pools.map((pool,i)=>[key(pool),key(gauges[i])]).filter(([,gauge])=>valid(gauge)&&gauge!==key(ZERO));
+   table[id]={at:new Date().toISOString(),count,pools:rows};return rows;
+  })();
+  memo.set(id,{owner:this,promise});promise.catch(()=>{if(memo.get(id)?.promise===promise)memo.delete(id);});
+  return promise;
  }
  async v4(t){
   const rows=await this.multi(t,t.ids.flatMap(id=>[spec(t.manager,'ownerOf',[BigInt(id)]),spec(t.manager,'getPoolAndPositionInfo',[BigInt(id)]),spec(t.manager,'getPositionLiquidity',[BigInt(id)])]));
@@ -381,28 +463,75 @@ class Reader{
    this.put(t,{id:t.chain_id+':'+key(t.manager)+':'+t.ids[i],platform:'uniswap',protocol:'uniswap',version:'v4',label:'Liquidity #'+t.ids[i],manager:key(t.manager),token_id:t.ids[i],pool,assets:await this.assets(t,[k.currency0,k.currency1],amounts),range:{lower:ticks[0],upper:ticks[1],tick:Number(price[1])},source_url:'https://app.uniswap.org/portfolio',exit_note:'Liquidity principal; hook terms, unclaimed fees and gas excluded.'});
   }
  }
+ // Read known balances and emit useful records before expensive registry sweeps.
+ priority(t){return t.chain_id===this.state.rechecking_chain?-1:t.kind==='aero-sugar'||t.version?.startsWith('legacy-')&&['aero-directory','gauge-basic','gauge-cl'].includes(t.kind)?3:['aero-directory','gauge-basic','gauge-cl','farm-scan'].includes(t.kind)?2:['aero-count','farm-count'].includes(t.kind)?1:0;}
+ record(task,error,index){
+  const c=this.scope(task);c.status='partial';c.errors++;c.failed_step=task.kind;if(error.read_function)c.failed_function=error.read_function;if(error.reason)c.reason=error.reason;c.message='Some position reads were unavailable. Missing amounts remain unknown.';
+  const row={index,scope:task.scope,kind:task.kind,...(error.read_function?{function:error.read_function}:{}),reason:error.reason||'unknown'};
+  (this.state.failed_tasks ||= []).push(row);return row;
+ }
+ async runConcurrent(save){
+  // Up to `concurrency` tasks run at once, a few per chain. A task's follow-ups join
+  // the queue when it finishes; a budget stop leaves unfinished tasks for the next run.
+  const begun=this.begun=new Set(),finished=new Set(),failures=new Map(),busy=new Map();this.lanes=new AsyncLocalStorage();
+  const perChain=Math.max(2,Math.ceil(this.concurrency/2)),floor=this.state.rechecking_chain?-1:0;
+  let active=0,stop=false,lastSave=Date.now();
+  const pick=()=>{let best=null,rank=Infinity;for(let i=this.state.cursor;i<this.state.tasks.length;i++){const t=this.state.tasks[i];if(begun.has(t)||(busy.get(t.chain_id)||0)>=perChain)continue;const r=this.priority(t);if(r<rank){best=t;rank=r;if(r<=floor)break;}}return best;};
+  // Finished tasks move ahead of unfinished ones, so a checkpoint resumes exactly the
+  // unfinished work in its original order, and failure records point at their tasks.
+  const ordered=()=>{
+   const head=this.state.tasks.slice(0,this.state.cursor),rest=this.state.tasks.slice(this.state.cursor),done=rest.filter(t=>finished.has(t));
+   const tasks=[...head,...done,...rest.filter(t=>!finished.has(t))],index=new Map(tasks.map((t,i)=>[t,i]));
+   return {tasks,cursor:head.length+done.length,failed:this.state.failed_tasks?.map(f=>failures.has(f)?{...f,index:index.get(failures.get(f))}:f)};
+  };
+  const view=()=>{const o=ordered();return {...this.state,tasks:o.tasks,cursor:o.cursor,...(o.failed?{failed_tasks:o.failed}:{})};};
+  await new Promise(resolve=>{
+   const pump=()=>{
+    while(!stop&&active<this.concurrency){const t=pick();if(!t)break;launch(t);}
+    if(!active)resolve();
+   };
+   const launch=t=>{
+    begun.add(t);active++;busy.set(t.chain_id,(busy.get(t.chain_id)||0)+1);const lane={children:[]};let counted=false;
+    this.lanes.run(lane,()=>this.handle(t)).then(()=>{
+     for(const field of ['tokens','ids','pools','seen_pages','seen_hashes','page'])delete t[field];
+     this.state.tasks.push(...lane.children);finished.add(t);counted=true;
+    },error=>{
+     if(error instanceof SliceEnd){stop=true;begun.delete(t);return;}
+     this.state.tasks.push(...lane.children);finished.add(t);counted=true;failures.set(this.record(t,error,-1),t);
+    }).finally(()=>{
+     active--;busy.set(t.chain_id,busy.get(t.chain_id)-1);
+     if(counted){this.state.done++;this.io.progress?.({stage:'onchain_progress',operation:'positions',chain_id:t.chain_id,checked:this.state.cursor+finished.size,total:this.state.tasks.length});}
+     // A run usually finishes in seconds and saves at the end; this covers a stop.
+     if(Date.now()-lastSave>=2000){save(view(),this.shared);lastSave=Date.now();}
+     pump();
+    });
+   };
+   pump();
+  });
+  const o=ordered();this.state.tasks=o.tasks;this.state.cursor=o.cursor;if(o.failed)this.state.failed_tasks=o.failed;
+  this.lanes=null;this.begun=null;
+ }
  async run(save){
   this.recheckUnavailableChain();
   if(this.state.rechecking_chain&&this.state.chain_recheck_version?.[this.state.rechecking_chain]===2)this.state.recheck_slices=(this.state.recheck_slices||0)+1;
-  let completed=0,lastSave=Date.now(),lastPositions=Object.keys(this.state.positions).length;
-  while(this.state.cursor<this.state.tasks.length&&completed<32){
-   // Read known balances and emit useful records before expensive registry sweeps.
-   const priority=t=>t.chain_id===this.state.rechecking_chain?-1:t.kind==='aero-sugar'||t.version?.startsWith('legacy-')&&['aero-directory','gauge-basic','gauge-cl'].includes(t.kind)?3:['aero-directory','gauge-basic','gauge-cl','farm-scan'].includes(t.kind)?2:['aero-count','farm-count'].includes(t.kind)?1:0;
-   let best=this.state.cursor;for(let i=best+1;i<this.state.tasks.length;i++)if(priority(this.state.tasks[i])<priority(this.state.tasks[best]))best=i;
-   if(best!==this.state.cursor)[this.state.tasks[best],this.state.tasks[this.state.cursor]]=[this.state.tasks[this.state.cursor],this.state.tasks[best]];
-   const task=this.state.tasks[this.state.cursor],tail=this.state.tasks.length;
-   try{await this.handle(task);
-    // Completed pagination pages must not retain another copy of the entire
-    // cumulative NFT frontier. Failed tasks keep their arguments for rechecks.
-    for(const field of ['tokens','ids','pools','seen_pages','seen_hashes','page'])delete task[field];
+  if(this.concurrency>1)await this.runConcurrent(save);
+  else{
+   let completed=0,lastSave=Date.now(),lastPositions=Object.keys(this.state.positions).length;
+   while(this.state.cursor<this.state.tasks.length&&completed<32){
+    let best=this.state.cursor;for(let i=best+1;i<this.state.tasks.length;i++)if(this.priority(this.state.tasks[i])<this.priority(this.state.tasks[best]))best=i;
+    if(best!==this.state.cursor)[this.state.tasks[best],this.state.tasks[this.state.cursor]]=[this.state.tasks[this.state.cursor],this.state.tasks[best]];
+    const task=this.state.tasks[this.state.cursor],tail=this.state.tasks.length;
+    try{await this.handle(task);
+     // Completed pagination pages must not retain another copy of the entire
+     // cumulative NFT frontier. Failed tasks keep their arguments for rechecks.
+     for(const field of ['tokens','ids','pools','seen_pages','seen_hashes','page'])delete task[field];
+    }
+    catch(error){if(error instanceof SliceEnd){this.state.tasks.length=tail;break;}this.record(task,error,this.state.cursor);}
+    this.state.cursor++;this.state.done++;completed++;
+    const count=Object.keys(this.state.positions).length;
+    if(completed%4===0||count!==lastPositions||Date.now()-lastSave>=1000){save(this.state,this.shared);lastSave=Date.now();lastPositions=count;}
+    this.io.progress?.({stage:'onchain_progress',operation:'positions',chain_id:task.chain_id,checked:this.state.cursor,total:this.state.tasks.length});
    }
-   catch(error){if(error instanceof SliceEnd){this.state.tasks.length=tail;break;}const c=this.scope(task);c.status='partial';c.errors++;c.failed_step=task.kind;if(error.read_function)c.failed_function=error.read_function;if(error.reason)c.reason=error.reason;c.message='Some position reads were unavailable. Missing amounts remain unknown.';
-    (this.state.failed_tasks ||= []).push({index:this.state.cursor,scope:task.scope,kind:task.kind,...(error.read_function?{function:error.read_function}:{}),reason:error.reason||'unknown'});
-   }
-   this.state.cursor++;this.state.done++;completed++;
-   const count=Object.keys(this.state.positions).length;
-   if(completed%4===0||count!==lastPositions||Date.now()-lastSave>=1000){save(this.state,this.shared);lastSave=Date.now();lastPositions=count;}
-   this.io.progress?.({stage:'onchain_progress',operation:'positions',chain_id:task.chain_id,checked:this.state.cursor,total:this.state.tasks.length});
   }
   this.recheckUnavailableChain();
   this.state.complete=this.state.cursor===this.state.tasks.length;this.state.last_slice_reads=this.reads;
@@ -434,16 +563,54 @@ function realIO(){
   progress(event){console.log(JSON.stringify(event));}
  };
 }
-if(require.main===module){
- const input=JSON.parse(fs.readFileSync(process.argv[2])),file=process.argv[3],sharedFile=process.argv[4];
- const read=p=>{try{return JSON.parse(fs.readFileSync(p));}catch{return null;}};
- const shared=read(sharedFile)||{},before=JSON.stringify(shared),reader=new Reader(input,read(file),realIO(),shared);
- reader.run(state=>atomic(file,state)).then(()=>{
-  for(const name of ['tokens','vaults','pairs','directories']){
-   const table=shared[name];if(!table)continue;const keys=Object.keys(table);for(const k of keys.slice(0,Math.max(0,keys.length-20000)))delete table[k];
-  }
-  if(JSON.stringify(shared)!==before)atomic(sharedFile,shared);
-  process.exit(0);
- }).catch(()=>process.exit(1));
+function prune(shared){
+ for(const name of ['tokens','vaults','pairs','directories']){
+  const table=shared[name];if(!table)continue;const keys=Object.keys(table);for(const k of keys.slice(0,Math.max(0,keys.length-20000)))delete table[k];
+ }
 }
-module.exports={Reader,managers,factories,math,abi,stakeAbi,BATCH,MAX_POSITIONS};
+// Wallets read in one process share chain connections, block pins, multicalls and
+// directory reads. A resumed checkpoint keeps its own earlier pin.
+function sharedIO(base){
+ const contexts=new Map();
+ const io={...base,memo:new Map(),
+  context(cid,saved){
+   if(saved)return base.context(cid,saved);
+   if(!contexts.has(cid)){const pending=Promise.resolve(base.context(cid));contexts.set(cid,pending);pending.catch(()=>{if(contexts.get(cid)===pending)contexts.delete(cid);});}
+   return contexts.get(cid);
+  }};
+ io.coalesce=coalescer(io);
+ return io;
+}
+async function runWallets(spec,io,{read,write}){
+ const shared=read(spec.shared_path)||{},before=JSON.stringify(shared),wallets=Array.isArray(spec.wallets)?spec.wallets:[];
+ const limit=Math.max(1,Math.min(Math.floor(Number(spec.wallet_concurrency))||6,100)),outcome=new Array(wallets.length);let next=0;
+ await Promise.all(Array.from({length:Math.min(limit,wallets.length)},async()=>{
+  for(;;){
+   const i=next++;if(i>=wallets.length)return;const w=wallets[i];
+   try{const input=read(w.input_path);if(!input)throw Error('Position input unavailable');
+    const state=await new Reader(input,read(w.checkpoint_path),io,shared).run(s=>write(w.checkpoint_path,s));
+    outcome[i]={complete:state.complete===true,positions:Object.keys(state.positions).length};}
+   catch{outcome[i]={complete:false,error:true};}
+  }
+ }));
+ prune(shared);
+ if(JSON.stringify(shared)!==before)write(spec.shared_path,shared);
+ return outcome;
+}
+if(require.main===module){
+ const read=p=>{try{return JSON.parse(fs.readFileSync(p));}catch{return null;}};
+ if(process.argv[2]==='--batch'){
+  const spec=read(process.argv[3]);if(!spec)process.exit(2);
+  const io=sharedIO(realIO());io.progress=null;
+  runWallets(spec,io,{read,write:atomic}).then(outcome=>{console.log(JSON.stringify({stage:'positions_batch',outcome}));process.exit(0);},()=>process.exit(1));
+ }else{
+  const input=JSON.parse(fs.readFileSync(process.argv[2])),file=process.argv[3],sharedFile=process.argv[4];
+  const shared=read(sharedFile)||{},before=JSON.stringify(shared),reader=new Reader(input,read(file),realIO(),shared);
+  reader.run(state=>atomic(file,state)).then(()=>{
+   prune(shared);
+   if(JSON.stringify(shared)!==before)atomic(sharedFile,shared);
+   process.exit(0);
+  }).catch(()=>process.exit(1));
+ }
+}
+module.exports={Reader,managers,factories,math,abi,stakeAbi,BATCH,MAX_POSITIONS,coalescer,sharedIO,runWallets};

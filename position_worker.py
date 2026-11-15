@@ -22,8 +22,20 @@ def previous(root, address):
     return index,saved
 
 
+# Saved-claim refreshes read every chain at once and usually finish in one run.
+# Alchemy bills each multicall once, so more tasks in flight share fewer, larger calls.
+# Find new positions sweeps large legacy registries one read at a time, in resumable
+# 25-second slices.
+BUDGETS={'known':{'concurrency':32,'max_reads':6000,'budget_ms':90000},
+         'full':{'concurrency':1,'max_reads':48,'budget_ms':25000}}
+
+
 def prepare(root, job):
-    address=job['input']['wallet'];registry=json.loads((root/'wallets.json').read_text())
+    return prepare_input(root,job['input']['wallet'],job['input'].get('discover',True))
+
+
+def prepare_input(root, address, discover):
+    registry=json.loads((root/'wallets.json').read_text())
     wallet=next(w for w in registry['wallets'] if w['address_key']==address)
     latest=wallet.get('latest_snapshot') or {};tokens={};snapshot={}
     if latest.get('result'):
@@ -52,17 +64,20 @@ def prepare(root, job):
         inventory.append({'chain_id':n['chain_id'],'status':'checked' if complete else 'partial'})
     return {'wallet':address,'networks':[{**n,'native_symbol':native.get(n['chain_id'],('Unknown',None))[0],'native_decimals':native.get(n['chain_id'],('Unknown',None))[1]} for n in networks if n['environment']=='mainnet' and not retired(n['chain_id'])],
             'inventory_coverage':inventory,
-            'tokens':list(tokens.values()),'discover':job['input'].get('discover',True),
+            'tokens':list(tokens.values()),'discover':discover,
             'known_positions':[{k:p.get(k) for k in ('id','scope','chain_id','platform','protocol','version','manager','token_id','pool','factory','gauge','farm','pool_id')} for p in (old or {}).get('positions',[])],
-            'max_reads':48,'budget_ms':25000}
+            **BUDGETS['full' if discover else 'known']}
 
 
-def projection(state, old, *, completed, job):
+def projection(state, old, *, completed, job, final=False):
     positions=deepcopy(state['positions']);coverage=deepcopy(state['coverage'])
     pending={t['scope'] for t in state['tasks'][state['cursor']:]}
     absent=set(state.get('absent_positions',[]))
     for scope in pending:
-        coverage.setdefault(scope,{'id':scope,'chain_id':int(scope.split(':')[0]),'errors':0})['status']='pending'
+        row=coverage.setdefault(scope,{'id':scope,'chain_id':int(scope.split(':')[0]),'errors':0})
+        # A refresh that ends without a continuation keeps earlier records for what it did not reach.
+        if final:row.update(status='partial',message='Not finished in this refresh. Earlier records were kept.')
+        else:row['status']='pending'
     for p in (old or {}).get('positions',[]):
         scope=p['scope']
         if p['id'] not in positions and p['id'] not in absent and (not completed or coverage.get(scope,{}).get('status')!='checked'):
@@ -76,15 +91,15 @@ def projection(state, old, *, completed, job):
             'scope_note':'Known principal/NAV only. Third-party custodians, liabilities, unclaimed rewards and exit costs are outside this inventory.'}
 
 
-def publish(root, job, state):
+def publish(root, job, state, *, final=False):
     from wallet import registry_locked
-    completed=state.get('complete') is True;folder=root/job['checkpoint'];address=job['input']['wallet']
+    completed=state.get('complete') is True or final;folder=root/job['checkpoint'];address=job['input']['wallet']
     with registry_locked(root):
         registry=json.loads((root/'wallets.json').read_text())
         if not any(w['address_key']==address for w in registry['wallets']):raise ValueError('Wallet registration was removed')
         index,old=previous(root,address)
         if old and old.get('requested_at','')>job['created_at']:raise ValueError('Newer position research is already published')
-        saved=projection(state,old,completed=completed,job=job)
+        saved=projection(state,old,completed=completed,job=job,final=final)
         target=folder/('positions.json' if completed else 'positions-'+str(job['attempt']).zfill(5)+'.json')
         atomic(target,saved)
         index['wallets'][address]={'path':str(target.relative_to(root)),'job_id':job['job_id'],'observed_at':saved['observed_at']}
@@ -105,7 +120,8 @@ def main():
     if not input_file.is_file():atomic(input_file,prepare(root,job))
     command=['node',str(ASSETS/'position-reader.cjs'),str(input_file),str(checkpoint),str(root/'cache/positions-shared.json')]
     try:
-        result=subprocess.run(command,cwd=ASSETS,timeout=50)
+        budget=json.loads(input_file.read_text()).get('budget_ms',25000)
+        result=subprocess.run(command,cwd=ASSETS,timeout=budget/1000+25)
         if result.returncode:raise ValueError('Position reader stopped before saving a slice')
     except subprocess.TimeoutExpired:
         if not checkpoint.is_file():raise ValueError('Position source timed out before saving evidence') from None

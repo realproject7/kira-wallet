@@ -254,6 +254,102 @@ test('incomplete holdings discovery cannot become complete LP inventory coverage
  const h=harness({kind:'seed'},()=>0n,{cid:109});h.input.inventory_coverage=[{chain_id:109,status:'partial'}];
  const s=await finish(h);assert.equal(s.coverage['109:wallet-token-inventory'].status,'partial');assert.match(s.coverage['109:wallet-token-inventory'].message,/receipts may be missing/);
 });
+// Concurrent runs: same records as one-at-a-time slices, far fewer provider requests.
+function wide(tasks,resolve,{cid=8453,shared={},concurrency=8,maxReads=5000,wallet=A,ioExtra={},context}={}){
+ const state={schema_version:1,wallet,tasks:tasks.map(t=>({scope:cid+':test',chain_id:cid,...t})),cursor:0,positions:{},coverage:{},blocks:{},done:0};
+ const m={requests:0,maxBatch:0,active:0,maxActive:0,contexts:0,calls:[]};
+ const input={wallet,networks:[{chain_id:cid,environment:'mainnet',native_symbol:'ETH'}],tokens:[],concurrency,max_reads:maxReads,budget_ms:60000};
+ const io={async context(){m.contexts++;return context||{block:{number:'100',hash:'0x'+'a'.repeat(64),observed_at:'2026-11-13T00:00:00Z'}};},
+  async multi(c,calls){m.requests++;m.maxBatch=Math.max(m.maxBatch,calls.length);m.active++;m.maxActive=Math.max(m.maxActive,m.active);m.calls.push(...calls.map(c=>c.functionName));
+   await new Promise(r=>setTimeout(r,1));try{return calls.map(call=>{try{return {status:'success',result:resolve(call)};}catch{return {status:'failure',reason:'transport'};}});}finally{m.active--;}},...ioExtra};
+ return {state,input,io,shared,m,reader:()=>new Reader(input,state,io,shared)};
+}
+const LP=config.lptoken.find(p=>p.chain_id===8453),STAKE=config.mintclub_staking.find(p=>p.chain_id===8453&&p.version==='V1_2').address;
+function mixed(c){
+ if(c.functionName==='factory')return LP.factory;if(c.functionName==='target')return T0;if(c.functionName==='counter')return T1;
+ if(c.functionName==='balanceOf')return 5n*10n**18n;if(c.functionName==='isVault')return c.args[0]===VAULT;
+ if(c.functionName==='claimForShares')return [2n*10n**18n,3n*10n**18n];if(c.functionName==='pools')return {stakingToken:T0,isStakingTokenERC20:true};
+ return nftResolve(c);
+}
+const MIXED=[{kind:'vault',vault:VAULT},{kind:'stake',address:STAKE,pool_id:'37',shares:String(10n**18n),version:'V1_2'},
+ ...['1','2','3','4'].map(id=>({kind:'nft',ids:[id],manager:MANAGER,factory:FACTORY,platform:'uniswap',type:'v3'}))];
+test('a concurrent run records the same claims as one-at-a-time slices with fewer requests',async()=>{
+ const one=harness(MIXED[0],mixed);one.state.tasks.push(...MIXED.slice(1).map(t=>({scope:'8453:test',chain_id:8453,...t})));
+ const slow=await finish(one),many=wide(MIXED,mixed),fast=await many.reader().run(()=>{});
+ assert.equal(fast.complete,true);assert.equal(fast.cursor,fast.tasks.length);
+ assert.deepEqual(Object.keys(fast.positions).sort(),Object.keys(slow.positions).sort());
+ for(const [id,row] of Object.entries(slow.positions))assert.deepEqual(fast.positions[id].assets,row.assets,id);
+ assert.equal(Object.keys(fast.positions).length,6);
+ assert.ok(many.m.requests<one.metrics().requests/2,`requests ${many.m.requests} vs ${one.metrics().requests}`);
+ assert.ok(many.m.maxBatch>4,'Reads of tasks running together share one multicall.');
+});
+test('a budget stop keeps unfinished work and drops the interrupted task follow-ups',async()=>{
+ const h=wide([{kind:'stake-count',address:FACTORY,start:0,version:'V1_2'}],c=>c.functionName==='poolCount'?3000n:[0n,0n,0n,0n],{maxReads:20});
+ let runs=0,state;for(;runs<50;runs++){state=await h.reader().run(s=>{assert.ok(s.cursor<=s.tasks.length);});if(state.complete)break;}
+ assert.ok(runs>1,'The small budget needed several runs.');assert.equal(state.complete,true);
+ assert.equal(state.tasks.filter(t=>t.kind==='stake-scan').length,94,'Each pool range is read once.');assert.equal(state.cursor,95);
+ assert.equal(state.tasks.filter(t=>t.kind==='stake-count').length,1);
+});
+test('concurrent failures point at their own task for later rechecks',async()=>{
+ const h=wide([{kind:'nft',ids:['1'],manager:MANAGER,factory:FACTORY,platform:'uniswap',type:'v3'},{kind:'stake',address:STAKE,pool_id:'9',shares:'1',version:'V1_2'}],
+  c=>{if(c.functionName==='pools')throw Error('down');return nftResolve(c);});
+ const s=await h.reader().run(()=>{});assert.equal(s.failed_tasks.length,1);assert.equal(s.tasks[s.failed_tasks[0].index].kind,'stake');
+ assert.equal(s.coverage['8453:test'].status,'partial');assert.equal(Object.keys(s.positions).length,1);
+});
+function gauges(counts){
+ // Every new Aero factory lists `count` pools; the first of each has a gauge.
+ const pool=(factory,i)=>'0x'+(BigInt(factory)%(1n<<100n)+BigInt(i)+1n).toString(16).padStart(40,'0');
+ return c=>{
+  if(c.functionName==='poolsIndexLength'){counts.length++;return 3n;}
+  if(c.functionName==='poolsIndexPaginated'){counts.pages++;return Array.from({length:Number(c.args[1]-c.args[0])},(_,i)=>({pool:pool(c.address,Number(c.args[0])+i),creationTimestamp:1n}));}
+  if(c.functionName==='targetToGauge'){counts.gauges++;return BigInt(c.args[0])%(1n<<100n)===BigInt(pool(config.aero.find(a=>a.chain_id===8453&&a.version==='aero-cl').factory,0))%(1n<<100n)?GAUGE:v.zeroAddress;}
+  if(c.functionName==='stakedValues'){counts.staked++;return [];}
+  if(c.functionName==='balanceOf'||c.functionName==='poolCount')return 0n;
+  return tokenCalls(c);
+ };
+}
+test('saved-claim refreshes find new Aero gauge stakes from a cached directory, never legacy sweeps',async()=>{
+ const counts={length:0,pages:0,gauges:0,staked:0},shared={};
+ const h=wide([{kind:'seed'}],gauges(counts),{shared});h.input.discover=false;
+ const s=await h.reader().run(()=>{});
+ const modern=config.aero.filter(a=>a.chain_id===8453&&a.registry&&!a.version.startsWith('legacy-'));
+ assert.equal(s.tasks.filter(t=>t.kind==='aero-gauges').length,modern.length);
+ assert.ok(!s.tasks.some(t=>['aero-count','aero-sugar','aero-directory','farm-count','farm-scan'].includes(t.kind)));
+ assert.equal(counts.length,modern.length);assert.equal(counts.staked,1,'Only the pool with a gauge is asked for stakes.');
+ assert.equal(Object.keys(shared.gauge_directories).length,modern.length);assert.equal(s.coverage['8453:aero:'+modern[0].factory.toLowerCase()].status,'checked');
+ const again=wide([{kind:'seed'}],gauges(counts),{shared});again.input.discover=false;await again.reader().run(()=>{});
+ assert.equal(counts.length,modern.length,'A fresh directory is not read again.');assert.equal(counts.staked,2);
+ shared.gauge_directories[modern[0].chain_id+':'+modern[0].factory.toLowerCase()].at='2000-01-01T00:00:00Z';
+ const stale=wide([{kind:'seed'}],gauges(counts),{shared});stale.input.discover=false;await stale.reader().run(()=>{});
+ assert.equal(counts.length,modern.length+1,'An hour-old directory is read again.');
+});
+test('wallets in one run share a connection per chain and one directory read',async()=>{
+ const {sharedIO,runWallets}=require('./position-reader.cjs'),B='0x'+'9'.repeat(40),counts={length:0,pages:0,gauges:0,staked:0},store={};
+ let contexts=0,requests=0;const resolve=gauges(counts);
+ const io=sharedIO({async context(){contexts++;await new Promise(r=>setTimeout(r,2));return {block:{number:'7',hash:'0x'+'c'.repeat(64),observed_at:'2026-11-15T00:00:00Z'}};},
+  async multi(c,calls){requests++;await new Promise(r=>setTimeout(r,1));return calls.map(call=>{try{return {status:'success',result:resolve(call)};}catch{return {status:'failure',reason:'transport'};}});},progress:null});
+ for(const [name,wallet] of [['a',A],['b',B]])store['in-'+name]={wallet,networks:[{chain_id:8453,environment:'mainnet',native_symbol:'ETH'}],tokens:[],discover:false,concurrency:8,max_reads:5000,budget_ms:60000};
+ const outcome=await runWallets({shared_path:'shared',wallets:[{input_path:'in-a',checkpoint_path:'cp-a'},{input_path:'in-b',checkpoint_path:'cp-b'}]},io,
+  {read:p=>store[p]??null,write:(p,value)=>{store[p]=JSON.parse(JSON.stringify(value,(_,x)=>typeof x==='bigint'?String(x):x));}});
+ assert.deepEqual(outcome.map(o=>o.complete),[true,true]);assert.equal(contexts,1);
+ const modern=config.aero.filter(a=>a.chain_id===8453&&a.registry&&!a.version.startsWith('legacy-'));
+ assert.equal(counts.length,modern.length,'The second wallet waits for the first directory read.');assert.equal(counts.staked,2);
+ assert.equal(store['cp-a'].blocks['8453'].number,'7');assert.equal(store['cp-b'].wallet,B.toLowerCase());assert.ok(store.shared.gauge_directories);
+ assert.ok(requests<20,`requests ${requests}`);
+});
+test('coalesced reads return each caller its own rows and share failures',async()=>{
+ const {coalescer}=require('./position-reader.cjs');const batches=[];
+ const merge=coalescer({async multi(c,calls){batches.push(calls.length);return calls.map(x=>({status:'success',result:x}));}});
+ const ctx={},[a,b]=await Promise.all([merge(ctx,[1,2]),merge(ctx,[3,4,5])]);
+ assert.deepEqual(batches,[5]);assert.deepEqual(a.map(r=>r.result),[1,2]);assert.deepEqual(b.map(r=>r.result),[3,4,5]);
+ const broken=coalescer({async multi(){throw Error('offline');}});
+ const results=await Promise.allSettled([broken(ctx,[1]),broken(ctx,[2])]);assert.deepEqual(results.map(r=>r.status),['rejected','rejected']);
+ const small=coalescer({async multi(c,calls){batches.push(calls.length);return calls.map(x=>({status:'success',result:x}));}},4);
+ await Promise.all([small(ctx,[1,2,3]),small(ctx,[4,5])]);assert.deepEqual(batches.slice(1),[3,2],'A full batch leaves before it grows past the limit.');
+ const sizes=[],picky=coalescer({async multi(c,calls){sizes.push(calls.length);if(calls.length>4)throw Error('payload too large');return calls.map(x=>({status:'success',result:x}));}},8,{split:4});
+ const [x,y]=await Promise.all([picky(ctx,[1,2,3]),picky(ctx,[4,5,6])]);
+ assert.deepEqual(sizes,[6,3,3],'A refused aggregate is sent once more as two halves.');assert.deepEqual([...x,...y].map(r=>r.result),[1,2,3,4,5,6]);
+});
 test('long NFT histories keep only the pending frontier rather than copying it into completed pages',async()=>{
  let peak=0;const h=harness({kind:'nft-history',type:'v4',manager:MANAGER,view:FACTORY,ids:[],page:null},c=>c.functionName==='ownerOf'?T0:0n,{ioExtra:{async transfers(c,args){
   const page=Number(args.pageKey||0);return {transfers:Array.from({length:100},(_,i)=>({rawContract:{address:MANAGER},tokenId:v.toHex(BigInt((page*100+i)%1024)),hash:'event-'+page+'-'+i})),...(page<63?{pageKey:String(page+1)}:{})};

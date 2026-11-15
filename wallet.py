@@ -1322,6 +1322,24 @@ def report(result, folder):
     atomic(folder/'report.md','\n'.join(lines)+'\n')
 
 
+def update_positions():
+    """Platform positions follow a holdings refresh that runs as a job (position_update.py).
+    Holdings are already published; a failure here keeps the earlier position records."""
+    job_id=os.environ.get('KIRA_JOB_ID')
+    if not job_id:return
+    try:
+        job=read(ROOT/'jobs'/(job_id+'.json'))
+        if job.get('checkpoint')!='snapshots/jobs/'+job_id:return
+        event('onchain_progress',operation='positions')
+        # Position publication takes this module's registry lock; when run as a script,
+        # importing `wallet` must not load a second copy of it.
+        sys.modules.setdefault('wallet',sys.modules[__name__])
+        import position_update
+        position_update.update(ROOT,[job])
+    except Exception:
+        pass
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     sub=parser.add_subparsers(dest='command',required=True)
@@ -1415,6 +1433,7 @@ def main():
             try:prune_resume_checkpoints(wallet)
             except (OSError,ValueError,KeyError):pass
             event('published',snapshot=relative,counts=result['counts'],status=result['status'],viewer='http://127.0.0.1:8765')
+            if args.phase in ('holdings','baseline'):update_positions()
         except Exception as error:
             atomic(folder/'run.json',{'wallet_address':wallet['address'],'tags':wallet['tags'],'inventory_policy':policy,'refresh_scope':scope,**({'holdings_snapshot':args.holdings_snapshot or (manifest or {}).get('holdings_snapshot')} if args.phase=='sell' else {}),'failed_at':h.now(),'status':'failed','error_code':getattr(error,'code','engine_failed'),'error':h.redact(str(error))})
             event('market_paused' if isinstance(error,MarketPause) else 'research_paused' if isinstance(error,ResearchPause) else 'failed',error=h.redact(str(error)),resume=str(folder.relative_to(ROOT)))

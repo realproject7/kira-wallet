@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.13.2**. Prepared candidate: **1.15.3**.
+Published npm release: **1.13.2**. Prepared candidate: **1.15.4**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -8,6 +8,31 @@ scope of their original release; they are not a current task list.
 Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
+
+## Candidate 1.15.4
+
+- A holdings refresh now ends by updating platform positions under the same
+  job, for one wallet, a portfolio batch and a new wallet alike. Positions had
+  been read only by an explicit platform scan, so a range closed on Aeromax stayed
+  listed as open after the wallet's holdings were refreshed.
+- The update reads saved claims, wallet NFT inventories, staking pools and new
+  Aero gauge stakes (Aeromax ranges) on every chain at once. Reads that reach one
+  chain together share one multicall, and the wallets of a batch share
+  connections, block pins and the gauge directory, which is reused for an hour.
+  At most four multicalls per chain are in flight, so none outlives the provider
+  pool's queue, and a large one that fails as a whole is retried once in halves.
+  On a live wallet it took 8 to 10 seconds and about 110 Alchemy requests, where
+  the earlier scan of the same claims took 94 seconds in eight slices. A whole
+  live portfolio took 41 seconds and about 10,800 compute units, with no failed
+  reads; without merging across wallets the same reads took 291 seconds and
+  73,000.
+- Refresh positions uses the same reader. Find new positions still sweeps the
+  legacy registries one read at a time, in resumable slices.
+- Holdings are published before positions are read and never wait on them. What
+  an update does not finish keeps its earlier records, marked partial.
+
+Version 1.15.3 was prepared and not published; 1.15.4 contains its changes,
+listed below.
 
 ## Candidate 1.15.3
 

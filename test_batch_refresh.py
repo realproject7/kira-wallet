@@ -84,9 +84,13 @@ class BatchRefreshTest(unittest.TestCase):
                 patch.object(engine, 'run_node', side_effect=fallback), patch.object(engine, 'finish_holdings', side_effect=finish), \
                 patch.object(engine, 'source_check', side_effect=source_check), patch.object(batch_refresh, 'held_tokens', return_value=({}, set())), \
                 patch.object(batch_refresh.MarketLookups, 'fetch', return_value=None), patch.object(engine, 'prune_resume_checkpoints') as prune, \
-                patch('token_images.refresh_catalog') as artwork, contextlib.redirect_stdout(output):
+                patch('token_images.refresh_catalog') as artwork, patch('position_update.update', return_value={}) as positions, \
+                contextlib.redirect_stdout(output):
             code = batch_refresh.run(self.jobs, 'fast')
         self.assertEqual(code, 1, 'A failed wallet is reported.')
+        # Platform positions follow for the published wallets only, in one shared run.
+        positions.assert_called_once()
+        self.assertEqual(sorted(job['job_id'] for job in positions.call_args.args[1]), sorted(self.jobs[:2]))
         # The batch names its jobs in the usage ledger, and its id does not outlive the run.
         usage = [json.loads(line) for path in (self.root / 'usage').glob('alchemy-*.jsonl') for line in path.read_text().splitlines()]
         self.assertEqual([(row['source'], row['jobs'], row['scope']) for row in usage], [('batch', self.jobs, 'fast')])

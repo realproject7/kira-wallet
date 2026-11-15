@@ -354,6 +354,17 @@ def refresh(job_ids, scope):
                 results = list(pool.map(finish, ready))
             timings['published'] = round(time.monotonic() - started, 1)
             engine.NODE_HELPER = None
+        # Platform positions of every published wallet follow in one shared run.
+        published = [item for item, result in zip(ready, results) if result and not cancelled(item.job_id)]
+        if published:
+            for item in published:
+                in_job(item, lambda: engine.event('onchain_progress', operation='positions'))
+            try:
+                import position_update
+                position_update.update(ROOT, [read(ROOT / 'jobs' / f'{item.job_id}.json') for item in published])
+            except Exception:
+                pass  # Holdings are published; positions keep their earlier records.
+            timings['positions'] = round(time.monotonic() - started, 1)
         snapshots = [result for result in results if result]
         if snapshots:
             # Artwork is shared by contract across wallets; refresh it once.

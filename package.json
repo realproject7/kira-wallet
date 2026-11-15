@@ -1,6 +1,6 @@
 {
   "name": "kira-wallet",
-  "version": "1.15.3",
+  "version": "1.15.4",
   "description": "Local wallet research for your agent session and a human-controlled web workspace.",
   "license": "MIT",
   "private": false,
@@ -130,6 +130,7 @@
     "viewer/static/wallet-management.js",
     "positions.py",
     "position_worker.py",
+    "position_update.py",
     "position-reader.cjs",
     "position-math.cjs",
     "sources/position-protocols.json",

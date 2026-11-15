@@ -461,11 +461,19 @@ kira call positions_refresh --arguments '{"wallet":"Savings","idempotency_key":"
 kira call portfolio_positions_refresh --arguments '{"folder_id":"FOLDER_ID","discover":true,"idempotency_key":"find-folder-platforms"}' --json
 ```
 
+Every holdings refresh (one wallet, a portfolio batch or a new wallet) also
+updates platform positions as its last step, under the same job: saved claims,
+wallet NFT inventories, staking pools and new Aero gauge stakes such as Aeromax
+ranges. It reads every chain and wallet at once, shares multicalls, and saves the
+positions in that job's snapshot folder. What it does not finish keeps its
+earlier records, marked partial; holdings are never held back by it.
+
 The first scan discovers positions. Later refreshes default to saved-claim and
-wallet-inventory checks. `discover: true` additionally sweeps supported pool and
-farm registries for new deposits. Legacy Aerodrome has over 30,000 pools; broad
-initial discovery can be slow even with batched reads. Explicit full discovery
-is kept separate from ordinary refresh. Jobs share the existing sequential writer,
-short resumable slices, pause/resume, duplicate coalescing and bounded retries.
+wallet-inventory checks, including new Aero gauges. `discover: true` additionally
+sweeps the legacy pool and farm registries for new deposits. Legacy Aerodrome has
+over 30,000 pools; that discovery runs one read at a time in short resumable
+slices and can be slow. Explicit full discovery is kept separate from ordinary
+refresh. Jobs share the existing sequential writer, pause/resume, duplicate
+coalescing and bounded retries.
 Opening any page or reading saved claims launches no provider work. Use Activity
 to monitor source progress; financial unknowns never establish a zero holding.
