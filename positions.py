@@ -98,6 +98,22 @@ def attach(root, wallets):
         wallet['capital_allocation']=allocation([wallet])
 
 
+def receipt_platforms(wallets):
+    """Tokens a wallet holds as the receipt of a platform claim, by token identity."""
+    found={}
+    for wallet in wallets:
+        for p in wallet.get('positions',[]):
+            receipt=p.get('receipt') or {}
+            if receipt.get('custody')=='wallet' and isinstance(receipt.get('address'),str) and p.get('platform') in PLATFORMS:
+                found.setdefault(str(p['chain_id'])+':'+receipt['address'].lower(),p['platform'])
+    return found
+
+
+def asset_platform(asset, receipts):
+    """The allocation group of a wallet token, as allocation() counts it."""
+    return receipts.get(asset['id']) or ('mintclub' if asset.get('curve_reserve') else 'wallet')
+
+
 def allocation(wallets, *, token_id=None, chain_id=None):
     """Exclusive groups. A wrapper and its underlying assets never add twice."""
     from asset_policy import included

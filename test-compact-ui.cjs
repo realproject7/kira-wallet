@@ -10,7 +10,8 @@ function harness(){
  const escapeHTML=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const ctx=vm.createContext({$,escapeHTML,money:v=>v==null?'—':'$'+v,stamp:String,shortAddress:a=>a.slice(0,6)+'…'+a.slice(-4),walletGlyph:'<svg></svg>',arrowGlyph:'',
   KiraView:require('./viewer/static/workspace-model.js'),networkHref:id=>'#/network/'+id,renderBreadcrumb(){},renderHomeCoverage(){},bindImages(){},chainIcon:()=>'<i class="chain-icon"></i>',
-  selectedView:'home',selectedWallet:null,jobList:[],state:null,window:{addEventListener(){}},clearTimeout(){}});
+  selectedView:'home',selectedWallet:null,areaWallet:null,selectedPlatform:null,homeWalletSort:'value',routeData:{},lensGroup:()=>null,areaHref:tab=>'#/'+(tab==='overview'?'home':tab),
+  document:{querySelectorAll:()=>[]},jobList:[],state:null,window:{addEventListener(){}},clearTimeout(){}});
  for(const helper of ['const infoTip =','const integer =','const walletAvatar =','const ratioBar =','const walletTokenValue ='])vm.runInContext(source.split('\n').find(line=>line.startsWith(helper)),ctx);
  for(const [from,to] of [['function progress(','function chainIcon('],['function renderWallets(){','function renderView(){'],['function renderHome(){','function renderWallet(){'],['function sellSummary(','function sellOutNote('],['function policyNotice(','function policyButton(']])vm.runInContext(slice(from,to),ctx);
  vm.runInContext(design,ctx);
@@ -69,7 +70,7 @@ test('page structure keeps one summary card and no repeated taglines',()=>{
  for(const removed of ['Your saved balances, in one place.','ACROSS YOUR WALLETS','RESEARCH HISTORY','WALLET OVERVIEW','Follow your research at a glance.','50 rows per page.','home-stats','class="home-summary"','portfolio-scope-bar'])assert.equal(html.includes(removed),false,removed);
  assert.match(html,/<section id="home-summary" class="hero"/);assert.match(html,/<section class="hero wallet-summary"/);
  assert.match(html,/<link rel="stylesheet" href="\/ui\.css"><link rel="stylesheet" href="\/compact\.css">/,'The compact layer loads last.');
- assert.equal((html.match(/<th scope="col">Value<\/th>/g)||[]).length,2);assert.doesNotMatch(html,/Known value/);
+ assert.equal((html.match(/<th scope="col" data-sort-column="value"><button type="button" class="sort-header" data-sort-list="(home|catalog)" data-sort="value">Value<\/button><\/th>/g)||[]).length,2);assert.doesNotMatch(html,/Known value/);
  // Phones get a sheet for info tips and two-line token rows without repeated labels.
  assert.match(css,/@media\(max-width:640px\)[\s\S]*\.info-pop \{ position:fixed;/);assert.match(css,/#content \.token-table \.mobile-label \{ display:none; \}/);
  assert.doesNotMatch(source,/function marketLinks\(|holding-markets|Where your assets are/);

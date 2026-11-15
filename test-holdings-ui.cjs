@@ -2,12 +2,13 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync('viewer/static/app.js','utf8');
 const nodes=new Map(),pressed={},buttons=['all',0,5,10].map(min=>({dataset:{min:String(min)},setAttribute(name,value){pressed[min]=value;}}));
-const node=id=>{if(!nodes.has(id))nodes.set(id,{dataset:{},textContent:'',innerHTML:'',hidden:false,querySelector:kind=>node(id+'-'+kind)});return nodes.get(id);};
+const node=id=>{if(!nodes.has(id))nodes.set(id,{dataset:{},textContent:'',innerHTML:'',hidden:false,querySelector:kind=>node(id+'-'+kind),closest:kind=>node(id+'-closest-'+kind)});return nodes.get(id);};
 let click;const saved=new Map();
 const wallet={name:'Fixture',address:'0x'+'1'.repeat(40),tags:['Fixture'],analysed_at:'2026-10-04',known_value_usd:null,unpriced_count:3,
   assets:[1,33139,56].map((chain_id,i)=>({chain_id,environment:'mainnet',value_usd:null,symbol:['ETH','APE','BNB'][i]})),
   chains:[1,33139,56].map(id=>({id,name:'Chain '+id,environment:'mainnet',assets:1,complete:false,rpc_available:true,value_usd:null}))};
-const context={$:node,KiraView:require('./viewer/static/workspace-model.js'),currentWallet:()=>wallet,minimum:10,walletStatus:'portfolio',networkStatus:'portfolio',selectedChain:'all',selectedView:'wallet',
+// The wallet's All tokens tab: the whole list with its filters.
+const context={$:node,KiraView:require('./viewer/static/workspace-model.js'),currentWallet:()=>wallet,minimum:10,walletStatus:'portfolio',networkStatus:'portfolio',selectedChain:'all',selectedView:'wallet',walletTab:'tokens',selectedPlatform:null,routeData:{},lensGroup:()=>null,areaHref:tab=>'#/'+tab,
   escapeHTML:String,money:n=>n==null?'—':'$'+n,stamp:String,safeURL:String,
   document:{querySelectorAll:()=>buttons,addEventListener:(event,handler)=>{click=handler;}},
   localStorage:{setItem:(key,value)=>saved.set(key,value)},renderBreadcrumb(){},bindImages(){},
@@ -23,7 +24,7 @@ vm.runInContext(source.slice(source.indexOf('function renderHoldings(){'),source
 vm.runInContext(source.split('\n').find(line=>line.startsWith("document.addEventListener('click',e=>{const b=e.target.closest('[data-min]")),context);
 context.renderWallet();
 assert.equal(node('total-value').textContent,'—');
-assert.equal(node('visible-count').textContent,0);
+assert.equal(node('visible-count').textContent,'0');
 assert.match(node('holdings-filter-note').innerHTML,/3 unpriced hidden/);
 assert.match(node('empty-h3').textContent,/Only unpriced holdings here/);
 assert.match(node('coverage-note').textContent,/^0 of 3 checked$/);
@@ -73,7 +74,7 @@ assert.match(node('discovery-network-details').textContent,/pending ranges: 0; u
 assert.match(node('discovery-network-details').textContent,/Routescan: source pages checked/);
 delete wallet.chains[0].history_window;delete wallet.chains[0].discovery_sources;
 click({target:{closest:()=>({hasAttribute:()=>true})}});
-assert.equal(saved.size,0,'View filters stay temporary.');assert.equal(node('visible-count').textContent,3);
+assert.equal(saved.size,0,'View filters stay temporary.');assert.equal(node('visible-count').textContent,'3');
 assert.equal(node('holdings-filter-note').hidden,true);assert.equal(node('empty').hidden,true);
 assert.match(node('asset-groups').innerHTML,/ETH/);assert.match(node('asset-groups').innerHTML,/APE/);assert.match(node('asset-groups').innerHTML,/BNB/);
 console.log('Unknown wallet value and explicit filter recovery preserve all recorded holdings.');
@@ -81,21 +82,21 @@ console.log('Unknown wallet value and explicit filter recovery preserve all reco
 const unpricedOnly=wallet.assets,choose=min=>click({target:{closest:()=>({hasAttribute:()=>false,dataset:{min}})}});
 wallet.assets=[['PRICED',7],['ZERO',0],['NOPRICE',null]].map(([symbol,value_usd])=>({id:'1:'+symbol,chain_id:1,environment:'mainnet',value_usd,symbol}));
 context.minimum=0;context.renderHoldings();
-assert.equal(node('visible-count').textContent,2);assert.match(node('asset-groups').innerHTML,/PRICED/);
+assert.equal(node('visible-count').textContent,'2');assert.match(node('asset-groups').innerHTML,/PRICED/);
 assert.match(node('asset-groups').innerHTML,/ZERO/,'A zero value is a price.');assert.doesNotMatch(node('asset-groups').innerHTML,/NOPRICE/);
 assert.equal(node('holdings-filter-note').hidden,false);
 assert.match(node('holdings-filter-note').innerHTML,/<span>1 unpriced hidden<\/span><button[^>]*data-clear-value-filter>Show all<\/button>/);
 assert.deepEqual(pressed,{all:'false',0:'true',5:'false',10:'false'});
 choose('all');assert.equal(context.minimum,null);
-assert.equal(node('visible-count').textContent,3);assert.match(node('asset-groups').innerHTML,/NOPRICE/);assert.equal(node('holdings-filter-note').hidden,true);
+assert.equal(node('visible-count').textContent,'3');assert.match(node('asset-groups').innerHTML,/NOPRICE/);assert.equal(node('holdings-filter-note').hidden,true);
 assert.deepEqual(pressed,{all:'true',0:'false',5:'false',10:'false'});
-choose('5');assert.equal(node('visible-count').textContent,1);assert.match(node('holdings-filter-note').innerHTML,/1 unpriced hidden/);
-choose('0');assert.equal(node('visible-count').textContent,2);
+choose('5');assert.equal(node('visible-count').textContent,'1');assert.match(node('holdings-filter-note').innerHTML,/1 unpriced hidden/);
+choose('0');assert.equal(node('visible-count').textContent,'2');
 // A server page already leaves unpriced rows out, so their count arrives with the page.
 const priced=wallet.assets.filter(a=>a.value_usd!=null);
 Object.assign(context,{state:{demo:false,paged:true},routeData:{wallet},renderPagination(){}});
 Object.assign(wallet,{assets:priced,matched_count:2,unpriced_hidden_count:1234});context.renderHoldings();
-assert.equal(node('visible-count').textContent,2);assert.match(node('holdings-filter-note').innerHTML,/1,234 unpriced hidden/);
+assert.equal(node('visible-count').textContent,'2');assert.match(node('holdings-filter-note').innerHTML,/1,234 unpriced hidden/);
 Object.assign(wallet,{assets:[],matched_count:0,unpriced_hidden_count:3});context.renderHoldings();
 assert.equal(node('empty').hidden,false);assert.match(node('empty-h3').textContent,/Only unpriced holdings here/);assert.match(node('empty-p').textContent,/Show all to see their balances/);
 Object.assign(wallet,{assets:priced,matched_count:2,unpriced_hidden_count:0});context.renderHoldings();assert.equal(node('holdings-filter-note').hidden,true);
@@ -180,7 +181,7 @@ assert.equal(node('all-token-testnets').checked,false);assert.equal(node('job-fi
 assert.equal(context.catalogMinimum,0);assert.equal(context.catalogPage,1);assert.equal(context.jobsPage,1);
 console.log('Returning to a route starts with default view filters.');
 // A queued or unknown address must never display the previous wallet's balances.
-const routeHarness={selectedView:'wallet',selectedWallet:'0x'+'2'.repeat(40),currentWallet:()=>null,
+const routeHarness={selectedView:'wallet',selectedWallet:'0x'+'2'.repeat(40),areaWallet:'0x'+'2'.repeat(40),currentWallet:()=>null,
   pendingWalletJob:()=>({state:'queued'}),toast:text=>routeHarness.note=text,
   navigate:hash=>routeHarness.route=hash,renderWallets:()=>{throw Error('Rendered a missing wallet');}};
 vm.createContext(routeHarness);
@@ -190,7 +191,7 @@ routeHarness.pendingWalletJob=()=>null;routeHarness.renderView();assert.equal(ro
 // Once registered, a new wallet can show its own compact progress without
 // redirecting to Activity or borrowing the previous wallet's saved balances.
 const registered={key:'0x'+'3'.repeat(40),name:'New wallet',analysed_at:null};
-const registeredRoute={selectedView:'wallet',selectedWallet:registered.key,state:{wallets:[registered]},currentWallet:()=>registered,
+const registeredRoute={selectedView:'wallet',selectedWallet:registered.key,areaWallet:registered.key,state:{wallets:[registered]},currentWallet:()=>registered,renderWalletHeader(){},renderAreaBar(){},
  pendingWalletJob:()=>({state:'running'}),navigate:hash=>{registeredRoute.route=hash;},toast(){},renderWallets(){},
  renderWallet:()=>{registeredRoute.rendered=true;},renderKiraNote(){},document:{title:''},$:()=>({})};
 vm.createContext(registeredRoute);

@@ -35,7 +35,7 @@ test('unavailable local records retain explicit errors and a saved-view retry',a
 });
 
 test('mixed saved and unchecked wallets preserve per-wallet default discovery at global refresh',async()=>{
- const testCode=code.replace('return {render};','return {render,refresh};'),submitted=[];
+ const testCode=code.replace('return {render,renderLens};','return {render,renderLens,refresh};'),submitted=[];
  const h=harness(),button={disabled:false,closest:()=>({querySelector:()=>({textContent:''})})};
  h.context.document.querySelector=()=>button;h.context.setupReadiness={discovery_key_available:true};h.context.submitOperation=async(op,input)=>{submitted.push({op,input});return {jobs:[{},{}]};};
  vm.runInContext(testCode.replace('const CapitalUI=','var CapitalUITest=').replaceAll('globalThis.capital=CapitalUI','globalThis.capitalTest=CapitalUITest'),h.context);
@@ -49,11 +49,15 @@ test('queued platform scans in the merged job list disable duplicate global disc
 });
 
 test('the summary card shows where assets sit without repeating its total or explaining itself',async()=>{
- const h=harness();h.render();await tick();
+ const h=harness(),visits=[];h.context.areaHref=(tab,platform)=>'#/'+tab+(platform?'?platform='+platform:'');h.context.navigate=hash=>visits.push(hash);h.render();await tick();
  assert.doesNotMatch(h.host.innerHTML,/Where your assets are|capital-total|capital-basis/);
  assert.match(h.host.innerHTML,/<svg class="alloc-swatch"[^>]*><rect[^>]*fill="#ef5da8"/);assert.match(h.host.innerHTML,/class="alloc-pct">75\.0%/);
  assert.match(h.host.innerHTML,/<details class="info-tip"><summary aria-label="About this allocation">/);assert.match(h.host.innerHTML,/Each claim counts once/);
- assert.match(h.host.innerHTML,/data-platform="uniswap" aria-pressed="false"/);assert.doesNotMatch(h.host.innerHTML,/data-platform="wallet"/);
+ // Every group opens that platform's view of the same area; the chosen one closes it again.
+ assert.match(h.host.innerHTML,/data-platform="uniswap" aria-pressed="false" aria-label="Show Uniswap only"/);assert.match(h.host.innerHTML,/data-platform="wallet" aria-pressed="false"/);
+ h.context.selectedPlatform='uniswap';h.render();await tick();
+ assert.match(h.host.innerHTML,/data-platform="uniswap" aria-pressed="true" aria-label="Show all platforms"/);assert.match(h.host.innerHTML,/class="donut-value"[^>]*>75%<\/text><text class="donut-label"[^>]*>Uniswap</);
+ assert.match(h.calls.at(-1),/platform=uniswap/);
 });
 test('a token held only in wallets has no allocation panel and makes no position request',async()=>{
  const h=harness(),single={groups:[{id:'wallet',name:'Wallet tokens',color:'#8a7aaf',value_usd:10,percent:100,position_count:0}],known_value_usd:10,wallets_checked:1,wallet_count:1,position_count:0};
@@ -76,7 +80,7 @@ test('a wallet with nothing to compare keeps one status line and its scan action
  assert.match(h.host.innerHTML,/Platform positions not scanned/);assert.match(h.host.innerHTML,/0\/1 wallets checked/);assert.match(h.host.innerHTML,/class="quiet-button capital-refresh" >Find platform positions/);
 });
 test('coverage gaps stay one chip until opened; position rows carry flags and evidence',async()=>{
- const testCode=code.replace('return {render};','return {render,toggleCoverage};');
+ const testCode=code.replace('return {render,renderLens};','return {render,renderLens,toggleCoverage};');
  const position={id:'p1',platform:'uniswap',version:'v3',label:'Pool',chain_id:1,wallet:'0x'+'1'.repeat(40),wallet_name:'Fixture',value_usd:30,observed_at:'2026-11-13T00:00:00Z',source_url:'https://example.com/position',custody_platform:'gauge',retained:true,included_in_totals:false,exit_note:'NAV note.',assets:[{symbol:'AAA',address:'0x'+'a'.repeat(40),amount:'1',price:{observed_at:'2026-11-12T00:00:00Z'}},{symbol:'BBB',address:'0x'+'b'.repeat(40),amount:'2'}]};
  const h=harness((url,ctx)=>({data_revision:'r1',positions:[position],allocation:{...h.allocation,coverage_gap_count:3},matched_count:1,next_offset:null,coverage_gap_count:3,coverage_gaps:[{wallet_name:'Fixture',chain_id:1,message:'Source <unchecked>.'}]}));
  h.context.FolderUI={id:null,view:()=>null,path:route=>'#/'+route};

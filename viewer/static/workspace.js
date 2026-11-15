@@ -4,7 +4,7 @@ let catalogMinimum = 0;
 let catalogTimer;
 function catalogFilters() {
   return { status:$('all-token-status').value, search: $('all-token-search').value, network: $('all-token-network').value,
-    pricing: $('all-token-pricing').value, sort: $('all-token-sort').value,
+    pricing: $('all-token-pricing').value, sort: $('all-token-sort').value, platform: typeof selectedPlatform!=='undefined'?selectedPlatform:null,
     testnets: $('all-token-testnets').checked, page: catalogPage, minimum: catalogMinimum };
 }
 function catalogRow(a) {
@@ -26,9 +26,14 @@ function renderCatalog() {
   $('tokens-page').textContent = result.page + ' / ' + result.pages;
   $('tokens-prev').disabled = routeLoading || result.page === 1;
   $('tokens-next').disabled = routeLoading || result.page === result.pages;
-  $('all-token-empty').hidden = routeLoading || result.count > 0;
+  // A platform held only as positions lists those positions instead of an empty table.
+  const lens=typeof lensGroup==='function'?lensGroup():null,onlyPositions=!!lens&&!result.count&&lens.position_count>0&&!routeLoading;
+  for(const node of [$('all-token-body').closest?.('.table-wrap'),$('tokens-next').closest?.('.pagination')])if(node)node.hidden=onlyPositions;
+  $('all-token-empty').hidden = routeLoading || result.count > 0 || onlyPositions;
   if(typeof TokenManager!=='undefined')TokenManager.sync(result.rows,filters);
   $('all-token-body').innerHTML = result.rows.map(catalogRow).join('');
+  if(typeof markSort==='function')markSort($('all-token-body').closest?.('table'),filters.sort);
+  if(typeof CapitalUI!=='undefined'&&CapitalUI.renderLens)CapitalUI.renderLens();
   bindImages();
   if(typeof TokenManager!=='undefined')TokenManager.render();
   if(!result.count&&hiddenUnpriced){
@@ -41,15 +46,10 @@ function renderWorkspace() {
   if (!state) return;
   $('tokens-view').hidden = selectedView !== 'tokens';
   $('activity-view').hidden = selectedView !== 'activity';
-  document.querySelectorAll('[data-view]').forEach(link => {
-    const current = link.dataset.view === selectedView || (link.dataset.view === 'home' && ['wallet', 'token', 'network'].includes(selectedView));
-    if (current) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
-  });
-  if (selectedView === 'home') $('brand-home').setAttribute('aria-current', 'page'); else $('brand-home').removeAttribute('aria-current');
+  if (selectedView === 'home' && !(typeof FolderUI !== 'undefined' && FolderUI.id)) $('brand-home').setAttribute('aria-current', 'page'); else $('brand-home').removeAttribute('aria-current');
   const context=typeof FolderUI!=='undefined'?FolderUI.view():state;
-  $('all-token-count').textContent = context?.dashboard.unique_asset_count??'—';
   if (selectedView === 'tokens') {
-    renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Home',href:'#/home'}]),{label:'All tokens'}]);
+    renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Portfolio',href:'#/home'}]),{label:'All tokens'}]);
     document.title = 'All tokens · Kira Wallet';
     if(!context){$('sync-label').textContent='Loading folder holdings…';renderCatalog();return;}
     const network = $('all-token-network').value;
@@ -58,15 +58,16 @@ function renderWorkspace() {
     $('all-token-network').value = [...$('all-token-network').options].some(o => o.value === network) ? network : 'all';
     $('sync-label').textContent = 'Latest recorded holdings'; renderCatalog();
   } else if (selectedView === 'activity') {
-    renderBreadcrumb([{ label: 'Home', href: '#/home' }, { label: 'Activity' }]);
-    document.title = 'Activity · Kira Wallet'; $('sync-label').textContent = 'Local research history';
+    const area=typeof areaWallet!=='undefined'?areaWallet:null;
+    if(!area)renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Portfolio',href:'#/home'}]),{label:'Activity'}]);
+    document.title = (area?(currentWallet()?.name||'Wallet')+' activity':'Activity')+' · Kira Wallet'; $('sync-label').textContent = 'Local research history';
     if(typeof renderActivity==='function')renderActivity();
   }
 }
 function resetRouteFilters() {
   for (const [id,value] of Object.entries({'all-token-status':'portfolio','all-token-network':'all','all-token-pricing':'priced','all-token-sort':'value','all-token-search':'','job-filter':'all'})) $(id).value=value;
   $('all-token-testnets').checked=false;catalogPage=1;catalogMinimum=0;
-  walletSort='value';networkSort='value';walletStatus='portfolio';networkStatus='portfolio';$('wallet-token-status').value='portfolio';$('wallet-token-sort').value='value';
+  walletSort='value';networkSort='value';if(typeof homeTokenSort!=='undefined')homeTokenSort='value';walletStatus='portfolio';networkStatus='portfolio';$('wallet-token-status').value='portfolio';$('wallet-token-sort').value='value';
   if(typeof jobsPage!=='undefined')jobsPage=1;
   $('activity-query').value='';$('activity-wallet').value='all';
   if(typeof KiraSelect!=='undefined')KiraSelect.refresh();

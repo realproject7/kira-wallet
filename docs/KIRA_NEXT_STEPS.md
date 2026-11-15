@@ -1,6 +1,10 @@
 # Kira release status
 
-Updated: 2026-11-15. Candidate 1.14.0 refreshes the holdings of several
+Updated: 2026-11-15. Candidate 1.15.0 puts global tools in the top bar and
+gives each area (all wallets, a folder or one wallet) its own Overview, All
+tokens and Activity, adds a platform view of every area, orders lists by
+sell-out estimate and lists a wallet's holdings in one list across networks.
+It contains the unpublished 1.14.0, which refreshes the holdings of several
 wallets as one batch: one token list request per wallet, each network read
 once at one block for every wallet, prices and markets looked up once per
 token, and Alchemy reads paced by a compute-unit budget. It also contains the

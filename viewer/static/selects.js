@@ -6,7 +6,8 @@ const KiraSelect=(()=>{
   function prune(){for(const [select,entry] of entries){if(select.isConnected)continue;if(opened===entry)close();entry.popup.remove();entries.delete(select);}}
   function optionLabel(option){
     const chain=option?.dataset.chainId&&typeof state!=='undefined'?state?.details?.networks.find(c=>String(c.id)===option.dataset.chainId):null;
-    return `<span class="select-option-label">${chain?chainIcon(chain):''}<span>${escapeHTML(option?.textContent||'Choose')}</span></span>`;
+    const logo=/^\/venues\/[a-z0-9.-]+$/.test(option?.dataset.logo||'')?option.dataset.logo:null;
+    return `<span class="select-option-label">${chain?chainIcon(chain):''}${logo?`<img class="select-logo" src="${escapeHTML(logo)}" alt="" width="18" height="18">`:''}<span>${escapeHTML(option?.textContent||'Choose')}</span></span>`;
   }
   function refresh(){prune();for(const entry of entries.values()){const option=entry.select.selectedOptions[0];entry.label.innerHTML=optionLabel(option);entry.button.disabled=entry.select.disabled;entry.button.title=option?.textContent||'';}bindImages();}
   function focusOption(index){if(!opened)return;const options=[...opened.popup.querySelectorAll('[role="option"]')];if(!options.length)return;opened.index=(index+options.length)%options.length;for(const [i,node] of options.entries())node.classList.toggle('highlighted',i===opened.index);const node=options[opened.index];opened.button.setAttribute('aria-activedescendant',node.id);node.scrollIntoView({block:'nearest'});}

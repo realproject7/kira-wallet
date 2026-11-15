@@ -12,7 +12,7 @@ const FolderUI=(()=>{
   function wallets(){return scope&&view()?view().wallets:KiraFolders.members(state?.wallets||[],data(),scope);}
   function view(){return scope?routeData.overview?.folder_id===scope?routeData.overview:cachedOverview?.folder_id===scope&&cachedOverview.data_revision===state?.data_revision?cachedOverview:null:state;}
   function acceptOverview(value){cachedOverview=value;}
-  function breadcrumb(){return scope?[{label:'Home',href:'#/home'},{label:label(scope),href:folderPath(scope)}]:[{label:'Home',href:'#/home'}];}
+  function breadcrumb(){return scope?[{label:'Portfolio',href:'#/home'},{label:label(scope),href:folderPath(scope)}]:[{label:'Portfolio',href:'#/home'}];}
   function walletPath(key){return scope&&(data().assignments[key]||'unfiled')===scope?path('wallet/'+key):'#/wallet/'+key;}
   const folderGlyph='<svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 7V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v11H3z"/></svg>';
   function render(){
@@ -26,14 +26,12 @@ const FolderUI=(()=>{
     $('manage-folders').textContent='Manage wallets';
     $('home-scope-name').textContent=scope?label(scope):'All wallets';
     $('home-folder-empty').hidden=!scope||!view()||!!wallets().length;
-    $('home-view-all').href=path('tokens');
-    for(const link of document.querySelectorAll('[data-view="home"],[data-view="tokens"]'))link.href=path(link.dataset.view);
     if(selectedView==='home'){
       document.title=scope?label(scope)+' · Kira Wallet':'Home · Kira Wallet';
       if(scope){$('home-empty').hidden=true;$('setup-path').hidden=true;$('home-summary').hidden=!view();}
     }
     const current=typeof currentWallet==='function'?currentWallet():null;
-    if(scope&&selectedView==='wallet'&&current&&(saved.assignments[current.key]||'unfiled')!==scope){navigate('#/wallet/'+current.key);return;}
+    if(scope&&typeof areaWallet!=='undefined'&&areaWallet&&current&&(saved.assignments[current.key]||'unfiled')!==scope){navigate('#/wallet/'+current.key+(selectedView==='activity'?'/activity':walletTab==='tokens'?'/tokens':'')+(selectedPlatform?'?platform='+encodeURIComponent(selectedPlatform):''));return;}
     if(current)$('wallet-folder-name').textContent=label(saved.assignments[current.key]||'unfiled');
     if(!busy&&draft&&$('folder-manager').open&&stale()){$('folder-manager-stale').hidden=false;$('folder-members-move').disabled=true;}
     if(typeof WalletManagement!=='undefined')WalletManagement.render();
@@ -152,6 +150,7 @@ const FolderUI=(()=>{
     catch{toast('Wallet saved. Folder assignment was not confirmed. Use Move to folder on the saved wallet.',8000);}
   }
   function init(){
+    if(typeof navigator!=='undefined'&&$('finder-key'))$('finder-key').textContent=/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent||'')?'⌘K':'Ctrl K';
     $('open-wallet-finder').addEventListener('click',openSearch);
     $('find-wallet-dialog').addEventListener('keydown',event=>{if(event.key==='Escape'&&!event.isComposing){event.preventDefault();event.stopPropagation();$('find-wallet-dialog').close();}});
     document.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'&&!document.querySelector('dialog[open]')){event.preventDefault();openSearch();}});

@@ -139,6 +139,9 @@ class JobsTest(JobFixtures, unittest.TestCase):
         self.assertEqual(self.store.page(query='Holdings refresh',state='succeeded')['total'],65)
         self.assertEqual(self.store.page(query=template['job_id'])['total'],1)
         self.assertEqual(self.store.page(query='no such wallet')['counts']['all'],0)
+        # A folder's Activity lists only its wallets' tasks.
+        self.assertEqual(self.store.page(wallets={template['input']['wallet'].lower()})['total'],66)
+        self.assertEqual(self.store.page(wallets=set())['counts']['all'],0)
         with self.assertRaises(JobError):self.store.page(query='x'*201)
         with self.assertRaises(JobError):self.store.page(query=None)
 

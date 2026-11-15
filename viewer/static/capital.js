@@ -2,7 +2,9 @@
 // Saved-data views share one local, paged request. No browser provider requests.
 const CapitalUI=(()=>{
  const painted=new WeakMap();
- let scopeKey='',signature='',offset=0,epoch=0,page=null,loading=false,loadError='',positionsOpen=false,coverageOpen=false,platformFilter=null;
+ let scopeKey='',signature='',offset=0,epoch=0,page=null,loading=false,loadError='',positionsOpen=false,coverageOpen=false;
+ // A platform view narrows the positions to that platform. Overview pages only.
+ const lens=()=>['home','wallet'].includes(selectedView)&&typeof selectedPlatform!=='undefined'?selectedPlatform:null;
  const grouped=value=>new Intl.NumberFormat('en-US').format(value);
  const chainName=id=>state?.details?.networks?.find(n=>n.id===id)?.name||'Chain '+id;
  const walletIcon='<svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h14a2 2 0 0 1 2 2v11H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h13v2M20 10h-5v5h5"/></svg>';
@@ -10,11 +12,11 @@ const CapitalUI=(()=>{
  function scope(){
   const folder=typeof FolderUI!=='undefined'?FolderUI.id:null,params=new URLSearchParams({limit:'25',offset:String(offset)});
   if(folder)params.set('folder_id',folder);
-  if(platformFilter)params.set('platform',platformFilter);
+  if(lens())params.set('platform',lens());
   if(selectedView==='wallet')params.set('wallet',selectedWallet);
   if(selectedView==='token')params.set('token_id',selectedToken);
   if(selectedView==='network')params.set('chain_id',String(selectedNetwork));
-  return {key:[selectedView,folder,selectedWallet,selectedToken,selectedNetwork].join('|'),params};
+  return {key:[selectedView,folder,selectedWallet,selectedToken,selectedNetwork,lens()].join('|'),params};
  }
  function allocationFallback(){
   if(selectedView==='wallet')return currentWallet()?.capital_allocation;
@@ -25,8 +27,8 @@ const CapitalUI=(()=>{
  function render(){
   if(!state||!['home','wallet','token','network'].includes(selectedView))return;
   const target=$(selectedView==='home'?'home-view':selectedView==='wallet'?'wallet-view':'detail-view');
-  if(!target||target.hidden)return;
-  const current=scope();if(current.key!==scopeKey){scopeKey=current.key;signature='';offset=0;page=null;loadError='';positionsOpen=['wallet','token'].includes(selectedView);coverageOpen=false;platformFilter=null;current.params.delete('platform');current.params.set('offset','0');}
+  if(!target||target.hidden||selectedView==='wallet'&&typeof walletTab!=='undefined'&&walletTab!=='overview')return;
+  const current=scope();if(current.key!==scopeKey){scopeKey=current.key;signature='';offset=0;page=null;loadError='';positionsOpen=['wallet','token'].includes(selectedView)||!!lens();coverageOpen=false;current.params.set('offset','0');}
   let host=target.querySelector('.capital-panel');
   // The allocation belongs to the summary card: one total, then where it sits.
   if(!host){host=document.createElement('section');host.className='capital-panel';host.setAttribute('aria-label','Allocation');const anchor=target.querySelector('.hero');if(!anchor)return;anchor.append(host);}
@@ -38,12 +40,14 @@ const CapitalUI=(()=>{
   if(selectedView==='token'&&!comparable){host.hidden=true;return;}
   host.hidden=false;
   let turned=0;
-  const lead=[...positive].sort((a,b)=>b.percent-a.percent)[0];
+  // The centre names the chosen platform, or the largest group.
+  const lead=positive.find(g=>g.id===lens())||[...positive].sort((a,b)=>b.percent-a.percent)[0];
   const donut=positive.length?`<svg class="capital-donut" viewBox="0 0 42 42" role="img" aria-label="${escapeHTML(positive.map(g=>g.name+' '+g.percent.toFixed(1)+'%').join(', '))}"><circle cx="21" cy="21" r="15.915" fill="none" stroke="#f0edf4" stroke-width="5.4"/>${positive.map(g=>{const share=Math.max(0,Math.min(100,g.percent)),offset=25-turned;turned+=share;return `<circle cx="21" cy="21" r="15.915" fill="none" stroke="${escapeHTML(g.color)}" stroke-width="5.4" stroke-linecap="butt" stroke-dasharray="${share.toFixed(3)} ${(100-share).toFixed(3)}" stroke-dashoffset="${offset.toFixed(3)}"><title>${escapeHTML(g.name)}: ${g.percent.toFixed(1)}%</title></circle>`;}).join('')}<text class="donut-value" x="21" y="21.4" text-anchor="middle" stroke="none">${lead.percent>=99.95?'100':lead.percent.toFixed(lead.percent<10?1:0)}%</text><text class="donut-label" x="21" y="26" text-anchor="middle" stroke="none">${escapeHTML(lead.name.length>15?lead.name.slice(0,14)+'…':lead.name)}</text></svg>`:'<div class="capital-donut capital-donut-empty" role="img" aria-label="No priced allocation saved"></div>';
   const rows=groups.map(g=>{
     const detail=(g.position_count?g.position_count+' saved '+(g.position_count===1?'position':'positions'):g.id==='mintclub'?'Bonding-curve tokens':'Direct holdings')+(g.unpriced_count?' · '+g.unpriced_count+' unpriced':'');
     const body=`<svg class="alloc-swatch" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10" rx="3" fill="${escapeHTML(g.color)}"/></svg>${icon(g)}<span class="alloc-name">${escapeHTML(g.name)}${g.position_count?`<small>${g.position_count}</small>`:''}</span><span class="alloc-value">${money(g.value_usd)}</span><span class="alloc-pct">${g.percent==null?'—':g.percent.toFixed(1)+'%'}</span>`;
-    return `<li title="${escapeHTML(detail)}">${g.position_count?`<button type="button" class="alloc-item capital-platform-pick" data-platform="${escapeHTML(g.id)}" aria-pressed="${platformFilter===g.id}">${body}</button>`:`<span class="alloc-item">${body}</span>`}</li>`;
+    const pickable=['home','wallet'].includes(selectedView)&&typeof areaHref==='function';
+    return `<li title="${escapeHTML(detail)}">${pickable?`<button type="button" class="alloc-item capital-platform-pick" data-platform="${escapeHTML(g.id)}" aria-pressed="${lens()===g.id}" aria-label="${escapeHTML((lens()===g.id?'Show all platforms':'Show '+g.name+' only'))}">${body}</button>`:`<span class="alloc-item">${body}</span>`}</li>`;
   }).join('');
   const currentWallets=selectedView==='wallet'?[currentWallet()]:((typeof FolderUI!=='undefined'?FolderUI.view():null)||state).wallets;
   const keys=new Set(currentWallets.filter(Boolean).map(w=>w.key));
@@ -60,12 +64,12 @@ const CapitalUI=(()=>{
   const gapCount=selectedView!=='token'&&page?.coverage_gaps?.length?page.coverage_gap_count:0;
   const gaps=gapCount&&coverageOpen?`<div class="capital-coverage" id="capital-coverage"><p>Saved-claim refresh keeps broad pool discovery separate. Find new positions checks for new deposits.</p><ul>${page.coverage_gaps.slice(0,12).map(c=>`<li><strong>${escapeHTML(c.wallet_name)} · ${escapeHTML(chainName(c.chain_id))}</strong><span>${escapeHTML(c.message||'This source is not fully checked.')}</span></li>`).join('')}</ul>${page.coverage_gap_count>12?'<p>Showing 12 source gaps. The agent can inspect bounded position records for more detail.</p>':''}</div>`:'';
   const closing='</div>';
-  const markup=`${comparable?'<div class="capital-chart">'+donut+'<ul class="capital-legend">'+rows+'</ul></div>':''}<div class="capital-rest"><div class="capital-footer"><div class="alloc-fresh"><span class="alloc-dot" data-state="${partial?'partial':'complete'}" aria-hidden="true"></span><span>${escapeHTML(fresh)}</span>${about}</div>${chips}${gapCount?`<button type="button" class="chip warn capital-gaps" aria-expanded="${coverageOpen}" aria-controls="capital-coverage">${grouped(gapCount)} coverage gaps</button>`:''}${actionable?`<div class="capital-refresh-actions"><button type="button" class="quiet-button capital-refresh" ${running?'disabled':''}>${refreshLabel}</button>${allocation.latest_observed_at?`<button type="button" class="text-button capital-discover" ${running?'disabled':''}>Find new</button>`:''}</div>`:''}</div><div class="capital-action-status" role="status" aria-live="polite">${escapeHTML(loadError)}${loadError?'<button type="button" class="text-button capital-retry">Retry saved view</button>':''}</div>${count||loading&&!page?`<details class="capital-positions" ${positionsOpen?'open':''}><summary>Positions <span class="count-badge">${grouped(count)}</span>${platformFilter?'<span class="chip">'+escapeHTML(groups.find(g=>g.id===platformFilter)?.name||platformFilter)+'</span>':''}</summary>${platformFilter?'<button type="button" class="text-button capital-clear-platform">Show all platforms</button>':''}${positions?'<ul class="capital-position-list">'+positions+'</ul>':`<p class="capital-empty">${loading?'Loading saved positions…':'No positions recorded in this view. Incomplete checks remain unknown.'}</p>`}<div class="capital-pages" ${!page||page.matched_count<=page.positions.length&&!offset?'hidden':''}><span>${offset+1}–${offset+(page?.positions.length||0)} of ${page?.matched_count||0}</span><button type="button" class="icon-button capital-prev" aria-label="Previous positions" ${!offset||loading?'disabled':''}>‹</button><button type="button" class="icon-button capital-next" aria-label="More positions" ${!page||page.next_offset===null||loading?'disabled':''}>›</button></div></details>`:''}${gaps}${closing}`;
+  const markup=`${comparable?'<div class="capital-chart">'+donut+'<ul class="capital-legend">'+rows+'</ul></div>':''}<div class="capital-rest"><div class="capital-footer"><div class="alloc-fresh"><span class="alloc-dot" data-state="${partial?'partial':'complete'}" aria-hidden="true"></span><span>${escapeHTML(fresh)}</span>${about}</div>${chips}${gapCount?`<button type="button" class="chip warn capital-gaps" aria-expanded="${coverageOpen}" aria-controls="capital-coverage">${grouped(gapCount)} coverage gaps</button>`:''}${actionable?`<div class="capital-refresh-actions"><button type="button" class="quiet-button capital-refresh" ${running?'disabled':''}>${refreshLabel}</button>${allocation.latest_observed_at?`<button type="button" class="text-button capital-discover" ${running?'disabled':''}>Find new</button>`:''}</div>`:''}</div><div class="capital-action-status" role="status" aria-live="polite">${escapeHTML(loadError)}${loadError?'<button type="button" class="text-button capital-retry">Retry saved view</button>':''}</div>${count||loading&&!page?`<details class="capital-positions" ${positionsOpen?'open':''}><summary>Positions <span class="count-badge">${grouped(count)}</span>${lens()?'<span class="chip">'+escapeHTML(groups.find(g=>g.id===lens())?.name||lens())+'</span>':''}</summary>${lens()?'<button type="button" class="text-button capital-clear-platform">Show all platforms</button>':''}${positions?'<ul class="capital-position-list">'+positions+'</ul>':`<p class="capital-empty">${loading?'Loading saved positions…':'No positions recorded in this view. Incomplete checks remain unknown.'}</p>`}<div class="capital-pages" ${!page||page.matched_count<=page.positions.length&&!offset?'hidden':''}><span>${offset+1}–${offset+(page?.positions.length||0)} of ${page?.matched_count||0}</span><button type="button" class="icon-button capital-prev" aria-label="Previous positions" ${!offset||loading?'disabled':''}>‹</button><button type="button" class="icon-button capital-next" aria-label="More positions" ${!page||page.next_offset===null||loading?'disabled':''}>›</button></div></details>`:''}${gaps}${closing}`;
   if(painted.get(host)===markup){if(!document.hidden&&signature!==state.data_revision+'|'+current.params.toString()&&!loading)load();return;}
   host.innerHTML=markup;painted.set(host,markup);
   if(typeof bindImages==='function')bindImages();
-  for(const button of host.querySelectorAll('[data-platform]'))button.addEventListener('click',()=>{platformFilter=platformFilter===button.dataset.platform?null:button.dataset.platform;positionsOpen=true;offset=0;load(true);});
-  host.querySelector('.capital-clear-platform')?.addEventListener('click',()=>{platformFilter=null;offset=0;load(true);});
+  for(const button of host.querySelectorAll('[data-platform]'))button.addEventListener('click',()=>navigate(areaHref('overview',lens()===button.dataset.platform?null:button.dataset.platform)));
+  host.querySelector('.capital-clear-platform')?.addEventListener('click',()=>navigate(areaHref('overview',null)));
   host.querySelector('.capital-positions')?.addEventListener('toggle',event=>{positionsOpen=event.target.open;});
   host.querySelector('.capital-retry')?.addEventListener('click',()=>load(true));
   host.querySelector('.capital-gaps')?.addEventListener('click',()=>{toggleCoverage();host.querySelector('.capital-gaps')?.focus({preventScroll:true});});
@@ -108,5 +112,27 @@ const CapitalUI=(()=>{
   }catch(error){status.textContent=error.message;}
   finally{button.disabled=false;}
  }
- return {render};
+ // All tokens through a platform: its positions list under the tokens, paged like Overview.
+ let lensKey='',lensPage=null,lensOffset=0,lensEpoch=0,lensError='',lensLoading='';
+ function renderLens(){
+  const host=selectedView==='tokens'?$('catalog-positions'):selectedView==='wallet'&&typeof walletTab!=='undefined'&&walletTab==='tokens'?$('wallet-positions'):null;
+  for(const node of [$('catalog-positions'),$('wallet-positions')])if(node&&node!==host)node.hidden=true;
+  const group=typeof lensGroup==='function'?lensGroup():null;
+  if(!host||!group?.position_count||!state?.paged){if(host)host.hidden=true;return;}
+  const folder=typeof FolderUI!=='undefined'?FolderUI.id:null,params=new URLSearchParams({limit:'25',offset:String(lensOffset),platform:group.id});
+  if(folder)params.set('folder_id',folder);
+  if(selectedView==='wallet')params.set('wallet',selectedWallet);
+  const key=[selectedView,folder,selectedView==='wallet'?selectedWallet:'',group.id].join('|');
+  if(key!==lensKey){lensKey=key;lensOffset=0;lensPage=null;lensError='';params.set('offset','0');}
+  const version=state.data_revision+'|'+params;
+  host.hidden=false;
+  const rows=lensPage?.version===version?lensPage.positions:null;
+  host.innerHTML=`<div class="section-heading"><h2>${escapeHTML(group.name)} positions <span class="count-badge">${grouped(lensPage?.version===version?lensPage.matched_count:group.position_count)}</span></h2></div>${rows?`<ul class="capital-position-list">${positionRows(rows,[])}</ul>`:`<p class="capital-empty">${escapeHTML(lensError||'Loading saved positions…')}</p>`}${rows&&lensPage.matched_count>rows.length?`<div class="capital-pages"><span>${lensOffset+1}–${lensOffset+rows.length} of ${lensPage.matched_count}</span><button type="button" class="icon-button" data-lens-page="prev" aria-label="Previous positions" ${lensOffset?'':'disabled'}>‹</button><button type="button" class="icon-button" data-lens-page="next" aria-label="More positions" ${lensPage.next_offset==null?'disabled':''}>›</button></div>`:''}`;
+  if(typeof bindImages==='function')bindImages();
+  for(const button of host.querySelectorAll('[data-lens-page]'))button.addEventListener('click',()=>{lensOffset=button.dataset.lensPage==='next'?lensPage.next_offset:Math.max(0,lensOffset-25);renderLens();});
+  if(rows||lensError||lensLoading===version)return;
+  const ticket=++lensEpoch;lensLoading=version;
+  localAPI('/api/positions?'+params).then(response=>{if(ticket!==lensEpoch)return;lensPage={...response,version};lensError='';}).catch(error=>{if(ticket===lensEpoch)lensError=error.message;}).finally(()=>{if(ticket!==lensEpoch)return;lensLoading='';renderLens();});
+ }
+ return {render,renderLens};
 })();

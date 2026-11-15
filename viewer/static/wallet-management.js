@@ -22,7 +22,7 @@ const WalletManagement=(()=>{
  }
  async function refresh(){
   await poll();
-  if(selectedView==='wallet'&&!state.wallets.some(w=>w.key===selectedWallet))navigate(FolderUI.path());
+  if((typeof areaWallet!=='undefined'?areaWallet:selectedView==='wallet')&&!state.wallets.some(w=>w.key===selectedWallet))navigate(FolderUI.path());
   await loadRoute(true);FolderUI.refreshManager();render();
  }
  async function remove(){

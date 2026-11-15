@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.13.2**. Prepared candidate: **1.14.0**.
+Published npm release: **1.13.2**. Prepared candidate: **1.15.0**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -8,6 +8,37 @@ scope of their original release; they are not a current task list.
 Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
+
+## Candidate 1.15.0
+
+Navigation follows the place you are in, and every list can be read through
+one platform.
+
+- **Global bar and area tabs.** The top bar holds only what serves the whole
+  workspace: wallet search, wallet connection and research status. Below it,
+  each area (all wallets, a folder or one wallet) shows its heading and its own
+  Overview, All tokens and Activity. A wallet's Overview shows its summary,
+  allocation, positions and five largest tokens; its All tokens lists every
+  holding; its Activity lists that wallet's tasks. A folder's Activity lists
+  its wallets' tasks (`/api/job-history?folder_id=`).
+- **Platform view.** A platform menu beside the tabs, and every group in the
+  allocation legend, opens that platform's view of the same area: its value and
+  share, the wallets and networks that hold it, its positions and its tokens. A
+  wallet row opens that wallet through the same platform. Token lists take
+  `platform=` (`/api/holdings`, `/api/wallet`): Wallet tokens, Mint Club
+  bonding-curve tokens, or the receipt tokens of a platform such as
+  lpTOKEN.fun, grouped as the allocation counts them. A platform held only as
+  positions lists those positions under All tokens. A platform view of wallet
+  tokens carries its own sell-out sum (`platform_sell_out_summary`).
+- **Sell-out ordering.** The Value and Sell-out est. headings order their list
+  in Top tokens, All tokens, wallet holdings and network tokens. The Wallets
+  list orders by value or by sell-out estimate.
+- **One holdings list.** A wallet's holdings are one list across networks
+  instead of one table per network. Each token carries its network mark and
+  name; the chain filter stays.
+
+Version 1.14.0 was prepared and not published; 1.15.0 contains its changes,
+listed below.
 
 ## Candidate 1.14.0
 
