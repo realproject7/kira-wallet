@@ -145,3 +145,18 @@ test('the page puts global tools on top and each area\'s sections under its head
  assert.ok(area.indexOf('id="home-heading"')<area.indexOf('data-tab="overview"'),'The area heading sits above its tabs.');
  assert.equal((html.match(/data-tab="overview"/g)||[]).length,1,'One set of section tabs.');
 });
+
+test('headings keep one edge: status under the title, controls beside their tabs, one page gutter',()=>{
+ const css=fs.readFileSync('viewer/static/compact.css','utf8');
+ const heading=html.slice(html.indexOf('<section id="home-heading"'),html.indexOf('</section>',html.indexOf('<section id="home-heading"')));
+ const title=heading.slice(heading.indexOf('<div class="page-bar-title">'),heading.indexOf('<div class="page-bar-actions">'));
+ assert.match(title,/id="portfolio-sell-status" class="form-note page-bar-caption"/,'The sell-estimate status sits under the Portfolio title.');
+ assert.doesNotMatch(heading.slice(heading.indexOf('id="portfolio-actions"')),/portfolio-sell-status/);
+ const statusRow=html.slice(html.indexOf('<div class="token-status-row">'),html.indexOf('<input id="all-token-status"'));
+ assert.match(statusRow,/role="tablist"[\s\S]*id="manage-tokens"/,'Manage tokens shares the status tab row.');
+ assert.match(html.slice(html.indexOf('<div id="area-nav"'),html.indexOf('</section>',html.indexOf('<div id="area-nav"'))),/id="jobs-freshness"/,'Activity shows its connection state in the section row.');
+ assert.match(css,/\.content \{ padding-left:var\(--page-gutter\); padding-right:var\(--page-gutter\); \}/);
+ assert.match(css,/\.topbar\.global-bar \{ padding-left:max\(var\(--page-gutter\)/,'The global bar uses the page gutter.');
+ assert.match(css,/\.area-bar\[data-area=detail\] \.area-nav \{ display:none; \}/,'Token and network pages show their path, not tabs without a heading.');
+ assert.match(css,/\.area-bar \.page-bar \{ justify-content:space-between;/,'Wrapped heading actions start at the left edge.');
+});

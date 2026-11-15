@@ -466,3 +466,86 @@ a.market-row:hover { background:#faf7fc; border-radius:10px; }
   .platform-lens { flex:1 1 100%; margin:0 0 10px; }
   .list-sort { margin-left:0; }
 }
+
+/* One page gutter. The global bar and the page column share their left and right edges at every width. */
+:root { --page-gutter: clamp(24px, 3.5vw, 52px); }
+.content { padding-left:var(--page-gutter); padding-right:var(--page-gutter); }
+.topbar.global-bar { padding-left:max(var(--page-gutter), calc((100% - 1600px) / 2 + var(--page-gutter))); padding-right:max(var(--page-gutter), calc((100% - 1600px) / 2 + var(--page-gutter))); }
+
+/* A heading row: title on the left, actions on the right. When the actions wrap they start at the left edge. */
+.area-bar .page-bar { justify-content:space-between; align-items:flex-start; }
+.area-bar .page-bar-actions { margin-left:0; }
+#home-heading .portfolio-actions { justify-content:flex-start; flex:0 1 auto; }
+.page-bar-caption { flex-basis:100%; margin:0; font-size:var(--text-caption); color:var(--secondary); line-height:1.5; }
+.page-bar-caption:empty, #home-heading:has(#portfolio-actions[hidden]) .page-bar-caption { display:none; }
+.holdings-toolbar .filters { margin-left:0; justify-content:flex-start; }
+
+/* The wallet's All tokens tab starts right under the tabs. */
+#wallet-view[data-tab=tokens] .holdings { padding-top:0; }
+
+/* All tokens: status tabs and Manage tokens share one row. */
+.token-status-row { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; border-bottom:1px solid var(--line); margin:0 0 20px; }
+.token-status-row .asset-status-tabs { flex:1 1 auto; min-width:0; margin:0; border-bottom:0; }
+.token-status-row #manage-tokens { flex:none; margin:0 0 8px; }
+.token-status-row #manage-tokens[hidden] { display:none; }
+
+@media(max-width:980px) { :root { --page-gutter:24px; } }
+@media(max-width:640px) {
+  :root { --page-gutter:18px; }
+  /* Phones: the platform menu sits under the tab line, so the open tab's underline stays on it. */
+  .area-nav { border-bottom:0; row-gap:12px; }
+  .area-nav .area-tabs { flex:1 1 100%; border-bottom:1px solid var(--line); }
+  .platform-lens { margin:0; }
+  #home-heading .page-bar-title { flex-wrap:wrap; }
+  #home-heading #manage-folders { align-self:flex-start; }
+  .token-status-row { flex-wrap:wrap; align-items:center; border-bottom:0; row-gap:10px; }
+  .token-status-row .asset-status-tabs { flex-basis:100%; border-bottom:1px solid var(--line); }
+  .token-status-row #manage-tokens { margin:0 0 0 auto; }
+}
+
+/* The Portfolio title block keeps its title, folder menu and status together; actions wrap below it. */
+/* Specific enough to replace the older first-child rule that let the title block shrink under its folder menu. */
+.area-bar .page-bar > .page-bar-title { display:grid; grid-template-columns:auto auto; justify-content:start; align-items:center; column-gap:14px; row-gap:4px; flex:0 0 auto; min-width:0; }
+.area-bar .page-bar-title > .page-bar-caption { grid-column:1 / -1; width:0; min-width:100%; }
+#home-heading .page-bar-caption { font-size:var(--text-caption); line-height:1.5; color:var(--secondary); max-width:none; }
+@media(min-width:641px) {
+  /* Every area heading has the same shape: title, folder and Manage wallets on top, refresh actions below. */
+  #home-heading .page-bar-actions { display:contents; }
+  #home-heading #manage-folders { order:1; }
+  #home-heading .portfolio-actions { order:2; flex:1 1 100%; }
+  #home-heading .page-bar-status { order:3; }
+}
+
+/* A token or network page names its place in the path above its own heading. */
+.area-bar[data-area=detail] { margin-bottom:10px; }
+.area-bar[data-area=detail] .area-nav { display:none; }
+
+/* Activity shows its connection state at the end of the section row. */
+.area-nav .activity-connection { flex:none; margin:0 0 6px auto; font-size:var(--text-caption); }
+.area-bar:not([data-tab=activity]) .activity-connection { display:none; }
+.activity-heading.page-bar { margin:0; min-height:0; }
+
+@media(max-width:640px) {
+  .area-bar .page-bar > .page-bar-title { grid-template-columns:auto minmax(0,1fr); flex:1 1 0; min-width:0; }
+  .area-bar .scope-select { width:auto; }
+  .area-nav .activity-connection { margin:0; }
+  /* Wallet actions keep their labels on one line. */
+  .wallet-header .wallet-actions .quiet-button { white-space:nowrap; padding-inline:9px; }
+}
+.area-nav .activity-connection { padding:0; }
+/* Token filters: search on its own row, then chain and order side by side. */
+@media(max-width:1250px) and (min-width:641px) {
+  .token-catalog-controls { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .token-catalog-controls .catalog-search { grid-column:1 / -1; }
+  .token-catalog-controls > label:last-child { grid-column:auto; }
+}
+/* The narrowest phones: wallet refresh buttons drop their icons so both labels stay on one line. */
+@media(max-width:400px) {
+  .wallet-header .wallet-actions .quiet-button > svg, .wallet-header .wallet-actions .quiet-button[data-ui-icon]::before { display:none; }
+  .wallet-header .wallet-actions .quiet-button { padding-inline:8px; gap:0; }
+}
+/* Sidebar: folders, the wallet search and wallet rows share one left and right edge. */
+@media(min-width:641px) {
+  .sidebar .folder-navigation { padding-left:0; padding-right:0; }
+  .sidebar .wallet-nav-search { margin-left:0; margin-right:0; }
+}
