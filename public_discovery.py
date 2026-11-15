@@ -57,6 +57,20 @@ def fetch_page(url, timeout, body=None):
     return fetch_bounded(url,remaining,body)
 
 
+def answered(body):
+    """Whether the reader reached the provider, and the HTTP status of a refusal, for usage counting.
+
+    The reader reports a refusal as {"error": {"code": "http_error", "http_status": N}} and a
+    request that never got an answer as {"error": {"code": "provider_unavailable"}}.
+    """
+    if not body.startswith(b'{"error":'):return True,None
+    try:error=json.loads(body).get('error')
+    except (ValueError,AttributeError):return True,None
+    if not isinstance(error,dict):return True,None
+    if error.get('code')=='provider_unavailable':return False,None
+    return True,error.get('http_status') if type(error.get('http_status')) is int else None
+
+
 def fetch_bounded(url, timeout, body=None, *, headers=None, envelope=False):
     """An isolated, size-limited reader with a total body deadline, no pacing."""
     end=time.monotonic()+timeout
@@ -68,9 +82,10 @@ def fetch_bounded(url, timeout, body=None, *, headers=None, envelope=False):
         reader.start();outgoing.close()
         if not incoming.poll(max(0,end-time.monotonic())):return {'error':{'code':'deadline'}}
         body=incoming.recv_bytes(4_000_000)
-        # A body arrived, so the provider answered (and may bill it).
-        from kira_usage import note_request
-        note_request(url)
+        sent,status=answered(body)
+        if sent:
+            from kira_usage import note_request
+            note_request(url,status)
         if time.monotonic()>end:return {'error':{'code':'deadline'}}
         try:return json.loads(body)
         except ValueError:

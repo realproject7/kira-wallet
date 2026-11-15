@@ -77,7 +77,7 @@ function flushUsage(){
   const usage=pool.takeUsage();if(!usage.requests)return;
   const at=new Date().toISOString();
   const line={at,source:'node',job:process.env.KIRA_JOB_ID||null,batch:process.env.KIRA_BATCH_ID||null,cu:usage.cu,requests:usage.requests,methods:usage.methods};
-  try{fs.mkdirSync(path.join(root,'usage'),{recursive:true});fs.appendFileSync(path.join(root,'usage','alchemy-'+at.slice(0,7)+'.jsonl'),JSON.stringify(line)+'\n',{mode:0o600});}
+  try{fs.mkdirSync(path.join(root,'usage'),{recursive:true,mode:0o700});fs.appendFileSync(path.join(root,'usage','alchemy-'+at.slice(0,7)+'.jsonl'),JSON.stringify(line)+'\n',{mode:0o600});}
   catch{/* Usage is an estimate for the operator; it never fails research. */}
 }
 process.on('exit',flushUsage);

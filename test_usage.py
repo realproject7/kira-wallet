@@ -104,6 +104,56 @@ class LedgerTest(unittest.TestCase):
         self.assertIsNone(kira_usage.job_usage('unknown', self.root))
 
 
+class ReaderCountTest(unittest.TestCase):
+    """The isolated reader counts what Alchemy answered, not what it throttled, refused or never received."""
+    URL = 'https://api.g.alchemy.com/data/v1/KEY/assets/tokens/balances/by-address'
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(); self.root = Path(self.temp.name)
+        self.env = patch.dict(os.environ, {'KIRA_DATA_DIR': str(self.root), 'KIRA_BATCH_ID': '', 'KIRA_JOB_ID': 'job-r'}); self.env.start()
+
+    def tearDown(self):
+        self.env.stop(); self.temp.cleanup()
+
+    def read(self, body):
+        import multiprocessing
+        import public_discovery
+
+        class Reader:
+            def __init__(self, target, args, daemon):
+                self.output, self.pid = args[2], None
+            def start(self):
+                self.output.send_bytes(body)
+            def is_alive(self):
+                return False
+            def join(self, timeout=None):
+                pass
+
+        class Context:
+            Pipe = staticmethod(multiprocessing.Pipe)
+            Process = Reader
+
+        with patch.object(public_discovery.multiprocessing, 'get_context', return_value=Context()), patch.object(kira_usage, 'current_job', lambda: 'job-r'):
+            return public_discovery.fetch_bounded(self.URL, 5, {'addresses': []})
+
+    def test_only_answers_alchemy_bills_are_counted(self):
+        import public_discovery
+        self.assertEqual(public_discovery.answered(b'{"data": {"tokens": []}}'), (True, None))
+        self.assertEqual(public_discovery.answered(b'{"error": {"code": "http_error", "http_status": 429, "retry_after": 3}}'), (True, 429))
+        self.assertEqual(public_discovery.answered(b'{"error":{"code":"provider_unavailable"}}'), (False, None))
+        self.assertEqual(public_discovery.answered(b'{"error":{"code":"response_limit"}}'), (True, None))
+        self.assertEqual(public_discovery.answered(b'{"error": "text"}'), (True, None))
+        self.assertEqual(public_discovery.answered(b'{"error":'), (True, None))
+        self.assertEqual(self.read(b'{"data": {"tokens": []}}'), {'data': {'tokens': []}})
+        for refused in (429, 403):
+            self.read(json.dumps({'error': {'code': 'http_error', 'http_status': refused, 'retry_after': None}}).encode())
+        self.read(b'{"error":{"code":"provider_unavailable"}}')
+        self.read(json.dumps({'error': {'code': 'http_error', 'http_status': 500, 'retry_after': None}}).encode())
+        rows = kira_usage.lines(self.root)
+        self.assertEqual([(r['cu'], r['job']) for r in rows], [(200, 'job-r'), (200, 'job-r')], 'The answer and the server error count; 429, 403 and no answer do not.')
+        self.assertEqual(stat.S_IMODE((self.root / 'usage').stat().st_mode), 0o700)
+
+
 class OfficialUsageTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.root = Path(self.temp.name)
