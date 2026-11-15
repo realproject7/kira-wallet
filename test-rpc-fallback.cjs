@@ -11,7 +11,7 @@ const viem = require('viem'), fs=require('node:fs'), vm=require('node:vm');
   }}, {retryCount: 0})(options);
   const loaded={exports:{}};
   const requireFixture=name=> name==='./rpc-pool.cjs' ? {RouteRecorder:require('./rpc-pool.cjs').RouteRecorder,RpcPool:class extends require('./rpc-pool.cjs').RpcPool{constructor(options){super({...options,interval:0});}}} : name==='viem' ? {...viem,http:transport} : name==='node:child_process' ? {spawnSync:()=>({status:0,stdout:JSON.stringify({endpoints:{8453:['custom','wrong','public']},secrets:[],data_root:'synthetic'})})} : require(name);
-  vm.runInNewContext(fs.readFileSync('onchain.cjs','utf8'),{require:requireFixture,__dirname,module:loaded,process:{env:{}}});
+  vm.runInNewContext(fs.readFileSync('onchain.cjs','utf8'),{require:requireFixture,__dirname,module:loaded,process:{env:{},on(){}}});
   const client=loaded.exports.client(8453);
   const resilientTransport=loaded.exports.resilientTransport;
   assert.equal(await client.getChainId(), 8453);

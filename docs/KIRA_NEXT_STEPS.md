@@ -1,7 +1,11 @@
 # Kira release status
 
-Updated: 2026-11-15. Candidate 1.15.1 aligns the 1.15.0 layout (one page
-gutter, one heading shape, path above token and network pages). 1.15.0 puts global tools in the top bar and
+Updated: 2026-11-15. Candidate 1.15.2 reads a network the Alchemy app has
+not enabled from public RPC instead of retrying Alchemy, shows Alchemy usage
+(Kira's own estimate and, with an Access Key, the account's totals) and adds a
+≥ $1 value filter. It contains the unpublished 1.15.1, which aligns the 1.15.0
+layout (one page gutter, one heading shape, path above token and network
+pages). 1.15.0 puts global tools in the top bar and
 gives each area (all wallets, a folder or one wallet) its own Overview, All
 tokens and Activity, adds a platform view of every area, orders lists by
 sell-out estimate and lists a wallet's holdings in one list across networks.

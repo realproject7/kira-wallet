@@ -34,7 +34,7 @@ function harness() {
   document.createElement=()=>element('generated-'+(++generated));
   const context=vm.createContext({KiraWatching, window:new EventTarget(), document, $:element,
     setupReadiness:{discovery_key_available:true},state:{demo:false,wallets:[]}, selectedWallet:null, selectedView:'home',
-    currentWallet:()=>null, setInterval:()=>0, AbortSignal,
+    currentWallet:()=>null, setInterval:()=>0, AbortSignal, escapeHTML:value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'),
     crypto:{randomUUID:()=>ID}, shortAddress:address=>address.slice(0,6)+"…"+address.slice(-4),
     sessionStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},
     toast:message=>notices.push(message), navigate:route=>notices.push(route),
@@ -184,10 +184,11 @@ test('Workspace settings reads only data connections without an embedded model p
   const h=harness();h.run("const settingsCalls=[];localAPI=async path=>{settingsCalls.push(path);return {rpc:{mode:'public'},discovery:{provider:'alchemy'}};}");
   await h.run('openWorkspaceSettings()');
   assert.match(h.element('workspace-data-summary').textContent,/Alchemy selected/);
-  assert.deepEqual(JSON.parse(h.run('JSON.stringify(settingsCalls)')),['/api/settings']);
+  // Besides the connection it reads Kira's saved Alchemy usage, never a provider or model.
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(settingsCalls)')),['/api/usage','/api/settings']);
 });
 test('an older dismissed Workspace lookup cannot replace the latest saved summary',async()=>{
-  const h=harness();h.run("const pendingLookup=[];localAPI=path=>new Promise(resolve=>pendingLookup.push({path,resolve}));");
+  const h=harness();h.run("const pendingLookup=[];localAPI=path=>path==='/api/usage'?Promise.resolve({}):new Promise(resolve=>pendingLookup.push({path,resolve}));");
   const first=h.run('openWorkspaceSettings()');h.element('workspace-settings-dialog').open=false;
   const second=h.run('openWorkspaceSettings()');
   h.run("pendingLookup[1].resolve({rpc:{mode:'custom'},discovery:{provider:'alchemy'}})");await second;

@@ -27,6 +27,14 @@ EXPLORERS = {1:'https://etherscan.io',8453:'https://basescan.org',81457:'https:/
     157:'https://puppyscan.shib.io',43113:'https://testnet.snowtrace.io'}
 
 def read(path): return json.loads(path.read_text())
+def safe_issues(issues):
+    """Which provider network an endpoint did not serve. Names only, never URLs or keys."""
+    result=[]
+    for issue in (issues if isinstance(issues,list) else [])[:8]:
+        if isinstance(issue,dict) and issue.get('reason')=='network_not_enabled' and issue.get('provider')=='alchemy' and isinstance(issue.get('network'),str) and re.fullmatch(r'[a-z0-9-]{2,40}',issue['network']):
+            result.append({'provider':'alchemy','network':issue['network'],'reason':'network_not_enabled'})
+    return result
+
 def safe_routes(routes):
     result=[]
     if not isinstance(routes,list):return result
@@ -35,7 +43,7 @@ def safe_routes(routes):
         item={key:route[key] for key in ('endpoint_class','outcome')}
         for key in ('endpoint_index','http_status','rpc_code','count'):
             if type(route.get(key)) is int and abs(route[key])<=2**53-1:item[key]=route[key]
-        if route.get('reason') in ('transport','throttle','size','method','contract','cooldown','queue','qualification','local_deadline'):item['reason']=route['reason']
+        if route.get('reason') in ('transport','throttle','size','method','contract','cooldown','queue','qualification','local_deadline','disabled','not_enabled'):item['reason']=route['reason']
         result.append(item)
     return result
 
@@ -325,7 +333,7 @@ def project_wallet(entry, snapshot, root=ROOT, images=None, *, market=None):
             'assets':len(rows),'value_usd':sum(a['value_usd'] for a in rows if a['value_usd'] is not None) if c['environment']=='mainnet' and any(a['value_usd'] is not None for a in rows) else None,
             'complete':c['general_erc20_discovery']=='indexer_checked','rpc_available':c['rpc_status']=='available',
             'discovery_status':c.get('discovery_status') if c.get('discovery_status') in ('checked','disabled','missing_credential','unsupported','provider_error','history_pending','throttled','checkpoint_error','source_limited') else 'incomplete',
-            'rpc_routes':safe_routes(c.get('rpc_routes')),
+            'rpc_routes':safe_routes(c.get('rpc_routes')),'endpoint_issues':safe_issues(c.get('endpoint_issues')),
             'head_status':c.get('head_status') if c.get('head_status') in ('stale','observed','saved_observation') else None,
             'head_age_seconds':c.get('head_age_seconds') if type(c.get('head_age_seconds')) is int else None,
             'lifecycle':lifecycle(c['chain_id']),

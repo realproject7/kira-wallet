@@ -549,3 +549,44 @@ a.market-row:hover { background:#faf7fc; border-radius:10px; }
   .sidebar .folder-navigation { padding-left:0; padding-right:0; }
   .sidebar .wallet-nav-search { margin-left:0; margin-right:0; }
 }
+
+/* Alchemy usage: the settings panel section, the Activity tile and the task detail line. */
+.usage-networks { display:flex; gap:10px; align-items:flex-start; margin:-6px 0 20px; padding:12px 14px; border:1px solid #e8d8b4; border-radius:10px; background:#fffaf0; color:#534426; font-size:var(--text-secondary); line-height:1.5; }
+.usage-networks .ui-icon { flex:none; width:18px; height:18px; margin-top:1px; color:#a77b26; }
+.usage-networks p { margin:0; }
+.usage-section { border-top:1px solid var(--line); margin-top:22px; padding-top:18px; }
+.usage-heading { display:flex; align-items:center; gap:8px 12px; flex-wrap:wrap; min-height:36px; }
+.usage-heading h4 { margin:0 auto 0 0; font-size:var(--text-body); font-weight:600; }
+#alchemy-usage .usage-heading .form-note { margin:0; font-size:var(--text-caption); }
+.usage-account { margin-top:12px; padding:14px 16px; border:1px solid var(--line); border-radius:12px; background:#fbf9fe; }
+.usage-account-top { display:flex; justify-content:space-between; align-items:baseline; gap:4px 12px; flex-wrap:wrap; font-size:var(--text-secondary); color:var(--secondary); }
+.usage-account-top strong { color:var(--ink); font-size:1.25rem; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.usage-account .usage-progress { margin:10px 0 0; height:6px; }
+#alchemy-usage .usage-account .form-note { margin:8px 0 0; font-size:var(--text-caption); }
+.usage-caption { margin:16px 0 8px; font-size:var(--text-caption); color:var(--secondary); }
+.usage-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:0; }
+.usage-stats > div { min-width:0; padding:10px 12px; border:1px solid var(--line); border-radius:10px; }
+.usage-stats dt { font-size:var(--text-caption); color:var(--secondary); }
+.usage-stats dd { margin:4px 0 0; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+#alchemy-usage > .form-note { margin:10px 0 0; }
+#alchemy-usage > .usage-basis { font-size:var(--text-caption); }
+.usage-connect { margin-top:14px; }
+#alchemy-usage .usage-connect .form-note { margin:0; }
+.usage-connect pre { display:flex; align-items:center; gap:12px; white-space:pre-wrap; padding:10px 12px; border:1px solid #dfd6e8; background:#fff; border-radius:8px; margin:8px 0 0; }
+.usage-connect pre code { flex:1; min-width:0; font-size:var(--text-ui); overflow-wrap:anywhere; }
+.activity-summary:has(> .activity-usage:not([hidden])) { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.activity-usage strong { white-space:nowrap; }
+.activity-usage > span:last-child { flex:1; min-width:0; }
+.activity-usage .usage-tile-bar { width:100%; max-width:160px; height:4px; margin:8px 0 0; }
+.activity-facts > .activity-usage-fact { grid-column:1/-1; }
+@media(max-width:1180px) { .activity-summary:has(> .activity-usage:not([hidden])) { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+.usage-facts span { white-space:nowrap; }
+@media(max-width:480px) {
+  .usage-heading h4 { margin-right:auto; }
+  #alchemy-usage .usage-heading .form-note { order:3; flex-basis:100%; }
+  .usage-stats { grid-template-columns:1fr; gap:0; border:1px solid var(--line); border-radius:10px; }
+  .usage-stats > div { display:flex; justify-content:space-between; align-items:baseline; gap:12px; border:0; border-radius:0; padding:9px 12px; }
+  .usage-stats > div + div { border-top:1px solid var(--line); }
+  .usage-stats dd { margin:0; }
+}
+@media(max-width:640px) { .activity-usage > span:last-child { flex:none; align-self:stretch; } }

@@ -143,6 +143,9 @@ def published_asset_progress(path, version):
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
+# Work that reads Alchemy, after which the account's usage is worth a fresh look.
+USAGE_OPERATIONS={'wallet.add','wallet.refresh','prices.refresh','positions.refresh'}
+
 def fields(value, required):
     if not isinstance(value, dict) or set(value) != set(required):
         raise JobError('invalid_input', 'Unexpected or missing operation fields.')
@@ -1075,6 +1078,7 @@ class JobStore:
                 fcntl.flock(writer, fcntl.LOCK_EX)
                 self.recover()
                 self.continue_research()
+            usage_due=False
             while True:
                 writer = (self.root / '.analysis.lock').open('a')
                 fcntl.flock(writer, fcntl.LOCK_EX)
@@ -1084,7 +1088,11 @@ class JobStore:
                     waiting=any(j['state']=='queued' for j in queued)
                     if not job:
                         writer.close()
-                        if not waiting:return
+                        if not waiting:
+                            # The queue is done: with an Access Key, record the account's usage once.
+                            if usage_due:self.refresh_usage()
+                            return
+                    if job and job['operation'] in USAGE_OPERATIONS:usage_due=True
                     if job and job.get('analysis_phase')=='enrichment':
                         entry=self.wallet(job['input']['wallet'])
                         if entry.get('research_generation') not in (None,job.get('parent_job_id')):
@@ -1147,6 +1155,15 @@ class JobStore:
                             self.save(member)
                     return
                 finally: writer.close()
+
+    def refresh_usage(self):
+        """Ask Alchemy for the account's usage after research, at most once a minute."""
+        try:
+            import kira_usage
+            if kira_usage.access_key(self.root) and not kira_usage.recently_checked(self.root,60):
+                kira_usage.check_official(self.root,timeout=10)
+        except Exception:
+            pass  # Usage is informational; research results are already saved.
 
     def launch(self):
         # One active worker and at most one waiting successor. The successor

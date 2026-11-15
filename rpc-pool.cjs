@@ -7,6 +7,8 @@ function classify(error) {
   let quotaCode=false;
   for (let e = error, depth = 0; e && depth < 10; e = e.cause, depth++) {
     const text = e.shortMessage || e.message || '';
+    // Alchemy answers 403 when the app has not enabled a network. Retrying cannot help this run.
+    if (/is not enabled for this app|not enabled for (?:this|your) app/i.test(text + ' ' + (e.details || ''))) return 'disabled';
     if (e.status === 429 || e.code === 429 || /rate.?limit|too many requests|quota|backpressure|capacity exceeded/i.test(text)) return 'throttle';
     if (e.status === 413 || /(?:payload|batch|response|request body).*(?:large|size|exceed)|gas.*(?:cap|limit).*exceed/i.test(text)) return 'size';
     // viem wraps both quota and payload failures in generic -32005 errors.
@@ -92,6 +94,10 @@ class RouteRecorder {
 const THROUGHPUT_CU={eth_chainId:5,eth_blockNumber:10,eth_getBalance:20,eth_getBlockByNumber:20,eth_getCode:20,
   eth_call:26,eth_getLogs:60,alchemy_getAssetTransfers:120,alchemy_getTokenBalances:20};
 const throughputCost=method=>THROUGHPUT_CU[method]??26;
+// What Alchemy bills per request (its compute unit costs table). 429 and 403 answers cost nothing.
+const BILLING_CU={eth_chainId:0,eth_blockNumber:10,eth_getBlockByNumber:20,eth_getBalance:20,eth_getCode:20,eth_getTransactionCount:20,
+  eth_call:26,eth_getLogs:60,alchemy_getAssetTransfers:120,alchemy_getTokenBalances:20,alchemy_getTokenMetadata:10};
+const billingCost=method=>BILLING_CU[method]??26;
 class RpcPool {
   constructor({publicUrls = [], healthFile = null, interval = 2000, alchemyInterval = null, alchemySlots = 1, alchemyBudget = null, deadline = 12000, attemptTimeout = 4000, cooldown = 60000} = {}) {
     this.publicUrls = new Set(publicUrls); this.healthFile = healthFile;
@@ -101,6 +107,7 @@ class RpcPool {
     this.alchemyBudget = alchemyBudget && Number.isFinite(alchemyBudget.rate) && alchemyBudget.rate > 0 && Number.isFinite(alchemyBudget.capacity) && alchemyBudget.capacity >= 120
       ? {rate:alchemyBudget.rate, capacity:alchemyBudget.capacity} : null;
     this.states = new Map(); this.families = new Map(); this.pins = new Map(); this.pending = new Map(); this.cache = new Map();
+    this.usage = {requests:0, cu:0, methods:{}};
     this.saved = {};
     try { if (healthFile && fs.statSync(healthFile).size <= 65536) {
       const saved = JSON.parse(fs.readFileSync(healthFile));
@@ -138,7 +145,7 @@ class RpcPool {
       if (!this.families.has(family)) this.families.set(family, {gate:new Gate(), slots:new Gate(alchemy ? this.alchemySlots : 1), next:0, interval:pacingInterval, until:0, budget});
       // One read at a time per endpoint, except Alchemy: its lane's slots and budget set the pace,
       // and a batch refresh reads up to eight wallets of one network at once.
-      this.states.set(key, {id, publicEndpoint, family, alchemy, interval:pacingInterval, gate:new Gate(alchemy ? this.alchemySlots : 1), until, strikes:until ? Math.min(Number(saved.strikes) || 1, 5) : 0,
+      this.states.set(key, {id, publicEndpoint, family, alchemy, network:alchemy ? host.split('.')[0] : null, disabled:null, interval:pacingInterval, gate:new Gate(alchemy ? this.alchemySlots : 1), until, strikes:until ? Math.min(Number(saved.strikes) || 1, 5) : 0,
         methods:new Map(), verified:false, blocks:new Set(), inner:transport(url,{timeout:this.attemptTimeout,retryCount:0})(options)});
     }
     return this.states.get(key);
@@ -184,7 +191,8 @@ class RpcPool {
       const controller = new AbortController(), abort = () => controller.abort(signal.reason);
       signal.addEventListener('abort', abort, {once:true});
       const timer = setTimeout(() => controller.abort(failure('RPC read timed out.', 'TimeoutError')), timeout);
-      try { return await within(state.inner.request(request, {signal:controller.signal}), controller.signal); }
+      try { const value = await within(state.inner.request(request, {signal:controller.signal}), controller.signal); if (state.alchemy) this.count(request.method); return value; }
+      catch (error) { if (state.alchemy && !['throttle','disabled'].includes(classify(error))) this.count(request.method); throw error; }
       finally { clearTimeout(timer); signal.removeEventListener('abort', abort); }
     } finally { release?.(); slot(); }
   }
@@ -199,6 +207,8 @@ class RpcPool {
       for (const [index, url] of choices.entries()) {
         if (signal.aborted) throw signal.reason;
         const state = this.state(chain, url, transport, options);
+        // A network this endpoint does not serve is set aside for the run; others take its reads.
+        if (state.disabled) {onOutcome(index,{method:request.method,outcome:'skipped',reason:'not_enabled'});last=state.error||last;continue;}
         if (state.until > Date.now() || this.families.get(state.family).until > Date.now() || (state.methods.get(request.method) || 0) > Date.now()) {onOutcome(index,{method:request.method,outcome:'skipped',reason:'cooldown'});last=state.error||last;cooling=true;continue;}
         // An endpoint attempt includes its queue, cold verification and family pacing.
         // Public outages must leave time for the personal backup's actual read.
@@ -266,6 +276,7 @@ class RpcPool {
           onOutcome(index,event);
           if (signal.aborted) throw signal.reason;
           if (kind === 'contract' || kind === 'size') throw error;
+          if (kind === 'disabled') { state.disabled = 'network_not_enabled'; state.verified = false; continue; }
           if (kind === 'method') state.methods.set(request.method, Date.now() + 300000);
           else {
             state.strikes = Math.min(state.strikes + 1, 5);
@@ -276,11 +287,23 @@ class RpcPool {
         } finally { clearTimeout(timer);signal.removeEventListener('abort',abort);release?.(); }
       }
       if (attempts !== before || !cooling || pass >= 2) break;
-      const ready = Math.min(...choices.map(url => this.readyAt(chain, url)));
+      const ready = Math.min(...choices.filter(url => !this.states.get(chain + ':' + url)?.disabled).map(url => this.readyAt(chain, url)));
       if (!(ready > Date.now()) || ready >= deadlineAt - 250) break;
       await wait(ready - Date.now(), signal);
     }
     throw last;
+  }
+  // Alchemy requests sent since the last take, priced by method: an estimate of what the account is billed.
+  count(method) {
+    const cost = billingCost(method), row = this.usage.methods[method] || [0, 0];
+    row[0] += 1; row[1] += cost; this.usage.methods[method] = row; this.usage.requests += 1; this.usage.cu += cost;
+  }
+  takeUsage() { const usage = this.usage; this.usage = {requests:0, cu:0, methods:{}}; return usage; }
+  disabled(chain, url) { return !!this.states.get(chain + ':' + url)?.disabled; }
+  // Endpoints set aside for a chain, without URLs or keys: which provider network to enable.
+  issues(chain) {
+    return [...this.states.entries()].filter(([key, state]) => key.startsWith(chain + ':') && state.disabled)
+      .map(([, state]) => ({endpoint_class:state.publicEndpoint ? 'public' : 'custom', provider:state.alchemy ? 'alchemy' : null, network:state.network, reason:state.disabled}));
   }
   readyAt(chain, url) {
     const state = this.states.get(chain + ':' + url);
@@ -316,4 +339,4 @@ class RpcPool {
     });
   }
 }
-module.exports = {RpcPool, RouteRecorder, classify, throughputCost};
+module.exports = {RpcPool, RouteRecorder, classify, throughputCost, billingCost};

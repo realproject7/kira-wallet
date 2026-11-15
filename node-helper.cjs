@@ -25,5 +25,5 @@ readline.createInterface({input: process.stdin}).on('line', line => {
   if (!request || typeof request.id !== 'number' || typeof request.mode !== 'string' || typeof request.input !== 'string') return;
   const run = scripts[request.mode] ? scripts[request.mode](request.input, request.output) : p.runMode(request.mode, request.input, request.output);
   Promise.resolve(run).then(() => reply({helper_id: request.id, ok: true}),
-    error => reply({helper_id: request.id, ok: false, error: h.safeError(error)}));
+    error => reply({helper_id: request.id, ok: false, error: h.safeError(error)})).finally(() => h.flushUsage());
 }).on('close', () => process.exit(0));

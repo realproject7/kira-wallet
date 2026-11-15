@@ -66,6 +66,7 @@ function renderActivity(){
   $('jobs-page').textContent=jobsPage+' / '+pages;$('jobs-prev').disabled=jobsPage<=1;$('jobs-next').disabled=jobsPage>=pages;
   const offset=history?history.offset:(jobsPage-1)*20,rows=history?history.jobs:filtered.slice(offset,offset+20);
   $('activity-range').textContent=total?(offset+1)+'–'+(offset+rows.length)+' of '+total+' tasks':'0 tasks';
+  if(selectedView==='activity'&&typeof loadUsage==='function')loadUsage();
   const focused=document.activeElement?.closest?.('[data-activity-detail], [data-job-action]'),focusId=focused?.dataset.activityDetail||focused?.dataset.jobId,focusAction=focused?.dataset.jobAction;
   const focusScope=focused?.closest?.('#activity-current')?'#activity-current':'#jobs-list';
   const detailVisible=$('activity-detail').open;
@@ -74,10 +75,25 @@ function renderActivity(){
   if(!detailVisible&&focusId){const next=[...document.querySelectorAll(focusScope+' [data-activity-detail], '+focusScope+' [data-job-action]')].find(node=>(node.dataset.activityDetail||node.dataset.jobId)===focusId&&node.dataset.jobAction===focusAction);next?.focus({preventScroll:true});}
   if(activityDetailId)renderActivityDetails();
 }
+// Alchemy compute units one task used, from Kira's usage ledger. A batch shares one total.
+const activityUsage=new Map(),USAGE_TASKS=new Set(['wallet.add','wallet.refresh','prices.refresh','positions.refresh']);
+function activityUsageText(job){
+  const value=activityUsage.get(job.job_id)?.value;if(!value?.requests)return '';
+  return (typeof usageAmount==='function'?usageAmount(value.cu,true):'≈ '+value.cu+' CU')+(value.batch_wallets>1?' · '+value.batch_wallets+'-wallet batch':'');
+}
+function loadActivityUsage(job){
+  if(!USAGE_TASKS.has(job.operation)||typeof localAPI!=='function'||typeof localSession==='undefined'||!localSession?.controls)return;
+  const known=activityUsage.get(job.job_id),active=KiraView.active(job);
+  if(known&&(known.pending||(active?Date.now()-known.at<15000:known.state===job.state)))return;
+  activityUsage.set(job.job_id,{...known,pending:true});
+  localAPI('/api/usage?job='+encodeURIComponent(job.job_id)).then(result=>result.job,()=>known?.value||null)
+    .then(value=>{activityUsage.set(job.job_id,{value,state:job.state,at:Date.now()});if(activityDetailId===job.job_id)renderActivityDetails();});
+}
 function renderActivityDetails(){
   const job=jobList.find(j=>j.job_id===activityDetailId);if(!job)return;
+  loadActivityUsage(job);const usage=activityUsageText(job);
   const {name,key,wallet}=activityWallet(job),progress=KiraView.jobProgress(job,Date.now(),jobsConnected);
-  const signature=JSON.stringify([job,wallet?.sell_analysis,jobsConnected,localSession?.controls,typeof scanBusyJobs==='undefined'?false:scanBusyJobs.has(job.job_id)]);
+  const signature=JSON.stringify([job,usage,wallet?.sell_analysis,jobsConnected,localSession?.controls,typeof scanBusyJobs==='undefined'?false:scanBusyJobs.has(job.job_id)]);
   if(signature===activityDetailSignature)return;activityDetailSignature=signature;
   const body=$('activity-detail-body'),scroll=body.scrollTop,opened=[...body.querySelectorAll('details[open]')].map(el=>el.dataset.activitySection);
   const focused=document.activeElement?.dataset.jobAction;
@@ -88,7 +104,7 @@ function renderActivityDetails(){
   const events=(job.events||[]).slice().reverse().map(event=>{const numbers=Object.entries(event.counts||{}).filter(([name])=>name!=='block_number').map(([name,value])=>name.replaceAll('_',' ')+' '+value).join(' · ');return '<li><span class="activity-event-dot" aria-hidden="true"></span><div><strong>'+escapeHTML(researchStage(event))+'</strong><small>'+activityTime(event.observed_at)+(numbers?' · '+escapeHTML(numbers):'')+'</small></div></li>';}).join('');
   const relevant=wallet&&KiraView.researchSession(jobList,wallet)?.job.job_id===job.job_id;
   body.innerHTML=`<div class="activity-detail-context"><span>${escapeHTML(activityTask(job))}</span>${activityBadge(job)}</div><p class="activity-detail-description">${escapeHTML(description)}</p>${job.errors?.length?'<div class="activity-detail-error">'+escapeHTML(KiraView.jobErrorMessage(job))+'</div>':''}${!jobsConnected?'<p class="activity-detail-error">Connection lost. Actions are available after reconnecting.</p>':''}
-    <dl class="activity-facts"><div><dt>Started</dt><dd>${activityTime(job.started_at||job.created_at)}</dd></div><div><dt>${saved?'Last saved':'Last update'}</dt><dd>${activityTime(job.events?.at(-1)?.observed_at||job.updated_at)}</dd></div><div><dt>Duration</dt><dd data-job-timer="${escapeHTML(job.job_id)}">${escapeHTML(KiraView.jobTimeText(job,Date.now(),jobsConnected))}</dd></div><div><dt>Task</dt><dd>${escapeHTML(activityTask(job))}</dd></div></dl>
+    <dl class="activity-facts"><div><dt>Started</dt><dd>${activityTime(job.started_at||job.created_at)}</dd></div><div><dt>${saved?'Last saved':'Last update'}</dt><dd>${activityTime(job.events?.at(-1)?.observed_at||job.updated_at)}</dd></div><div><dt>Duration</dt><dd data-job-timer="${escapeHTML(job.job_id)}">${escapeHTML(KiraView.jobTimeText(job,Date.now(),jobsConnected))}</dd></div><div><dt>Task</dt><dd>${escapeHTML(activityTask(job))}</dd></div>${usage?'<div class="activity-usage-fact"><dt>Alchemy</dt><dd>'+escapeHTML(usage)+'</dd></div>':''}</dl>
     ${progress.assets?'<section class="activity-detail-section"><h3>Analysis coverage</h3><p>'+escapeHTML(assetProgressText(progress))+'</p></section>':''}
     ${relevant&&wallet.sell_analysis?.last_analyzed_at?'<section class="activity-detail-section"><h3>Saved sell estimates</h3><p>Last analysis '+activityTime(wallet.sell_analysis.last_analyzed_at)+'. '+escapeHTML(activityOutcome(job))+'. Quotes retain their original observation times.</p></section>':''}
     <div class="activity-detail-actions">${controls}${key?'<a class="quiet-button" href="#/wallet/'+escapeHTML(key)+'" data-activity-wallet-link>View wallet '+activityIcon('arrow')+'</a>':''}</div>

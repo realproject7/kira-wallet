@@ -167,6 +167,22 @@ def connect_alchemy(root):
     store=JobStore(root);job=store.queue_import(name,'ALCHEMY_API_KEY');store.launch()
     print(json.dumps({'status':'configuration_queued','job_id':job['job_id'],'note':'Your key is stored privately on this computer. Return to Kira and check the connection.'}))
 
+def connect_alchemy_usage(root,remove=False):
+    """An Access Key with Usage read access lets Kira show the account's official usage. Typed only here."""
+    import getpass,kira_usage
+    if remove:
+        kira_usage.forget_access_key(root);print(json.dumps({'status':'usage_key_removed'}));return
+    if not sys.stdin.isatty():raise ValueError('Run kira connect alchemy-usage in an interactive terminal. The Access Key is entered privately there.')
+    key=getpass.getpass('Alchemy Access Key with Usage read access (hidden): ').strip()
+    if not kira_usage.valid_key(key):raise ValueError('Enter the Access Key itself, without a URL or spaces.')
+    status,data=kira_usage.read_summary(key)
+    if status!=200:
+        raise ValueError('Alchemy did not accept this Access Key. Create one in the dashboard Security tab with Usage read access.' if status in (401,403)
+                         else 'Kira could not reach Alchemy to check the Access Key. Try again shortly.')
+    kira_usage.save_access_key(key,root);record=kira_usage.store_official(status,data,root)
+    month=((record.get('summary') or {}).get('month_to_date') or {}).get('cu')
+    print(json.dumps({'status':'usage_connected','month_to_date_cu':month,'note':'The Access Key is stored privately on this computer. Kira shows the account usage in Workspace settings.'}))
+
 def finish_configuration(store,job,*,enqueue=False):
     """Use the same job executor in a terminal, without waiting on an active writer."""
     import fcntl
@@ -210,7 +226,8 @@ def main():
     integrations.add_argument('--idempotency-key')
     ui=sub.add_parser('ui',help="Read the app's last recorded selection.");ui.add_argument('action',choices=['context'])
     archive=sub.add_parser('archive',help='Read earlier conversations and generated files.');archive.add_argument('action',choices=['list','read','workspaces','files','export']);archive.add_argument('conversation',nargs='?');archive.add_argument('--path');archive.add_argument('--output')
-    connection=sub.add_parser('connect',help='Enter an Alchemy key at a hidden local prompt.');connection.add_argument('provider',choices=['alchemy'])
+    connection=sub.add_parser('connect',help='Enter an Alchemy key at a hidden local prompt. alchemy-usage takes an Access Key for account usage.');connection.add_argument('provider',choices=['alchemy','alchemy-usage'])
+    connection.add_argument('--remove',action='store_true',help='With alchemy-usage: forget the saved Access Key.')
     d=sub.add_parser('doctor',help='Check RPC settings, optionally with live probes.');d.add_argument('--live',action='store_true');d.add_argument('--chains',default='1,8453,10');d.add_argument('--budget',type=int,default=30)
     demo=sub.add_parser('demo',help='Open a sample portfolio.');demo.add_argument('--port',type=int,default=8790)
     add=sub.add_parser('add',help='Register a public wallet and run its first holdings lookup.');add.add_argument('address');add.add_argument('--tag',required=True);add.add_argument('--resume')
@@ -277,7 +294,10 @@ def main():
         initialize(root)
         from kira_service import Application
         app=Application(root)
-        if args.command=='connect':connect_alchemy(root)
+        if args.command=='connect':
+            if args.provider=='alchemy-usage':connect_alchemy_usage(root,args.remove)
+            elif args.remove:raise ValueError('Use --remove with alchemy-usage.')
+            else:connect_alchemy(root)
         elif args.command=='info':
             print(json.dumps({'version':json.loads((ASSETS/'package.json').read_text())['version'],
                 'data_dir':str(root),**app.call('workspace_status'), 'ui':live_record(root) is not None,

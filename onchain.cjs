@@ -40,7 +40,8 @@ function client(chainId,url,override=null,transport=viem.http,fresh=false) {
 function peerClient(c){
   const state=clientState.get(c);
   if(!state)return null;
-  const urls=endpoints(state.chainId).filter(url=>url!==state.lastUrl);
+  // The second node is any other endpoint this run can use: not the one that answered, nor one set aside.
+  const urls=endpoints(state.chainId).filter(url=>url!==state.lastUrl&&!pool.disabled(state.chainId,url));
   return urls.length&&urls.length<endpoints(state.chainId).length?client(state.chainId,undefined,urls,state.transport,true):null;
 }
 function verificationClient(c){const state=clientState.get(c);return state?client(state.chainId,undefined,null,state.transport,true):null;}
@@ -70,4 +71,14 @@ function safeError(error){
 }
 function rpcEndpointsUsed(c){return [...(endpointReads.get(c)||[])].filter(i=>i>=0).sort((a,b)=>a-b);}
 function rpcRoutes(c){return endpointOutcomes.get(c)?.snapshot()||[];}
-module.exports={viem,root,assets,networks,bondAbi,endpoints,client,peerClient,verificationClient,connect,snapshotBlock,resilientTransport,rpcEndpointsUsed,rpcRoutes,serialize,safeError};
+function endpointIssues(chainId){return pool.issues(chainId);}
+// Each process adds one line per batch of work to the month's usage ledger; the app sums them.
+function flushUsage(){
+  const usage=pool.takeUsage();if(!usage.requests)return;
+  const at=new Date().toISOString();
+  const line={at,source:'node',job:process.env.KIRA_JOB_ID||null,batch:process.env.KIRA_BATCH_ID||null,cu:usage.cu,requests:usage.requests,methods:usage.methods};
+  try{fs.mkdirSync(path.join(root,'usage'),{recursive:true});fs.appendFileSync(path.join(root,'usage','alchemy-'+at.slice(0,7)+'.jsonl'),JSON.stringify(line)+'\n',{mode:0o600});}
+  catch{/* Usage is an estimate for the operator; it never fails research. */}
+}
+process.on('exit',flushUsage);
+module.exports={viem,root,assets,networks,bondAbi,endpoints,client,peerClient,verificationClient,connect,snapshotBlock,resilientTransport,rpcEndpointsUsed,rpcRoutes,endpointIssues,flushUsage,serialize,safeError};

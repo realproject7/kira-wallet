@@ -327,3 +327,30 @@ test('a read waits for a cooling endpoint within its deadline instead of failing
  await assert.rejects(client(short,[url],fn).getBlockNumber({cacheTime:0}));
  assert(Date.now()-started<1000,'A cooldown past the deadline still fails at once.');
 });
+test('a network the Alchemy app has not enabled is set aside; reads wait for the public node instead',async()=>{
+ const alchemy='https://robinhood-mainnet.g.alchemy.com/v2/test-key',pub='https://rpc.public.example';
+ const pool=fresh({deadline:3000,alchemyInterval:0,publicUrls:[pub]}),sent=[];
+ let publicDown=false;
+ const fn=async(url,r)=>{
+  sent.push([url===alchemy?'alchemy':'public',r.method]);
+  if(url===alchemy)throw Object.assign(new Error('JSON is not a valid request object.'),{code:-32600,status:403,details:'ROBINHOOD_MAINNET is not enabled for this app. Visit this page to enable the network: https://dashboard.example'});
+  if(publicDown&&r.method!=='eth_chainId'){publicDown=false;throw Object.assign(new Error('fetch failed'),{name:'HttpRequestError'});}
+  return r.method==='eth_chainId'?'0x1237':'0x7';
+ };
+ const c=client(pool,[alchemy,pub],fn,4663);
+ assert.equal(await c.getBlockNumber({cacheTime:0}),7n);
+ assert.equal(classify(Object.assign(new Error('x'),{details:'BASE_MAINNET is not enabled for this app.'})),'disabled');
+ assert.deepEqual(pool.issues(4663),[{endpoint_class:'custom',provider:'alchemy',network:'robinhood-mainnet',reason:'network_not_enabled'}]);
+ assert.equal(sent.filter(([who])=>who==='alchemy').length,1,'The disabled network is asked once.');
+ // The public node fails once and cools. The read it failed is retried by the scan; the next read
+ // waits for the public node instead of failing on the set-aside endpoint.
+ publicDown=true;
+ await assert.rejects(c.getBlockNumber({cacheTime:0}));
+ const state=pool.states.get('4663:'+pub);assert(state.until>Date.now(),'The public node is cooling.');state.until=Date.now()+300;
+ const began=Date.now();
+ assert.equal(await c.getBlockNumber({cacheTime:0}),7n);
+ assert(Date.now()-began>=250,'The read waited for the public node.');
+ assert.equal(sent.filter(([who])=>who==='alchemy').length,1,'Still asked once after the public node cooled.');
+ assert.equal(pool.disabled(4663,alchemy),true);assert.equal(pool.disabled(4663,pub),false);
+ assert.doesNotMatch(JSON.stringify(pool.issues(4663)),/test-key|https:/,'Issues carry no URL or key.');
+});
