@@ -32,8 +32,9 @@ const deployments = JSON.parse(fs.readFileSync(path.join(h.assets, 'sources/unis
 const stamp = () => new Date().toISOString();
 // One aggregate read carries up to GROUP calls. An endpoint that fails a large
 // aggregate is retried with halves, and the smaller size is kept for this run.
-// MIN_GROUP is the size every endpoint already accepted before.
-const GROUP=1024,MIN_GROUP=128;
+// MIN_GROUP is the size every endpoint already accepted before. Alchemy accepted
+// 4,096 balance calls in one read and refused 6,144 as too large (2026-11-15).
+const GROUP=4096,MIN_GROUP=128;
 const groupLimits=new WeakMap();
 const groupSize=c=>groupLimits.get(c)||GROUP;
 // Large checkpoints are saved at most every two seconds, and always at the end
@@ -43,11 +44,15 @@ function saver(file,interval=2000){
   return (data,force=false)=>{if(!force&&Date.now()-last<interval)return;write(file,data);last=Date.now();};
 }
 const endpointIdentity = new WeakMap();
-const emitProgress = (n,operation,checked,total) => console.log(JSON.stringify({stage:'onchain_progress',chain_id:n.chain_id,operation,checked,total}));
-const emitChain = row => console.log(JSON.stringify({stage:'chain',chain_id:row.chain_id,status:row.status,endpoint_index:row.endpoint_index,rpc_endpoint_indices:row.rpc_endpoint_indices,
+// A batch refresh reports one line per wallet and network instead of read-by-read progress.
+let QUIET=false;
+const emitProgress = (n,operation,checked,total) => {if(!QUIET)console.log(JSON.stringify({stage:'onchain_progress',chain_id:n.chain_id,operation,checked,total}));};
+const emitChain = (row,jobId=null) => console.log(JSON.stringify({...(jobId?{job_id:jobId}:{}),stage:'chain',chain_id:row.chain_id,status:row.status,endpoint_index:row.endpoint_index,rpc_endpoint_indices:row.rpc_endpoint_indices,
   block_number:row.block_number==null?null:row.block_number.toString(),registry:row.registry_scan?.registry_count,
   checked:row.registry_scan?.checked,held:row.tokens.length,cache_reused:row.registry_scan?.cache_reused}));
+// A null file means the caller keeps this state in memory only (batch refresh).
 const write = (file, data) => {
+  if(!file)return;
   fs.mkdirSync(path.dirname(file), {recursive:true});
   const fd=fs.openSync(file+'.tmp','w');
   try{fs.writeFileSync(fd,h.serialize(data)+'\n');fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
@@ -89,13 +94,16 @@ function rpcFailure(error) {
   }
   return {sizeLimit,transportFailure,schedulingFailure};
 }
-async function calls(c, contracts, block) {
+// A read that failed in transport cools its endpoint for five seconds (rpc-pool.cjs).
+let TRANSPORT_PAUSE=5500;
+async function callsLive(c, contracts, block) {
   if (!contracts.length) return [];
   // Halve the working size, then read the rest in groups of whatever size works.
-  const smaller=async()=>{
+  const smaller=async error=>{
+    if(error&&rpcFailure(error).transportFailure)await new Promise(resolve=>setTimeout(resolve,TRANSPORT_PAUSE));
     groupLimits.set(c,Math.max(MIN_GROUP,Math.min(groupSize(c),Math.ceil(contracts.length/2))));
     const rows=[];
-    for(let i=0;i<contracts.length;){const part=contracts.slice(i,i+groupSize(c));i+=part.length;rows.push(...await calls(c,part,block));}
+    for(let i=0;i<contracts.length;){const part=contracts.slice(i,i+groupSize(c));i+=part.length;rows.push(...await callsLive(c,part,block));}
     return rows;
   };
   try {
@@ -105,21 +113,41 @@ async function calls(c, contracts, block) {
       const limited=results.find(r=>rpcFailure(r.error).sizeLimit);
       if(limited)throw limited.error;
       // One shared error on every row is the aggregate read failing, not each call reverting.
-      if(contracts.length>MIN_GROUP&&results.every(r=>r.error===results[0].error)&&retrySmaller(results[0].error))return await smaller();
+      if(contracts.length>MIN_GROUP&&results.every(r=>r.error===results[0].error)&&retrySmaller(results[0].error))return await smaller(results[0].error);
     }
     return results;
   } catch (e) {
     if(e.code==='market_budget')throw e;
     const {sizeLimit,transportFailure}=rpcFailure(e);
-    if(!sizeLimit&&contracts.length>MIN_GROUP&&retrySmaller(e))return await smaller();
+    if(!sizeLimit&&contracts.length>MIN_GROUP&&retrySmaller(e))return await smaller(e);
     if (!sizeLimit) return contracts.map(()=>({status:'failure',error:e}));
     if (contracts.length > 1) {
       const mid = Math.ceil(contracts.length/2);
-      return [...await calls(c,contracts.slice(0,mid),block), ...await calls(c,contracts.slice(mid),block)];
+      return [...await callsLive(c,contracts.slice(0,mid),block), ...await callsLive(c,contracts.slice(mid),block)];
     }
     try {return [{status:'success',result:await c.readContract({...contracts[0],blockNumber:block})}];}
     catch (inner) {if(inner.code==='market_budget')throw inner;return [{status:'failure',error:inner}];}
   }
+}
+// A batch refresh reads every wallet on one network at one pinned block. Its store
+// keeps the answers; each wallet's scan takes them from memory and reads only what is
+// missing. A call that reverted inside a read that otherwise answered is kept too: at
+// one block it reverts again. A read that failed as a whole is asked again.
+const stores=new WeakMap();
+const argKey=value=>typeof value==='bigint'?value.toString():typeof value==='string'&&/^0x[0-9a-fA-F]{40}$/.test(value)?value.toLowerCase():value;
+const callKey=q=>q.address.toLowerCase()+'|'+q.functionName+'|'+JSON.stringify((q.args||[]).map(argKey));
+async function calls(c, contracts, block) {
+  const store=stores.get(c);
+  if(!store||store.block!==block||!contracts.length)return callsLive(c,contracts,block);
+  const keys=contracts.map(callKey),missing=[],failed=new Map();
+  keys.forEach((key,i)=>{if(!store.rows.has(key))missing.push(i);});
+  for(let i=0;i<missing.length;){
+    const part=missing.slice(i,i+groupSize(c));i+=part.length;
+    const rows=await callsLive(c,part.map(j=>contracts[j]),block);
+    const whole=rows.length<2||rows.every(r=>r.status==='failure'&&r.error===rows[0].error);
+    rows.forEach((row,j)=>{if(row.status==='success'||!whole&&!rpcFailure(row.error).transportFailure)store.rows.set(keys[part[j]],row);else failed.set(part[j],row);});
+  }
+  return contracts.map((q,i)=>store.rows.get(keys[i])||failed.get(i));
 }
 async function batches(c, contracts, block, size=null, progress=null) {
   // Each group takes the size that currently works for this endpoint.
@@ -152,9 +180,13 @@ async function factReads(c,contracts,block,checkpoint,file,n,operation) {
   // Retry only failed facts once in smaller groups. A transient aggregate
   // failure must not permanently strip curve prices from verified holdings.
   const retry=pending.filter(q=>checkpoint.facts[key(q)]===undefined);
-  for(let start=0;start<retry.length;start+=8){
-    const group=retry.slice(start,start+8);capture(group,await calls(c,group,block));write(file,checkpoint);
-  }
+  // Retries are saved like the first pass, at most every two seconds and once at the end.
+  const keep=saver(file);
+  try{
+    for(let start=0;start<retry.length;start+=8){
+      const group=retry.slice(start,start+8);capture(group,await calls(c,group,block));keep(checkpoint);
+    }
+  }finally{if(retry.length)keep(checkpoint,true);}
   return contracts.map(q=>{const fact=checkpoint.facts[key(q)];return fact?{status:'success',result:cacheDecode(fact.value),observed_at:fact.observed_at}:{status:'failure',error:failures.get(key(q))||new Error('Pinned token details unavailable.')};});
 }
 // The peer that double-checks a suspicious zero can be a block or two behind
@@ -162,6 +194,12 @@ async function factReads(c,contracts,block,checkpoint,file,n,operation) {
 let PEER_LAG_WAIT=2000;
 const behindPinnedBlock=error=>error?.name==='BlockNotFoundError'
   ||/header not found|block not found|unknown block/i.test(String(error?.message||'')+' '+String(error?.cause?.message||''));
+async function peerPin(peer,block,hash){
+  for(let attempt=1;;attempt++){
+    try{return await h.snapshotBlock(peer,{block_number:block.toString(),block_hash:hash});}
+    catch(error){if(attempt>=3||!behindPinnedBlock(error))throw error;await new Promise(resolve=>setTimeout(resolve,PEER_LAG_WAIT*attempt));}
+  }
+}
 async function peerRead(peer,query,block,hash){
   for(let attempt=1;;attempt++){
     try{
@@ -318,13 +356,19 @@ async function mintclubMembership(c,n,tokens,block,checkpoint,file,{maxBatches=I
 // limits them to ten blocks, and public nodes refuse them without an address.
 const FAST_MIN_CATALOGUE=2048,FAST_HISTORY_REQUESTS=24;
 let FAST_FALLBACK_PAUSE=5500;
+// A batch asks for the same catalogue once per wallet; parse each saved version once.
+const parsedCatalogues=new Map();
 function registryCache(n){
   const file=path.join(h.root,'cache/mintclub-registry',`${n.chain_id}-${String(n.mintclub_bond_address||'').toLowerCase()}.json`);
   try{
+    const stat=fs.statSync(file),version=stat.mtimeMs+':'+stat.size,saved=parsedCatalogues.get(file);
+    if(saved?.version===version)return saved.value;
     const cache=JSON.parse(fs.readFileSync(file));
     if(cache.chain_id!==n.chain_id||!Array.isArray(cache.entries))return null;
-    return {count:cache.entries.length,byAddress:new Map(cache.entries.filter(t=>t&&v.isAddress(t.address||'')&&['ERC20','ERC1155'].includes(t.token_type))
+    const value={count:cache.entries.length,byAddress:new Map(cache.entries.filter(t=>t&&v.isAddress(t.address||'')&&['ERC20','ERC1155'].includes(t.token_type))
       .map(t=>[t.address.toLowerCase()+':'+t.token_type,t]))};
+    parsedCatalogues.set(file,{version,value});
+    return value;
   }catch{return null;}
 }
 function fastPlan(input,n){
@@ -334,9 +378,12 @@ function fastPlan(input,n){
   // A small catalogue is read in one or two calls, which costs no more than the history.
   return cache&&cache.count>FAST_MIN_CATALOGUE?{...plan,cache}:null;
 }
+// Only transfers into the wallet can add a token. A token that left the wallet was
+// either held at the last complete check, and is reread anyway, or arrived later, and
+// then its incoming transfer is listed here.
 async function transferHistory(c,wallet,from,to,budget){
   const moved=new Map();
-  for(const direction of ['fromAddress','toAddress']){
+  for(const direction of ['toAddress']){
     let pageKey;
     do{
       if(++budget.used>budget.max)throw Object.assign(new Error('Transfer history needs more requests than a fast refresh allows.'),{code:'fast_budget'});
@@ -384,7 +431,9 @@ async function transferDelta(c,n,block,wallet,plan,checkpoint,file,{maxBatches=I
     method:'transfer_delta',catalogue_count:plan.cache.count,from_block:String(plan.from_block),full_check_block:plan.full_check_block||null,
     full_checked_at:plan.full_checked_at||null,moved:moved.length,prior:plan.prior.length,log_requests:requests};
 }
-async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}={}) {
+// `batch` (batch refresh) supplies the network's shared client, pinned block, this wallet's
+// native balance and transfer history, and the shared registry; nothing is checkpointed.
+async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity,batch=null}={}) {
   const file = path.join(output,`${baseline?'baseline-':''}chain-${n.chain_id}.json`);
   const policy=input.inventory_policy||'full_registry',market=policy==='wallet_candidates_v1';
   if(!['full_registry','wallet_candidates_v1'].includes(policy))throw new Error('Invalid inventory scope.');
@@ -399,26 +448,35 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
   if (fs.existsSync(file)) {
     previous = JSON.parse(fs.readFileSync(file));
     if((previous.inventory_policy||'full_registry')!==policy)throw new Error('Saved chain inventory scope mismatch. Start a new holdings analysis.');
-    if (previous.wallet.toLowerCase()===input.wallet.toLowerCase() && previous.candidate_fingerprint===fingerprint && (previous.status==='complete'||baseline&&previous.phase==='baseline')) {emitChain(previous);return previous;}
+    if (previous.wallet.toLowerCase()===input.wallet.toLowerCase() && previous.candidate_fingerprint===fingerprint && (previous.status==='complete'||baseline&&previous.phase==='baseline')) {emitChain(previous,batch?.job_id);return previous;}
   }
   const row = {wallet:input.wallet,chain_id:n.chain_id,network:n.network,inventory_policy:policy,phase:baseline?'baseline':'enrichment',observed_at:stamp(),status:'unavailable',tokens:[],native_balance:null};
   emitProgress(n,'balances',0,null);
   let rpcClient;
   try {
-    const checkpointFile=path.join(output,`${baseline?'baseline-':''}balance-checkpoint-${n.chain_id}.json`);
-    let checkpoint=fs.existsSync(checkpointFile)?JSON.parse(fs.readFileSync(checkpointFile)):null;
-    const resumedCheckpoint=!!checkpoint;
+    // A batch keeps each wallet's checkpoint in memory between its rounds instead of on disk.
+    const checkpointFile=batch?null:path.join(output,`${baseline?'baseline-':''}balance-checkpoint-${n.chain_id}.json`);
+    let checkpoint=checkpointFile&&fs.existsSync(checkpointFile)?JSON.parse(fs.readFileSync(checkpointFile)):batch?.memory?.get(batch.job_id)||null;
+    const resumedCheckpoint=!!checkpoint&&!batch;
     if(checkpoint&&((checkpoint.inventory_policy||'full_registry')!==policy||market&&checkpoint.bond_address!==n.mintclub_bond_address.toLowerCase()||checkpoint.wallet!==input.wallet.toLowerCase()||checkpoint.chain_id!==n.chain_id||checkpoint.fingerprint!==fingerprint&&(!checkpoint.candidates||checkpoint.candidates.some(a=>!candidates.includes(a))||(checkpoint.id0_candidates||[]).some(a=>!id0Identities.includes(a)))))
       throw new Error('Saved balance checkpoint does not match this research request. Start a new holdings analysis.');
-    const c = await connect(n,c=>{rpcClient=c;}), snapshot = await h.snapshotBlock(c,checkpoint),block=snapshot.number;
+    const c = batch?.client?(rpcClient=batch.client):await connect(n,c=>{rpcClient=c;}), snapshot = batch?.snapshot||await h.snapshotBlock(c,checkpoint),block=snapshot.number;
     checkpoint=checkpoint||{wallet:input.wallet.toLowerCase(),chain_id:n.chain_id,block_number:block.toString(),block_hash:snapshot.hash,observed_at:stamp(),balances:{}};
+    if(batch?.fastDelta&&!checkpoint.fast_delta)checkpoint.fast_delta=batch.fastDelta;
+    batch?.memory?.set(batch.job_id,checkpoint);
+    // Suspicious zeros the batch already read again on both nodes need no second check here.
+    for(const [identity,check] of batch?.zeroChecks||[]){
+      if(checkpoint.zero_checks?.[identity]?.outcome==='agreed')continue;
+      (checkpoint.zero_checks=checkpoint.zero_checks||{})[identity]=check;
+      checkpoint.balances[identity]='0';(checkpoint.balance_times=checkpoint.balance_times||{})[identity]=stamp();
+    }
     checkpoint.inventory_policy=policy;checkpoint.bond_address=n.mintclub_bond_address?.toLowerCase();checkpoint.fingerprint=fingerprint;checkpoint.candidates=candidates;checkpoint.id0_candidates=id0Identities;row.candidate_fingerprint=fingerprint;
     row.preferred_endpoint_index=endpointIdentity.get(c);
     row.block_number = block;
     row.block_hash = snapshot.hash;
     row.head_age_seconds=resumedCheckpoint||snapshot.timestamp==null?null:Math.max(0,Math.floor(Date.now()/1000)-Number(snapshot.timestamp));
     row.head_status=row.head_age_seconds==null?'saved_observation':row.head_age_seconds>86400?'stale':'observed';
-    if(checkpoint.native_balance===undefined)checkpoint.native_balance=v.formatUnits(await c.getBalance({address:input.wallet,blockNumber:block}),18);
+    if(checkpoint.native_balance===undefined)checkpoint.native_balance=batch?.native!=null?batch.native:v.formatUnits(await c.getBalance({address:input.wallet,blockNumber:block}),18);
     row.native_balance=checkpoint.native_balance;row.observed_at=checkpoint.observed_at;write(checkpointFile,checkpoint);
     row.rpc_status = 'available';
     // Check discovered and built-in candidates before expensive cold registry work.
@@ -445,7 +503,7 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
           await new Promise(resolve=>setTimeout(resolve,FAST_FALLBACK_PAUSE));
         }
       }
-      reg = reg || (baseline||market?{count:null,entries:[],errors:0,cache_reused:0}:await registry(c,n,block,{file:path.join(output,`registry-checkpoint-${n.chain_id}.json`),blockHash:snapshot.hash,maxBatches}));
+      reg = reg || (baseline||market?{count:null,entries:[],errors:0,cache_reused:0}:batch?.registry?await batch.registry():await registry(c,n,block,{file:path.join(output,`registry-checkpoint-${n.chain_id}.json`),blockHash:snapshot.hash,maxBatches}));
       if(!baseline&&!market){checkpoint.registry=reg;write(checkpointFile,checkpoint);}
     } catch (e) {
       row.registry_error = h.safeError(e);
@@ -574,7 +632,7 @@ async function scanChain(input, n, output, baseline=false, {maxBatches=Infinity}
   row.rpc_routes=h.rpcRoutes(rpcClient);
   row.endpoint_index=row.rpc_endpoint_indices.length===1?row.rpc_endpoint_indices[0]:null;
   write(file,row);
-  emitChain(row);
+  emitChain(row,batch?.job_id);
   return row;
 }
 function deployment(chain,protocol,name) {
@@ -1109,13 +1167,179 @@ async function scanNetworks(input,output,baseline=false,{maxBatches=8,maxRounds=
   }
   return input.networks.map(n=>results.get(n.chain_id));
 }
-async function main() {
-  const [mode,inputPath,outputPath]=process.argv.slice(2);
+// Batch refresh. Every wallet in the batch is read on one network at one pinned block:
+// native balances in one call, earlier holdings and discovered tokens packed across
+// wallets, a small Mint Club catalogue packed across wallets too, and the details of
+// every held token once. A catalogue of GROUP tokens or more already fills each read,
+// so it is read wallet by wallet, several wallets at a time. Each wallet's scan then
+// runs the usual checks from memory and writes the same chain file as a single refresh.
+const MULTICALL_ABI=v.parseAbi(['function getEthBalance(address) view returns (uint256)']);
+const BATCH_WALLETS=8,BATCH_ROUNDS=12;
+const balanceCall=(address,type,wallet)=>({address,abi:type==='ERC1155'?erc1155:erc20,functionName:'balanceOf',args:type==='ERC1155'?[wallet,0n]:[wallet]});
+const uniqueCalls=list=>[...new Map(list.map(q=>[callKey(q),q])).values()];
+// Packed reads of one network go out a few at a time; results land in the network's store.
+async function prefetch(c,contracts,block,lanes){
+  const groups=[];
+  for(let i=0;i<contracts.length;i+=groupSize(c))groups.push(contracts.slice(i,i+groupSize(c)));
+  await parallel(groups,lanes,group=>calls(c,group,block));
+}
+function unavailableRow(w,n,error){
+  const row={wallet:w.input.wallet,chain_id:n.chain_id,network:n.network,inventory_policy:w.input.inventory_policy||'full_registry',phase:'enrichment',
+    observed_at:stamp(),status:'unavailable',tokens:[],native_balance:null,error:h.safeError(error),rpc_endpoint_indices:[],rpc_routes:[],endpoint_index:null};
+  write(path.join(w.folder,`chain-${n.chain_id}.json`),row);emitChain(row,w.job_id);
+  return row;
+}
+async function scanNetworkBatch(n,wallets){
+  const rows=new Map();
+  let c,snapshot;
+  try{c=await connect(n);snapshot=await h.snapshotBlock(c,null);}
+  catch(error){for(const w of wallets)rows.set(w.job_id,unavailableRow(w,n,error));return rows;}
+  const block=snapshot.number,store={block,rows:new Map()};stores.set(c,store);
+  // Alchemy takes several wallets' reads at once; a public node takes one, so its
+  // network is read wallet by wallet and a cooldown cannot fail the queued reads.
+  const lanes=h.endpoints(n.chain_id).some(url=>/\.g\.alchemy\.com\//.test(url))?BATCH_WALLETS:1;
+  try{
+    const owner=w=>w.input.wallet.toLowerCase();
+    const native=new Map();
+    (await calls(c,wallets.map(w=>({address:MULTICALL,abi:MULTICALL_ABI,functionName:'getEthBalance',args:[w.input.wallet]})),block))
+      .forEach((r,i)=>{if(r?.status==='success')native.set(owner(wallets[i]),v.formatUnits(r.result,18));});
+    let shared=null;
+    const registryOnce=()=>shared||(shared=registry(c,n,block,{blockHash:snapshot.hash}).catch(error=>{shared=null;throw error;}));
+    // Fast refresh on a large catalogue: each wallet's transfer history since its last complete check.
+    const deltas=new Map();
+    await parallel(wallets.filter(w=>fastPlan(w.input,n)),lanes,async w=>{
+      const plan=fastPlan(w.input,n),from=BigInt(plan.from_block);
+      if(from>block+1n)return;
+      try{
+        const budget={used:0,max:FAST_HISTORY_REQUESTS},moved=from<=block?await transferHistory(c,w.input.wallet,from,block,budget):[];
+        deltas.set(w.job_id,{from_block:String(plan.from_block),to_block:block.toString(),moved,requests:budget.used});
+      }catch{/* The wallet's own scan asks again and falls back to the full catalogue. */}
+    });
+    let reg=null;
+    if(wallets.some(w=>!(fastPlan(w.input,n)&&deltas.has(w.job_id)))){try{reg=await registryOnce();}catch{/* Each scan records the error. */}}
+    const pack=!!reg&&reg.count<GROUP,wanted=[];
+    for(const w of wallets){
+      const wallet=w.input.wallet,plan=fastPlan(w.input,n),delta=deltas.get(w.job_id);
+      for(const t of w.input.candidates)if(t.chain_id===n.chain_id&&v.isAddress(t.address||''))wanted.push(balanceCall(t.address,'ERC20',wallet));
+      if(plan&&delta){for(const t of [...plan.prior,...delta.moved])if(v.isAddress(t?.address||'')&&['ERC20','ERC1155'].includes(t.token_type))wanted.push(balanceCall(t.address,t.token_type,wallet));}
+      else if(pack){for(const t of reg.entries)if(t.address&&['ERC20','ERC1155'].includes(t.token_type))wanted.push(balanceCall(t.address,t.token_type,wallet));}
+    }
+    const balances=uniqueCalls(wanted);
+    await prefetch(c,balances,block,lanes);
+    // Earlier holdings and received tokens outside the saved catalogue are checked against
+    // the bond. Membership does not depend on the wallet, so it is read once per token.
+    const extras=[];
+    if(v.isAddress(n.mintclub_bond_address||'')){
+      const cache=registryCache(n),unknown=new Map();
+      for(const w of wallets){
+        const plan=fastPlan(w.input,n),delta=deltas.get(w.job_id);
+        if(!plan||!delta)continue;
+        for(const t of [...plan.prior,...delta.moved])if(v.isAddress(t?.address||'')&&['ERC20','ERC1155'].includes(t.token_type)&&!cache?.byAddress.has(t.address.toLowerCase()+':'+t.token_type))unknown.set(t.address.toLowerCase(),t.address);
+      }
+      if(unknown.size){
+        const exists=uniqueCalls([...unknown.values()].map(address=>({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'exists',args:[address]})));
+        await prefetch(c,exists,block,lanes);
+        const registered=exists.filter(q=>store.rows.get(callKey(q))?.result===true).map(q=>({address:q.args[0],abi:erc20,functionName:'decimals'}));
+        if(registered.length)await prefetch(c,uniqueCalls(registered),block,lanes);
+        // An earlier or received ERC20 outside Mint Club is read as an ordinary token that
+        // the index named (transferDelta's extra), so a zero there is double-checked too.
+        for(const w of wallets){
+          const plan=fastPlan(w.input,n),delta=deltas.get(w.job_id);
+          if(!plan||!delta)continue;
+          for(const t of [...plan.prior,...delta.moved]){
+            if(t?.token_type!=='ERC20'||!unknown.has(String(t.address).toLowerCase()))continue;
+            const member=store.rows.get(callKey({address:n.mintclub_bond_address,functionName:'exists',args:[t.address]}));
+            if(member?.status==='success'&&member.result===false)extras.push({w,t:{address:t.address,suspicious_zero_check:true},q:balanceCall(t.address,'ERC20',w.input.wallet)});
+          }
+        }
+        if(extras.length)await prefetch(c,uniqueCalls(extras.map(x=>x.q)),block,lanes);
+      }
+    }
+    // Details of every token found held, once per token: metadata, curve state and refund.
+    const catalogue=reg?new Map(reg.entries.filter(t=>t.address).map(t=>[t.address.toLowerCase()+':'+t.token_type,t])):registryCache(n)?.byAddress||new Map();
+    const facts=[];
+    for(const q of balances){
+      const read=store.rows.get(callKey(q));
+      if(read?.status!=='success'||!(read.result>0n))continue;
+      facts.push(...['decimals','symbol','name'].map(functionName=>({address:q.address,abi:erc20,functionName})));
+      if(catalogue.has(q.address.toLowerCase()+':'+(q.abi===erc1155?'ERC1155':'ERC20'))&&v.isAddress(n.mintclub_bond_address||'')){
+        facts.push({address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getDetail',args:[q.address]},
+          {address:n.mintclub_bond_address,abi:h.bondAbi,functionName:'getRefundForTokens',args:[q.address,read.result]});
+      }
+    }
+    if(facts.length)await prefetch(c,uniqueCalls(facts),block,lanes);
+    // Suspicious zeros: tokens the index listed for a wallet that read zero. A single scan
+    // reads each again on its node and on a second node, eight at a time. The batch reads
+    // all of them in one call per node at the same block, with the same evidence.
+    const zeroChecks=new Map(),suspicious=[];
+    const candidates=wallets.flatMap(w=>w.input.candidates.filter(t=>t.chain_id===n.chain_id&&t.suspicious_zero_check&&v.isAddress(t.address||''))
+      .map(t=>({w,t,q:balanceCall(t.address,'ERC20',w.input.wallet)})));
+    for(const x of [...candidates,...extras]){
+      const read=store.rows.get(callKey(x.q));
+      if(read?.status==='success'&&read.result===0n)suspicious.push(x);
+    }
+    if(suspicious.length){
+      try{
+        // The second node is chosen after the direct read, as the one that did not answer it.
+        const verifier=h.verificationClient(c)||c,direct=await callsLive(verifier,suspicious.map(x=>x.q),block),peer=h.peerClient(verifier);
+        if(peer){
+          await peerPin(peer,block,snapshot.hash);
+          const other=await callsLive(peer,suspicious.map(x=>x.q),block),routes=h.rpcRoutes(peer);
+          suspicious.forEach((x,i)=>{
+            if(direct[i]?.status!=='success'||other[i]?.status!=='success'||direct[i].result!==0n||other[i].result!==0n)return;
+            const checks=zeroChecks.get(x.w.job_id)||new Map();
+            checks.set(x.t.address.toLowerCase()+':ERC20',{direct:'0',peer:'0',block_hash:snapshot.hash,outcome:'agreed',rpc_routes:routes});
+            zeroChecks.set(x.w.job_id,checks);
+          });
+        }
+      }catch{/* Each wallet's scan checks what is left, eight at a time. */}
+    }
+    const memory=new Map();
+    const context=w=>({client:c,snapshot,native:native.get(owner(w))??null,registry:registryOnce,fastDelta:deltas.get(w.job_id)||null,job_id:w.job_id,memory,zeroChecks:zeroChecks.get(w.job_id)});
+    // Like scanNetworks, a wallet with work left (more suspicious zeros than one round
+    // verifies) or failed reads goes another round, until a round makes no progress.
+    // After failed reads the next round waits out the endpoint cooldown; the store keeps
+    // every answer, so only what failed is asked again.
+    const unfinished=row=>row.research_pending||(row.balance_errors||[]).length>0||row.token_detail_errors>0;
+    const progress=new Map();
+    let queue=wallets,failed=false;
+    for(let round=0;queue.length&&round<BATCH_ROUNDS;round++){
+      if(failed)await new Promise(resolve=>setTimeout(resolve,TRANSPORT_PAUSE));
+      const results=await parallel(queue,lanes,w=>scanChain(w.input,n,w.folder,false,{batch:context(w)}));
+      const deferred=error=>/verification budget reached/i.test(error?.error?.message||'');
+      failed=results.some(row=>(row.balance_errors||[]).some(error=>!deferred(error))||row.token_detail_errors>0);
+      queue=queue.filter((w,i)=>{
+        const row=results[i],seen=JSON.stringify([row.work_progress,(row.balance_errors||[]).length,row.token_detail_errors]);
+        rows.set(w.job_id,row);
+        const stalled=progress.get(w.job_id)?.seen===seen?progress.get(w.job_id).count+1:0;
+        progress.set(w.job_id,{seen,count:stalled});
+        return unfinished(row)&&stalled<2;
+      });
+    }
+  }catch(error){for(const w of wallets)if(!rows.has(w.job_id))rows.set(w.job_id,unavailableRow(w,n,error));}
+  finally{stores.delete(c);}
+  return rows;
+}
+async function batchScan(batch){
+  QUIET=true;
+  const wallets=batch.wallets.map(w=>({job_id:w.job_id,folder:w.folder,input:JSON.parse(fs.readFileSync(w.input_path))}));
+  if(wallets.some(w=>!v.isAddress(w.input.wallet)||(w.input.inventory_policy||'full_registry')!=='full_registry'))throw new Error('Invalid batch wallet input');
+  const networks=[...new Map(wallets.flatMap(w=>w.input.networks).map(n=>[n.chain_id,n])).values()];
+  const results=await Promise.all(networks.map(n=>scanNetworkBatch(n,wallets.filter(w=>w.input.networks.some(x=>x.chain_id===n.chain_id)))));
+  const byChain=new Map(networks.map((n,i)=>[n.chain_id,results[i]]));
+  for(const w of wallets){
+    write(path.join(w.folder,'onchain-summary.json'),{wallet:w.input.wallet,observed_at:stamp(),chains:w.input.networks.map(n=>byChain.get(n.chain_id).get(w.job_id))});
+  }
+}
+// One mode run. A pending market result tells a one-shot process to exit at once.
+async function runMode(mode,inputPath,outputPath) {
+  if(mode==='batch-scan'){await batchScan(JSON.parse(fs.readFileSync(inputPath)));return {pending:false};}
   const input=JSON.parse(fs.readFileSync(inputPath));
   if(!v.isAddress(input.wallet))throw new Error('Invalid wallet address');
   if(mode==='scan'||mode==='scan-slice'||mode==='baseline') {
     const rows=await scanNetworks(input,outputPath,mode==='baseline',{maxRounds:mode==='scan-slice'?1:Infinity});
     write(path.join(outputPath,'onchain-summary.json'),{wallet:input.wallet,observed_at:stamp(),chains:rows});
+    return {pending:false};
   }else if(mode==='dex') {
     const deadline=Date.now()+Math.min(180_000,Math.max(0,input.market_budget_ms??180_000));
     const result=await parallel(input.networks.filter(n=>input.tokens.some(t=>t.chain_id===n.chain_id)),2,async n=>{
@@ -1125,24 +1349,32 @@ async function main() {
     });
     const tokens=result.flat(),pending=tokens.some(t=>t.market_pending||t.dex_discovery_status==='pending');
     write(outputPath,{wallet:input.wallet,observed_at:stamp(),tokens,market_pending:pending});
-    // End outstanding timed-out HTTP handles after the durable result is saved.
-    if(pending)process.exit(0);
+    return {pending};
   }else if(mode==='liquidate') {
     const deadline=Date.now()+Math.min(180_000,Math.max(0,input.market_budget_ms??180_000));
     const rows=await parallel(input.networks.filter(n=>input.tokens.some(t=>t.chain_id===n.chain_id)),2,n=>liquidationChain(n,input,outputPath,deadline));
     const pending=rows.some(row=>row.market_pending);
     write(outputPath,{wallet:input.wallet,observed_at:stamp(),tokens:rows.flatMap(row=>row.tokens),market_pending:pending});
-    if(pending)process.exit(0);
+    return {pending};
   }else if(mode==='reserves') {
     const deadline=Date.now()+Math.min(180_000,Math.max(0,input.market_budget_ms??180_000));
     const result=await parallel(input.networks.filter(n=>input.tokens.some(t=>t.chain_id===n.chain_id&&t.mintclub)),2,n=>reserveChain(n,input,outputPath,deadline));
     const pending=result.some(r=>r.market_pending);
     write(outputPath,{wallet:input.wallet,observed_at:stamp(),tokens:result.flatMap(r=>r.tokens),market_pending:pending});
-    if(pending)process.exit(0);
-  }else throw new Error('Expected scan or dex mode');
+    return {pending};
+  }
+  throw new Error('Expected scan or dex mode');
+}
+async function main() {
+  const [mode,inputPath,outputPath]=process.argv.slice(2);
+  const {pending}=await runMode(mode,inputPath,outputPath);
+  // End outstanding timed-out HTTP handles after the durable result is saved.
+  if(pending)process.exit(0);
 }
 if(require.main===module)main().catch(e=>{console.error(h.serialize(h.safeError(e)));process.exitCode=1;});
 const setGroupSize=(c,size)=>{groupLimits.set(c,size);return c;};
 const setFastFallbackPause=ms=>{FAST_FALLBACK_PAUSE=ms;};
 const setPeerLagWait=ms=>{PEER_LAG_WAIT=ms;};
-module.exports={GROUP,MIN_GROUP,setGroupSize,setFastFallbackPause,setPeerLagWait,scanNetworks,parallel,calls,registry,connect,scanChain,batches,balanceReads,factReads,mintclubMembership,dexChain,reserveChain,liquidationChain,routePools,boundedMarket,MarketBudget};
+const setQuiet=value=>{QUIET=!!value;};
+const setTransportPause=ms=>{TRANSPORT_PAUSE=ms;};
+module.exports={GROUP,MIN_GROUP,setGroupSize,setFastFallbackPause,setPeerLagWait,setQuiet,setTransportPause,runMode,batchScan,scanNetworkBatch,scanNetworks,parallel,calls,callsLive,registry,connect,scanChain,batches,balanceReads,factReads,mintclubMembership,dexChain,reserveChain,liquidationChain,routePools,boundedMarket,MarketBudget};

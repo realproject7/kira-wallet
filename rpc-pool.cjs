@@ -87,12 +87,19 @@ class RouteRecorder {
   }
   snapshot(){return [...this.rows.values(),...this.overflow.values()].map(row=>({...row}));}
 }
+// Alchemy limits an account by throughput compute units per second, counted over
+// a ten-second window (Free plan: 300). Unlisted node methods are charged as eth_call.
+const THROUGHPUT_CU={eth_chainId:5,eth_blockNumber:10,eth_getBalance:20,eth_getBlockByNumber:20,eth_getCode:20,
+  eth_call:26,eth_getLogs:60,alchemy_getAssetTransfers:120,alchemy_getTokenBalances:20};
+const throughputCost=method=>THROUGHPUT_CU[method]??26;
 class RpcPool {
-  constructor({publicUrls = [], healthFile = null, interval = 2000, alchemyInterval = null, alchemySlots = 1, deadline = 12000, attemptTimeout = 4000, cooldown = 60000} = {}) {
+  constructor({publicUrls = [], healthFile = null, interval = 2000, alchemyInterval = null, alchemySlots = 1, alchemyBudget = null, deadline = 12000, attemptTimeout = 4000, cooldown = 60000} = {}) {
     this.publicUrls = new Set(publicUrls); this.healthFile = healthFile;
     this.interval = interval; this.deadline = deadline; this.attemptTimeout = attemptTimeout; this.cooldown = cooldown;
     this.alchemyInterval = Number.isFinite(alchemyInterval) && alchemyInterval >= 0 ? alchemyInterval : null;
     this.alchemySlots = Number.isSafeInteger(alchemySlots) && alchemySlots >= 1 && alchemySlots <= 8 ? alchemySlots : 1;
+    this.alchemyBudget = alchemyBudget && Number.isFinite(alchemyBudget.rate) && alchemyBudget.rate > 0 && Number.isFinite(alchemyBudget.capacity) && alchemyBudget.capacity >= 120
+      ? {rate:alchemyBudget.rate, capacity:alchemyBudget.capacity} : null;
     this.states = new Map(); this.families = new Map(); this.pins = new Map(); this.pending = new Map(); this.cache = new Map();
     this.saved = {};
     try { if (healthFile && fs.statSync(healthFile).size <= 65536) {
@@ -126,8 +133,12 @@ class RpcPool {
       const pacingInterval=alchemy?this.alchemyInterval:this.interval;
       // Starts stay spaced by the interval. Alchemy may keep a few reads in flight, so a
       // slow large read does not hold the next start; other lanes keep one at a time.
-      if (!this.families.has(family)) this.families.set(family, {gate:new Gate(), slots:new Gate(alchemy ? this.alchemySlots : 1), next:0, interval:pacingInterval, until:0});
-      this.states.set(key, {id, publicEndpoint, family, alchemy, interval:pacingInterval, gate:new Gate(), until, strikes:until ? Math.min(Number(saved.strikes) || 1, 5) : 0,
+      // An Alchemy lane may also spend from a compute-unit budget; it starts half full.
+      const budget = alchemy && this.alchemyBudget ? {...this.alchemyBudget, tokens:this.alchemyBudget.capacity / 2, updated:Date.now()} : null;
+      if (!this.families.has(family)) this.families.set(family, {gate:new Gate(), slots:new Gate(alchemy ? this.alchemySlots : 1), next:0, interval:pacingInterval, until:0, budget});
+      // One read at a time per endpoint, except Alchemy: its lane's slots and budget set the pace,
+      // and a batch refresh reads up to eight wallets of one network at once.
+      this.states.set(key, {id, publicEndpoint, family, alchemy, interval:pacingInterval, gate:new Gate(alchemy ? this.alchemySlots : 1), until, strikes:until ? Math.min(Number(saved.strikes) || 1, 5) : 0,
         methods:new Map(), verified:false, blocks:new Set(), inner:transport(url,{timeout:this.attemptTimeout,retryCount:0})(options)});
     }
     return this.states.get(key);
@@ -150,6 +161,15 @@ class RpcPool {
     if (previous && previous !== hash.toLowerCase()) throw failure('Snapshot block changed. Start a new holdings analysis.', 'RpcConsistencyError');
     this.pins.set(key, hash.toLowerCase()); if (state) state.blocks.add(tag);
   }
+  async spend(budget, cost, signal) {
+    // Starts hold the lane's gate here, so the budget is taken in arrival order.
+    for (;;) {
+      const now = Date.now();
+      budget.tokens = Math.min(budget.capacity, budget.tokens + (now - budget.updated) * budget.rate / 1000); budget.updated = now;
+      if (budget.tokens >= cost) { budget.tokens -= cost; return; }
+      await wait(Math.ceil((cost - budget.tokens) * 1000 / budget.rate), signal);
+    }
+  }
   async send(state, request, signal, timeout = this.attemptTimeout) {
     const family = this.families.get(state.family), slot = await family.slots.acquire(signal);
     let release;
@@ -157,6 +177,7 @@ class RpcPool {
       release = await family.gate.acquire(signal);
       if(family.until>Date.now())throw failure('Provider is cooling down.','RpcFamilyCooldown');
       await wait(family.next - Date.now(), signal);
+      if (family.budget) await this.spend(family.budget, throughputCost(request.method), signal);
       if(family.until>Date.now())throw failure('Provider is cooling down.','RpcFamilyCooldown');
       family.next = Date.now() + family.interval;
       if (family.slots.capacity > 1) { release(); release = null; }
@@ -170,86 +191,100 @@ class RpcPool {
   async run(chain, choices, request, transport, options, onSuccess, signal, deadlineAt, onOutcome) {
     let last = failure('RPC providers are temporarily unavailable. Retry holdings shortly.');
     let attempts = 0;
-    for (const [index, url] of choices.entries()) {
-      if (signal.aborted) throw signal.reason;
-      const state = this.state(chain, url, transport, options);
-      if (state.until > Date.now() || this.families.get(state.family).until > Date.now() || (state.methods.get(request.method) || 0) > Date.now()) {onOutcome(index,{method:request.method,outcome:'skipped',reason:'cooldown'});last=state.error||last;continue;}
-      // An endpoint attempt includes its queue, cold verification and family pacing.
-      // Public outages must leave time for the personal backup's actual read.
-      const remaining=deadlineAt-Date.now();
-      const backupAhead=this.publicUrls.has(url) && choices.slice(index+1).some(next=>!this.publicUrls.has(next));
-      const tag=blockTag(request),hash=this.pins.get(chain+':'+tag);
-      const qualification=Number(!state.verified)+Number(!!hash&&!state.blocks.has(tag));
-      const timeout=attempts===0?this.attemptTimeout:Math.min(this.attemptTimeout,2000);
-      const reserve=backupAhead?Math.min(this.deadline/2,2*this.interval+Math.min(this.attemptTimeout,2000)):0;
-      const budget=backupAhead?Math.max(1,Math.min(qualification*state.interval+timeout,remaining-reserve)):remaining;
-      if(backupAhead&&budget<=qualification*state.interval){onOutcome(index,{method:request.method,outcome:'skipped',reason:'qualification'});continue;}
-      const controller=new AbortController(), abort=()=>controller.abort(signal.reason);
-      signal.addEventListener('abort',abort,{once:true});
-      const timer=budget<remaining?setTimeout(()=>controller.abort(failure('Local RPC scheduling deadline reached.', 'RpcSchedulingTimeout')),budget):null;
-      let release;
-      let attempted=false,phase='queue';
-      try {
-        release=await state.gate.acquire(controller.signal);
-        // A request ahead of us may have cooled this endpoint while we waited.
-        if (state.until > Date.now() || this.families.get(state.family).until > Date.now() || (state.methods.get(request.method) || 0) > Date.now()) {onOutcome(index,{method:request.method,outcome:'skipped',reason:'cooldown'});last=state.error||last;continue;}
-        if (++attempts > 4) break;
-        attempted=true;
-        phase='qualification';
-        if (!state.verified) {
-          const id = await this.send(state, {method:'eth_chainId'}, controller.signal, timeout);
-          if (Number(BigInt(id)) !== chain) throw failure('RPC chain identity mismatch');
-          state.verified = true;
-        }
-        if (hash && !state.blocks.has(tag)) {
-          const header = await this.send(state, {method:'eth_getBlockByNumber',params:[tag,false]}, controller.signal, timeout);
-          if (header?.hash?.toLowerCase() !== hash || BigInt(header.number) !== BigInt(tag)) throw failure('RPC snapshot block hash mismatch.', 'RpcConsistencyError');
-          state.blocks.add(tag);
-        }
-        // A height can reorg after verification. Every evidence read names the hash.
-        const pinned=hash?{...request,params:[request.params[0],{blockHash:hash,requireCanonical:true},...request.params.slice(2)]}:request;
-        phase='read';
-        let result;
-        try { result=request.method==='eth_chainId'?'0x'+chain.toString(16):await this.send(state,pinned,controller.signal,timeout); }
-        catch(error) {
-          if(hash && (error.code===-32602 || /cannot unmarshal object|block.?hash.*(?:unsupported|not supported)/i.test(error.shortMessage||error.message||''))) {
-            throw Object.assign(failure('RPC does not support hash-qualified snapshot reads.'),{code:-32601,cause:error});
-          }
-          throw error;
-        }
-        onSuccess(index, state); state.strikes = 0;state.error=null;
-        onOutcome(index,{method:request.method,outcome:'succeeded'});
-        if (state.until) { state.until = 0; this.persist(); }
-        return result;
-      } catch (error) {
-        last = error;
-        if(error.name==='RpcFamilyCooldown'){
-          onOutcome(index,{method:request.method,outcome:'skipped',reason:'cooldown'});continue;
-        }
-        if(signal.aborted||error.name==='RpcSchedulingTimeout'){
-          onOutcome(index,{method:request.method,outcome:attempted?'local_timeout':'queue_timeout',reason:phase==='queue'?'queue':phase==='qualification'?'qualification':'local_deadline'});
-          if(signal.aborted)throw signal.reason;
-          continue;
-        }
-        state.error=error; const kind = classify(error);
-        const event={method:request.method,outcome:attempted?'failed':'queue_timeout',reason:kind};
-        for(let cause=error,depth=0;cause&&depth<10;cause=cause.cause,depth++){
-          if(Number.isInteger(cause.status))event.http_status=cause.status;
-          if(Number.isInteger(cause.code))event.rpc_code=cause.code;
-        }
-        onOutcome(index,event);
+    for (let pass = 0; ; pass++) {
+      // A pass where every endpoint was skipped for a cooldown that ends waits for it,
+      // within this read's deadline, instead of failing at once (batch refresh).
+      let cooling = false;
+      const before = attempts;
+      for (const [index, url] of choices.entries()) {
         if (signal.aborted) throw signal.reason;
-        if (kind === 'contract' || kind === 'size') throw error;
-        if (kind === 'method') state.methods.set(request.method, Date.now() + 300000);
-        else {
-          state.strikes = Math.min(state.strikes + 1, 5);
-          state.until = Date.now() + (kind === 'throttle' ? Math.max(retryAfter(error), Math.min(this.cooldown * 2 ** (state.strikes - 1), 1800000)) : 5000);
-          if(state.alchemy&&kind==='throttle')this.families.get(state.family).until=Math.max(this.families.get(state.family).until,state.until);
-          state.verified = false; state.blocks.clear(); this.persist();
-        }
-      } finally { clearTimeout(timer);signal.removeEventListener('abort',abort);release?.(); }
+        const state = this.state(chain, url, transport, options);
+        if (state.until > Date.now() || this.families.get(state.family).until > Date.now() || (state.methods.get(request.method) || 0) > Date.now()) {onOutcome(index,{method:request.method,outcome:'skipped',reason:'cooldown'});last=state.error||last;cooling=true;continue;}
+        // An endpoint attempt includes its queue, cold verification and family pacing.
+        // Public outages must leave time for the personal backup's actual read.
+        const remaining=deadlineAt-Date.now();
+        const backupAhead=this.publicUrls.has(url) && choices.slice(index+1).some(next=>!this.publicUrls.has(next));
+        const tag=blockTag(request),hash=this.pins.get(chain+':'+tag);
+        const qualification=Number(!state.verified)+Number(!!hash&&!state.blocks.has(tag));
+        const timeout=attempts===0?this.attemptTimeout:Math.min(this.attemptTimeout,2000);
+        const reserve=backupAhead?Math.min(this.deadline/2,2*this.interval+Math.min(this.attemptTimeout,2000)):0;
+        const budget=backupAhead?Math.max(1,Math.min(qualification*state.interval+timeout,remaining-reserve)):remaining;
+        if(backupAhead&&budget<=qualification*state.interval){onOutcome(index,{method:request.method,outcome:'skipped',reason:'qualification'});continue;}
+        const controller=new AbortController(), abort=()=>controller.abort(signal.reason);
+        signal.addEventListener('abort',abort,{once:true});
+        const timer=budget<remaining?setTimeout(()=>controller.abort(failure('Local RPC scheduling deadline reached.', 'RpcSchedulingTimeout')),budget):null;
+        let release;
+        let attempted=false,phase='queue';
+        try {
+          release=await state.gate.acquire(controller.signal);
+          // A request ahead of us may have cooled this endpoint while we waited.
+          if (state.until > Date.now() || this.families.get(state.family).until > Date.now() || (state.methods.get(request.method) || 0) > Date.now()) {onOutcome(index,{method:request.method,outcome:'skipped',reason:'cooldown'});last=state.error||last;cooling=true;continue;}
+          if (++attempts > 4) break;
+          attempted=true;
+          phase='qualification';
+          if (!state.verified) {
+            const id = await this.send(state, {method:'eth_chainId'}, controller.signal, timeout);
+            if (Number(BigInt(id)) !== chain) throw failure('RPC chain identity mismatch');
+            state.verified = true;
+          }
+          if (hash && !state.blocks.has(tag)) {
+            const header = await this.send(state, {method:'eth_getBlockByNumber',params:[tag,false]}, controller.signal, timeout);
+            if (header?.hash?.toLowerCase() !== hash || BigInt(header.number) !== BigInt(tag)) throw failure('RPC snapshot block hash mismatch.', 'RpcConsistencyError');
+            state.blocks.add(tag);
+          }
+          // A height can reorg after verification. Every evidence read names the hash.
+          const pinned=hash?{...request,params:[request.params[0],{blockHash:hash,requireCanonical:true},...request.params.slice(2)]}:request;
+          phase='read';
+          let result;
+          try { result=request.method==='eth_chainId'?'0x'+chain.toString(16):await this.send(state,pinned,controller.signal,timeout); }
+          catch(error) {
+            if(hash && (error.code===-32602 || /cannot unmarshal object|block.?hash.*(?:unsupported|not supported)/i.test(error.shortMessage||error.message||''))) {
+              throw Object.assign(failure('RPC does not support hash-qualified snapshot reads.'),{code:-32601,cause:error});
+            }
+            throw error;
+          }
+          onSuccess(index, state); state.strikes = 0;state.error=null;
+          onOutcome(index,{method:request.method,outcome:'succeeded'});
+          if (state.until) { state.until = 0; this.persist(); }
+          return result;
+        } catch (error) {
+          last = error;
+          if(error.name==='RpcFamilyCooldown'){
+            onOutcome(index,{method:request.method,outcome:'skipped',reason:'cooldown'});cooling=true;continue;
+          }
+          if(signal.aborted||error.name==='RpcSchedulingTimeout'){
+            onOutcome(index,{method:request.method,outcome:attempted?'local_timeout':'queue_timeout',reason:phase==='queue'?'queue':phase==='qualification'?'qualification':'local_deadline'});
+            if(signal.aborted)throw signal.reason;
+            continue;
+          }
+          state.error=error; const kind = classify(error);
+          const event={method:request.method,outcome:attempted?'failed':'queue_timeout',reason:kind};
+          for(let cause=error,depth=0;cause&&depth<10;cause=cause.cause,depth++){
+            if(Number.isInteger(cause.status))event.http_status=cause.status;
+            if(Number.isInteger(cause.code))event.rpc_code=cause.code;
+          }
+          onOutcome(index,event);
+          if (signal.aborted) throw signal.reason;
+          if (kind === 'contract' || kind === 'size') throw error;
+          if (kind === 'method') state.methods.set(request.method, Date.now() + 300000);
+          else {
+            state.strikes = Math.min(state.strikes + 1, 5);
+            state.until = Date.now() + (kind === 'throttle' ? Math.max(retryAfter(error), Math.min(this.cooldown * 2 ** (state.strikes - 1), 1800000)) : 5000);
+            if(state.alchemy&&kind==='throttle')this.families.get(state.family).until=Math.max(this.families.get(state.family).until,state.until);
+            state.verified = false; state.blocks.clear(); this.persist();
+          }
+        } finally { clearTimeout(timer);signal.removeEventListener('abort',abort);release?.(); }
+      }
+      if (attempts !== before || !cooling || pass >= 2) break;
+      const ready = Math.min(...choices.map(url => this.readyAt(chain, url)));
+      if (!(ready > Date.now()) || ready >= deadlineAt - 250) break;
+      await wait(ready - Date.now(), signal);
     }
     throw last;
+  }
+  readyAt(chain, url) {
+    const state = this.states.get(chain + ':' + url);
+    return state ? Math.max(state.until, this.families.get(state.family).until) : 0;
   }
   transport(chain, urls, transport = viem.http, onSuccess = () => {}, onOutcome = () => {}, policy = {}) {
     if (!urls.length) throw failure('No configured RPC endpoint for this chain.');
@@ -281,4 +316,4 @@ class RpcPool {
     });
   }
 }
-module.exports = {RpcPool, RouteRecorder, classify};
+module.exports = {RpcPool, RouteRecorder, classify, throughputCost};

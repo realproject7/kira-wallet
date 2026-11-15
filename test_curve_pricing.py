@@ -31,7 +31,10 @@ class CurvePricingTests(unittest.TestCase):
         for response in ([],{'transport_error':{'status':429}},{'data':[{'network':'base-mainnet','address':address,
             'prices':[{'currency':'usd','value':v} for v in ('NaN','Infinity','-1','invalid',True)]}]}):
             with self.subTest(response=response),tempfile.TemporaryDirectory() as directory,patch('research.secrets',return_value={'ALCHEMY_CUSTOM_APY_KEY':'synthetic-key'}),patch('wallet.fetch',return_value=response):
-                self.assertEqual(index_prices([(8453,address)],Path(directory)),{'tokens':[],'status':'partial'})
+                answer=index_prices([(8453,address)],Path(directory))
+                self.assertEqual((answer['tokens'],answer['status']),([],'partial'))
+                # Only an answered request counts as the index having no price for the token.
+                self.assertEqual(answer['answered'],{(8453,address)} if isinstance(response,dict) and 'data' in response else set())
 
     def test_reserve_enrichment_preserves_dex_prices_and_explicit_rejections(self):
         from curve_pricing import enrich

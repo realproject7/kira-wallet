@@ -752,47 +752,63 @@ class JobStore:
                 else: job.update(state='interrupted', stage='interrupted', errors=[{'code': 'interrupted', 'message': 'Worker stopped. Saved evidence is available for an explicit resume.'}])
                 self.save(job)
 
-    def event(self, job_id, event):
+    def valid_event(self, event):
         allowed = {'registered', 'discovery', 'chain', 'onchain_progress', 'price_refresh', 'first_evidence', 'dex_discovery', 'market_paused', 'research_paused', 'token_images', 'published', 'failed'}
-        if event.get('stage') not in allowed: return
-        if event['stage']=='price_refresh' and event.get('phase') not in ('native','markets','index','curves','discovery','reserves','quotes','artwork','saving'):return
+        if event.get('stage') not in allowed: return False
+        if event['stage']=='price_refresh' and event.get('phase') not in ('native','markets','index','curves','discovery','reserves','quotes','artwork','saving'):return False
         if event.get('operation')=='asset_review':
-            if type(event.get('chain_id')) is not int or event['chain_id']<=0 or any(type(event.get(k)) is not int or event[k]<0 for k in ('total','checked','quoted','unknown')) or event['checked']>event['total'] or event['quoted']+event['unknown']!=event['checked']:return
+            if type(event.get('chain_id')) is not int or event['chain_id']<=0 or any(type(event.get(k)) is not int or event[k]<0 for k in ('total','checked','quoted','unknown')) or event['checked']>event['total'] or event['quoted']+event['unknown']!=event['checked']:return False
         if event.get('operation')=='asset_inventory':
-            if type(event.get('chain_id')) is not int or event['chain_id']<=0 or type(event.get('total')) is not int or event['total']<0:return
+            if type(event.get('chain_id')) is not int or event['chain_id']<=0 or type(event.get('total')) is not int or event['total']<0:return False
+        return True
+
+    def event(self, job_id, event):
+        if not self.valid_event(event): return
         with self.locked():
             job = self.get(job_id)
-            counts = {k: v for k, v in event.items() if k in {'complete_chains', 'candidates', 'tokens','chain_id','registry','checked','held','block_number','total','pending_ranges','quoted','unknown'} and type(v) is int and v >= 0}
-            job['stage'] = event['stage']
-            if event['stage']=='chain' and type(event.get('chain_id')) is int:
-                block=event.get('block_number');block=str(block) if type(block) is int and block>=0 else block
-                job.setdefault('chains',{})[str(event['chain_id'])]={'block_number':block if isinstance(block,str) and re.fullmatch(r'\d+',block) else None,
-                    'endpoint_index':event.get('endpoint_index') if type(event.get('endpoint_index')) is int else None,
-                    'status':event.get('status') if event.get('status') in ('complete','partial','unavailable') else 'unknown'}
-            job['events'].append({'stage': event['stage'], 'observed_at': now(), 'counts': counts})
-            if event['stage']=='price_refresh':
-                job['events'][-1]['context']={'phase':event['phase'],'attempt':job['attempt']}
-                if event['phase']=='markets':job['events'][-1]['context']['operation']='price_requests'
-                job['progress_observed_at']=job['events'][-1]['observed_at']
-            if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets','reserves','history','market_discovery','factory_queries','pool_checks','cashout_routes','mintclub_membership','asset_review','asset_inventory','positions'):
-                context={'operation':event['operation'],'chain_id':counts.get('chain_id'),'attempt':job['attempt']}
-                if event['operation']=='asset_inventory':
-                    prior=job.setdefault('asset_progress',{}).setdefault(str(event['chain_id']),{'total':0,'checked':0,'quoted':0,'unknown':0})
-                    prior['total']=max(prior['total'],counts['total'])
-                if event['operation']=='asset_review':job.setdefault('asset_progress',{})[str(event['chain_id'])]={k:counts[k] for k in ('total','checked','quoted','unknown')}
-                if event.get('provider') in ('etherscan_keyless','etherscan_keyless_erc1155_id0'):context['provider']=event['provider']
-                job['events'][-1]['context']=context
-                prior=[e for e in job['events'][:-1] if e.get('context')==context and type(e.get('counts',{}).get('checked')) is int]
-                if type(counts.get('checked')) is int and counts['checked']>max((e['counts']['checked'] for e in prior),default=0):
-                    job['progress_observed_at']=job['events'][-1]['observed_at']
-            if event['stage']=='first_evidence' and isinstance(event.get('snapshot'),str) and (event['snapshot']==job['checkpoint']+'/initial' or re.fullmatch(re.escape(job['checkpoint'])+r'/(?:market|holdings)-initial-[0-9]{4}',event['snapshot'])):
-                saved=self.snapshot(event['snapshot'])
-                wallet=job['input'].get('wallet') or job['input'].get('address')
-                if saved.get('wallet_address','').lower()==wallet.lower():job['result']={'snapshot_id':event['snapshot'],'status':saved['status'],'phase':'initial'}
-                job['progress_observed_at']=job['events'][-1]['observed_at']
-            if event['stage']=='chain' and type(event.get('chain_id')) is int:job['events'][-1]['context']={'chain_id':event['chain_id'],**job['chains'][str(event['chain_id'])]}
-            job['events'] = job['events'][-100:]
+            self.apply_event(job, event)
             self.save(job)
+
+    def events(self, job_id, events):
+        """Apply several progress lines to one job and save it once (batch refresh)."""
+        events = [e for e in events if isinstance(e, dict) and self.valid_event(e)]
+        if not events: return
+        with self.locked():
+            job = self.get(job_id)
+            for event in events: self.apply_event(job, event)
+            self.save(job)
+
+    def apply_event(self, job, event):
+        counts = {k: v for k, v in event.items() if k in {'complete_chains', 'candidates', 'tokens','chain_id','registry','checked','held','block_number','total','pending_ranges','quoted','unknown'} and type(v) is int and v >= 0}
+        job['stage'] = event['stage']
+        if event['stage']=='chain' and type(event.get('chain_id')) is int:
+            block=event.get('block_number');block=str(block) if type(block) is int and block>=0 else block
+            job.setdefault('chains',{})[str(event['chain_id'])]={'block_number':block if isinstance(block,str) and re.fullmatch(r'\d+',block) else None,
+                'endpoint_index':event.get('endpoint_index') if type(event.get('endpoint_index')) is int else None,
+                'status':event.get('status') if event.get('status') in ('complete','partial','unavailable') else 'unknown'}
+        job['events'].append({'stage': event['stage'], 'observed_at': now(), 'counts': counts})
+        if event['stage']=='price_refresh':
+            job['events'][-1]['context']={'phase':event['phase'],'attempt':job['attempt']}
+            if event['phase']=='markets':job['events'][-1]['context']['operation']='price_requests'
+            job['progress_observed_at']=job['events'][-1]['observed_at']
+        if event['stage']=='onchain_progress' and event.get('operation') in ('balances','registry','metadata','curves','markets','reserves','history','market_discovery','factory_queries','pool_checks','cashout_routes','mintclub_membership','asset_review','asset_inventory','positions'):
+            context={'operation':event['operation'],'chain_id':counts.get('chain_id'),'attempt':job['attempt']}
+            if event['operation']=='asset_inventory':
+                prior=job.setdefault('asset_progress',{}).setdefault(str(event['chain_id']),{'total':0,'checked':0,'quoted':0,'unknown':0})
+                prior['total']=max(prior['total'],counts['total'])
+            if event['operation']=='asset_review':job.setdefault('asset_progress',{})[str(event['chain_id'])]={k:counts[k] for k in ('total','checked','quoted','unknown')}
+            if event.get('provider') in ('etherscan_keyless','etherscan_keyless_erc1155_id0'):context['provider']=event['provider']
+            job['events'][-1]['context']=context
+            prior=[e for e in job['events'][:-1] if e.get('context')==context and type(e.get('counts',{}).get('checked')) is int]
+            if type(counts.get('checked')) is int and counts['checked']>max((e['counts']['checked'] for e in prior),default=0):
+                job['progress_observed_at']=job['events'][-1]['observed_at']
+        if event['stage']=='first_evidence' and isinstance(event.get('snapshot'),str) and (event['snapshot']==job['checkpoint']+'/initial' or re.fullmatch(re.escape(job['checkpoint'])+r'/(?:market|holdings)-initial-[0-9]{4}',event['snapshot'])):
+            saved=self.snapshot(event['snapshot'])
+            wallet=job['input'].get('wallet') or job['input'].get('address')
+            if saved.get('wallet_address','').lower()==wallet.lower():job['result']={'snapshot_id':event['snapshot'],'status':saved['status'],'phase':'initial'}
+            job['progress_observed_at']=job['events'][-1]['observed_at']
+        if event['stage']=='chain' and type(event.get('chain_id')) is int:job['events'][-1]['context']={'chain_id':event['chain_id'],**job['chains'][str(event['chain_id'])]}
+        job['events'] = job['events'][-100:]
 
     def set_tags(self, job):
         from wallet import registry_locked
@@ -967,6 +983,75 @@ class JobStore:
         else:
             job.update(state='queued',stage='waiting' if saved['not_before']>time.time() else 'queued',errors=[])
 
+    # A batch refresh reads every network once for all its wallets (batch_refresh.py).
+    BATCH_LIMIT = 200
+
+    def batchable(self, job):
+        """A fresh holdings refresh runs with the others queued for the same scope.
+        A resumed one keeps its saved checkpoints and runs alone, as does a lone wallet."""
+        return (job['operation']=='wallet.refresh' and job.get('scan_policy')=='alchemy_inventory_v1'
+                and job.get('analysis_phase')=='baseline' and not job['cancel_requested']
+                and not (self.root/job['checkpoint']/'run.json').exists())
+
+    def execute_batch(self, jobs, lease, writer):
+        """Run fresh holdings refreshes together. Returns each job's receipt or error."""
+        self.require_connection()
+        ids=[j['job_id'] for j in jobs]
+        env={**os.environ,'KIRA_DATA_DIR':str(self.root),'KIRA_ANALYSIS_FD':str(writer.fileno()),'PYTHONUNBUFFERED':'1'}
+        command=[sys.executable,str(ASSETS/'batch_refresh.py'),'--scope',jobs[0]['input'].get('scope','full')]+[x for i in ids for x in ('--job',i)]
+        child=subprocess.Popen(command,env=env,cwd=ASSETS,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,
+            start_new_session=True,pass_fds=(lease.fileno(),writer.fileno()))
+        selector=selectors.DefaultSelector();selector.register(child.stdout,selectors.EVENT_READ)
+        buffer=b'';pending={};flushed=checked=time.monotonic();stopped=False
+        def stop_child():
+            nonlocal stopped
+            if stopped:return
+            stopped=True
+            signal_process_group(child.pid,signal.SIGTERM)
+            if child.poll() is None:
+                try:child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    signal_process_group(child.pid,signal.SIGKILL);child.wait()
+            signal_process_group(child.pid,signal.SIGKILL)
+        def take(chunk):
+            nonlocal buffer
+            buffer+=chunk
+            while b'\n' in buffer:
+                line,buffer=buffer.split(b'\n',1)
+                try:event=json.loads(line)
+                except ValueError:continue
+                if isinstance(event,dict) and event.get('job_id') in ids:pending.setdefault(event.pop('job_id'),[]).append(event)
+            if len(buffer)>65536:buffer=b''
+        def flush():
+            # Progress is saved per job about once a second, not line by line.
+            for job_id,events in list(pending.items()):self.events(job_id,events)
+            pending.clear()
+        try:
+            while child.poll() is None:
+                if time.monotonic()-checked>=2:
+                    checked=time.monotonic()
+                    if all(self.get(i)['cancel_requested'] for i in ids):stop_child();break
+                for key,_ in selector.select(.2):
+                    chunk=os.read(key.fileobj.fileno(),65536)
+                    if not chunk:selector.unregister(key.fileobj);continue
+                    take(chunk)
+                if time.monotonic()-flushed>=1:flush();flushed=time.monotonic()
+            stop_child()
+            while selector.select(0):
+                key=selector.select(0)[0][0];chunk=os.read(key.fileobj.fileno(),65536)
+                if not chunk:selector.unregister(key.fileobj);continue
+                take(chunk)
+            flush()
+        finally:
+            stop_child();selector.close();child.stdout.close()
+        outcomes={}
+        for job_id in ids:
+            job=self.get(job_id);receipt=self.publication(job)
+            if receipt:outcomes[job_id]=receipt
+            elif job['cancel_requested']:outcomes[job_id]=JobError('cancelled','Job stopped. Previous published results and saved evidence were preserved.')
+            else:outcomes[job_id]=self.engine_failure(job)
+        return outcomes
+
     def research_order(self, job):
         heavy=job.get('analysis_phase')=='enrichment' or job['operation']=='positions.refresh'
         urgent=False
@@ -1003,16 +1088,39 @@ class JobStore:
                         entry=self.wallet(job['input']['wallet'])
                         if entry.get('research_generation') not in (None,job.get('parent_job_id')):
                             job.update(state='cancelled',stage='stopped',errors=[{'code':'superseded','message':'Newer holdings research replaced this detailed run. Earlier evidence is preserved.'}]);self.save(job);writer.close();continue
+                    group=[];batch=False
                     if job:
+                        group=[job];batch=self.batchable(job)
+                        if batch:
+                            scope=job['input'].get('scope','full')
+                            group+=[j for j in queued if j is not job and j['state']=='queued' and self.batchable(j)
+                                    and j['input'].get('scope','full')==scope and j.get('continuation',{}).get('not_before',0)<=time.time()][:self.BATCH_LIMIT-1]
+                            # One wallet alone gains nothing from sharing reads; it keeps the single-wallet engine.
+                            batch=len(group)>1
                         # Research records the settings it ran with. Settings jobs report their result instead.
                         if not job['operation'].startswith('settings.'):
                             from kira_config import load_config
-                            job['provider_configuration']=provider_summary(load_config())
-                        job.update(state='running', stage='starting', started_at=now(), attempt=job['attempt'] + 1, errors=[]); self.save(job)
+                            configuration=provider_summary(load_config())
+                            for member in group:member['provider_configuration']=configuration
+                        for member in group:
+                            member.update(state='running', stage='starting', started_at=now(), attempt=member['attempt'] + 1, errors=[]); self.save(member)
                 if not job:
                     time.sleep(.5)
                     continue
                 try:
+                    if batch:
+                        # A refusal before the run starts (no connection) applies to every wallet of the batch.
+                        try:outcomes=self.execute_batch(group,lease,writer)
+                        except JobError as error:outcomes={member['job_id']:error for member in group}
+                        with self.locked():
+                            for job_id,outcome in outcomes.items():
+                                member=self.get(job_id)
+                                if isinstance(outcome,dict):member.update(result=outcome,state='succeeded' if outcome['status']=='completed' else 'partial',stage='published')
+                                elif member['cancel_requested'] or outcome.code=='cancelled':member.update(state='cancelled',stage='stopped',errors=[{'code':'cancelled','message':'Job stopped at your request. Resume saved evidence explicitly.'}])
+                                else:member.update(state='failed',stage='stopped',errors=[{'code':outcome.code,'message':str(outcome)}])
+                                self.save(member)
+                        self.continue_research()
+                        continue
                     result = self.execute(job, lease, writer)
                     with self.locked():
                         job = self.get(job['job_id']); job.update(result=result, state='succeeded' if result['status'] == 'completed' else 'partial', stage='published'); self.save(job)
@@ -1027,13 +1135,15 @@ class JobStore:
                         self.save(job)
                 except (Exception, KeyboardInterrupt):
                     with self.locked():
-                        job = self.get(job['job_id'])
-                        try:saved=self.publication(job)
-                        except (ValueError,OSError):saved=None
-                        if saved:job.update(result=saved,state='succeeded' if saved['status']=='completed' else 'partial',stage='published',errors=[])
-                        elif job['cancel_requested']:job.update(state='cancelled',stage='stopped',errors=[{'code':'cancelled','message':'Job stopped at your request. Resume saved evidence explicitly.'}])
-                        else:job.update(state='interrupted', stage='interrupted', errors=[{'code': 'interrupted', 'message': 'Worker stopped. Resume saved evidence explicitly.'}])
-                        self.save(job)
+                        for member in group:
+                            member = self.get(member['job_id'])
+                            if member['state']!='running':continue
+                            try:saved=self.publication(member)
+                            except (ValueError,OSError):saved=None
+                            if saved:member.update(result=saved,state='succeeded' if saved['status']=='completed' else 'partial',stage='published',errors=[])
+                            elif member['cancel_requested']:member.update(state='cancelled',stage='stopped',errors=[{'code':'cancelled','message':'Job stopped at your request. Resume saved evidence explicitly.'}])
+                            else:member.update(state='interrupted', stage='interrupted', errors=[{'code': 'interrupted', 'message': 'Worker stopped. Resume saved evidence explicitly.'}])
+                            self.save(member)
                     return
                 finally: writer.close()
 

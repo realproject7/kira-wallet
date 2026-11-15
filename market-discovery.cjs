@@ -45,8 +45,8 @@ async function discover(input,save){
   const chainRequests=requests.filter(q=>q.t.chain_id===chain);
   const c=await p.boundedMarket(p.connect(input.networks.find(n=>n.chain_id===chain)),deadline);
   const block=await p.boundedMarket(h.snapshotBlock(c),deadline);
-  for(let i=0;i<chainRequests.length;i+=128){
-   const batch=chainRequests.slice(i,i+128),rows=await p.boundedMarket(p.calls(c,batch.map(q=>q.call),block.number),deadline);
+  for(let i=0;i<chainRequests.length;i+=1024){
+   const batch=chainRequests.slice(i,i+1024),rows=await p.boundedMarket(p.calls(c,batch.map(q=>q.call),block.number),deadline);
    for(let j=0;j<rows.length;j++){
     const row=rows[j],q=batch[j];result.checked++;
     if(row.status!=='success'){result.status='partial';continue;}

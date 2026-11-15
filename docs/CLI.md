@@ -73,8 +73,10 @@ conversation, general tools and approvals. Kira does not start a model process.
 ## Portfolio research actions
 
 From Home, use **Refresh all holdings**, **Fast refresh** or **Update sell estimates (N)**.
-Both queue ordinary per-wallet jobs and preserve previous snapshots. Work runs
-one wallet at a time. Active wallets are skipped. Sell analysis requires a
+Both queue ordinary per-wallet jobs and preserve previous snapshots. Holdings
+refreshes queued together run as one batch that reads each network once for
+all of them; each wallet still gets its own job, snapshot and result. Sell
+analysis runs one wallet at a time. Active wallets are skipped. Sell analysis requires a
 finished current holdings scan; interrupted analysis is resumed and completed
 analysis is skipped. Unchanged recorded quantities retain the last completed
 analysis across new holdings snapshots, including completed partial analyses

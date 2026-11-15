@@ -366,7 +366,7 @@ class WalletPipelineTests(unittest.TestCase):
         if failed:reply['error']={'message':'Failed to fetch tokens on certain networks','partialErrors':[{'network':n,'message':'timeout'} for n in failed]}
         return reply
 
-    def test_alchemy_networks_share_one_request_per_five(self):
+    def test_alchemy_networks_share_one_request(self):
         from chain_lifecycle import retired
         explorer={'chain_id':109,'environment':'mainnet'}
         # Research reads only networks that are not retired, as wallet.main() does.
@@ -381,8 +381,9 @@ class WalletPipelineTests(unittest.TestCase):
         shared=[b['addresses'][0]['networks'] for b in bodies if len(b['addresses'][0]['networks'])>1]
         alone=[b['addresses'][0]['networks'] for b in bodies if len(b['addresses'][0]['networks'])==1]
         self.assertEqual(len(researched),14)
-        self.assertEqual(len(shared),3,'Fourteen Alchemy networks take three requests.')
-        self.assertTrue(all(len(group)<=5 for group in shared))
+        self.assertEqual(len(shared),1,'Fourteen Alchemy networks take one Token Balances By Wallet request.')
+        self.assertEqual(sorted(shared[0]),sorted(researched.values()))
+        self.assertNotIn('withPrices',bodies[0]);self.assertNotIn('withMetadata',bodies[0])
         self.assertEqual(alone,[],'No network needs a request of its own.')
         self.assertNotIn('blast-mainnet',sum(shared,[]));self.assertNotIn('blast-sepolia',sum(shared,[]))
         self.assertEqual(sorted(found),sorted(n['chain_id'] for n in networks))

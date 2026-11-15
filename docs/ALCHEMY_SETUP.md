@@ -69,18 +69,25 @@ required for tokens, prices or logos and does not expand the holdings inventory.
 Kira makes requests locally through your account. Review Alchemy’s current
 [plans and limits](https://www.alchemy.com/docs/reference/pricing-plans).
 
-The research engine spaces its private Alchemy node reads at least 250 ms apart
-in one shared lane across Alchemy networks. Up to four reads may be in flight,
-so a slow large read does not delay the next start. An Alchemy throughput response cools
-that lane before queued reads can use another Alchemy host. Public and other
-custom RPC endpoints keep their existing pacing and fallback behavior. Canonical
-block checks and provider backoff still apply. This is a local scheduling policy,
-not a guarantee about an account's available capacity. Alchemy's
+The research engine spends its private Alchemy node reads from one budget of
+250 compute units a second, shared by every Alchemy network, below the Free
+plan's 300 per second (Alchemy counts them over a ten-second window). Up to
+eight reads may be in flight. An Alchemy throughput response cools that lane
+before queued reads can use another Alchemy host. Public and other custom RPC
+endpoints keep one read in flight, a second apart, and their fallback behavior.
+Canonical block checks and provider backoff still apply. This is a local
+scheduling policy, not a guarantee about an account's available capacity.
+Alchemy's
 [throughput allowance is shared across apps and chains](https://support.alchemy.com/articles/3788245542-is-alchemy-s-throughput-cu-s-limit-shared-across-all-apps-or-set-per-chain).
 
-Token discovery asks Alchemy's Tokens By Wallet API about up to five networks
-in one request, the most the API accepts. Alchemy
-[charges that request the same](https://www.alchemy.com/docs/reference/compute-unit-costs)
-for one network or five, so a holdings refresh reads the Alchemy networks in
-three requests. A wallet with hundreds of tokens needs more pages. A network
-that fails inside a shared request is read again on its own.
+Token discovery asks Alchemy's Token Balances By Wallet API about a wallet's
+Alchemy networks in one request. It answers up to twenty wallet-network pairs
+for 200 compute units, so a holdings refresh reads the fourteen networks in one
+request; a wallet with hundreds of tokens needs more pages. A network that
+fails inside the shared request is read again on its own. Balances come without
+names or prices: the chain read supplies names and decimals, and a held token
+that no market lists is priced from Alchemy's price index.
+
+When several wallets refresh together, Kira reads them as one batch: each
+network once at one block for all of them, balances packed up to 4,096 to a
+read, and prices and markets once per token.

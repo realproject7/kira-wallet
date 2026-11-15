@@ -67,14 +67,30 @@ def fetch_official(url,body,*,deadline):
     except (OSError,ValueError):return {'transport_error':{'code':'unavailable'}}
 
 
+def active_mainnets(snapshot):
+    from chain_lifecycle import retired
+    return {c['chain_id'] for c in snapshot.get('coverage',[]) if c.get('environment')=='mainnet' and not retired(c['chain_id'])}
+
+
+def factory_plan(snapshot, active):
+    """Tokens checked against DEX factories: held Mint Club ERC20s and the twelve
+    deepest other ERC20s. Returns them and the number of others left out."""
+    tokens=[t for t in snapshot['tokens'] if t.get('mintclub') and t.get('token_type','ERC20')=='ERC20' and t['chain_id'] in active]
+    extra=[t for t in snapshot['tokens'] if not t.get('mintclub') and t.get('token_type','ERC20')=='ERC20' and t['chain_id'] in active]
+    def depth(t):
+        from market_records import number
+        return max((number((p.get('reported_liquidity') or {}).get('usd')) or 0 for p in t.get('dex_pools',[])),default=0)
+    extra.sort(key=depth,reverse=True)
+    return tokens+extra[:12],max(0,len(extra)-12)
+
+
 def discover(snapshot, folder, *, deadline=None, fetch=None, factories=True):
     """No wallet reads or sale quotes. Missing provider records remain unknown."""
     import wallet
-    from chain_lifecycle import retired
     fetch=fetch or fetch_official;deadline=deadline or time.monotonic()+60
     folder=Path(folder);path=folder/'supplemental-markets.json'
     previous=wallet.read(path) if path.exists() else {}
-    active={c['chain_id'] for c in snapshot.get('coverage',[]) if c.get('environment')=='mainnet' and not retired(c['chain_id'])}
+    active=active_mainnets(snapshot)
     # The alternate source covers Mint Club's simultaneous markets. Ordinary
     # ERC20 holdings still receive the default full DexScreener batch lookup.
     tokens=[t for t in snapshot['tokens'] if t.get('mintclub') and t.get('token_type','ERC20')=='ERC20' and t['chain_id'] in active]
@@ -104,21 +120,22 @@ def discover(snapshot, folder, *, deadline=None, fetch=None, factories=True):
     wallet.atomic(path,result)
     # Bound new common-quote checks for ordinary holdings. Indexed depth orders
     # this supplement; it does not establish a price or a sellable balance.
-    extra=[t for t in snapshot['tokens'] if not t.get('mintclub') and t.get('token_type','ERC20')=='ERC20' and t['chain_id'] in active]
-    def depth(t):
-        from market_records import number
-        return max((number((p.get('reported_liquidity') or {}).get('usd')) or 0 for p in t.get('dex_pools',[])),default=0)
-    extra.sort(key=depth,reverse=True)
-    factory_tokens=tokens+extra[:12]
-    result['factory_ordinary_limit']=12;result['factory_ordinary_deferred']=max(0,len(extra)-12)
+    factory_tokens,deferred=factory_plan(snapshot,active)
+    result['factory_ordinary_limit']=12;result['factory_ordinary_deferred']=deferred
     if factories and factory_tokens and time.monotonic()<deadline:
         input_path=folder/'factory-market-input.json';output_path=folder/'factory-markets.json'
         networks=json.loads((Path(__file__).parent/'networks.json').read_text())['networks']
         wallet.atomic(input_path,{'tokens':factory_tokens,'networks':networks,'budget_ms':max(1,int((deadline-time.monotonic())*1000))})
-        try:
-            process=subprocess.run(['node',str(Path(__file__).with_name('market-discovery.cjs')),str(input_path),str(output_path)],capture_output=True,timeout=max(1,deadline-time.monotonic()+2))
-            if process.returncode!=0:result['factory_status']='unavailable'
-        except subprocess.TimeoutExpired:result['factory_status']='partial'
+        shared=wallet.BATCH.get('factory');ids={f"{t['chain_id']}:{t['token_address'].lower()}" for t in factory_tokens}
+        if shared and ids<=shared['checked']:
+            # A batch refresh checked every wallet's tokens against the factories once.
+            wallet.atomic(output_path,{'status':shared['status'],'checked':shared['checked_requests'],'total':shared['total_requests'],'shared_batch':True,
+                                       'markets':[{'id':i,'pools':shared['by_id'][i]} for i in sorted(ids) if i in shared['by_id']]})
+        else:
+            try:
+                # Inside a batch refresh the shared Node process runs this, on the batch's read budget.
+                if wallet.node_script('factory-markets','market-discovery.cjs',input_path,output_path,max(1,deadline-time.monotonic()+2))!=0:result['factory_status']='unavailable'
+            except subprocess.TimeoutExpired:result['factory_status']='partial'
         if output_path.exists():
             factory=wallet.read(output_path);by_id={r['id']:r for r in result['markets']}
             for row in factory.get('markets',[]):

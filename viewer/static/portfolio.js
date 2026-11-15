@@ -34,7 +34,8 @@ async function submitPortfolio(operation,options={}){
     const counts={};for(const row of receipt.skipped)counts[row.reason]=(counts[row.reason]||0)+1;
     const skipped=Object.entries(counts).map(([reason,count])=>count+' '+(reasons[reason]||reason)).join(' · ');
     $('portfolio-action-status').textContent=scopeName+': '+receipt.jobs.length+' wallet jobs accepted. '+(skipped?skipped+'. ':'')+
-      (receipt.errors.length?receipt.errors.length+' could not be queued. Retry this action or check Activity. ':'')+'Follow progress in Activity; wallets run one at a time.';
+      (receipt.errors.length?receipt.errors.length+' could not be queued. Retry this action or check Activity. ':'')+
+      (operation==='portfolio.refresh'?'Follow progress in Activity; wallets are read together.':'Follow progress in Activity; wallets run one at a time.');
     if(receipt.jobs.length)navigate('#/activity');
   }catch(error){$('portfolio-action-status').textContent=error.message;}
   finally{portfolioSubmitting=false;renderPortfolioActions();}
