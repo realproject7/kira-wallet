@@ -32,11 +32,13 @@ coverage, amounts, price timestamps and retained observations remain explicit.
 Do not add an LP receipt to the same underlying claim, or Aeromax to its backing
 Aerodrome position again. NAV is not a sell-out quote or complete net worth.
 
-`positions_refresh` explicitly starts sequential read-only collection. The first
-scan discovers positions; subsequent default refreshes recheck saved claims and
-current wallet inventory. Pass `discover: true` to find new pool/farm deposits.
-Full discovery can span thousands of old pools and take much longer. Read the
-job and source gaps; do not retry a broad scan just because a view is opened.
+Every holdings refresh also updates platform positions as its last step, so a
+separate position refresh is rarely needed after one. `positions_refresh`
+explicitly starts read-only collection. The first scan discovers positions;
+subsequent default refreshes recheck saved claims, current wallet inventory and
+new Aero gauge stakes. Pass `discover: true` to sweep the legacy pool and farm
+registries. Full discovery can span thousands of old pools and take much longer.
+Read the job and source gaps; do not retry a broad scan just because a view is opened.
 `portfolio_positions_refresh` applies the same operation to all wallets or a
 folder. No signing, strategy execution or payment is involved.
 

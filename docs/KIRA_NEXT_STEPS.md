@@ -1,9 +1,12 @@
 # Kira release status
 
-Updated: 2026-11-15. Candidate 1.15.3 reads a network the Alchemy app has
+Updated: 2026-11-15. Candidate 1.15.4 updates platform positions at the end of
+every holdings refresh, reading every chain and wallet at once, and finds new
+Aero gauge stakes (Aeromax ranges) without a full discovery. It contains the
+unpublished 1.15.3, which reads a network the Alchemy app has
 not enabled from public RPC instead of retrying Alchemy, shows Alchemy usage
 (Kira's own estimate and, with an Access Key, the account's totals) and adds a
-≥ $1 value filter. It contains the unpublished 1.15.2, where the estimate also
+≥ $1 value filter. 1.15.3 contains the unpublished 1.15.2, where the estimate also
 counted throttled data requests, and 1.15.1, which aligns the 1.15.0
 layout (one page gutter, one heading shape, path above token and network
 pages). 1.15.0 puts global tools in the top bar and

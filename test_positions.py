@@ -108,6 +108,58 @@ class PositionApplicationTests(unittest.TestCase):
         self.assertIn('position_worker.py',self.app.jobs.engine_command(a)[1])
         self.assertEqual(self.app.jobs.get(a['job_id'])['operation'],'positions.refresh')
 
+    def holdings_job(self,job_id='11111111-1111-4111-8111-111111111111'):
+        from kira_jobs import now
+        return {'job_id':job_id,'created_at':now(),'checkpoint':'snapshots/jobs/'+job_id,'input':{'wallet':A,'scope':'fast'}}
+
+    def test_holdings_refresh_saves_positions_in_its_own_folder_and_keeps_what_it_did_not_reach(self):
+        import position_update
+        job=self.job();job['attempt']=1
+        publish(self.root,job,{**self.state([position('kept'),position('closed'),position('waiting','pancakeswap')]),
+                               'coverage':{s:{'id':s,'chain_id':8453,'status':'checked','errors':0} for s in ('8453:uniswap','8453:pancakeswap')}})
+        holdings=self.holdings_job();seen={}
+        def run(command,**options):
+            spec=json.loads(Path(command[-1]).read_text());seen.update(command=command,spec=spec,timeout=options['timeout'])
+            self.assertEqual(command[-2],'--batch');self.assertEqual(len(spec['wallets']),1)
+            reader=json.loads(Path(spec['wallets'][0]['input_path']).read_text())
+            self.assertFalse(reader['discover']);self.assertGreater(reader['concurrency'],1)
+            self.assertEqual({p['id'] for p in reader['known_positions']},{'kept','closed','waiting'})
+            # The reader confirms one claim, retires another and does not reach the third scope.
+            atomic(Path(spec['wallets'][0]['checkpoint_path']),{'wallet':A,'positions':{'kept':position('kept','uniswap','12')},'absent_positions':['closed'],
+                'coverage':{'8453:uniswap':{'id':'8453:uniswap','chain_id':8453,'status':'checked','errors':0}},
+                'tasks':[{'kind':'nft','scope':'8453:pancakeswap','chain_id':8453}],'cursor':0,'blocks':{},'complete':False})
+        result=position_update.update(self.root,[holdings],run=run)
+        self.assertEqual(result[holdings['job_id']],{'status':'partial','position_count':2,'coverage_gaps':1})
+        index=json.loads((self.root/'positions/index.json').read_text())['wallets'][A]
+        self.assertEqual(index['path'],holdings['checkpoint']+'/positions/positions.json')
+        saved=json.loads((self.root/index['path']).read_text())
+        rows={p['id']:p for p in saved['positions']}
+        self.assertEqual(set(rows),{'kept','waiting'});self.assertEqual(rows['kept']['assets'][0]['amount'],'12')
+        self.assertTrue(rows['waiting']['retained']);self.assertNotIn('retained',rows['kept'])
+        gap=next(c for c in saved['coverage'] if c['id']=='8453:pancakeswap')
+        self.assertEqual(gap['status'],'partial');self.assertIn('Earlier records were kept',gap['message'])
+        self.assertEqual(saved['requested_at'],holdings['created_at'])
+        folder=self.root/holdings['checkpoint']/'positions'
+        self.assertFalse((folder/'positions-input.json').exists());self.assertFalse((folder/'positions-checkpoint.json').exists())
+        self.assertFalse(Path(seen['command'][-1]).exists(),'The run description is removed.')
+        self.assertGreaterEqual(seen['timeout'],120)
+
+    def test_holdings_refresh_keeps_earlier_positions_when_the_reader_stops(self):
+        import position_update, subprocess
+        job=self.job();job['attempt']=1;publish(self.root,job,self.state([position('kept')]))
+        before=(self.root/'positions/index.json').read_bytes()
+        def stuck(command,**options):raise subprocess.TimeoutExpired(command,options['timeout'])
+        holdings=self.holdings_job()
+        self.assertEqual(position_update.update(self.root,[holdings],run=stuck),{holdings['job_id']:None})
+        self.assertEqual((self.root/'positions/index.json').read_bytes(),before)
+        self.assertEqual(position_update.update(self.root,[{**holdings,'input':{'wallet':'0x'+'9'*40}}],run=stuck),{},'An unregistered wallet is skipped.')
+
+    def test_saved_claim_refreshes_run_concurrently_and_full_discovery_keeps_short_slices(self):
+        from position_worker import prepare_input
+        known=prepare_input(self.root,A,False);full=prepare_input(self.root,A,True)
+        self.assertEqual((known['concurrency'],known['budget_ms']),(32,90000));self.assertEqual((full['concurrency'],full['max_reads'],full['budget_ms']),(1,48,25000))
+        self.assertFalse(known['discover']);self.assertTrue(full['discover'])
+
     def test_repeat_refresh_defaults_to_known_claims_and_full_discovery_is_explicit(self):
         job=self.job();job['attempt']=1;publish(self.root,job,self.state([position()]));job.update(state='succeeded',result=self.app.jobs.publication(job));self.app.jobs.save(job)
         known=self.job(key='refresh-known-positions');self.assertFalse(known['input']['discover'])
