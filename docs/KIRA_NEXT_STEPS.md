@@ -1,6 +1,6 @@
 # Kira release status
 
-Updated: 2026-11-15. Candidate 1.15.4 updates platform positions at the end of
+Updated: 2026-11-15. The operator published Kira 1.15.4. It updates platform positions at the end of
 every holdings refresh, reading every chain and wallet at once, and finds new
 Aero gauge stakes (Aeromax ranges) without a full discovery. It contains the
 unpublished 1.15.3, which reads a network the Alchemy app has
