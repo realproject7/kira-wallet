@@ -238,6 +238,10 @@ controls.localSession.controls=false;controls.refreshControlState();
 assert.equal(node('wallet-actions').hidden,true);assert.equal(node('wallet-secondary-actions').hidden,true);assert.equal(node('wallet-tools').hidden,true);
 wallet.report_url='/saved-report';controls.refreshControlState();assert.equal(node('wallet-tools').hidden,false);assert.equal(node('wallet-secondary-actions').hidden,true);
 delete wallet.report_url;controls.localSession.controls=true;controls.state.demo=false;controls.refreshControlState();assert.equal(node('wallet-secondary-actions').hidden,false);
+// The sidebar footer names the running version once the session reports it.
+assert.equal(node('app-version').hidden,true);
+controls.localSession.version='1.2.3';controls.refreshControlState();assert.equal(node('app-version').hidden,false);assert.equal(node('app-version').textContent,'Version 1.2.3');
+delete controls.localSession.version;controls.refreshControlState();assert.equal(node('app-version').hidden,true);assert.equal(node('app-version').textContent,'');
 // Render empty network copy from actual recorded counts rather than inactive filters.
 const networkContext={...context,state:{details:{tokens:[]}},tokenSearch:'',minimum:0,aggregateRow:a=>a.symbol};
 vm.createContext(networkContext);vm.runInContext(source.slice(source.indexOf('function renderNetworkTokens('),source.indexOf('function renderDetail(')),networkContext);
