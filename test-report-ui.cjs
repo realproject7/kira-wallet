@@ -34,7 +34,7 @@ const KiraView=require('./viewer/static/workspace-model.js');
   const previousCalls=calls;await readOnly.loadSetupReadiness();assert.equal(calls,previousCalls);
   console.log('Preloaded read-only state renders immediately without a privileged readiness request.');
   const mainnet={id:'1:mainnet',environment:'mainnet',value_usd:10},testnet={id:'11155111:testnet',environment:'testnet',value_usd:null};
-  const home={state:{paged:true,data_revision:'fixture'},selectedView:'home',routeEpoch:0,routeLoadedKey:null,routeAbort:null,routeCache:new Map(),
+  const home={state:{paged:true,data_revision:'fixture'},selectedView:'home',homeTokenSort:'value',selectedPlatform:null,walletTab:'overview',areaWallet:null,routeEpoch:0,routeLoadedKey:null,routeAbort:null,routeCache:new Map(),
     document:{activeElement:null},AbortController,queryPath:(path,args)=>path+'?'+new URLSearchParams(args),showRouteStatus(){},renderView(){},publishUiContext(){},
     readAPI:async path=>{const include=new URL('http://local'+path).searchParams.get('include_testnets')!=='0';return {assets:include?[mainnet,testnet]:[mainnet],matched_count:include?2:1};}};
   vm.createContext(home);const app=fs.readFileSync('viewer/static/app.js','utf8');

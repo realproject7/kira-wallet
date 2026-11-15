@@ -3,6 +3,8 @@ const $ = id => document.getElementById(id);
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let state = null, selectedWallet = localStorage.getItem('wallet-selection'), selectedView = localStorage.getItem('wallet-view') === 'wallet' ? 'wallet' : 'home', selectedChain = 'all', minimum = 0, etag = null, currentSignature = null, busy = false;
 let selectedToken = null, selectedNetwork = null, tokenSearch = '', walletSort='value', networkSort='value', walletStatus='portfolio', networkStatus='portfolio';
+// An area is everything, a folder or one wallet. Each has Overview, All tokens and Activity, seen whole or through one platform.
+let areaWallet = null, walletTab = 'overview', selectedPlatform = null, homeTokenSort = 'value', homeWalletSort = 'value';
 if (![0,5,10].includes(minimum)) minimum=0;
 const money = value => value == null ? '—' : value > 0 && value < .01 ? '< $0.01' : new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(value);
 const unitPrice = value => value == null ? '—' : value === 0 ? '$0.00' : value < .000001 ? '$'+value.toExponential(3) : '$'+new Intl.NumberFormat('en-US',{maximumFractionDigits:value < .01 ? 8 : value < 1 ? 6 : 2}).format(value);
@@ -60,11 +62,12 @@ async function loadRoute(force=false){
   if(!state?.paged)return;
   const view=selectedView,revision=state.data_revision,epoch=++routeEpoch;
   let requests=[];
-  if(view==='home')requests=[queryPath('/api/holdings',{offset:0,limit:5,sort:'value',include_testnets:0})];
-  else if(view==='wallet')requests=[queryPath('/api/wallet',{wallet:selectedWallet,offset:walletOffset,limit:100,chain_id:selectedChain,minimum_value_usd:minimum??0,pricing:minimum===null?'all':'priced',sort:walletSort,portfolio_status:walletStatus})];
+  if(view==='home')requests=[queryPath('/api/holdings',{offset:0,limit:5,sort:homeTokenSort,include_testnets:0,platform:selectedPlatform})];
+  else if(view==='wallet'&&walletTab==='overview')requests=[queryPath('/api/wallet',{wallet:selectedWallet,offset:0,limit:5,sort:walletSort,include_testnets:0,platform:selectedPlatform})];
+  else if(view==='wallet')requests=[queryPath('/api/wallet',{wallet:selectedWallet,offset:walletOffset,limit:100,chain_id:selectedChain,minimum_value_usd:minimum??0,pricing:minimum===null?'all':'priced',sort:walletSort,portfolio_status:walletStatus,platform:selectedPlatform})];
   else if(view==='token'){const [chain_id,address]=selectedToken.split(':');requests=[queryPath('/api/token',{chain_id,address})];}
   else if(view==='network')requests=[queryPath('/api/network',{chain_id:selectedNetwork}),queryPath('/api/holdings',{chain_id:selectedNetwork,offset:networkOffset,limit:100,query:tokenSearch,minimum_value_usd:minimum??0,pricing:minimum===null?'all':'priced',include_testnets:1,sort:networkSort,portfolio_status:networkStatus})];
-  else if(view==='tokens'){const f=catalogFilters();requests=[queryPath('/api/holdings',{offset:(f.page-1)*50,limit:50,chain_id:f.network,query:f.search,minimum_value_usd:f.minimum,sort:f.sort,pricing:f.pricing,portfolio_status:f.status,include_testnets:f.testnets?1:0})];}
+  else if(view==='tokens'){const f=catalogFilters();requests=[queryPath('/api/holdings',{offset:(f.page-1)*50,limit:50,chain_id:f.network,query:f.search,minimum_value_usd:f.minimum,sort:f.sort,pricing:f.pricing,portfolio_status:f.status,include_testnets:f.testnets?1:0,platform:f.platform})];}
   const folder=typeof FolderUI!=='undefined'?FolderUI.id:null;
   if(folder)requests=requests.map(path=>/^\/api\/(holdings|token|network)\?/.test(path)?path+'&folder_id='+encodeURIComponent(folder):path);
   const overviewIndex=requests.length;
@@ -95,7 +98,7 @@ async function loadRoute(force=false){
     const field=focused&&$(focused.id);if(field&&!field.disabled){field.focus({preventScroll:true});if(typeof field.setSelectionRange==='function'&&typeof focused.start==='number')field.setSelectionRange(focused.start,focused.end);}
     if(typeof refreshControlState==='function')refreshControlState();
     if(view==='activity'&&typeof loadActivity==='function')await loadActivity();
-    if(view==='wallet'&&typeof loadWalletJobs==='function')await loadWalletJobs(selectedWallet);
+    if(areaWallet&&typeof loadWalletJobs==='function')await loadWalletJobs(selectedWallet);
     publishUiContext();
   }catch(error){if(epoch!==routeEpoch||error.name==='AbortError')return;routeLoading=false;showRouteStatus(error.message,true);renderView();}
 }
@@ -105,11 +108,15 @@ const networkHref = id => (typeof FolderUI!=='undefined'?FolderUI.path('network'
 function navigate(hash){if(location.hash===hash)readRoute();else location.hash=hash;}
 let routeIdentity=null;
 function readRoute(){
-  const identity=location.hash||'#/home';
+  const [path='',query='']=(location.hash||'#/home').replace(/^#\/?/,'').split('?');
+  const identity=path||'home',lens=new URLSearchParams(query).get('platform'),platform=/^[a-z][a-z0-9-]{0,39}$/.test(lens||'')?lens:null;
   if(identity!==routeIdentity){selectedChain='all';minimum=0;tokenSearch='';walletOffset=0;networkOffset=0;routeData={};routeLoadedKey=null;if(typeof resetRouteFilters==='function')resetRouteFilters();routeIdentity=identity;}
-  let parts=[];try{parts=location.hash.replace(/^#\/?/,'').split('/').map(decodeURIComponent);}catch{}
+  else if(platform!==selectedPlatform){walletOffset=0;networkOffset=0;if(typeof catalogPage!=='undefined')catalogPage=1;}
+  selectedPlatform=platform;
+  let parts=[];try{parts=path.split('/').map(decodeURIComponent);}catch{}
   if(typeof FolderUI!=='undefined')parts=FolderUI.route(parts);
-  if(parts[0]==='wallet'&&/^0x[0-9a-f]{40}$/i.test(parts[1]||'')){selectedWallet=parts[1].toLowerCase();selectedView='wallet';selectedChain='all';}
+  areaWallet=null;walletTab='overview';
+  if(parts[0]==='wallet'&&/^0x[0-9a-f]{40}$/i.test(parts[1]||'')){selectedWallet=parts[1].toLowerCase();areaWallet=selectedWallet;selectedView=parts[2]==='activity'?'activity':'wallet';walletTab=parts[2]==='tokens'?'tokens':'overview';}
   else if(parts[0]==='network'&&/^\d+$/.test(parts[1]||'')){selectedNetwork=Number(parts[1]);selectedView='network';tokenSearch='';}
   else if(parts[0]==='token'&&/^\d+$/.test(parts[1]||'')&&/^(native|0x[0-9a-f]{40})$/i.test(parts[2]||'')){selectedToken=Number(parts[1])+':'+parts[2].toLowerCase();selectedView='token';}
   else if(['tokens','activity'].includes(parts[0])){selectedView=parts[0];}
@@ -117,22 +124,51 @@ function readRoute(){
   localStorage.setItem('wallet-view',selectedView);if(selectedWallet)localStorage.setItem('wallet-selection',selectedWallet);
   if(state){renderView();loadRoute();}window.scrollTo({top:0,behavior:'instant'});
 }
-function selectWallet(key){
+function selectWallet(key,platform=null){
   if(!state?.wallets.some(w=>w.key===key))return;
-  navigate(typeof FolderUI!=='undefined'?FolderUI.walletPath(key):'#/wallet/'+key);
+  navigate((typeof FolderUI!=='undefined'?FolderUI.walletPath(key):'#/wallet/'+key)+(platform?'?platform='+encodeURIComponent(platform):''));
 }
 function goHome(){
   navigate('#/home');
 }
+// The path above a heading names the places that lead here. The heading names the page itself.
 function renderBreadcrumb(items){
-  $('breadcrumbs').innerHTML='<ol>'+items.map(item=>`<li>${item.href?`<a href="${escapeHTML(item.href)}" title="${escapeHTML(item.label)}">${escapeHTML(item.label)}</a>`:`<span aria-current="page" title="${escapeHTML(item.label)}">${escapeHTML(item.label)}</span>`}</li>`).join('')+'</ol>';
+  const path=items.slice(0,-1).filter(item=>item.href);
+  $('breadcrumbs').innerHTML='<ol>'+path.map(item=>`<li><a href="${escapeHTML(item.href)}" title="${escapeHTML(item.label)}">${escapeHTML(item.label)}</a></li>`).join('')+'</ol>';
+  $('breadcrumbs').hidden=!path.length||!(areaWallet||['token','network'].includes(selectedView));
+}
+function areaHref(tab,platform=selectedPlatform){
+  const folder=typeof FolderUI!=='undefined';
+  const base=areaWallet?(folder?FolderUI.walletPath(areaWallet):'#/wallet/'+areaWallet)+(tab==='overview'?'':'/'+tab):folder?FolderUI.path(tab==='overview'?'home':tab):'#/'+(tab==='overview'?'home':tab);
+  return base+(platform&&tab!=='activity'?'?platform='+encodeURIComponent(platform):'');
+}
+function areaTab(){return selectedView==='activity'?'activity':selectedView==='tokens'||selectedView==='token'||selectedView==='wallet'&&walletTab==='tokens'?'tokens':'overview';}
+function areaAllocation(){return areaWallet?currentWallet()?.capital_allocation:(typeof FolderUI!=='undefined'?FolderUI.view():state)?.dashboard?.capital_allocation;}
+// Groups worth choosing: those holding value, positions or unpriced holdings in this area.
+function areaPlatforms(){return (areaAllocation()?.groups||[]).filter(g=>g.value_usd||g.position_count||g.unpriced_count);}
+function lensGroup(){return selectedPlatform?(areaAllocation()?.groups||[]).find(g=>g.id===selectedPlatform)||{id:selectedPlatform,name:selectedPlatform,value_usd:null,position_count:0,unpriced_count:0,percent:null}:null;}
+function renderAreaBar(){
+  const bar=$('area-bar');if(!bar||!state)return;
+  // Counts come from the saved summary, so every tab of a wallet shows the same number.
+  const detail=['token','network'].includes(selectedView),tab=areaTab(),w=areaWallet?state.wallets.find(x=>x.key===areaWallet)||currentWallet():null;
+  bar.dataset.area=areaWallet?'wallet':detail?'detail':'portfolio';
+  for(const link of bar.querySelectorAll('[data-tab]')){link.href=areaHref(link.dataset.tab);if(!detail&&link.dataset.tab===tab)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');}
+  const context=typeof FolderUI!=='undefined'?FolderUI.view():state;
+  $('all-token-count').textContent=areaWallet?(w?integer(w.mainnet_asset_count??w.asset_count??0):''):context?integer(context.dashboard.unique_asset_count):'';
+  const groups=areaPlatforms(),select=$('platform-filter');
+  if(selectedPlatform&&!groups.some(g=>g.id===selectedPlatform))groups.push(lensGroup());
+  const options='<option value="">All platforms</option>'+groups.map(g=>`<option value="${escapeHTML(g.id)}"${g.logo?` data-logo="${escapeHTML(g.logo)}"`:''}>${escapeHTML(g.name)}</option>`).join('');
+  if(select.dataset.options!==options){select.innerHTML=options;select.dataset.options=options;}
+  select.value=selectedPlatform||'';
+  $('platform-lens').hidden=detail||tab==='activity'||groups.length<2;
+  if(typeof KiraSelect!=='undefined')KiraSelect.refresh();
 }
 function renderWallets(){
   const wallets=typeof FolderUI!=='undefined'?FolderUI.wallets():state.wallets;
   $('wallet-count').textContent=wallets.length;
   const visible=typeof matchingWallets==='function'?matchingWallets(wallets,$('wallet-nav-search').value):wallets;
   $('wallet-list').innerHTML=visible.map(w=>{
-    const active=selectedView==='wallet'&&w.key===selectedWallet;
+    const active=areaWallet===w.key;
     const status=KiraView.walletStatus(typeof jobList==='undefined'?[]:jobList,w);
     const label={partial:'Saved · gaps',complete:'Complete',interrupted:'Interrupted',paused:'Paused',failed:'Lookup failed',waiting:'Queued',pausing:'Pausing',running:'Looking up tokens'}[status.mode]||status.label;
     const routine=['partial','saved','complete'].includes(status.mode);
@@ -140,19 +176,21 @@ function renderWallets(){
   }).join('')||'<p class="wallet-nav-empty">No saved wallets match.</p>';
 }
 function renderView(){
-  if(selectedView==='wallet'){
+  if(areaWallet){
     const w=currentWallet(),pending=typeof pendingWalletJob==='function'&&pendingWalletJob(w||{key:selectedWallet});
     if(!w){
-      if(!w)toast(pending?'This wallet is waiting for registration. Follow its progress in Activity.':'This wallet is not registered in this workspace.');
+      toast(pending?'This wallet is waiting for registration. Follow its progress in Activity.':'This wallet is not registered in this workspace.');
       navigate('#/activity');return;
     }
   }
   renderWallets();
   $('home-view').hidden=selectedView!=='home';$('wallet-view').hidden=selectedView!=='wallet';
   $('detail-view').hidden=!['token','network'].includes(selectedView);
+  if(areaWallet)renderWalletHeader(currentWallet());
   if(selectedView==='home'){renderHome();document.title='Home · Kira Wallet';}
   else if(selectedView==='wallet'){renderWallet();document.title=(currentWallet()?.name||'Wallet')+' · Kira Wallet';}
   else if(['token','network'].includes(selectedView))renderDetail();
+  renderAreaBar();
   if(typeof renderWorkspace==='function')renderWorkspace();
   if(typeof KiraSelect!=='undefined')KiraSelect.refresh();
   if(typeof FolderUI!=='undefined')FolderUI.render();
@@ -171,30 +209,43 @@ function chainIcon(chain){
 }
 function renderHome(){
   const home=typeof FolderUI!=='undefined'?FolderUI.view():state;
-  const crumbs=typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Home'}];
-  renderBreadcrumb([...crumbs.slice(0,-1),{label:crumbs.at(-1).label}]);
+  const crumbs=typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Portfolio'}];
+  renderBreadcrumb(crumbs);
   if(!home){$('home-summary').hidden=true;$('home-details').hidden=true;$('home-empty').hidden=true;$('home-discovery-notice').hidden=true;$('home-coverage-note').textContent='';$('home-price-time').textContent='';return;}
-  const s=home.dashboard,total=s.capital_allocation?s.capital_allocation.known_value_usd:s.known_value_usd;$('home-summary').hidden=false;
+  const s=home.dashboard,all=s.capital_allocation?s.capital_allocation.known_value_usd:s.known_value_usd,lens=lensGroup(),total=lens?lens.value_usd:all;$('home-summary').hidden=false;
+  // One platform's view: its value, the wallets and networks that hold it, its positions and tokens.
+  const lensRow=allocation=>lens?(allocation?.groups||[]).find(g=>g.id===lens.id):null;
   $('sync-label').textContent=s.analysed_wallet_count+' of '+s.wallet_count+' '+(s.wallet_count===1?'wallet':'wallets')+' analysed';
+  $('home-value-label').textContent=lens?lens.name:'Total value';
   $('home-total').textContent=money(total);
-  $('home-sell-out').innerHTML=sellSummary(s.sell_out_summary,walletTokenValue(s.capital_allocation,s.known_value_usd));
+  const lensSale=routeData.page?.platform_sell_out_summary;
+  $('home-sell-out').innerHTML=lens?(lensSale?.position_count?sellSummary(lensSale,lens.value_usd):''):sellSummary(s.sell_out_summary,walletTokenValue(s.capital_allocation,s.known_value_usd));
   const waiting=s.wallet_count-s.analysed_wallet_count;
-  $('home-meta').innerHTML=`<span class="chip"><strong>${integer(s.wallet_count)}</strong> ${s.wallet_count===1?'wallet':'wallets'}</span><span class="chip"><strong>${integer(s.chain_count)}</strong> ${s.chain_count===1?'network':'networks'}</span><a class="chip" href="${typeof FolderUI!=='undefined'?FolderUI.path('tokens'):'#/tokens'}"><strong>${integer(s.unique_asset_count)}</strong> ${s.unique_asset_count===1?'token':'tokens'}</a>${waiting>0?`<span class="chip warn">${integer(waiting)} awaiting analysis</span>`:''}${policyNotice(s.asset_policy_summary)}`;
-  $('home-valuation-note').textContent=s.capital_allocation?.position_count?'Wallet tokens plus recorded platform NAV. Unpriced claims are excluded.':s.priced_count ? 'Market and curve spot estimates. '+integer(s.unpriced_count)+' unpriced holdings are excluded.' : 'Value appears as priced holdings become available.';
+  const holders=lens?home.wallets.filter(w=>lensRow(w.capital_allocation)).length:0;
+  $('home-meta').innerHTML=lens?`${lens.percent!=null?`<span class="chip"><strong>${lens.percent<.1&&lens.percent>0?'< 0.1':lens.percent.toFixed(1)}%</strong> of portfolio</span>`:''}<span class="chip"><strong>${integer(holders)}</strong> ${holders===1?'wallet':'wallets'}</span>${lens.position_count?`<span class="chip"><strong>${integer(lens.position_count)}</strong> ${lens.position_count===1?'position':'positions'}</span>`:''}${lens.unpriced_count?`<span class="chip" title="Unpriced holdings are excluded. An unknown value is not zero.">${integer(lens.unpriced_count)} unpriced</span>`:''}<a class="chip" href="${areaHref('overview',null)}">All platforms</a>`:`<span class="chip"><strong>${integer(s.wallet_count)}</strong> ${s.wallet_count===1?'wallet':'wallets'}</span><span class="chip"><strong>${integer(s.chain_count)}</strong> ${s.chain_count===1?'network':'networks'}</span><a class="chip" href="${areaHref('tokens')}"><strong>${integer(s.unique_asset_count)}</strong> ${s.unique_asset_count===1?'token':'tokens'}</a>${waiting>0?`<span class="chip warn">${integer(waiting)} awaiting analysis</span>`:''}${policyNotice(s.asset_policy_summary)}`;
+  $('home-valuation-note').textContent=lens?'Known recorded value on '+lens.name+'. Positions are principal or NAV observations, not sale proceeds. Unpriced holdings are excluded.':s.capital_allocation?.position_count?'Wallet tokens plus recorded platform NAV. Unpriced claims are excluded.':s.priced_count ? 'Market and curve spot estimates. '+integer(s.unpriced_count)+' unpriced holdings are excluded.' : 'Value appears as priced holdings become available.';
   $('home-empty').hidden=s.wallet_count>0;$('home-details').hidden=s.wallet_count===0;
   renderHomeCoverage();
   const incomplete=home.wallets.some(w=>w.chains.some(c=>c.environment==='mainnet'&&KiraView.coverageGap(c)));
   $('home-coverage-note').textContent='Mainnet holdings only. '+(incomplete?'Research coverage is incomplete.':'Testnets are excluded from totals.');
   $('home-price-time').textContent=s.prices_from ? 'Prices '+stamp(s.prices_from)+(s.prices_from!==s.prices_to?' – '+stamp(s.prices_to):'') : '';
-  const ranked=home.wallets.map(w=>({w,value:w.capital_allocation?w.capital_allocation.known_value_usd:(w.analysed_at?w.known_value_usd:null)})).sort((a,b)=>(b.value??-1)-(a.value??-1)||a.w.name.localeCompare(b.w.name));
+  const bySale=!lens&&homeWalletSort==='sell_out';
+  const ranked=home.wallets.map(w=>{
+    if(!lens)return {w,value:w.capital_allocation?w.capital_allocation.known_value_usd:(w.analysed_at?w.known_value_usd:null),sale:w.sell_out_summary?.value_usd};
+    const g=lensRow(w.capital_allocation);return g?{w,value:g.value_usd,positions:g.position_count}:null;
+  }).filter(Boolean).sort((a,b)=>(bySale?(b.sale??-1)-(a.sale??-1):(b.value??-1)-(a.value??-1))||a.w.name.localeCompare(b.w.name));
+  const saleTotal=bySale?ranked.reduce((sum,r)=>sum+(r.sale||0),0):null;
   $('home-wallet-total').textContent=integer(ranked.length);
-  $('wallet-cards').innerHTML=ranked.map(({w,value})=>{
-    const tokens=w.mainnet_asset_count??w.assets.filter(a=>a.environment==='mainnet').length,unpriced=w.mainnet_unpriced_count??w.unpriced_count,sale=w.sell_out_summary?.value_usd;
-    const detail=w.analysed_at?integer(tokens)+(tokens===1?' token':' tokens'):'Not checked';
-    return `<button class="rank-row" data-wallet="${escapeHTML(w.key)}" aria-label="Open ${escapeHTML(w.name)} holdings" title="${escapeHTML(shortAddress(w.address)+(w.analysed_at?' · '+unpriced+' unpriced · Sell-out est. '+(sale==null?'unknown':'≈ '+money(sale)):''))}"><span class="rank-name">${walletAvatar(w.address)}<span class="rank-label"><strong>${escapeHTML(w.name)}</strong><small>${detail}</small></span></span>${shareBar(value,total,w.name+' share of priced value')}<span class="rank-value"><strong>${money(value)}</strong><small>${share(value,total)}</small></span></button>`;
+  for(const button of document.querySelectorAll('[data-home-wallet-sort]'))button.setAttribute('aria-pressed',String(button.dataset.homeWalletSort===(bySale?'sell_out':'value')));
+  $('home-wallet-sort').hidden=!!lens;
+  $('wallet-cards').innerHTML=ranked.map(({w,value,sale,positions})=>{
+    const tokens=w.mainnet_asset_count??w.assets.filter(a=>a.environment==='mainnet').length,unpriced=w.mainnet_unpriced_count??w.unpriced_count;
+    const detail=positions?integer(positions)+(positions===1?' position':' positions'):w.analysed_at?integer(tokens)+(tokens===1?' token':' tokens'):'Not checked';
+    const figure=bySale?(sale==null?'—':'≈ '+money(sale)):money(value),small=bySale?(sale==null?'No estimate':share(sale,saleTotal)):share(value,total);
+    return `<button class="rank-row" data-wallet="${escapeHTML(w.key)}" aria-label="Open ${escapeHTML(w.name)} holdings" title="${escapeHTML(shortAddress(w.address)+(w.analysed_at?' · '+unpriced+' unpriced · Value '+money(value)+' · Sell-out est. '+(w.sell_out_summary?.value_usd==null?'unknown':'≈ '+money(w.sell_out_summary.value_usd)):''))}"><span class="rank-name">${walletAvatar(w.address)}<span class="rank-label"><strong>${escapeHTML(w.name)}</strong><small>${detail}</small></span></span>${shareBar(bySale?sale:value,bySale?saleTotal:total,w.name+(bySale?' share of sell-out estimates':' share of priced value'))}<span class="rank-value"><strong>${figure}</strong><small>${small}</small></span></button>`;
   }).join('');
   if(typeof filterHomeWallets==='function')filterHomeWallets();
-  const networks=s.networks.map(c=>({...c,value_usd:c.capital_allocation?c.capital_allocation.known_value_usd:c.value_usd})).sort((a,b)=>(b.value_usd??-1)-(a.value_usd??-1));
+  const networks=s.networks.map(c=>{const g=lensRow(c.capital_allocation);return lens&&!g?null:{...c,value_usd:g?g.value_usd:c.capital_allocation?c.capital_allocation.known_value_usd:c.value_usd};}).filter(Boolean).sort((a,b)=>(b.value_usd??-1)-(a.value_usd??-1));
   $('home-network-total').textContent=integer(networks.length);
   $('network-allocation').innerHTML=networks.map(c=>`<a class="rank-row" href="${networkHref(c.id)}" aria-label="Open ${escapeHTML(c.name)} network overview" title="${escapeHTML(integer(c.position_count)+(c.position_count===1?' holding':' holdings'))}"><span class="rank-name">${chainIcon(c.name)}<span class="rank-label"><strong>${escapeHTML(c.name)}</strong></span></span>${shareBar(c.value_usd,total,c.name+' share of priced value')}<span class="rank-value"><strong>${money(c.value_usd)}</strong><small>${c.value_usd==null?'Unpriced':share(c.value_usd,total)}</small></span></a>`).join('')||'<p class="panel-empty">Networks appear after analysis.</p>';
   const more=$('home-network-more'),expanded=$('network-allocation').hasAttribute('data-expanded');
@@ -202,21 +253,29 @@ function renderHome(){
   if(typeof renderHomeTokens==='function')renderHomeTokens();
   bindImages();
 }
-function renderWallet(){
-  const w=currentWallet();if(!w)return;
+// The wallet's name, address, folder and lookup status stay above all three of its tabs.
+function renderWalletHeader(w){
+  if(!w)return;
   if($('wallet-tools').dataset.wallet!==w.key){$('wallet-tools').open=false;$('wallet-tools').dataset.wallet=w.key;}
-  $('wallet-name').textContent=w.name;renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Home',href:'#/home'}]),{label:w.name}]);$('address').textContent=w.address;$('address').title=w.address;
+  $('wallet-name').textContent=w.name;renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Portfolio',href:'#/home'}]),{label:w.name}]);$('address').textContent=w.address;$('address').title=w.address;
   $('wallet-tags').innerHTML=w.tags.slice(1).map(t=>`<span class="tag">${escapeHTML(t)}</span>`).join(' ');
   $('report-link').hidden=!w.report_url;if(w.report_url)$('report-link').href=safeURL(w.report_url);
-  $('total-value').textContent=money((w.capital_allocation?w.capital_allocation.known_value_usd:(w.analysed_at?w.known_value_usd:null)));
-  $('wallet-sell-out').innerHTML=sellSummary(w.sell_out_summary,walletTokenValue(w.capital_allocation,w.known_value_usd));
   $('wallet-avatar').innerHTML=walletAvatar(w.address);
+  if(typeof renderWalletScan==='function')renderWalletScan();
+}
+function renderWallet(){
+  const w=currentWallet();if(!w)return;
+  $('wallet-view').dataset.tab=walletTab;
+  const lens=lensGroup(),lensSale=routeData.wallet?.platform_sell_out_summary;
+  $('wallet-value-label').textContent=lens?lens.name:'Value';
+  $('total-value').textContent=money(lens?lens.value_usd:(w.capital_allocation?w.capital_allocation.known_value_usd:(w.analysed_at?w.known_value_usd:null)));
+  $('wallet-sell-out').innerHTML=lens?(lensSale?.position_count?sellSummary(lensSale,lens.value_usd):''):sellSummary(w.sell_out_summary,walletTokenValue(w.capital_allocation,w.known_value_usd));
   const partial=w.chains.some(c=>c.environment==='mainnet'&&KiraView.coverageGap(c));
-  $('wallet-policy-note').innerHTML=policyNotice(w.asset_policy_summary);
-  $('valuation-note').textContent=w.analysed_at?(partial?'Partial portfolio · ':'')+(w.known_value_usd==null?((w.asset_count??w.assets.length)?'Value is unknown because prices are unavailable.':'No positive holdings recorded · unchecked networks remain unknown.'):'Market and curve spot estimates. Unpriced assets are excluded.'):'No holdings lookup saved yet.';
-  const held=w.asset_count??w.assets.length;
-  $('asset-count').textContent=integer(held);$('unpriced-count').textContent=integer(w.unpriced_count)+' unpriced';
-  $('priced-meter').innerHTML=held?`<progress class="allocation-progress" value="${Math.max(0,held-w.unpriced_count)}" max="${held}" aria-label="${escapeHTML(integer(Math.max(0,held-w.unpriced_count))+' of '+integer(held)+' tokens priced')}"></progress>`:'';
+  $('wallet-policy-note').innerHTML=lens?`<a class="chip" href="${areaHref('overview',null)}">All platforms</a>`:policyNotice(w.asset_policy_summary);
+  $('valuation-note').textContent=lens?'Known recorded value on '+lens.name+'. Positions are principal or NAV observations, not sale proceeds.':w.analysed_at?(partial?'Partial portfolio · ':'')+(w.known_value_usd==null?((w.asset_count??w.assets.length)?'Value is unknown because prices are unavailable.':'No positive holdings recorded · unchecked networks remain unknown.'):'Market and curve spot estimates. Unpriced assets are excluded.'):'No holdings lookup saved yet.';
+  const held=lens?(routeData.wallet?.matched_count??0):w.asset_count??w.assets.length;
+  $('asset-count').textContent=integer(held);$('unpriced-count').textContent=lens?(lens.position_count?integer(lens.position_count)+(lens.position_count===1?' position':' positions'):''):integer(w.unpriced_count)+' unpriced';
+  $('priced-meter').innerHTML=held&&!lens?`<progress class="allocation-progress" value="${Math.max(0,held-w.unpriced_count)}" max="${held}" aria-label="${escapeHTML(integer(Math.max(0,held-w.unpriced_count))+' of '+integer(held)+' tokens priced')}"></progress>`:'';
   const mainnets=w.chains.filter(c=>c.environment==='mainnet'&&c.lifecycle?.status!=='retired');
   $('chain-count').textContent=mainnets.filter(c=>c.assets>0).length;
   const coverage=mainnets.filter(c=>c.complete).length;
@@ -228,7 +287,6 @@ function renderWallet(){
   if(selectedChain!=='all'&&!chainOptions.some(c=>String(c.id)===selectedChain))selectedChain='all';
   $('chain-filter').innerHTML='<option value="all">All chains</option>'+chainOptions.map(c=>`<option value="${c.id}" data-chain-id="${c.id}">${escapeHTML(c.name)}${c.environment==='testnet'?' · Testnet':''}${KiraView.coverageGap(c)?' · Incomplete':''}</option>`).join('');
   $('chain-filter').value=selectedChain;renderHoldings();renderDiscoveryCoverage(w);
-  if(typeof renderWalletScan==='function')renderWalletScan();
 }
 function renderHomeCoverage(){
   const readiness=typeof setupReadiness!=='undefined'?setupReadiness:null;
@@ -338,28 +396,35 @@ function assetRow(a){
   const p=a.price;
   const source=p?.usd!=null ? (p.retained_from_previous?'Previous '+(p.basis||'estimate')+' · '+stamp(p.observed_at):p.basis) : p?.quality==='unreliable'?'Thin quote side':p?.quality==='unfunded'?'No funded reserve':'No price';
   const reserve=a.curve_reserve?`Curve reserve: ${a.curve_reserve.amount} ${a.curve_reserve.symbol}`:'';
-  return `<tr class="holding-summary" data-asset-id="${escapeHTML(a.id)}" data-value="${a.value_usd ?? ''}"><td><a class="token-name token-link" href="${tokenHref(a.id)}" aria-label="Open ${escapeHTML(a.symbol)} token overview">${coinIcon(a)}<div class="coin-title"><div class="symbol" title="${escapeHTML(a.symbol)}">${escapeHTML(a.symbol)}${policyBadge(a)}</div><div class="token-description" title="${escapeHTML((a.address||'Native asset')+' '+reserve)}">${escapeHTML(a.archived?'Archived observation':a.is_native?'Native asset':a.name)}</div></div></a></td><td><span class="mobile-label">Balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span>${a.quantity_retained?'<span class="retained-note">Saved quantity · '+escapeHTML(stamp(a.balance_observed_at))+'</span>':''}</td><td><span class="mobile-label">Price</span><span class="token-price ${p?.usd==null?'unpriced':''}" title="${escapeHTML(p?.observed_at||'')}">${unitPrice(p?.usd)}</span><div class="price-basis">${escapeHTML(source)}</div>${p?.retained_from_previous?'<span class="retained-note">Current price unavailable. Showing the earlier estimate.</span>':''}</td><td><span class="mobile-label">Value</span><span class="token-value ${a.value_usd==null?'unpriced':''}">${money(a.value_usd)}</span>${a.included_in_totals===false?'<div class="price-basis">Reported · not in totals</div>':''}${a.archived?'<div class="price-basis">Archived · historical '+money(a.historical_value_usd)+'</div>':''}</td><td><span class="mobile-label">Sell-out est.</span>${sellOutValue(a)}</td><td class="visibility-cell">${policyActions(a)}</td></tr>`;
+  return `<tr class="holding-summary" data-asset-id="${escapeHTML(a.id)}" data-value="${a.value_usd ?? ''}"><td><a class="token-name token-link" href="${tokenHref(a.id)}" aria-label="Open ${escapeHTML(a.symbol)} on ${escapeHTML(networkName(a.chain_id))}"><span class="coin-with-chain">${coinIcon(a)}${chainBadge(a.chain_id)}</span><div class="coin-title"><div class="symbol" title="${escapeHTML(a.symbol)}">${escapeHTML(a.symbol)}${policyBadge(a)}</div><div class="token-description" title="${escapeHTML((a.address||'Native asset')+' '+reserve)}">${escapeHTML(a.archived?'Archived observation':a.is_native?'Native asset':a.name)}<span class="token-chain"> · ${escapeHTML(networkName(a.chain_id))}</span></div></div></a></td><td><span class="mobile-label">Balance</span><span class="amount" title="${escapeHTML(a.balance)}">${quantity(a.balance)}</span>${a.quantity_retained?'<span class="retained-note">Saved quantity · '+escapeHTML(stamp(a.balance_observed_at))+'</span>':''}</td><td><span class="mobile-label">Price</span><span class="token-price ${p?.usd==null?'unpriced':''}" title="${escapeHTML(p?.observed_at||'')}">${unitPrice(p?.usd)}</span><div class="price-basis">${escapeHTML(source)}</div>${p?.retained_from_previous?'<span class="retained-note">Current price unavailable. Showing the earlier estimate.</span>':''}</td><td><span class="mobile-label">Value</span><span class="token-value ${a.value_usd==null?'unpriced':''}">${money(a.value_usd)}</span>${a.included_in_totals===false?'<div class="price-basis">Reported · not in totals</div>':''}${a.archived?'<div class="price-basis">Archived · historical '+money(a.historical_value_usd)+'</div>':''}</td><td><span class="mobile-label">Sell-out est.</span>${sellOutValue(a)}</td><td class="visibility-cell">${policyActions(a)}</td></tr>`;
 }
 function renderHoldings(){
   const w=currentWallet();if(!w)return;
-  const paged=typeof state!=='undefined'&&state?.paged===true;
+  const paged=typeof state!=='undefined'&&state?.paged===true,overview=walletTab==='overview',lens=lensGroup(),order=typeof walletSort!=='undefined'?walletSort:'value';
   document.querySelectorAll('[data-min]').forEach(b=>b.setAttribute('aria-pressed',String(valueFilter(b.dataset.min)===minimum)));
-  const scoped=w.assets.filter(a=>walletStatus==='all'||(a.portfolio_status||'portfolio')===walletStatus).filter(a=>selectedChain==='all'?a.environment!=='testnet':String(a.chain_id)===selectedChain);
-  const visible=scoped.filter(a=>minimum===null||(a.value_usd!=null&&a.value_usd>=minimum));
-  const hiddenUnpriced=paged?(w.unpriced_hidden_count??0):minimum===null?0:scoped.filter(a=>a.value_usd==null).length;
+  const scoped=w.assets.filter(a=>walletStatus==='all'||(a.portfolio_status||'portfolio')===walletStatus).filter(a=>selectedChain==='all'?a.environment!=='testnet':String(a.chain_id)===selectedChain).filter(a=>!selectedPlatform||!a.platform||a.platform===selectedPlatform);
+  // Overview shows the largest tokens whatever their price; All tokens applies the value filter.
+  const visible=overview?scoped:scoped.filter(a=>minimum===null||(a.value_usd!=null&&a.value_usd>=minimum));
+  const hiddenUnpriced=overview?0:paged?(w.unpriced_hidden_count??0):minimum===null?0:scoped.filter(a=>a.value_usd==null).length;
+  const sorted=paged?visible:[...visible].sort((a,b)=>(order==='sell_out'?(saleValue(b)??-1)-(saleValue(a)??-1):(b.value_usd??-1)-(a.value_usd??-1))||String(a.id).localeCompare(String(b.id)));
+  const rows=overview?sorted.slice(0,5):sorted,matched=paged?(w.matched_count??0):visible.length;
   $('holdings-filter-note').hidden=hiddenUnpriced===0;
   $('holdings-filter-note').innerHTML=unpricedNote(hiddenUnpriced);
-  $('visible-count').textContent=paged?(w.matched_count??0):visible.length;
-  if(paged)renderPagination('wallet',w,100);
-  const chains=w.chains.filter(c=>visible.some(a=>a.chain_id===c.id)).sort((a,b)=>(b.value_usd??0)-(a.value_usd??0));
-  $('asset-groups').innerHTML=chains.map(c=>{
-    const assets=visible.filter(a=>a.chain_id===c.id).sort((a,b)=>((typeof walletSort!=='undefined'&&walletSort==='sell_out')?(saleValue(b)??-1)-(saleValue(a)??-1):(b.value_usd??-1)-(a.value_usd??-1))||a.id.localeCompare(b.id));
-    const values=assets.filter(a=>a.included_in_totals!==false&&a.value_usd!=null),sum=paged?c.value_usd:values.length?values.reduce((acc,a)=>acc+a.value_usd,0):null;
-    return `<section class="chain-section" aria-label="${escapeHTML(c.name)} holdings"><div class="chain-heading"><h3 class="chain-name"><a class="network-label network-link" href="${networkHref(c.id)}" aria-label="Open ${escapeHTML(c.name)} network overview">${chainIcon(c)}${escapeHTML(c.name)}<span class="detail-arrow" aria-hidden="true">${arrowGlyph}</span></a><span class="chain-assets">${assets.length}${paged?' shown':' assets'}${c.environment==='testnet'?' · Testnet':''}</span></h3><span class="chain-total" title="Saved chain value">${c.environment==='testnet'?'Testnet':money(sum)}</span></div><div class="table-wrap"><table class="token-table holdings-table sale-table"><colgroup><col><col><col><col><col><col class="visibility-column"></colgroup><thead><tr><th scope="col">Token</th><th scope="col">Balance</th><th scope="col">Price</th><th scope="col">Value</th><th scope="col" title="Saved quotes or marked market references, valued in USD. Gas excluded.">Sell-out est.</th><th scope="col" class="visibility-cell"><span class="sr-only">Visibility</span></th></tr></thead><tbody>${assets.map(assetRow).join('')}</tbody></table></div></section>`;
-  }).join('');
-  $('empty').hidden=visible.length>0||(paged&&!routeData.wallet);
+  $('holdings-label').textContent=overview?'Top tokens':'Holdings';
+  $('visible-count').textContent=overview?(rows.length?rows.length+' of '+integer(matched):''):integer(matched);
+  $('wallet-view-all').hidden=!overview||!rows.length;$('wallet-view-all').href=areaHref('tokens');
+  // A platform held only as positions has no tokens to list here. Its positions say it.
+  $('holdings-title').closest('section').hidden=overview&&!!lens&&!rows.length&&(!paged||!!routeData.wallet);
+  if(paged&&!overview)renderPagination('wallet',w,100);else $('wallet-pagination').hidden=true;
+  // One list for every network. Each token carries its network mark.
+  $('asset-groups').innerHTML=rows.length?`<div class="table-wrap"><table class="token-table holdings-table sale-table"><colgroup><col><col><col><col><col><col class="visibility-column"></colgroup><thead><tr><th scope="col">Token</th><th scope="col">Balance</th><th scope="col">Price</th>${sortColumn('wallet',order,'value','Value')}${sortColumn('wallet',order,'sell_out','Sell-out est.','Saved quotes or marked market references, valued in USD. Gas excluded.')}<th scope="col" class="visibility-cell"><span class="sr-only">Visibility</span></th></tr></thead><tbody>${rows.map(assetRow).join('')}</tbody></table></div>`:'';
+  $('empty').hidden=visible.length>0||(paged&&!routeData.wallet)||(!!lens&&lens.position_count>0);
+  if(typeof CapitalUI!=='undefined'&&CapitalUI.renderLens)CapitalUI.renderLens();
   if(paged&&!routeData.wallet)return;
-  if(!visible.length&&hiddenUnpriced){
+  if(!visible.length&&lens){
+    $('empty').querySelector('h3').textContent='No '+lens.name+' tokens here';
+    $('empty').querySelector('p').textContent=lens.position_count?'Its positions are listed below.':'Choose another platform or chain.';
+  }else if(!visible.length&&hiddenUnpriced){
     $('empty').querySelector('h3').textContent='Only unpriced holdings here';
     $('empty').querySelector('p').textContent='These holdings have no price yet. Show all to see their balances.';
   }else if(!visible.length&&selectedChain!=='all'){
@@ -369,6 +434,13 @@ function renderHoldings(){
   }else{$('empty').querySelector('h3').textContent=w.analysed_at&&!(w.asset_count??w.assets.length)?'No holdings recorded':'No assets in this view';$('empty').querySelector('p').textContent=w.analysed_at?(!(w.asset_count??w.assets.length)?'No positive balances were found in the checked networks. Refresh holdings to check again.':'Choose another chain or lower the minimum value.'):'Your wallet is saved. Use Refresh holdings to check its assets.';}
   bindImages();
 }
+// A column heading that orders its list, highest first.
+function sortColumn(list,current,key,label,title=''){
+  return `<th scope="col" data-sort-column="${key}" aria-sort="${current===key?'descending':'none'}"${title?` title="${escapeHTML(title)}"`:''}><button type="button" class="sort-header" data-sort-list="${list}" data-sort="${key}">${label}</button></th>`;
+}
+function markSort(table,current){for(const th of table?.querySelectorAll('[data-sort-column]')||[])th.setAttribute('aria-sort',th.dataset.sortColumn===current?'descending':'none');}
+function networkName(chainId){return state?.details?.networks?.find(c=>c.id===chainId)?.name||currentWallet()?.chains?.find(c=>c.id===chainId)?.name||'Chain '+chainId;}
+function chainBadge(chainId){const name=networkName(chainId);return `<span class="coin-chain" title="${escapeHTML(name)}">${chainIcon(name)}</span>`;}
 function timeRange(range){return range?.from?stamp(range.from)+(range.to!==range.from?' – '+stamp(range.to):''):'Not recorded';}
 function venueMark(venue){
   const file=({'Mint Club':'mintclub.png',Uniswap:'uniswap.svg',Aerodrome:'aerodrome.svg',Aero:'aerodrome.svg',PancakeSwap:'pancakeswap.png'})[venue];
@@ -445,12 +517,12 @@ function renderDetail(){
   const network=token?.network||(state.paged?routeData.network:state.details.networks.find(c=>c.id===selectedNetwork));
   const record=selectedView==='token'?token:network;
   if(!record){
-    renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Home',href:'#/home'}]),{label:'Research detail'}]);$('sync-label').textContent='Latest recorded research';
+    renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Portfolio',href:'#/home'}]),{label:'Research detail'}]);$('sync-label').textContent='Latest recorded research';
     $('detail-view').innerHTML=routeLoading?'<div class="empty"><h3>Loading saved detail…</h3></div>':'<div class="empty"><h3>No recorded detail for this selection</h3><p>Return Home or retry the saved research above.</p></div>';
     document.title='Research detail · Wallets';return;
   }
   const label=token?token.symbol:network.name,isTestnet=record.environment==='testnet';
-  renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Home',href:'#/home'}]),...(token?[{label:network.name,href:networkHref(network.id)}]:[]),{label}]);
+  renderBreadcrumb([...(typeof FolderUI!=='undefined'?FolderUI.breadcrumb():[{label:'Portfolio',href:'#/home'}]),...(token?[{label:network.name,href:networkHref(network.id)}]:[]),{label}]);
   $('sync-label').textContent='Across '+context.wallets.length+' registered wallets';document.title=label+' · Kira Wallet';
   const excluded=token&&token.included_in_totals===false;
   const note=excluded?'Reported spot estimate, excluded from portfolio totals. Sellability unverified.':isTestnet?'Testnet holdings are excluded from USD totals.':'Recorded spot estimates. '+integer(record.unpriced_count)+' unpriced holdings are excluded.';
@@ -473,7 +545,7 @@ function renderDetail(){
   const listKey=(token?'holders:':'wallets:')+record.id,listOpen=expandedLists.has(listKey);
   const walletHead=`<div class="holder-head" aria-hidden="true"><span>Wallet</span>${token?'<span>Balance</span>':''}<span></span><span>Value</span>${token?'<span>Sell-out est.</span>':''}</div>`;
   const accounts=`<section class="detail-accounts"><div class="section-heading"><div class="section-title"><h2>${token?'Holders':'Wallets'} <span class="count-badge">${heldWallets.length}</span></h2>${infoTip('About this list','<p>'+(token?'Recorded holders only. Independent sell estimates exclude gas. Shared liquidity can change combined proceeds.':'Mainnet totals exclude unpriced assets. Review wallet coverage for missing checks.')+'</p>')}</div></div>${heldWallets.length?`<div class="holder-table ${token?'holder-table-token':''}" data-limited ${listOpen?'data-expanded':''}>${walletHead}${heldWallets.map(r=>accountCard(r,token,walletTotal)).join('')}</div>${heldWallets.length>listLimit?`<button type="button" class="text-button rank-more" data-rank-more="${escapeHTML(listKey)}" aria-expanded="${listOpen}">${listOpen?'Show top '+listLimit:'Show all '+heldWallets.length}</button>`:''}`:'<p class="panel-empty">No positive holdings recorded. Missing records remain unknown.</p>'}${otherWallets.length?`<details class="other-wallets" data-disclosure-key="network-coverage:${record.id}" ${heldWallets.length?'':'open'}><summary>Other registered wallets <span>${otherWallets.length}</span></summary><p class="detail-note">No holdings recorded on this network. Incomplete checks remain unknown.</p><div class="holder-table">${otherWallets.map(r=>accountCard(r,token,walletTotal)).join('')}</div></details>`:''}</section>`;
-  const holdings=token?'':`<section class="holdings"><div class="holdings-toolbar"><h2 class="sr-only">Tokens <span id="network-visible-count"></span></h2><div class="filters"><label><span class="sr-only">Network asset status</span><select id="network-token-status" aria-label="Network asset status"><option value="portfolio">Portfolio</option><option value="review">Needs review</option><option value="excluded">Hidden</option><option value="all">All recorded</option></select></label><label><span class="sr-only">Network token order</span><select id="network-token-sort"><option value="value">Value: high to low</option><option value="sell_out">Sell-out estimate: high to low</option></select></label><label class="token-search"><span class="sr-only">Search network tokens</span><input id="network-token-search" type="search" placeholder="Search tokens" value="${escapeHTML(tokenSearch)}"></label><div class="segment" role="group" aria-label="Minimum combined token value" title="Filters by combined token value across wallets. Summary totals include all recorded holdings.">${[null,0,5,10].map(n=>`<button data-min="${n??'all'}" aria-pressed="${n===minimum}">${n===null?'All':n?'≥ $'+n:'Priced'}</button>`).join('')}</div></div></div><div id="network-filter-note" class="holdings-filter-note" role="status" hidden></div><div id="network-token-table" class="table-wrap"><table class="token-table holdings-table sale-table"><colgroup><col><col><col><col><col><col class="visibility-column"></colgroup><thead><tr><th scope="col">Token</th><th scope="col">Total balance</th><th scope="col">Wallets</th><th scope="col">Value</th><th scope="col" title="Saved quotes or marked market references, valued in USD. Gas excluded.">Sell-out est.</th><th scope="col" class="visibility-cell"><span class="sr-only">Visibility</span></th></tr></thead><tbody id="network-token-body"></tbody></table></div><div id="network-pagination" class="pagination" hidden><button class="quiet-button" data-page="network-prev" type="button">Previous</button><span id="network-page"></span><button class="quiet-button" data-page="network-next" type="button">Next</button></div><div id="network-token-empty" class="empty" hidden><h3>No tokens in this view</h3><p>Lower the minimum value or clear your search. Missing coverage does not mean zero holdings.</p></div></section>`;
+  const holdings=token?'':`<section class="holdings"><div class="holdings-toolbar"><h2 class="sr-only">Tokens <span id="network-visible-count"></span></h2><div class="filters"><label><span class="sr-only">Network asset status</span><select id="network-token-status" aria-label="Network asset status"><option value="portfolio">Portfolio</option><option value="review">Needs review</option><option value="excluded">Hidden</option><option value="all">All recorded</option></select></label><label><span class="sr-only">Network token order</span><select id="network-token-sort"><option value="value">Value: high to low</option><option value="sell_out">Sell-out estimate: high to low</option></select></label><label class="token-search"><span class="sr-only">Search network tokens</span><input id="network-token-search" type="search" placeholder="Search tokens" value="${escapeHTML(tokenSearch)}"></label><div class="segment" role="group" aria-label="Minimum combined token value" title="Filters by combined token value across wallets. Summary totals include all recorded holdings.">${[null,0,5,10].map(n=>`<button data-min="${n??'all'}" aria-pressed="${n===minimum}">${n===null?'All':n?'≥ $'+n:'Priced'}</button>`).join('')}</div></div></div><div id="network-filter-note" class="holdings-filter-note" role="status" hidden></div><div id="network-token-table" class="table-wrap"><table class="token-table holdings-table sale-table"><colgroup><col><col><col><col><col><col class="visibility-column"></colgroup><thead><tr><th scope="col">Token</th><th scope="col">Total balance</th><th scope="col">Wallets</th>${sortColumn('network',networkSort,'value','Value')}${sortColumn('network',networkSort,'sell_out','Sell-out est.','Saved quotes or marked market references, valued in USD. Gas excluded.')}<th scope="col" class="visibility-cell"><span class="sr-only">Visibility</span></th></tr></thead><tbody id="network-token-body"></tbody></table></div><div id="network-pagination" class="pagination" hidden><button class="quiet-button" data-page="network-prev" type="button">Previous</button><span id="network-page"></span><button class="quiet-button" data-page="network-next" type="button">Next</button></div><div id="network-token-empty" class="empty" hidden><h3>No tokens in this view</h3><p>Lower the minimum value or clear your search. Missing coverage does not mean zero holdings.</p></div></section>`;
   const riskOpen=token&&(token.included_in_totals===false||(token.valuation_policy?.reasons||[]).length>0||(token.risk_check?.flags||[]).length>0);
   const risk=token?`<details class="record-risk" data-disclosure-key="risk:${escapeHTML(token.id)}:${escapeHTML(token.portfolio_status||'portfolio')}:${riskOpen?'warning':'routine'}:${escapeHTML(token.risk_check?.observed_at||'')}" ${riskOpen?'open':''}><summary><strong>Valuation &amp; risk</strong>${riskOpen?'<span class="chip warn">Review warnings</span>':''}</summary>${policyPanel(token)}</details>`:'';
   const reference=token?`<details class="record-reference" data-disclosure-key="reference:${escapeHTML(token.id)}"><summary>Token details</summary>${facts}</details>`:'';
@@ -502,7 +574,21 @@ async function poll(){
 }
 document.querySelector('.skip-link').addEventListener('click',e=>{e.preventDefault();$('main').focus();$('main').scrollIntoView({block:'start'});});
 $('brand-home').addEventListener('click',e=>{e.preventDefault();goHome();});
-for(const id of ['wallet-list','wallet-cards'])$(id).addEventListener('click',e=>{const b=e.target.closest('[data-wallet]');if(b)selectWallet(b.dataset.wallet);});
+$('wallet-list').addEventListener('click',e=>{const b=e.target.closest('[data-wallet]');if(b)selectWallet(b.dataset.wallet);});
+$('wallet-cards').addEventListener('click',e=>{const b=e.target.closest('[data-wallet]');if(b)selectWallet(b.dataset.wallet,selectedPlatform);});
+$('platform-filter').addEventListener('change',e=>navigate(areaHref(areaTab(),e.target.value||null)));
+document.querySelectorAll('[data-home-wallet-sort]').forEach(button=>button.addEventListener('click',()=>{homeWalletSort=button.dataset.homeWalletSort;renderHome();}));
+// Value and sell-out headings order their list, highest first.
+document.addEventListener('click',event=>{
+  const button=event.target.closest('[data-sort-list]');if(!button)return;
+  const list=button.dataset.sortList,sort=button.dataset.sort,paged=state?.paged;
+  if(list==='wallet'){walletSort=sort;$('wallet-token-sort').value=sort;walletOffset=0;paged?loadRoute():renderHoldings();}
+  else if(list==='catalog'){$('all-token-sort').value=sort;catalogPage=1;paged?loadRoute():renderCatalog();}
+  else if(list==='home'){homeTokenSort=sort;paged?loadRoute():renderHomeTokens();}
+  else if(list==='network'){networkSort=sort;networkOffset=0;loadRoute();}
+  if(typeof KiraSelect!=='undefined')KiraSelect.refresh();
+  requestAnimationFrame(()=>document.querySelector(`[data-sort-list="${list}"][data-sort="${sort}"]`)?.focus({preventScroll:true}));
+});
 $('chain-filter').addEventListener('change',e=>{selectedChain=e.target.value;walletOffset=0;state.paged?loadRoute():renderHoldings();});
 document.addEventListener('click',e=>{const b=e.target.closest('[data-min],[data-clear-value-filter]');if(b){minimum=b.hasAttribute('data-clear-value-filter')?null:valueFilter(b.dataset.min);if(typeof state!=='undefined'&&state?.paged){walletOffset=0;networkOffset=0;loadRoute();}else if(selectedView==='network')renderDetail();else renderHoldings();}});
 $('copy-address').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(currentWallet().address);toast('Address copied');}catch{toast('Select the address to copy it');}});

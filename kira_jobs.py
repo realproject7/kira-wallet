@@ -260,7 +260,7 @@ class JobStore:
         for key in set(self._summary_cache) - existing:del self._summary_cache[key]
         return rows
 
-    def page(self, offset=0, limit=50, state='all', wallet=None, query=''):
+    def page(self, offset=0, limit=50, state='all', wallet=None, query='', wallets=None):
         from kira_state import page_bounds
         page_bounds(offset, limit)
         if state not in STATE_FILTERS:raise JobError('invalid_state','Choose a job state filter: '+', '.join(STATE_FILTERS)+'.')
@@ -277,6 +277,7 @@ class JobStore:
             for row in self.summaries():
                 address=(row['input'].get('wallet') or row['input'].get('address','')).lower()
                 if selected is not None and address!=selected:continue
+                if wallets is not None and address not in wallets:continue
                 words=' '.join((address,names.get(address,''),row['job_id'],row['operation'],
                     'sell estimates routes analysis' if row.get('analysis_phase')=='enrichment' else labels.get(row['operation'],''),str(row['input'].get('tag',''))))
                 if query and query not in words.casefold():continue

@@ -39,7 +39,9 @@ def page(rows, offset=0, limit=100, *, key='assets'):
 
 
 def filter_assets(rows, *, query='', chain_id=None, minimum_value_usd='0',
-                  sort='value', pricing='all', include_testnets=True, portfolio_status='portfolio'):
+                  sort='value', pricing='all', include_testnets=True, portfolio_status='portfolio',
+                  platform=None, platforms=None):
+    from positions import PLATFORMS, asset_platform
     if not isinstance(query, str) or len(query) > 500:
         raise JobError('invalid_query', 'Use a search string of up to 500 characters.')
     if chain_id is not None and (type(chain_id) is not int or chain_id < 1):
@@ -47,6 +49,8 @@ def filter_assets(rows, *, query='', chain_id=None, minimum_value_usd='0',
     if sort not in ('value', 'name', 'wallets', 'sell_out') or pricing not in ('all', 'priced', 'unpriced') or type(include_testnets) is not bool:
         raise JobError('invalid_filter', 'Choose supported sorting and price filters.')
     if portfolio_status not in STATUSES:raise JobError('invalid_filter', 'Choose a supported portfolio status.')
+    if platform is not None and platform not in PLATFORMS:raise JobError('invalid_platform', 'Choose a recorded platform ID.')
+    if platform is not None:rows = [a for a in rows if asset_platform(a, platforms or {}) == platform]
     try:
         if type(minimum_value_usd) not in (str, int, float) or len(str(minimum_value_usd)) > 80:raise ValueError()
         minimum = Decimal(str(minimum_value_usd))
@@ -85,6 +89,17 @@ def unpriced_hidden(rows, **filters):
     if filters.get('pricing', 'all') != 'priced' and not Decimal(str(filters.get('minimum_value_usd', '0'))):
         return 0
     return len(filter_assets(rows, **{**filters, 'minimum_value_usd': '0', 'pricing': 'unpriced'}))
+
+
+def platform_rows(result, wallets, receipts, platform=None):
+    """Name each listed token's platform group; a platform view also gets that group's sell-out sum."""
+    from positions import asset_platform
+    from sell_summary import summarize_sell_out
+    result['assets'] = [{**a, 'platform': asset_platform(a, receipts)} for a in result['assets']]
+    if platform is not None:
+        result['platform_sell_out_summary'] = summarize_sell_out(
+            [a for w in wallets for a in w['assets'] if asset_platform(a, receipts) == platform])
+    return result
 
 
 class StateCache:
@@ -205,20 +220,26 @@ class StateCache:
 
     def wallet(self, selector, offset=0, limit=100, **filters):
         from kira_jobs import JobStore
+        from positions import receipt_platforms
         with self.lock:
             state = self.refresh()
             key = JobStore(self.root).wallet(selector)['address_key']
             wallet = next(w for w in state['wallets'] if w['key'] == key)
-            return {**wallet, 'positions':[], **page(filter_assets(wallet['assets'], **filters), offset, limit),
-                    'unpriced_hidden_count': unpriced_hidden(wallet['assets'], **filters),
-                    'asset_count': len(wallet['assets']), 'data_revision': self.revision}
+            receipts = receipt_platforms([wallet])
+            result = {**wallet, 'positions':[], **page(filter_assets(wallet['assets'], platforms=receipts, **filters), offset, limit),
+                      'unpriced_hidden_count': unpriced_hidden(wallet['assets'], platforms=receipts, **filters),
+                      'asset_count': len(wallet['assets']), 'data_revision': self.revision}
+            return platform_rows(result, [wallet], receipts, filters.get('platform'))
 
     def holdings(self, offset=0, limit=100, *, folder_id=None, **filters):
+        from positions import receipt_platforms
         with self.lock:
-            tokens = self.scoped(folder_id)['details']['tokens']
-            return {**page(filter_assets(tokens, **filters), offset, limit),
-                    'unpriced_hidden_count': unpriced_hidden(tokens, **filters),
-                    'asset_count': len(tokens), 'data_revision': self.revision}
+            scope = self.scoped(folder_id)
+            tokens, receipts = scope['details']['tokens'], receipt_platforms(scope['wallets'])
+            result = {**page(filter_assets(tokens, platforms=receipts, **filters), offset, limit),
+                      'unpriced_hidden_count': unpriced_hidden(tokens, platforms=receipts, **filters),
+                      'asset_count': len(tokens), 'data_revision': self.revision}
+            return platform_rows(result, scope['wallets'], receipts, filters.get('platform'))
 
     def positions(self, wallet=None, folder_id=None, token_id=None, chain_id=None, platform=None, offset=0, limit=50):
         from positions import read_positions

@@ -30,7 +30,7 @@ function routeHarness(){
   });
   const run=code=>vm.runInContext(code,context);
   const source=fs.readFileSync('viewer/static/app.js','utf8');run(source.slice(0,source.indexOf('function currentWallet()')));
-  Object.assign(context,{A,B});run("state={paged:true,data_revision:'r1',wallets:[]};selectedView='wallet';selectedWallet=A");
+  Object.assign(context,{A,B});run("state={paged:true,data_revision:'r1',wallets:[]};selectedView='wallet';selectedWallet=A;areaWallet=A;walletTab='tokens'");
   return {...d,context,run,requests,writes};
 }
 function jobHarness(){
@@ -68,7 +68,7 @@ test('wallet and network lists ask for priced holdings until All is chosen',asyn
   assert.deepEqual(last(),{chain_id:'1',offset:'0',limit:'100',minimum_value_usd:'0',include_testnets:'1',sort:'value',portfolio_status:'portfolio'});
   h.run('minimum=0');await h.run('loadRoute()');
   assert.deepEqual(last(),{chain_id:'1',offset:'0',limit:'100',minimum_value_usd:'0',pricing:'priced',include_testnets:'1',sort:'value',portfolio_status:'portfolio'});
-  const source=fs.readFileSync('viewer/static/app.js','utf8'),reset=source.slice(source.indexOf('function readRoute(){')).split('\n',3).join('\n');
+  const source=fs.readFileSync('viewer/static/app.js','utf8'),reset=source.slice(source.indexOf('function readRoute(){')).split('\n',4).join('\n');
   assert.match(reset,/if\(identity!==routeIdentity\)\{selectedChain='all';minimum=0;/,'Opening another page starts from priced holdings again.');
   assert.match(fs.readFileSync('viewer/static/index.html','utf8'),/<button data-min="all" aria-pressed="false">All<\/button><button data-min="0" aria-pressed="true">Priced<\/button>/);
 });
@@ -138,6 +138,16 @@ test('RPC edits retain untouched references, reject secrets and write only a rev
   h.run('rpcRows=[]');assert.throws(()=>h.run('rpcSettingsInput()'),/at least one/);
 });
 
+test('a wallet Overview reads its five largest tokens; a platform narrows every list it shows',async()=>{
+  const h=routeHarness(),last=()=>Object.fromEntries(new URL(h.requests.at(-1).path,'http://localhost').searchParams);
+  h.run("walletTab='overview'");await h.run('loadRoute()');
+  assert.deepEqual(last(),{wallet:A,offset:'0',limit:'5',sort:'value',include_testnets:'0'});
+  h.run("selectedPlatform='mintclub'");await h.run('loadRoute()');assert.equal(last().platform,'mintclub');
+  h.run("walletTab='tokens'");await h.run('loadRoute()');assert.equal(last().platform,'mintclub');assert.equal(last().limit,'100');
+  h.run("selectedView='home';homeTokenSort='sell_out'");await h.run('loadRoute()');
+  assert.deepEqual(last(),{offset:'0',limit:'5',sort:'sell_out',include_testnets:'0',platform:'mintclub'});
+  h.run("selectedView='tokens';catalogFilters=()=>({page:1,status:'portfolio',platform:'lptoken'})");await h.run('loadRoute()');assert.equal(last().platform,'lptoken');
+});
 test('sell-estimate ordering reaches the paged wallet and network endpoints',async()=>{
   const h=routeHarness();h.run("walletSort='sell_out'");await h.run('loadRoute()');
   assert.equal(new URL(h.requests[0].path,'http://localhost').searchParams.get('sort'),'sell_out');

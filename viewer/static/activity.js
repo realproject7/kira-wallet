@@ -47,15 +47,21 @@ function renderActivityCurrent(){
 }
 function renderActivity(){
   const selected=$('job-filter').value||'all',counts=activityCounts(),history=selectedView==='activity'&&activityData;
-  const filtered=jobList.filter(j=>selected==='all'||selected==='active'&&KiraView.active(j)||selected==='attention'&&['failed','interrupted'].includes(j.state)||selected==='succeeded'&&['succeeded','partial'].includes(j.state)||selected==='cancelled'&&j.state==='cancelled');
+  // Before the area's history loads, the recent tasks shown are still the area's own.
+  const areaKey=typeof areaWallet!=='undefined'?areaWallet:null;
+  const folderKeys=!areaKey&&typeof FolderUI!=='undefined'&&FolderUI.id?new Set(FolderUI.wallets().map(w=>w.key)):null;
+  const inArea=j=>{const key=activityWallet(j).key;return areaKey?key===areaKey:!folderKeys||folderKeys.has(key);};
+  const filtered=jobList.filter(inArea).filter(j=>selected==='all'||selected==='active'&&KiraView.active(j)||selected==='attention'&&['failed','interrupted'].includes(j.state)||selected==='succeeded'&&['succeeded','partial'].includes(j.state)||selected==='cancelled'&&j.state==='cancelled');
   const total=history?history.total:filtered.length,pages=Math.max(1,Math.ceil(total/20));jobsPage=Math.max(1,Math.min(jobsPage,pages));
   $('jobs-summary').textContent=(counts.all??0)+' recorded '+(counts.all===1?'task':'tasks');
   $('jobs-freshness').textContent=!localSession?.controls?'Local session required':!jobsConnected?'Reconnecting · showing saved status':lastJobsPoll?'Connected · checked '+stamp(lastJobsPoll):'Loading activity…';
   $('jobs-freshness').dataset.connected=String(jobsConnected);
   document.querySelectorAll('[data-activity-count]').forEach(node=>{node.textContent=counts[node.dataset.activityCount]??'';});
   document.querySelectorAll('#activity-tabs [data-activity-filter]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.activityFilter===selected)));
-  const options='<option value="all">All wallets</option>'+(state?.wallets||[]).map(w=>'<option value="'+escapeHTML(w.key)+'">'+escapeHTML(w.name)+'</option>').join('');
-  if(options!==activityWalletOptions){const value=$('activity-wallet').value;activityWalletOptions=options;$('activity-wallet').innerHTML=options;$('activity-wallet').value=(state?.wallets||[]).some(w=>w.key===value)?value:'all';}
+  const pool=folderKeys?FolderUI.wallets():state?.wallets||[];
+  const options='<option value="all">All wallets</option>'+pool.map(w=>'<option value="'+escapeHTML(w.key)+'">'+escapeHTML(w.name)+'</option>').join('');
+  if(options!==activityWalletOptions){const value=$('activity-wallet').value;activityWalletOptions=options;$('activity-wallet').innerHTML=options;$('activity-wallet').value=pool.some(w=>w.key===value)?value:'all';}
+  const walletFilter=$('activity-wallet').closest?.('label');if(walletFilter)walletFilter.hidden=!!areaKey;
   $('activity-clear').hidden=selected==='all'&&!$('activity-query').value&&$('activity-wallet').value==='all';
   $('jobs-page').textContent=jobsPage+' / '+pages;$('jobs-prev').disabled=jobsPage<=1;$('jobs-next').disabled=jobsPage>=pages;
   const offset=history?history.offset:(jobsPage-1)*20,rows=history?history.jobs:filtered.slice(offset,offset+20);

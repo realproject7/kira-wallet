@@ -104,7 +104,8 @@ class Handler(BaseHTTPRequestHandler):
                 if testnets not in ('0','1'):raise JobError('invalid_query','Use 0 or 1 for include_testnets.')
                 return {'query':text('query',''),'chain_id':integer('chain_id'),
                     'minimum_value_usd':text('minimum_value_usd','0'),'sort':text('sort','value'),
-                    'pricing':text('pricing','all'),'include_testnets':testnets=='1','portfolio_status':text('portfolio_status','portfolio')}
+                    'pricing':text('pricing','all'),'include_testnets':testnets=='1','portfolio_status':text('portfolio_status','portfolio'),
+                    'platform':text('platform') or None}
             if path in ('/api/state','/api/status','/api/overview','/api/folders','/api/wallet','/api/token','/api/network','/api/holdings','/api/positions'):
                 app=self.application()
                 if path=='/api/state':
@@ -128,7 +129,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not self.authenticated():return
                 app=self.application()
                 if path=='/api/jobs':result=app.jobs.page(integer('offset',0),integer('limit',50))['jobs']
-                elif path=='/api/job-history':result=app.jobs.page(integer('offset',0),integer('limit',20),text('state','all'),text('wallet'),text('query',''))
+                elif path=='/api/job-history':
+                    folder=text('folder_id')
+                    keys={w['key'] for w in app.views.scoped(folder)['wallets']} if folder else None
+                    result=app.jobs.page(integer('offset',0),integer('limit',20),text('state','all'),text('wallet'),text('query',''),wallets=keys)
                 elif path.startswith('/api/jobs/'):result=app.jobs.get(path.removeprefix('/api/jobs/'))
                 elif path=='/api/snapshots':result=app.jobs.snapshots(text('wallet',''))
                 elif path=='/api/snapshot':result=app.jobs.snapshot(text('id',''))

@@ -4,9 +4,15 @@ function renderHomeTokens(){
   if(!state)return;
   const home=typeof FolderUI!=='undefined'?FolderUI.view():state;
   if(!home){$('home-token-body').innerHTML='';renderSetupPath();return;}
-  const result=state.paged?{rows:routeData.page?.assets||[],count:routeData.page?.matched_count??home.dashboard.unique_asset_count}:KiraView.catalog(home.details.tokens,{sort:'value'}),rows=result.rows.slice(0,5);
+  const lens=typeof lensGroup==='function'?lensGroup():null;
+  const result=state.paged?{rows:routeData.page?.assets||[],count:routeData.page?.matched_count??home.dashboard.unique_asset_count}:KiraView.catalog(home.details.tokens.filter(a=>!lens||!a.platform||a.platform===lens.id),{sort:typeof homeTokenSort!=='undefined'?homeTokenSort:'value'}),rows=result.rows.slice(0,5);
   $('home-token-body').innerHTML=rows.map(catalogRow).join('');
-  $('home-token-count').textContent=rows.length+' of '+result.count;
+  if(typeof markSort==='function')markSort($('home-token-body').closest?.('table'),typeof homeTokenSort!=='undefined'?homeTokenSort:'value');
+  $('home-token-count').textContent=rows.length?rows.length+' of '+result.count:'';
+  $('home-view-all').href=typeof areaHref==='function'?areaHref('tokens'):typeof FolderUI!=='undefined'?FolderUI.path('tokens'):'#/tokens';$('home-view-all').hidden=!result.count;
+  // A platform held only as positions has no tokens to rank. Its positions list says it.
+  $('home-tokens').hidden=!!lens&&!result.count&&lens.position_count>0&&(!state.paged||!!routeData.page);
+  $('home-tokens-empty').textContent=lens?'No '+lens.name+' tokens recorded.':'Tokens appear after holdings research.';
   $('home-tokens-empty').hidden=result.count>0;
   bindImages();
   renderSetupPath();

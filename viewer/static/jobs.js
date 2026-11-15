@@ -179,8 +179,9 @@ async function loadActivity(){
   const epoch=++activityEpoch,page=jobsPage,filter=$('job-filter').value;
   $('jobs-prev').disabled=true;$('jobs-next').disabled=true;$('research-jobs').setAttribute('aria-busy','true');
   try{
-    const wallet=$('activity-wallet').value,query=$('activity-query').value.trim();
-    const result=await localAPI('/api/job-history?offset='+((page-1)*20)+'&limit=20&state='+encodeURIComponent(filter)+(wallet&&wallet!=='all'?'&wallet='+encodeURIComponent(wallet):'')+(query?'&query='+encodeURIComponent(query):''));
+    // Activity belongs to its area: one wallet, a folder's wallets or the whole workspace.
+    const area=typeof areaWallet!=='undefined'?areaWallet:null,folder=!area&&typeof FolderUI!=='undefined'?FolderUI.id:null,wallet=area||$('activity-wallet').value,query=$('activity-query').value.trim();
+    const result=await localAPI('/api/job-history?offset='+((page-1)*20)+'&limit=20&state='+encodeURIComponent(filter)+(wallet&&wallet!=='all'?'&wallet='+encodeURIComponent(wallet):folder?'&folder_id='+encodeURIComponent(folder):'')+(query?'&query='+encodeURIComponent(query):''));
     if(epoch!==activityEpoch||selectedView!=='activity')return;
     if(result.total&&result.offset>=result.total){jobsPage=Math.max(1,Math.ceil(result.total/20));return loadActivity();}
     $('activity-load-error').hidden=true;activityData=result;mergeJobs();renderJobs();
@@ -191,7 +192,7 @@ async function loadWalletJobs(wallet){
   if(!localSession?.controls)return;
   const epoch=++walletJobsEpoch;
   try{const result=await localAPI('/api/job-history?wallet='+encodeURIComponent(wallet)+'&offset=0&limit=50');
-    if(epoch!==walletJobsEpoch||selectedView!=='wallet'||selectedWallet!==wallet)return;
+    if(epoch!==walletJobsEpoch||(typeof areaWallet!=='undefined'?areaWallet:selectedWallet)!==wallet)return;
     walletJobs=result.jobs;mergeJobs();renderJobs();
   }catch{/* Keep the last recorded job state until the next successful check. */}
 }
@@ -207,7 +208,7 @@ async function pollJobs(){
     const signature=JSON.stringify(jobList)+JSON.stringify(jobList.map(j=>KiraView.jobPresentation(j).quiet));
     if(signature!==jobsSignature||reconnected){jobsSignature=signature;renderJobs();}else $('jobs-freshness').textContent='Checked '+stamp(lastJobsPoll);
     if(selectedView==='activity')await loadActivity();
-    if(selectedView==='wallet')await loadWalletJobs(selectedWallet);
+    if(typeof areaWallet!=='undefined'&&areaWallet)await loadWalletJobs(areaWallet);
     refreshControlState();
   }catch{jobsConnected=false;renderJobs();}
   finally{localPolling=false;}
@@ -348,7 +349,7 @@ formAction($('rpc-form'),$('rpc-error'),saveRpcSettings);
 async function openDataConnections(advanced = false, recommend = false, walletKey = null) {
   if (!localSession?.controls) return;
   const revision = ++connectionRevision;
-  connectionWallet = !$('wallet-dialog').open ? walletKey || (selectedView==='wallet' ? currentWallet()?.key || null : null) : null;
+  connectionWallet = !$('wallet-dialog').open ? walletKey || (typeof areaWallet!=='undefined'&&areaWallet ? currentWallet()?.key || null : null) : null;
   $('settings-error').textContent = ''; $('provider-status').textContent = pendingSetting ? 'A saved request is pending. Save again to check its result.' : '';
   $('provider-save').disabled = true; $('provider-recheck').disabled = true; $('settings-dialog').showModal();
   $('settings-done').textContent = $('wallet-dialog').open ? 'Back to wallet' : 'Close';
