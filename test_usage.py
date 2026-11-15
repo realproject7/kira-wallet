@@ -103,6 +103,16 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual(kira_usage.job_usage('solo', self.root), {'cu': 440, 'requests': 4})
         self.assertIsNone(kira_usage.job_usage('unknown', self.root))
 
+    def test_a_job_resumed_in_a_later_batch_counts_both_batches(self):
+        write_ledger(self.root, [
+            {'at': kira_usage.now(), 'source': 'batch', 'job': None, 'batch': 'batch-1', 'jobs': ['s', 't', 'u'], 'scope': 'sell', 'cu': 0, 'requests': 0, 'methods': {}},
+            {'at': kira_usage.now(), 'source': 'node', 'job': None, 'batch': 'batch-1', 'cu': 500, 'requests': 20, 'methods': {}},
+            {'at': kira_usage.now(), 'source': 'batch', 'job': None, 'batch': 'batch-2', 'jobs': ['s'], 'scope': 'sell', 'cu': 0, 'requests': 0, 'methods': {}},
+            {'at': kira_usage.now(), 'source': 'python', 'job': 's', 'batch': 'batch-2', 'cu': 40, 'requests': 1, 'methods': {}},
+        ])
+        self.assertEqual(kira_usage.job_usage('s', self.root), {'cu': 540, 'requests': 21, 'batch_wallets': 1})
+        self.assertEqual(kira_usage.job_usage('t', self.root), {'cu': 500, 'requests': 20, 'batch_wallets': 3})
+
 
 class ReaderCountTest(unittest.TestCase):
     """The isolated reader counts what Alchemy answered, not what it throttled, refused or never received."""

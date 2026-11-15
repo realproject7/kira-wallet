@@ -1,6 +1,6 @@
 {
   "name": "kira-wallet",
-  "version": "1.15.7",
+  "version": "1.16.0",
   "description": "Local wallet research for your agent session and a human-controlled web workspace.",
   "license": "MIT",
   "private": false,
@@ -26,6 +26,7 @@
     "native_assets.py",
     "wallet.py",
     "batch_refresh.py",
+    "batch_sell.py",
     "curve_pricing.py",
     "onchain.cjs",
     "pipeline-onchain.cjs",

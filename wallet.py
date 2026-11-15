@@ -617,6 +617,98 @@ def prune_resume_checkpoints(wallet, registry=None):
 BATCH={}
 BATCH_LOCK=threading.Lock()
 
+# Time a sell estimate run gives itself before it saves its checks and pauses. A single
+# wallet's run takes slices so other work can go first. A sell batch (batch_sell.py)
+# shares its lookups and raises these, so a wallet finishes in one turn.
+SELL_SECONDS=180
+SELL_DISCOVERY_SECONDS=30
+SELL_POOL_BUDGET_MS=60000
+SELL_ROOT_BUDGET_MS=45000
+
+
+LOOKUP_LOCK=threading.Lock()
+
+
+def shared_lookup(url, deadline=None):
+    """A public market lookup. In a batch each URL is asked once for every wallet,
+    paced by the batch; a failed answer is not shared, so the next wallet asks again."""
+    if not BATCH.get('active'):return fetch(url,deadline=deadline)
+    with LOOKUP_LOCK:
+        slots=BATCH.setdefault('lookups',{});slot=slots.get(url);owner=slot is None
+        if owner:slot=slots[url]={'done':threading.Event(),'response':None}
+    if not owner:
+        if not slot['done'].wait(None if deadline is None else max(0,deadline-time.monotonic())):return {'research_pending':True}
+        return slot['response']
+    try:
+        if BATCH.get('pace'):BATCH['pace']()
+        slot['response']=fetch(url,deadline=deadline)
+    finally:
+        if not isinstance(slot['response'],list):
+            with LOOKUP_LOCK:slots.pop(url,None)
+        slot['done'].set()
+    return slot['response']
+
+
+# A sell estimate first asks DEX Screener which held tokens any pool lists, thirty to a
+# request (tokens/v1). A token that answer lists in no pool has no pool to quote: per-token
+# pool lookups (token-pairs/v1) for 150 such tokens found none (2026-11-15). Only listed
+# tokens get a lookup of their own. The listing changes over hours, so a resumed run reuses
+# its answers for an hour at most.
+LISTING_SECONDS=3600
+
+
+def listing_records(folder, tokens, deadline=None):
+    """Recent tokens/v1 answers covering these tokens, saved in token-listings.json. A batch
+    asked once for all its wallets; a single run asks for its own tokens."""
+    keys={(t['chain_id'],t['token_address'].lower()) for t in tokens if t['chain_id'] in DEX and t.get('token_type')!='ERC1155'}
+    try:
+        saved=read(folder/'token-listings.json')
+        if isinstance(saved,dict) and isinstance(saved.get('records'),list) and 0<=time.time()-float(saved.get('saved_at',0))<LISTING_SECONDS:return saved['records']
+    except (OSError,ValueError,TypeError):pass
+    shared=BATCH.get('listings') or {'records':[],'by_token':{}}
+    used=sorted({shared['by_token'][key] for key in keys if key in shared['by_token']})
+    records=[shared['records'][i]['record'] for i in used]
+    for cid,slug,addresses,url in dex_requests([key for key in keys if key not in shared['by_token']]):
+        records.append({'source':url,'observed_at':h.now(),'response':shared_lookup(url,deadline)})
+    atomic(folder/'token-listings.json',{'saved_at':time.time(),'records':records})
+    return records
+
+
+def keep_unlisted(folder, tokens, records):
+    """Tokens the listing answered without any pool keep that answer as their DEX evidence
+    instead of a lookup each. Returns how many it kept."""
+    unlisted=unlisted_tokens(records);kept=0
+    for t in tokens:
+        key=(t['chain_id'],t['token_address'].lower());answer=unlisted.get(key);name=f'dex-{key[0]}-{key[1]}.json'
+        if answer and key[0] in DEX and t.get('token_type')!='ERC1155' and not (folder/name).exists():
+            atomic(folder/name,{'chain_id':t['chain_id'],'token_address':t['token_address'],'source':answer['source'],
+                                'observed_at':answer['observed_at'],'response':[],'basis':'dex_listing'});kept+=1
+    return kept
+
+
+def unlisted_tokens(records, now=None):
+    """(chain, contract) keys a recent listing answered without any pool, each with the
+    request that answered it."""
+    from datetime import datetime
+    if not isinstance(records,list):return {}
+    now=time.time() if now is None else now
+    inverse={slug:cid for cid,slug in DEX.items()}
+    answered,listed={},set()
+    for record in records:
+        if not isinstance(record,dict) or not isinstance(record.get('response'),list):continue
+        match=re.fullmatch(r'https://api\.dexscreener\.com/tokens/v1/([a-z0-9-]+)/(0x[0-9a-fA-F]{40}(?:,0x[0-9a-fA-F]{40})*)',str(record.get('source','')))
+        if not match or match[1] not in inverse:continue
+        try:observed=datetime.fromisoformat(str(record['observed_at']).replace('Z','+00:00'))
+        except (KeyError,ValueError):continue
+        if observed.tzinfo is None or not 0<=now-observed.timestamp()<LISTING_SECONDS:continue
+        for address in match[2].split(','):
+            answered[(inverse[match[1]],address.lower())]={'source':record['source'],'observed_at':record['observed_at']}
+        for pair in record['response']:
+            for side in ('baseToken','quoteToken'):
+                token=pair.get(side) if isinstance(pair,dict) else None
+                if isinstance(token,dict) and isinstance(token.get('address'),str):listed.add((inverse.get(pair.get('chainId')),token['address'].lower()))
+    return {key:value for key,value in answered.items() if key not in listed}
+
 
 def batch_value(key, compute):
     """In a batch, compute a shared lookup once; otherwise compute it each time."""
@@ -1039,8 +1131,8 @@ def dex_fetch(t, folder, deadline=None, attempt_limit=None):
         if attempt_limit and old.get('attempts',1)>=attempt_limit:return {**old,'status':'unavailable'}
     if deadline is not None and time.monotonic()>=deadline:
         return {'chain_id':t['chain_id'],'token_address':t['token_address'],'response':[], 'observed_at':None,'status':'pending'}
-    url='https://api.dexscreener.com/token-pairs/v1/'+chain+'/'+t['token_address']
-    response=fetch(url,deadline=deadline)
+    url='https://api.dexscreener.com/token-pairs/v1/'+chain+'/'+t['token_address'].lower()
+    response=shared_lookup(url,deadline)
     if deadline is not None and time.monotonic()>=deadline and not attempt_limit:
         return {'chain_id':t['chain_id'],'token_address':t['token_address'],'response':[], 'observed_at':None,'status':'pending'}
     row={'chain_id':t['chain_id'],'token_address':t['token_address'],'source':url,'observed_at':h.now(),'response':response}
@@ -1100,7 +1192,7 @@ def retain_price_evidence(current, previous):
 
 
 def finish(wallet, folder, networks, discovered, *, holdings_source=None):
-    deadline=time.monotonic()+180
+    deadline=time.monotonic()+(SELL_SECONDS if holdings_source else 180)
     market_scope='representative_v1'
     previous_prices=read(folder/'market-prices.json') if (folder/'market-prices.json').exists() else {}
     checkpoint_folder=folder
@@ -1113,13 +1205,14 @@ def finish(wallet, folder, networks, discovered, *, holdings_source=None):
     # Expand funded burns and recover missing verified-member quotes first.
     early=[t for t in tokens if (t.get('mintclub') or {}).get('funded') or t.get('mintclub_membership_status')=='verified']
     if early:
-        atomic(folder/'cashout-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':early,'market_chain_names':DEX,'market_scope':market_scope,'market_budget_ms':45000,'cashout_root_only':True})
+        atomic(folder/'cashout-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':early,'market_chain_names':DEX,'market_scope':market_scope,'market_budget_ms':SELL_ROOT_BUDGET_MS if holdings_source else 45000,'cashout_root_only':True})
         run_node('liquidate',folder/'cashout-input.json',folder/'liquidation-verified.json')
         enriched=read(folder/'liquidation-verified.json')['tokens']
         by_asset={(t['chain_id'],t['token_address'].lower(),t['token_type']):t for t in enriched}
         tokens=[by_asset.get((t['chain_id'],t['token_address'].lower(),t['token_type']),t) for t in tokens]
     event('dex_discovery', tokens=len(tokens))
-    discovery_deadline=min(deadline-25,time.monotonic()+30)
+    discovery_deadline=min(deadline-25,time.monotonic()+(SELL_DISCOVERY_SECONDS if holdings_source else 30))
+    if holdings_source:keep_unlisted(folder,tokens,listing_records(folder,tokens,discovery_deadline))
     with ThreadPoolExecutor(max_workers=5) as executor:
         responses=[];progress_at=time.monotonic()
         for response in executor.map(lambda t:dex_fetch(t,folder,discovery_deadline,attempt_limit=2),tokens):
@@ -1135,7 +1228,7 @@ def finish(wallet, folder, networks, discovered, *, holdings_source=None):
             t['dex_discovery_status']='queried' if r.get('status') is None else r['status']
         else:
             t['dex_discovery_status']='provider_error'
-    atomic(folder/'dex-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':tokens,'market_scope':market_scope,'market_budget_ms':max(0,min(60000,int((deadline-time.monotonic()-45)*1000)))})
+    atomic(folder/'dex-input.json',{'wallet':wallet['address'],'networks':networks,'tokens':tokens,'market_scope':market_scope,'market_budget_ms':max(0,min(SELL_POOL_BUDGET_MS if holdings_source else 60000,int((deadline-time.monotonic()-45)*1000)))})
     run_node('dex',folder/'dex-input.json',folder/'dex-verified.json')
     verified=read(folder/'dex-verified.json');tokens=verified['tokens'];market_pending=verified.get('market_pending',False)
     market_pending=market_pending or any(r.get('status')=='pending' for r in responses)
@@ -1197,7 +1290,10 @@ def finish(wallet, folder, networks, discovered, *, holdings_source=None):
         try:observed=datetime.fromisoformat(previous['observed_at'])
         except (KeyError,TypeError,ValueError):observed=None
         native_market=market_metadata(coverage,fetch=lambda url:previous['response'],observed=observed) if observed is not None and isinstance(previous.get('response'),list) else market_metadata(coverage,fetch=lambda url:fetch(url,deadline=deadline))
-    else:native_market=market_metadata(coverage,fetch=lambda url:fetch(url,deadline=deadline))
+    else:
+        # The native coin lookup depends only on the networks; a batch asks it once.
+        native_key=('native-sell',tuple(sorted((c['chain_id'],c.get('native_symbol')) for c in coverage if c.get('environment')=='mainnet')))
+        native_market=batch_value(native_key,lambda:market_metadata(coverage,fetch=lambda url:fetch(url,deadline=deadline)))
     market_pending=market_pending or time.monotonic()>=deadline
     if native_market['evidence']:atomic(folder/'native-market.json',native_market['evidence'])
     for key,price in native_market['prices'].items():refs.setdefault(key,price)

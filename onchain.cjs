@@ -44,15 +44,23 @@ function peerClient(c){
   const urls=endpoints(state.chainId).filter(url=>url!==state.lastUrl&&!pool.disabled(state.chainId,url));
   return urls.length&&urls.length<endpoints(state.chainId).length?client(state.chainId,undefined,urls,state.transport,true):null;
 }
+// An Alchemy app endpoint: its lane takes several reads at once. Other endpoints read one at a time.
+function alchemyEndpoint(url){try{const u=new URL(url);return u.protocol==='https:'&&/^[a-z0-9-]+\.g\.alchemy\.com$/.test(u.hostname)&&!pool.publicUrls.has(url);}catch{return false;}}
 function verificationClient(c){const state=clientState.get(c);return state?client(state.chainId,undefined,null,state.transport,true):null;}
 async function connect(chainId){
   const c=client(chainId);await c.getChainId();return c;
 }
+// A saved block's header is read once per process. Sell estimate steps reconnect for every
+// wallet, network and route; each endpoint still checks the hash before its first read there.
+const pinnedHeaders=new Map();
 async function snapshotBlock(c,saved=null){
-  const header=await c.getBlock(saved?{blockNumber:BigInt(saved.block_number)}:{blockTag:'latest'}),state=clientState.get(c);
+  const state=clientState.get(c),key=saved&&state?state.chainId+':'+String(saved.block_number):null;
+  let header=key?pinnedHeaders.get(key):null,read=false;
+  if(!header){header=await c.getBlock(saved?{blockNumber:BigInt(saved.block_number)}:{blockTag:'latest'});read=true;}
   if(!state||header.number==null)throw new Error('Snapshot block identity unavailable.');
   if(saved&&header.hash!==saved.block_hash)throw new Error('Saved snapshot block is no longer canonical. Start a new holdings analysis.');
-  pool.pin(state.chainId,header.number,header.hash,state.last);
+  if(key&&read)pinnedHeaders.set(key,header);
+  pool.pin(state.chainId,header.number,header.hash,read?state.last:null);
   return {number:header.number,hash:header.hash,timestamp:header.timestamp};
 }
 const serialize=data=>JSON.stringify(data,(_,v)=>typeof v==='bigint'?v.toString():v,2);
@@ -81,4 +89,4 @@ function flushUsage(){
   catch{/* Usage is an estimate for the operator; it never fails research. */}
 }
 process.on('exit',flushUsage);
-module.exports={viem,root,assets,networks,bondAbi,endpoints,client,peerClient,verificationClient,connect,snapshotBlock,resilientTransport,rpcEndpointsUsed,rpcRoutes,endpointIssues,flushUsage,serialize,safeError};
+module.exports={viem,root,assets,networks,bondAbi,endpoints,alchemyEndpoint,client,peerClient,verificationClient,connect,snapshotBlock,resilientTransport,rpcEndpointsUsed,rpcRoutes,endpointIssues,flushUsage,serialize,safeError};

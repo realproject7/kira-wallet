@@ -223,3 +223,120 @@ test('new intermediate pool facts survive repeated full asset budgets without pr
   assert.equal(result.market_pending,false);assert.equal(result.tokens[0].asset_review.status,'quoted');assert.equal(result.tokens[0].liquidation_routes[0].legs.length,2);
  }finally{Date.now=now;Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('representative assets are checked several at a time and the checkpoint is written in few saves',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-pool-lanes-')),original={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock},write=fs.writeSync;
+ let inFlight=0,peak=0,reads=0,writes=0;
+ try{
+  fs.writeSync=(...args)=>{writes++;return write(...args);};
+  const held=Array.from({length:12},(_,i)=>{const t=token(300+i);t.dex_pools=[{pool:'0x'+(i+1).toString(16).padStart(64,'0'),venue:'uniswap',version_labels:['v4'],reported_liquidity:{usd:100},paired_tokens:[{address:t.token_address},{address:WETH}]}];return t;});
+  h.endpoints=()=>['https://base-mainnet.g.alchemy.com/v2/synthetic'];h.snapshotBlock=async()=>({number:7n,hash:HASH});
+  h.client=()=>({getChainId:async()=>8453,multicall:async({contracts})=>{reads++;inFlight++;peak=Math.max(peak,inFlight);await new Promise(resolve=>setTimeout(resolve,15));inFlight--;return contracts.map(()=>({status:'failure',error:Error('Synthetic revert')}));}});
+  const file=path.join(root,'market.json');
+  const rows=await dexChain({chain_id:8453,environment:'mainnet'},held,{wallet:WALLET,file,representative:true});
+  // Checks in flight at once send their small reads together, so there are fewer aggregates than assets.
+  assert(reads<12,`Expected gathered reads from overlapping asset checks, saw ${reads}`);
+  peak=0;reads=0;h.endpoints=()=>['https://public.synthetic.example/rpc'];
+  await dexChain({chain_id:8453,environment:'mainnet'},held.map(t=>({...structuredClone(t),wallet_balance_raw:'2'})),{wallet:WALLET,file:path.join(root,'public.json'),representative:true});
+  assert.equal(peak,1,'A public endpoint is read one asset at a time.');assert.equal(reads,12);
+  assert(rows.every(t=>t.dex_pools[0].rpc_verification?.verification==='unverified'));
+  const saved=JSON.parse(fs.readFileSync(file));
+  assert.equal(Object.keys(saved.pool_attempts).length,12);assert(Object.values(saved.asset_reviews).every(r=>r.failures===1&&!r.done));
+  assert(writes<=4,`Expected a few checkpoint saves, saw ${writes}`);
+ }finally{Object.assign(h,original);fs.writeSync=write;fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('a budget stop lets checks in flight finish, then pauses with their facts saved',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-pool-stop-')),original={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock};
+ try{
+  const held=Array.from({length:20},(_,i)=>{const t=token(400+i);t.dex_pools=[{pool:'0x'+(i+1).toString(16).padStart(64,'0'),venue:'uniswap',version_labels:['v4'],reported_liquidity:{usd:100},paired_tokens:[{address:t.token_address},{address:WETH}]}];return t;});
+  h.endpoints=()=>['https://base-mainnet.g.alchemy.com/v2/synthetic'];h.snapshotBlock=async()=>({number:7n,hash:HASH});
+  h.client=()=>({getChainId:async()=>8453,multicall:async({contracts})=>{await new Promise(resolve=>setTimeout(resolve,40));return contracts.map(()=>({status:'failure',error:Error('Synthetic revert')}));}});
+  const file=path.join(root,'market.json');
+  const rows=await dexChain({chain_id:8453,environment:'mainnet'},held,{wallet:WALLET,file,representative:true,deadline:Date.now()+60});
+  assert(rows.every(t=>t.market_pending===true));
+  const saved=JSON.parse(fs.readFileSync(file));const attempted=Object.keys(saved.pool_attempts).length;
+  assert(attempted>0&&attempted<20,`Expected a partial frontier, saw ${attempted}`);
+ }finally{Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('a saved block header is read once per process for every client',async()=>{
+ let headers=0;const hash='0x'+'c'.repeat(64);
+ const transport=()=>v.custom({request:async({method})=>{
+  if(method==='eth_chainId')return '0x3e7';
+  if(method==='eth_getBlockByNumber'){headers++;return {number:'0x5',hash,timestamp:'0x1',transactions:[]};}
+  throw new Error('Unexpected '+method);
+ }},{retryCount:0});
+ const first=h.client(999,undefined,['synthetic-header-a'],transport),second=h.client(999,undefined,['synthetic-header-b'],transport);
+ const saved={block_number:'5',block_hash:hash};
+ const a=await h.snapshotBlock(first,saved),b=await h.snapshotBlock(second,saved);
+ assert.equal(a.hash,hash);assert.equal(b.number,5n);assert.equal(headers,1);
+ await assert.rejects(h.snapshotBlock(second,{block_number:'5',block_hash:'0x'+'d'.repeat(64)}),/no longer canonical/);
+ await h.snapshotBlock(first);assert.equal(headers,2,'The newest block is always read.');
+});
+
+test('route pool lookups are shared within one process and a failed answer is asked again',async()=>{
+ const {routePools}=require('./pipeline-onchain.cjs'),original=global.fetch,A=address(500),B=address(501);let asked=0;
+ const answer=token=>[{chainId:'base',pairAddress:address(600),dexId:'uniswap',labels:['v2'],baseToken:{address:token},quoteToken:{address:WETH},liquidity:{usd:5}}];
+ try{
+  global.fetch=async url=>{asked++;await new Promise(resolve=>setTimeout(resolve,10));return new Response(JSON.stringify(answer(url.split('/').pop())));};
+  const [one,two]=await Promise.all([routePools('base',A,Date.now()+5000),routePools('base',A,Date.now()+5000)]);
+  assert.equal(asked,1);assert.deepEqual(one,two);one.pools[0].venue='changed';assert.equal(two.pools[0].venue,'uniswap','Each caller gets its own copy.');
+  assert.equal((await routePools('base',A,Date.now()+5000)).pools.length,1);assert.equal(asked,1);
+  global.fetch=async()=>{asked++;return new Response('busy',{status:429});};
+  assert((await routePools('base',B,Date.now()+5000)).unknown);
+  global.fetch=async url=>{asked++;return new Response(JSON.stringify(answer(url.split('/').pop())));};
+  assert.equal((await routePools('base',B,Date.now()+5000)).unknown,null);assert.equal(asked,3);
+ }finally{global.fetch=original;}
+});
+
+test('full-balance quotes from parallel asset checks travel in shared aggregate reads',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-gathered-')),original={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock};
+ try{
+  const factory='0x33128a8fC17869897dcE68Ed026d694621f6FDfD',held=Array.from({length:12},(_,i)=>token(700+i)),pools=new Map(held.map((t,i)=>[address(800+i),t.token_address]));
+  held.forEach((t,i)=>t.dex_pools=[{pool:address(800+i),venue:'uniswap',version_labels:['v3'],reported_liquidity:{usd:100},paired_tokens:[{address:t.token_address},{address:WETH}]}]);
+  let quoteBatches=0,largest=0,singles=0;
+  const query=q=>{
+   if(q.functionName==='factory')return factory;if(q.functionName==='token0')return pools.get(q.address);if(q.functionName==='token1')return WETH;
+   if(q.functionName==='liquidity')return 10n**20n;if(q.functionName==='fee')return 3000;
+   if(q.functionName==='getPool')return [...pools].find(([,a])=>a===q.args[0])[0];
+   if(q.functionName==='balanceOf')return 10n**24n;if(q.functionName==='decimals')return 18;if(q.functionName==='symbol')return 'WETH';
+   if(q.functionName==='quoteExactInputSingle')return [q.args[0].amountIn/2n,2n**96n,1,100000n];
+   throw Error('Unexpected read '+q.functionName);
+  };
+  h.endpoints=()=>['https://base-mainnet.g.alchemy.com/v2/synthetic'];h.snapshotBlock=async()=>({number:7n,hash:HASH});
+  h.client=()=>({getChainId:async()=>8453,readContract:async q=>{singles++;return query(q);},multicall:async({contracts})=>{
+   const quotes=contracts.filter(q=>q.functionName==='quoteExactInputSingle').length;
+   if(quotes){quoteBatches++;largest=Math.max(largest,quotes);}
+   await new Promise(resolve=>setTimeout(resolve,5));return contracts.map(q=>({status:'success',result:query(q)}));}});
+  const rows=await dexChain({chain_id:8453,environment:'mainnet'},held,{wallet:WALLET,file:path.join(root,'market.json'),representative:true});
+  assert(rows.every(t=>t.dex_pools[0].cashout_quote?.status==='quoted'&&t.dex_pools[0].cashout_quote.output_amount_raw==='500000000000000000'));
+  assert(quoteBatches<12&&largest>1,`Expected grouped quotes, saw ${quoteBatches} batches of at most ${largest}`);assert.equal(singles,0);
+ }finally{Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('in a batch process a second wallet reuses pool state read at the same block',async()=>{
+ const {setSharedReads}=require('./pipeline-onchain.cjs');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'kira-shared-reads-')),original={endpoints:h.endpoints,client:h.client,snapshotBlock:h.snapshotBlock};
+ try{
+  setSharedReads(true);
+  const factory=require('./sources/uniswap-deployments.json').records.find(d=>d.chainId===1&&d.protocol==='v2'&&d.contract==='UniswapV2Factory').address;
+  const held=[token(900,1),token(901,1)],pools=new Map(held.map((t,i)=>[address(950+i),t.token_address]));let batches=0;
+  held.forEach((t,i)=>{t.balance_block_hash='0x'+'e'.repeat(64);t.dex_pools=[{pool:address(950+i),venue:'uniswap',version_labels:['v2'],reported_liquidity:{usd:100},paired_tokens:[{address:t.token_address},{address:WETH}]}];});
+  const query=q=>{
+   if(q.functionName==='factory')return factory;if(q.functionName==='token0')return pools.get(q.address);if(q.functionName==='token1')return WETH;
+   if(q.functionName==='getReserves')return [10n**24n,10n**24n,0];if(q.functionName==='getPair')return [...pools].find(([,a])=>a===q.args[0])[0];
+   if(q.functionName==='balanceOf')return 10n**24n;if(q.functionName==='decimals')return 18;if(q.functionName==='symbol')return 'WETH';
+   throw Error('Unexpected read '+q.functionName);
+  };
+  h.endpoints=()=>['synthetic'];h.snapshotBlock=async()=>({number:7n,hash:'0x'+'e'.repeat(64)});
+  h.client=()=>({getChainId:async()=>1,readContract:async q=>query(q),multicall:async({contracts})=>{batches++;return contracts.map(q=>({status:'success',result:query(q)}));}});
+  const first=await dexChain({chain_id:1,environment:'mainnet'},structuredClone(held),{wallet:WALLET,file:path.join(root,'a.json'),representative:true});
+  const before=batches;assert(before>0);
+  const other=held.map(t=>({...structuredClone(t),wallet_balance_raw:'5000000000000000000'}));
+  const second=await dexChain({chain_id:1,environment:'mainnet'},other,{wallet:address(2),file:path.join(root,'b.json'),representative:true});
+  assert.equal(batches,before,'The second wallet reads no pool state again.');
+  assert(first.concat(second).every(t=>t.dex_pools[0].cashout_quote?.status==='quoted'));
+  assert.notEqual(first[0].dex_pools[0].cashout_quote.output_amount_raw,second[0].dex_pools[0].cashout_quote.output_amount_raw);
+ }finally{setSharedReads(false);Object.assign(h,original);fs.rmSync(root,{recursive:true,force:true});}
+});

@@ -682,6 +682,54 @@ class BatchWorkerTest(JobFixtures, unittest.TestCase):
             saved=self.store.get(job)
             self.assertEqual((saved['state'],saved['errors'][0]['code']),('failed','connection_required'))
 
+    def sell_jobs(self,wallets):
+        jobs=[]
+        for i,w in enumerate(wallets):
+            parent=self.store.new_job('wallet.refresh',{'wallet':w},f'parent-{i}','fingerprint','raw','baseline',None)
+            parent.update(state='partial',result={'snapshot_id':parent['checkpoint'],'status':'completed'});self.store.save(parent)
+            jobs.append(self.store.new_job('wallet.refresh',{'wallet':w},f'sell-{i}','fingerprint','raw','enrichment',parent['job_id'])['job_id'])
+        return jobs
+
+    def test_sell_estimates_run_as_one_batch_even_for_one_wallet(self):
+        wallets=self.wallets(4)
+        jobs=self.sell_jobs(wallets[1:4]);groups=[];singles=[]
+        def batch(group,*args):
+            groups.append(sorted(j['job_id'] for j in group))
+            self.assertEqual(self.store.batch_command(group)[1].rsplit('/',1)[-1],'batch_sell.py')
+            return {j['job_id']:{'snapshot_id':j['checkpoint'],'status':'completed'} for j in group}
+        with patch.object(self.store,'execute_batch',side_effect=batch),patch.object(self.store,'execute',side_effect=lambda job,*a:singles.append(job['job_id'])):self.store.worker()
+        self.assertEqual(groups,[sorted(jobs)]);self.assertEqual(singles,[])
+        lone=self.sell_jobs(wallets[4:5])
+        with patch.object(self.store,'execute_batch',side_effect=batch),patch.object(self.store,'execute',side_effect=lambda job,*a:singles.append(job['job_id'])):self.store.worker()
+        self.assertEqual(groups[-1],lone);self.assertEqual(singles,[],'A lone sell estimate also runs in the sell batch, without slices.')
+        self.assertTrue(all(self.store.get(j)['state']=='succeeded' for j in jobs+lone))
+
+    def test_sell_batch_outcomes_requeue_a_yield_and_pause_a_budget_stop(self):
+        wallets=self.wallets(3)
+        done,yielded,paused=self.sell_jobs(wallets[1:4]);calls=[]
+        def batch(group,*args):
+            calls.append(sorted(j['job_id'] for j in group))
+            if len(calls)==1:
+                return {done:{'snapshot_id':'snapshots/jobs/'+done,'status':'completed_with_coverage_gaps'},
+                        yielded:JobError('yielded','synthetic yield'),paused:JobError('market_budget','synthetic budget')}
+            return {j['job_id']:{'snapshot_id':j['checkpoint'],'status':'completed'} for j in group}
+        with patch.object(self.store,'execute_batch',side_effect=batch):self.store.worker()
+        self.assertEqual(calls,[sorted([done,yielded,paused]),[yielded]])
+        self.assertEqual(self.store.get(done)['state'],'partial')
+        self.assertEqual((self.store.get(yielded)['state'],self.store.get(yielded)['attempt']),('succeeded',2))
+        saved=self.store.get(paused);self.assertEqual((saved['state'],saved['stage']),('interrupted','market_paused'))
+
+    def test_a_superseded_sell_estimate_leaves_the_batch(self):
+        wallets=self.wallets(2)
+        current,stale=self.sell_jobs(wallets[1:3])
+        registry=json.loads((self.root/'wallets.json').read_text())
+        next(w for w in registry['wallets'] if w['address_key']==wallets[2])['research_generation']='newer-holdings'
+        atomic(self.root/'wallets.json',registry);groups=[]
+        def batch(group,*args):
+            groups.append([j['job_id'] for j in group]);return {j['job_id']:{'snapshot_id':j['checkpoint'],'status':'completed'} for j in group}
+        with patch.object(self.store,'execute_batch',side_effect=batch):self.store.worker()
+        self.assertEqual(groups,[[current]]);self.assertEqual(self.store.get(stale)['errors'][0]['code'],'superseded')
+
     def test_batch_progress_is_saved_per_job_in_one_write(self):
         job=self.store.submit(self.request(value={'wallet':ADDRESS,'scope':'fast'},key='batched-events'))
         events=[{'stage':'discovery','complete_chains':3,'candidates':4},{'stage':'chain','chain_id':8453,'status':'complete','block_number':'7'},
