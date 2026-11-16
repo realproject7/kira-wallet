@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.15.7**. Prepared candidate: **1.16.0**.
+Published npm release: **1.16.0**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -9,7 +9,14 @@ Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
 
-## Candidate 1.16.0
+## Published 1.16.0
+
+The operator published 1.16.0 on November 16, 2026. The registry archive is
+byte-identical to the frozen one, and a clean registry installation matched
+all 135 members. Pull request 21 merged at
+`3823a81cfef5d8af051513d051e56f5c914445c0`; a fresh pack from the merged tree
+reproduces the archive. SHA-256 is
+`536e28e0652e2d896acd7a750868bdb2af3e77416af069ca5fd6e84d589865c5`.
 
 - **Sell estimates run as one batch.** **Update sell estimates** on Home or a
   folder, and the button on a wallet page, queue one job per wallet as before.
@@ -53,6 +60,28 @@ numbers in this repository start again at 1.
     DEX Screener had rate limited the previous engine's route lookups (47 of
     56 failed), so funded Mint Club burns could not be followed to a cash
     asset. Each new estimate is at most 1.06 times the token's spot value.
+- **Live check on the operator's app** after installing the registry archive
+  (November 16, 2026):
+  - Update sell estimates for every wallet whose holdings had changed: one
+    batch of 2.5 minutes and about 15,600 compute units, with 118 listing
+    requests and 273 pool lookups. Afterwards every wallet's estimates were
+    current. A holdings refresh queued during a run stopped it within two
+    seconds; the stopped wallet resumed after the refresh and finished.
+  - The largest wallet alone: 143 seconds and about 8,200 compute units. The
+    1.15.7 engine, run on a copy of the same data and holdings minutes later,
+    took 557 seconds in eight slices and about 17,800 compute units, and
+    produced the same estimates to the unit.
+  - Estimates missing since the previous analysis were dust: DEX Screener no
+    longer lists a pool for those tokens (its listing and pool endpoints both
+    answer empty), or their pools are nearly empty. New estimates stayed within
+    1.1 times the spot value except one, valued with a USDC price of 137
+    dollars that a DEX Screener pool on BNB Chain reported. Version 1.15.7
+    takes that stablecoin price from the same pool.
+  - Refresh all holdings and Fast refresh of every wallet: 9.3 and 4.6 minutes,
+    about 89,000 and 65,000 compute units, no failures. The fast refresh 15
+    minutes after the full one listed the same tokens, and its phase times
+    match 1.15.2. Kaia's public RPC failed and retried reads during the full
+    refresh, which made it slower than earlier full refreshes.
 
 ## Published 1.15.7
 
