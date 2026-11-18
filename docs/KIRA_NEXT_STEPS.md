@@ -1,9 +1,10 @@
 # Kira release status
 
-Updated: 2026-11-18. Candidate 1.16.1 skips stablecoin DEX output prices outside
-0.9 to 1.1 in sell estimates, falls back to the next eligible source and makes
-Home show the full active task count. Registry publication is pending and
-remains operator-only. Review not selected.
+Updated: 2026-11-18. The operator published Kira 1.16.1. It skips stablecoin
+DEX output prices outside 0.9 to 1.1 in sell estimates, falls back to the next
+eligible source, and shows the full active task count on Home. The registry
+archive matched the frozen archive, and both fixes passed on the installed
+package. See the [published notes](RELEASE.md#published-1161) for the checks.
 
 The operator published Kira 1.16.0. It runs queued sell
 estimates as one batch: one DEX Screener listing for every wallet's tokens, pool

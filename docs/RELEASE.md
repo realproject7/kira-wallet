@@ -1,6 +1,6 @@
 # Releases and preparation
 
-Published npm release: **1.16.0**.
+Published npm release: **1.16.1**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
@@ -9,7 +9,13 @@ Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
 
-## Candidate 1.16.1
+## Published 1.16.1
+
+The operator published 1.16.1 on November 18, 2026. The npm `latest` tag points
+to 1.16.1. The registry archive is byte-identical to the frozen one, and a
+clean installation from that archive matched all 135 files. PR #23 merged at
+`7ab627519d8d7cddc66003864b9b6b1ffe1be42b`. The archive SHA-256 is
+`1e1e1e4921473f45986908cfc1369761425f2db7537e3682fc2f02f5f35536fb`.
 
 - **Stablecoin output prices skip DEX outliers.** Sell estimates ignore a DEX
   USD price below 0.9 or above 1.1 for catalogued USDC, USDT and DAI contracts,
@@ -22,10 +28,20 @@ numbers in this repository start again at 1.
   cover only part of a large queue. The displayed task and Activity link keep
   their existing behavior.
 
-Validation: `npm test` passed 455 root and 84 viewer Python tests plus the
-JavaScript checks. Synthetic desktop and mobile browser checks cover the full
-task count, count-only updates, Activity navigation, filters and pagination.
-Review not selected. Registry publication remains operator-only.
+The local launcher and browser app both reported 1.16.1 after the upgrade.
+The verification used saved evidence and a separate synthetic workspace.
+
+- The installed sell valuation replayed the previously saved BNB Chain USDC
+  outlier and rejected its DEX observation. With no eligible fallback in the
+  saved inputs, the route had no USD estimate. Synthetic USDC, USDT and DAI
+  quotes verified fallback pricing, the inclusive bounds and missing prices.
+- A desktop and mobile browser exercised the installed app with 120 synthetic
+  active tasks over its local HTTP API. The browser loaded 55 job records and
+  showed all 120 in Home's **All tasks** link. Finishing a task outside those
+  records changed the Home count to 119. The link opened Activity.
+
+`npm test` passed 455 root and 84 viewer Python tests plus the JavaScript
+checks before publication. Review not selected.
 
 ## Published 1.16.0
 
