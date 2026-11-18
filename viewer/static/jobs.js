@@ -169,11 +169,12 @@ function pendingWalletJob(wallet){return jobList.find(job=>KiraView.active(job)&
 function mergeJobs(){const rows=new Map();for(const job of [...recentJobs,...activeJobs,...walletJobs,...(activityData?.jobs||[])]){const prior=rows.get(job.job_id);if(!prior||(job.sequence??0)>=(prior.sequence??0))rows.set(job.job_id,job);}jobList=[...rows.values()].sort((a,b)=>b.created_at.localeCompare(a.created_at));}
 function renderActiveWork(){
   const all=jobList.filter(KiraView.active).sort((a,b)=>(b.state==='running')-(a.state==='running')||a.created_at.localeCompare(b.created_at)),active=all.slice(0,1),panel=$('active-work');
+  const count=workspaceStatus?.active_job_count??all.length;
   panel.hidden=!active.length||selectedView==='activity';panel.innerHTML=active.map(job=>{
     const name=state?.wallets.find(w=>w.key===String(job.input?.wallet||job.input?.address||'').toLowerCase())?.name||job.input?.tag||jobLabels[job.operation]||'Research';
     const p=KiraView.jobPresentation(job,Date.now(),jobsConnected);
     return '<div class="active-work-row"><a href="#/activity"><span>'+ (p.spinner?'<span class="spinner" aria-hidden="true"></span>':'')+'<strong>'+escapeHTML(name)+'</strong> · '+escapeHTML(jobStage(job))+'</span><small data-job-timer="'+escapeHTML(job.job_id)+'">'+escapeHTML(KiraView.jobTimeText(job))+'</small></a><div class="job-actions">'+jobControls(job)+'</div></div>';
-  }).join('')+(all.length>1?'<a class="text-link" href="#/activity">All tasks ('+all.length+') ↗</a>':'');
+  }).join('')+(count>1?'<a class="text-link" href="#/activity">All tasks ('+count+') ↗</a>':'');
 }
 async function loadActivity(){
   if(!localSession?.controls)return;
@@ -206,7 +207,7 @@ async function pollJobs(){
     mergeJobs();const reconnected=!jobsConnected;jobsConnected=true;lastJobsPoll=new Date().toISOString();
     const setting=recentJobs.filter(j=>j.operation.startsWith('settings.')&&j.state==='succeeded').map(j=>j.job_id+':'+j.updated_at).sort().join(',');
     if(setting!==discoverySettingsRevision){discoverySettingsRevision=setting;if(typeof loadSetupReadiness==='function')await loadSetupReadiness();}
-    const signature=JSON.stringify(jobList)+JSON.stringify(jobList.map(j=>KiraView.jobPresentation(j).quiet));
+    const signature=JSON.stringify(jobList)+JSON.stringify(jobList.map(j=>KiraView.jobPresentation(j).quiet))+':'+workspaceStatus?.active_job_count;
     if(signature!==jobsSignature||reconnected){jobsSignature=signature;renderJobs();}else $('jobs-freshness').textContent='Checked '+stamp(lastJobsPoll);
     if(selectedView==='activity')await loadActivity();
     if(typeof areaWallet!=='undefined'&&areaWallet)await loadWalletJobs(areaWallet);

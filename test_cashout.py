@@ -1,10 +1,16 @@
 """Cash-out threshold regressions, independent of spot holding valuation."""
 from copy import deepcopy
 import unittest
-from cashout import annotate, classify
+from cashout import annotate, classify, output_price
 
 TOKEN='0x'+'1'*40
 OUTPUT='0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+STABLE_OUTPUTS=((8453,OUTPUT),
+                (56,'0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d'),
+                (1,'0xdac17f958d2ee523a2206206994597c13d831ec7'),
+                (8453,'0x50c5725949a6f0c72e6c4a641f24049a917db0cb'),
+                (42161,'0xff970a61a04b1ca14834a43f5de4533ebddb5cc8'),
+                (42161,'0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9'))
 HASH='0x'+'a'*64
 
 
@@ -40,6 +46,43 @@ class CashoutTests(unittest.TestCase):
                 self.assertEqual(result['status'],'quoted_at_least_1_usd' if liquidity==1000 else 'unknown')
         self.market['tokens'][0].update(basis='Market index',liquidity_usd=None)
         self.assertEqual(classify(self.token,self.market)['status'],'quoted_at_least_1_usd')
+
+    def test_stablecoin_dex_outliers_use_the_next_source_by_contract_identity(self):
+        template=self.market['tokens'][0]
+        for chain_id,address in STABLE_OUTPUTS:
+            for usd in ('0.899999999999999999', '1.100000000000000001', '137'):
+                for basis in ('DEX market', 'Market index'):
+                    with self.subTest(chain_id=chain_id,address=address,usd=usd,basis=basis):
+                        bad={**template,'chain_id':chain_id,'address':address.upper().replace('0X','0x'),
+                             'symbol':'untrusted provider label','usd':usd}
+                        fallback={**bad,'usd':'0.99','basis':basis,'source':'https://example.com/next'}
+                        market={'tokens':[bad,fallback]}
+                        price=output_price(chain_id,address,market)
+                        self.assertEqual(price['usd'],'0.99')
+                        self.assertEqual(price['source'],fallback['source'])
+                        self.assertEqual(bad['usd'],usd,'Keep the original market evidence.')
+
+    def test_stablecoin_dex_guard_keeps_boundaries_and_missing_prices_truthful(self):
+        row=self.market['tokens'][0]
+        for usd in ('0.9','1','1.1'):
+            with self.subTest(usd=usd):
+                row['usd']=usd
+                self.assertEqual(output_price(8453,OUTPUT,self.market)['usd'],usd)
+        row['usd']='137'
+        self.assertIsNone(output_price(8453,OUTPUT,self.market))
+        self.assertEqual(classify(self.token,self.market)['status'],'unknown')
+        self.assertEqual(classify(self.token,self.market)['quotes'],[])
+        row['basis']='Market index';row['usd']='0.8'
+        self.assertEqual(output_price(8453,OUTPUT,self.market)['usd'],'0.8','Do not replace an indexed depeg price with a dollar.')
+
+    def test_stablecoin_guard_does_not_trust_symbols_or_apply_to_native_assets(self):
+        row=self.market['tokens'][0]
+        wrapped='0x4200000000000000000000000000000000000006'
+        row.update(address=wrapped,symbol='USDC',usd='137')
+        self.assertEqual(output_price(8453,wrapped,self.market)['usd'],'137')
+        native='0x'+'0'*40
+        self.market['native_usd']={'ETH':row}
+        self.assertEqual(output_price(8453,native,self.market)['usd'],'137')
 
     def test_exact_threshold_is_inclusive_and_rounding_never_promotes_dust(self):
         result=classify(self.token,self.market)

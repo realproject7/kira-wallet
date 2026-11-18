@@ -78,6 +78,34 @@ function harness(){
  context.setJobs=jobs=>{context.testJobs=jobs;vm.runInContext('jobList=testJobs',context);};context.setJobs([basic]);
  return {context,el,setJobs:context.setJobs,run:s=>vm.runInContext(s,context),renders:()=>rendered};
 }
+test('Home counts every active task beyond the loaded history and links to Activity',()=>{
+ const h=harness(),source=fs.readFileSync('viewer/static/jobs.js','utf8');
+ vm.runInContext(source.slice(source.indexOf('function renderActiveWork('),source.indexOf('async function loadActivity(')),h.context);
+ h.context.selectedView='home';
+ h.setJobs(Array.from({length:50},(_,i)=>({...deep,job_id:'synthetic-'+i,state:i?'queued':'running'})));
+ h.run('workspaceStatus={active_job_count:120};renderActiveWork()');
+ assert.equal(h.el('active-work').hidden,false);
+ assert.match(h.el('active-work').innerHTML,/href="#\/activity">All tasks \(120\)/);
+ assert.equal((h.el('active-work').innerHTML.match(/class="active-work-row"/g)||[]).length,1);
+ h.run('workspaceStatus=null;renderActiveWork()');
+ assert.match(h.el('active-work').innerHTML,/All tasks \(50\)/,'Use the loaded count before status arrives.');
+ h.setJobs([deep]);h.run('renderActiveWork()');
+ assert.doesNotMatch(h.el('active-work').innerHTML,/All tasks/);
+ h.context.selectedView='activity';h.run('renderActiveWork()');assert.equal(h.el('active-work').hidden,true);
+ h.context.selectedView='home';h.setJobs([]);h.run('renderActiveWork()');assert.equal(h.el('active-work').hidden,true);
+});
+test('a changed total redraws active work even when the loaded jobs stay the same',async()=>{
+ const h=harness(),source=fs.readFileSync('viewer/static/jobs.js','utf8');
+ vm.runInContext(source.slice(source.indexOf('function mergeJobs('),source.indexOf('async function loadActivity(')),h.context);
+ vm.runInContext(source.slice(source.indexOf('async function pollJobs('),source.indexOf('function scheduleWorkspacePoll(')),h.context);
+ h.context.selectedView='home';h.context.refreshControlState=()=>{};
+ h.context.localAPI=async path=>{assert.equal(path,'/api/jobs?limit=50');return [deep];};
+ h.run('workspaceStatus={active_job_count:120,active_jobs:[]}');await h.run('pollJobs()');
+ assert.equal(h.renders(),1);assert.equal(h.run('jobsConnected'),true);
+ h.run('workspaceStatus.active_job_count=119');await h.run('pollJobs()');
+ assert.equal(h.renders(),2,'A count-only change must update Home and the Activity badge.');
+ assert.equal(h.run('jobsConnected'),true);
+});
 test('failed status shows escaped cause and one retry action with an accessible announcement',async()=>{
  const h=harness();h.context.currentWallet=()=>({key:A});
  h.setJobs([{...basic,state:'failed',result:null,errors:[{code:'network_scope_changed',message:'Compatibility check failed <details>'}]}]);
