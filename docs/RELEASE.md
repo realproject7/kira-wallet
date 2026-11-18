@@ -9,6 +9,24 @@ Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
 
+## Candidate 1.16.1
+
+- **Stablecoin output prices skip DEX outliers.** Sell estimates ignore a DEX
+  USD price below 0.9 or above 1.1 for catalogued USDC, USDT and DAI contracts,
+  including USDC.e and USDT0. Identity is the chain and contract address, never
+  the provider's symbol. The next eligible price source is used; without one,
+  the output value remains unknown. Market index prices retain their observed
+  value, including a depeg, and the original market evidence stays unchanged.
+- **Home counts every active task.** The **All tasks** link uses the workspace's
+  full active count, even when the recent history and five status summaries
+  cover only part of a large queue. The displayed task and Activity link keep
+  their existing behavior.
+
+Validation: `npm test` passed 455 root and 84 viewer Python tests plus the
+JavaScript checks. Synthetic desktop and mobile browser checks cover the full
+task count, count-only updates, Activity navigation, filters and pagination.
+Review not selected. Registry publication remains operator-only.
+
 ## Published 1.16.0
 
 The operator published 1.16.0 on November 16, 2026. The registry archive is

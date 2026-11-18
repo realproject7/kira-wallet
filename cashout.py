@@ -16,6 +16,8 @@ _known = json.loads((Path(__file__).resolve().parent/'sources/known-tokens.json'
 # Other reserve/output tokens need a further amount-specific liquidation leg.
 TERMINAL_ASSETS = {(row['chain_id'], row['address'].lower()) for row in _known
                    if row['symbol'] in ('USDC', 'USDC.e', 'USDT', 'USDT0', 'DAI', 'WETH', 'WBNB', 'WAVAX', 'WMATIC')}
+STABLE_ASSETS = {(row['chain_id'], row['address'].lower()) for row in _known
+                 if row['symbol'] in ('USDC', 'USDC.e', 'USDT', 'USDT0', 'DAI')}
 
 
 def decimal(value):
@@ -45,6 +47,9 @@ def output_price(chain_id, address, market):
     for row in rows:
         row = checked_price(row)
         price = decimal(row.get('usd'))
+        if (price is not None and (chain_id, address.lower()) in STABLE_ASSETS
+                and row.get('basis') == 'DEX market' and not Decimal('0.9') <= price <= Decimal('1.1')):
+            continue
         if (price is not None and price > 0 and row.get('quality') == 'estimated'
                 and row.get('basis') in ('DEX market', 'Market index')
                 and row.get('observed_at') and row.get('source') and not row.get('retained_from_previous')):
