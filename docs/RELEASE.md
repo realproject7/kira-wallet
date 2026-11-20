@@ -40,10 +40,20 @@ clean installation from that archive matched all 135 files. PR #23 merged at
   cover only part of a large queue. The displayed task and Activity link keep
   their existing behavior.
 
-Validation: `npm test` passed 455 root and 84 viewer Python tests plus the
-JavaScript checks. Synthetic desktop and mobile browser checks cover the full
-task count, count-only updates, Activity navigation, filters and pagination.
-Review not selected. Registry publication remains operator-only.
+The local launcher and browser app both reported 1.16.1 after the upgrade.
+The verification used saved evidence and a separate synthetic workspace.
+
+- The installed sell valuation replayed the previously saved BNB Chain USDC
+  outlier and rejected its DEX observation. With no eligible fallback in the
+  saved inputs, the route had no USD estimate. Synthetic USDC, USDT and DAI
+  quotes verified fallback pricing, the inclusive bounds and missing prices.
+- A desktop and mobile browser exercised the installed app with 120 synthetic
+  active tasks over its local HTTP API. The browser loaded 55 job records and
+  showed all 120 in Home's **All tasks** link. Finishing a task outside those
+  records changed the Home count to 119. The link opened Activity.
+
+`npm test` passed 455 root and 84 viewer Python tests plus the JavaScript
+checks before publication. Review not selected.
 
 ## Published 1.16.0
 
