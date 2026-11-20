@@ -53,6 +53,10 @@ class PnlTests(unittest.TestCase):
         self.addCleanup(env.stop)
         initialize(self.root)
         sample(self.root)
+        path=self.root/'snapshots/demo/initial/results.json'
+        snapshot=json.loads(path.read_text())
+        snapshot['coverage'][0]['native_balance']='2'
+        atomic(path,snapshot)
         self.app=Application(self.root)
 
     def save(self,args):
@@ -74,12 +78,48 @@ class PnlTests(unittest.TestCase):
         eth=next(a for a in result['assets'] if a['asset']=='native')
         self.assertEqual([eth[k] for k in ('average_cost','realized','unrealized')],['2300','300','200'])
         self.assertEqual(self.app.views.overview()['dashboard']['pnl'],result['summary'])
+        self.assertEqual([result['summary'][k] for k in ('capital_in_usd','value_and_withdrawals_usd')], ['6000','6500'])
         self.assertEqual(self.app.views.token(CHAIN,STABLE)['pnl_assets'][0]['realized'],'0')
+        self.assertEqual(self.app.views.token(CHAIN,STABLE)['pnl']['total'],'0')
+        self.assertEqual(self.app.views.token(CHAIN,'native')['pnl']['total'],'500')
+        for page in (self.app.views.holdings(), self.app.views.wallet(WALLET)):
+            self.assertEqual(next(a for a in page['assets'] if a['is_native'])['pnl']['unrealized'],'200')
         archived=self.app.call('pnl_evidence',{'wallet':WALLET,'chain_id':CHAIN,'revision':1,'limit':1})
         self.assertEqual(archived['events_count'],9)
         self.assertEqual(archived['next_offset'],1)
         with self.assertRaises(JobError):self.save({**batch,'balances':[]})
         self.assertEqual(self.read()['chains'][0]['revision'],1)
+
+    def test_token_totals_respect_holders_closed_trades_and_folder(self):
+        registry=json.loads((self.root/'wallets.json').read_text())
+        folder='snapshots/demo/second'
+        snapshot=json.loads((self.root/registry['wallets'][0]['latest_snapshot']['result']).read_text())
+        snapshot['wallet_address']=OTHER
+        atomic(self.root/folder/'results.json',snapshot)
+        second={'address':OTHER,'address_key':OTHER,'tags':['Second'],
+                'latest_snapshot':{'directory':folder,'result':folder+'/results.json'}}
+        registry['wallets'].append(second)
+        atomic(self.root/'wallets.json',registry)
+        self.save(sequence())
+        token=lambda folder=None: self.app.views.token(CHAIN,'native',folder_id=folder)['pnl']
+        self.assertEqual(token()['missing_holders'],1)
+        self.assertIsNone(token()['unrealized'])
+        group=self.app.submit({'schema_version':1,'operation':'folder.create','input':{'name':'Long term'},
+                               'idempotency_key':'pnl-folder-create'})['folder_id']
+        self.app.submit({'schema_version':1,'operation':'folder.assign','input':{'folder_id':group,'wallets':[WALLET]},
+                         'idempotency_key':'pnl-folder-assign'})
+        self.assertEqual(token(group)['total'],'500')
+        batch=sequence()
+        batch.update(wallet=OTHER,events=[leg(0,'deposit','native',1,2500,PEER),leg(1,'sell','native',1,2000),
+                                         {**leg(2,'buy',STABLE,2000,2000),'tx_hash':tx(1)}],
+                     balances=[mark(STABLE,'DEMO',2000,1)],idempotency_key='pnl-closed-trade')
+        snapshot['coverage'][0]['native_balance']='0'
+        atomic(self.root/folder/'results.json',snapshot)
+        self.save(batch)
+        both=token()
+        self.assertEqual([both[k] for k in ('realized','unrealized','total','reporting_wallets')],['-200','200','0',2])
+        self.assertEqual(token(group)['total'],'500')
+        self.assertEqual(next(a for a in self.app.views.holdings(folder_id=group)['assets'] if a['is_native'])['pnl']['total'],'500')
 
     def test_append_then_repair_and_unknown(self):
         batch=sequence()

@@ -279,6 +279,7 @@ def summary(wallets, heads):
         started_at=min((t for t in starts if t),default=min(r['started_at'] for _,r in reports))
         return json.loads(encode({'pnl_usd':pnl,'value_usd':nav,'opening_usd':opening,'deposits_usd':deposits,
             'withdrawals_usd':withdrawals,'first_deposit':first_deposit,
+            'capital_in_usd':add(opening,deposits),'value_and_withdrawals_usd':add(nav,withdrawals),
             'started_at':started_at,'as_of':min(r['as_of'] for _,r in reports),
             'latest_as_of':max(r['as_of'] for _,r in reports),'wallet_count':len(wallets),'analyzed_wallets':count,
             'chain_ids':sorted({r['chain_id'] for _,r in reports}), 'unclassified_count':gaps,
@@ -287,6 +288,24 @@ def summary(wallets, heads):
 def asset_rows(reports):
     return [{**row,'chain_id':r['chain_id'],'as_of':r['as_of']} for r in sorted(reports,key=lambda r:r['chain_id'])
             for row in r['assets']]
+
+def token_performance(reports, holder_keys):
+    """Sum the saved positions, including closed trades. An unreported holder makes the total unknown."""
+    if not reports:
+        return None
+    missing = len(holder_keys - reports.keys())
+    rows = list(reports.values())
+    with localcontext() as ctx:
+        ctx.prec = 160
+        def component(key):
+            if missing or any(r[key] is None for r in rows):
+                return None
+            return sum((Decimal(r[key]) for r in rows), ZERO)
+        realized, unrealized = component('realized'), component('unrealized')
+        return json.loads(encode({'realized': realized, 'unrealized': unrealized,
+            'total': add(realized, unrealized), 'reporting_wallets': len(rows),
+            'missing_holders': missing, 'as_of': min(r['as_of'] for r in rows),
+            'latest_as_of': max(r['as_of'] for r in rows)}))
 
 def cursor(r):
     return {k:r[k] for k in ('chain_id','revision','basis','started_at','first_deposit_at','to_block','block_hash','as_of','unclassified_count','balance_gaps','partial_history')}

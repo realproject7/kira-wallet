@@ -1,21 +1,78 @@
-.pnl-panel { margin:12px 0 22px; padding:18px 22px; background:var(--bg); border:1px solid var(--line); border-radius:12px; }
-.pnl-panel[hidden], #wallet-view[data-tab=tokens] #wallet-pnl {display:none}
-.pnl-panel h2,.pnl-panel h3,.pnl-token-detail h2 {margin:0;font-size:15px;font-weight:650;color:var(--ink)}
-.pnl-heading,.pnl-empty {display:flex;align-items:center;justify-content:space-between;gap:16px}
-.pnl-amount {display:block;margin-top:4px;font-size:clamp(21px,2.5vw,30px);line-height:1.22;letter-spacing:-.035em;font-variant-numeric:tabular-nums}
-.pnl-gain {color:#146448}.pnl-loss {color:#aa3540}
-.pnl-meta,.pnl-empty p {color:var(--secondary);font-size:12px;line-height:1.5}
-.pnl-meta {display:grid;text-align:right}.pnl-empty p {margin:4px 0 0}
-.pnl-panel details {margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
-.pnl-panel summary {cursor:pointer;font-size:13px;font-weight:600;width:fit-content}
-.pnl-metrics {display:flex;gap:14px 36px;flex-wrap:wrap;margin:14px 0}
-.pnl-metrics dt,.pnl-table small {font-size:12px;color:var(--secondary)}
-.pnl-metrics dd {margin:4px 0 0;font-size:15px;font-variant-numeric:tabular-nums;font-weight:600}
-.pnl-notice {font-size:12px;margin:8px 0;color:#845517}
-.pnl-scroll {overflow-x:auto;margin:10px 0;max-width:100%}
-.pnl-table {width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
-.pnl-table th,.pnl-table td {padding:8px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
-.pnl-table th:first-child {text-align:left}.pnl-table small {display:block;font-weight:400}
-.pnl-table thead th {font-size:12px;color:var(--secondary);font-weight:500}
-.pnl-panel details .pnl-copy {display:block;margin-top:12px}
-@media(max-width:620px){.pnl-panel{padding:14px}.pnl-heading,.pnl-empty{align-items:flex-start;flex-direction:column;gap:8px}.pnl-meta{text-align:left}.pnl-metrics{gap:12px 22px}}
+.pnl-panel {
+  --pnl-up: #16704d;
+  --pnl-down: #a23849;
+  --pnl-track: #e8e5ed;
+  margin: 14px 0 22px;
+  padding: clamp(16px, 2.2vw, 28px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.pnl-panel[hidden], #wallet-view[data-tab=tokens] #wallet-pnl { display: none }
+.pnl-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); align-items: center; gap: clamp(20px, 4vw, 64px) }
+.pnl-lead, .pnl-chart { min-width: 0 }
+.pnl-panel h2, .pnl-panel h3 { margin: 0; font-size: 16px; font-weight: 650; line-height: 1.35 }
+.pnl-amount { display: block; margin: 5px 0 4px; font-size: clamp(29px, 3.5vw, 44px); font-weight: 600; letter-spacing: -.045em; line-height: 1.15; overflow-wrap: anywhere }
+.pnl-gain { color: var(--pnl-up, #16704d) }
+.pnl-loss { color: var(--pnl-down, #a23849) }
+.pnl-caption, .pnl-foot, .pnl-section-head > span, .pnl-empty p, .pnl-table small, .pnl-metrics dt { color: var(--secondary); font-size: 12px; line-height: 1.5 }
+.pnl-chart { display: grid; gap: 12px; padding: 14px 16px; background: #f7f6fa; border-radius: 12px }
+.pnl-bar > div, .pnl-component > div:first-child, .pnl-section-head, .pnl-empty, .pnl-foot { display: flex; justify-content: space-between; align-items: baseline; gap: 8px 16px }
+.pnl-bar > div, .pnl-component > div:first-child, .pnl-coverage { color: #565160; font-size: 13px }
+.pnl-bar strong, .pnl-component .pnl-number, .pnl-coverage strong { color: var(--ink); text-align: right; font-weight: 650; overflow-wrap: anywhere }
+.pnl-component .pnl-gain { color: var(--pnl-up) }
+.pnl-component .pnl-loss { color: var(--pnl-down) }
+.pnl-panel progress {
+  --pnl-fill: var(--accent);
+  display: block; width: 100%; min-width: 0; height: 6px; border: 0; border-radius: 4px;
+  appearance: none; overflow: hidden; background: var(--pnl-track); color: var(--pnl-fill);
+}
+.pnl-panel progress::-webkit-progress-bar { background: var(--pnl-track) }
+.pnl-panel progress::-webkit-progress-value { background: var(--pnl-fill) }
+.pnl-panel progress::-moz-progress-bar { background: var(--pnl-fill) }
+.pnl-bar progress, .pnl-axis { margin-top: 5px }
+.pnl-basis progress { --pnl-fill: #958aaa }
+.pnl-gain progress, .pnl-axis progress { --pnl-fill: #33835e }
+.pnl-loss progress, .pnl-axis .pnl-negative { --pnl-fill: #b74f60 }
+.pnl-axis { position: relative; display: grid; grid-template-columns: 1fr 1fr }
+.pnl-axis::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; border-left: 1px solid #827b8e }
+.pnl-axis progress { border-radius: 0 4px 4px 0 }
+.pnl-axis .pnl-negative { direction: rtl; border-radius: 4px 0 0 4px }
+.pnl-coverage { grid-template-columns: 1fr auto; align-items: center; gap: 8px }
+.pnl-coverage progress { grid-column: 1 / -1 }
+.pnl-foot { flex-wrap: wrap; margin-top: 16px }
+.pnl-panel details, .pnl-section-head { margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line) }
+.pnl-panel summary { width: fit-content; cursor: pointer; font-size: 13px; font-weight: 600 }
+.pnl-metrics { display: flex; gap: 14px 36px; flex-wrap: wrap; margin: 14px 0 }
+.pnl-metrics dd { margin: 3px 0 0; font-size: 15px; font-weight: 600 }
+.pnl-notice { margin: 12px 0 0; padding: 8px 12px; border-radius: 8px; background: #fff4df; color: #714d12; font-size: 13px }
+.pnl-section-head { flex-wrap: wrap }
+.pnl-section-head > span { text-align: right }
+.pnl-scroll { max-width: 100%; overflow: auto; margin-top: 6px }
+.pnl-table { width: 100%; border-collapse: collapse; font-size: 13px }
+.pnl-table th, .pnl-table td { padding: 9px 8px; text-align: right; border-bottom: 1px solid var(--line) }
+.pnl-table th:first-child { text-align: left; padding-left: 0; overflow-wrap: anywhere }
+.pnl-table td:last-child, .pnl-table thead th:last-child { padding-right: 0 }
+.pnl-table tbody tr:last-child > * { border-bottom: none }
+.pnl-table small { display: block; font-weight: 400 }
+.pnl-table thead th { font-size: 12px; color: var(--secondary); font-weight: 500 }
+.pnl-empty { align-items: center }
+.pnl-empty p { margin: 4px 0 0 }
+.pnl-inline { display: block; margin-top: 2px; color: var(--secondary); font-size: 12px; line-height: 1.4; font-variant-numeric: tabular-nums }
+.pnl-inline .pnl-number { font-weight: 600 }
+@media (max-width: 740px) {
+  .pnl-layout { grid-template-columns: 1fr; gap: 14px }
+}
+@media (max-width: 600px) {
+  .pnl-empty { flex-wrap: wrap }
+  .pnl-foot { gap: 3px 16px }
+  .pnl-table thead { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden }
+  .pnl-table, .pnl-table tbody { display: block }
+  .pnl-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 9px 14px; padding: 10px 0; border-top: 1px solid var(--line) }
+  .pnl-table tbody tr:first-child { border: 0 }
+  .pnl-table tbody th, .pnl-table tbody td { padding: 0; border: none; text-align: left; overflow-wrap: anywhere }
+  .pnl-table tbody th { grid-column: 1 / -1; display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px }
+  .pnl-table td::before { content: attr(data-label); display: block; margin-bottom: 2px; color: var(--secondary); font-size: 12px }
+}

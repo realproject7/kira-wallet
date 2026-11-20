@@ -166,9 +166,16 @@ class StateCache:
                 for _ in range(3):
                     state, _, _ = load_state(self.root, include_details=False, encode=False, wallet_cache=self.wallet_cache)
                     pnl_heads=kira_pnl.read_heads(self.root)
-                    state['wallets']=[{**w,'pnl':kira_pnl.summary([w],pnl_heads),
-                                       'pnl_chains':[kira_pnl.cursor(r) for r in pnl_heads.get(w['key'],[])],
-                                       'pnl_assets':kira_pnl.asset_rows(pnl_heads.get(w['key'],[]))} for w in state['wallets']]
+                    wallets = []
+                    for w in state['wallets']:
+                        reports = pnl_heads.get(w['key'], [])
+                        pnl_assets = kira_pnl.asset_rows(reports)
+                        by_id = {f"{r['chain_id']}:{r['asset']}": {'unrealized': r['unrealized'], 'as_of': r['as_of']}
+                                 for r in pnl_assets}
+                        assets = [{**a, 'pnl': by_id[a['id']]} if a['id'] in by_id else a for a in w['assets']]
+                        wallets.append({**w, 'assets': assets, 'pnl': kira_pnl.summary([w], pnl_heads),
+                                        'pnl_chains': [kira_pnl.cursor(r) for r in reports], 'pnl_assets': pnl_assets})
+                    state['wallets'] = wallets
                     state['dashboard']={**state['dashboard'],'pnl':kira_pnl.summary(state['wallets'],pnl_heads)}
                     state['details'] = project_details(state['wallets'], self.root, include_wallets=False)
                     from kira_folders import catalog
@@ -292,9 +299,11 @@ class StateCache:
                 catalog=json.loads((Path(__file__).resolve().parent/'sources/known-tokens.json').read_text())['tokens']
                 pools,via=native_markets(chain_id,recorded,catalog)
             from positions import allocation
+            reports = {w['key']: {**r, 'wallet': w['name']} for w in state['wallets'] for r in w['pnl_assets']
+                       if r['chain_id'] == chain_id and r['asset'] == address}
+            pnl = token['pnl'] if 'pnl' in token else kira_pnl.token_performance(reports, set())
             return {**token,'capital_allocation':allocation(state['wallets'],token_id=identity),'market_pools':pools,'market_via':via,'links':market.get('links',[]),'curve_reserve':market.get('curve_reserve'),
-                    'pnl_assets':[{**a,'wallet':w['name']} for w in state['wallets'] for a in w['pnl_assets']
-                                 if a['chain_id']==chain_id and a['asset']==address],
+                    'pnl':pnl, 'pnl_assets':list(reports.values()),
                     'market_scope':'workspace', 'wallets': rows, 'data_revision': self.revision}
 
     def network(self, chain_id, *, folder_id=None):
