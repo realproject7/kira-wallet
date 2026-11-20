@@ -7,6 +7,8 @@ import uuid
 from kira_jobs import JobStore, JobError, atomic, fields, STATE_FILTERS
 from kira_state import StateCache, page, page_bounds
 from kira_research_tools import ResearchTools, CATALOG
+import kira_pnl
+import pnl_activity
 
 STRING={'type':'string','minLength':1,'maxLength':500}
 INTEGER={'type':'integer','minimum':0}
@@ -87,6 +89,21 @@ READ_TOOLS.append(tool('positions_read','Read saved protocol positions and exclu
 WRITE_TOOLS=[tool(name,'Submit '+operation+' as a durable local job. Returns a receipt, not a completed result.',
     {**props,'idempotency_key':{'type':'string','minLength':8,'maxLength':200}},required=[k for k in props if k not in ('priority','explorers','discover','scope') and not (name.startswith('portfolio_') and k=='folder_id') and not (k=='expected_revision' and name not in ('folder_set_members',*WALLET_ACTIONS))]+['idempotency_key'],write=True)
     for name,(operation,props) in MUTATIONS.items()]
+
+READ_TOOLS.extend([
+    tool('pnl_read','Read saved mainnet USD performance, per-chain continuation blocks and a page of moving-average positions.',
+         {'wallet':STRING,'offset':INTEGER,'limit':{'type':'integer','minimum':1,'maximum':100}},required=['wallet']),
+    tool('pnl_evidence','Read the original classified legs, closing balances and unclassified transaction hashes for a saved chain revision.',
+         {'wallet':STRING,'chain_id':INTEGER,'revision':INTEGER,'offset':INTEGER,'limit':{'type':'integer','minimum':1,'maximum':100}},
+         required=['wallet','chain_id','revision'])])
+MUTATIONS['pnl_publish']=('pnl.publish',kira_pnl.BATCH)
+pnl_write=tool('pnl_publish','Publish one reconciled, finalized mainnet block range. Use decimal strings for quantities and total USD values. Read the PnL section of kira skill for the evidence contract.',
+               {**kira_pnl.BATCH,'idempotency_key':{'type':'string','minLength':8,'maxLength':200}},write=True)
+pnl_write['annotations']['openWorldHint']=False
+WRITE_TOOLS.extend([pnl_write,tool('pnl_fetch_transfers','Explicit research for a registered wallet. Fetch one finalized transfer page using a shared daily PnL CU ceiling. Saved pages cost zero. Include internal calls only on supported networks.',
+                                 pnl_activity.ARGS,required=pnl_activity.REQUIRED,write=True),
+                    tool('pnl_fetch_reference','Explicitly fetch one budgeted reference. Select finalized_block, block (block_number), receipt (tx_hash and block_hash), balance (asset and block_hash), or historical_price (asset and UTC hour_end). Reads share evidence across wallets.',
+                         pnl_activity.REFERENCE,required=['wallet','chain_id','kind','daily_budget_cu'],write=True)])
 
 for descriptor in WRITE_TOOLS:
     if descriptor['name'] in ('positions_refresh','portfolio_positions_refresh'):
@@ -174,6 +191,12 @@ class Application:
     def submit(self,request,*,launch=True):
         registry=json.loads((self.root/'wallets.json').read_text())
         operation=request.get('operation') if isinstance(request,dict) else None
+        if operation=='pnl.publish':
+            fields(request,['schema_version','operation','input','idempotency_key'])
+            fields(request['input'],kira_pnl.BATCH)
+            with self.jobs.locked():
+                address=self.jobs.wallet(request['input']['wallet'])['address_key']
+                return kira_pnl.publish(self.root,request,address)
         if operation in ('wallet.remove','wallet.restore'):
             from kira_wallets import action
             with self.jobs.locked():return action(self.jobs,request)
@@ -227,6 +250,20 @@ class Application:
         if name in MUTATIONS:
             args=dict(arguments);key=args.pop('idempotency_key')
             return self.submit({'schema_version':1,'operation':MUTATIONS[name][0],'input':args,'idempotency_key':key})
+        if name in ('pnl_fetch_transfers','pnl_fetch_reference'):
+            if json.loads((self.root/'wallets.json').read_text()).get('demo'):
+                raise JobError('demo_read_only','Sample portfolios never contact providers.')
+            collect=pnl_activity.fetch if name=='pnl_fetch_transfers' else pnl_activity.reference
+            return collect(self.root,self.jobs.wallet(arguments['wallet'])['address_key'],arguments)
+        if name=='pnl_read':
+            key=self.jobs.wallet(arguments['wallet'])['address_key']
+            heads=kira_pnl.read_heads(self.root,key)
+            reports=heads.get(key,[])
+            return {'wallet':key,'summary':kira_pnl.summary([{'key':key}],heads),'chains':[kira_pnl.cursor(r) for r in reports],
+                    **page(kira_pnl.asset_rows(reports),arguments.get('offset',0),arguments.get('limit',50))}
+        if name=='pnl_evidence':
+            args={**arguments,'wallet':self.jobs.wallet(arguments['wallet'])['address_key']}
+            return kira_pnl.evidence(self.root,**{'offset':0,'limit':50,**args})
         if name=='workspace_status':
             from kira_config import public_status,load_config
             from kira_integrations import h402_status

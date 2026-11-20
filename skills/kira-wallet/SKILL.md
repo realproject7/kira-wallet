@@ -79,6 +79,63 @@ and code-execution tools for the rest of the user's question. For example:
    balances. Present results in the host conversation; save a report only when
    requested, using the host's own file tools.
 
+## Update deposit-based P&L
+
+When asked to analyze P&L, use the selected registered wallet or expand the named
+folder with `folders_list`. Use `pnl_read` per wallet to find its saved mainnet
+block cursors, balances and moving-average cost. A new wallet has no report.
+The Home and wallet pages read the latest publications automatically.
+
+1. Agree the research budget from the request or use a conservative workspace
+   budget for the first pass (e.g. 2,400 CUs per UTC day). Share it across
+   wallets. For explicit research, use `pnl_fetch_reference` with `kind: finalized_block` to pin a closing height and hash. Reuse Kira snapshots, price observations and
+   previous evidence first. `pnl_fetch_transfers` retrieves one fixed-range page
+   and direction for 120 estimated CU. Supply `daily_budget_cu`, the closing
+   `block_hash`, and both inclusive block numbers. Page both directions using
+   `next_page_key` as `page_key`; split busy ranges. If the provider expires a cursor,
+   use `renew_cursor: true` on the preceding page. Use `pnl_fetch_reference` for a receipt, pinned native/ERC-20 balance or a shared
+   hour of historical USD prices. Use prices at or before the event, within an
+   appropriate freshness window. Both fetch tools share the workspace ceiling.
+   Account separately for any additional host research. Stop on cooldown or exhausted budget and resume later.
+2. Verify the starting inventory was empty before the first funding, or use
+   `tracking_start` and record opening holdings at their then fair value.
+   Inspect native/internal movements, gas, rewards, swaps, bridge and protocol
+   transactions. Transfer pages alone cannot prove completeness. Fetch only missing
+   receipts and share historical prices by chain, contract and timestamp.
+3. Call `pnl_publish` for one wallet and mainnet at a time. For the first batch
+   set `expected_revision` and `base_revision` to 0. For later batches use the
+   current revision for both, continuing at `to_block + 1`. Supply timezone-aware
+   `from_time` and `as_of`, the finalized closing hash, `basis`, `coverage`
+   (verified or partial), ordered `events`, all nonzero closing `balances` and
+   an array of `unclassified` transaction hashes. Recheck the prior block hash
+   before continuing. If evidence changes, replay from the last sound base revision
+   with the current expected revision. Old batches remain available via `pnl_evidence`.
+   A correction replaces the suffix. Reapply through the desired closing block.
+4. Each event is one asset leg. Its identity is `native`, a contract, or
+   `contract#tokenId`. Use positive decimal-string quantities in human token units.
+   Include the event timestamp `at`, `block`, a unique ascending `order` within that block, and `tx_hash`
+   (the opening block hash for an opening leg). Supply `usd` as the total USD for
+   that leg and `usd_source` (execution, market, curve, protocol_nav or carried_cost).
+   Omit both when unknown. Pair buy and sell legs of a swap. Use deposit/withdrawal
+   with the counterparty `peer` for external capital. Use reward for earned income,
+   fee for gas, and convert_out/convert_in for internal wraps, bridges and changes
+   of position. Attach the same `bridge_id` (sourceChain:sourceTxHash:logIndex) to
+   both sides of a cross-chain bridge. An unmatched bridge keeps portfolio P&L pending. Carry the removed basis into the replacement claim for conversions.
+   For a wallet receiving capital use receipt-time fair value as its entry reference.
+   A wallet transfer does not realize a token sale. Match internal transfers by
+   chain, transaction and quantity across wallets in a folder.
+5. Reconcile against independently observed balances at the closing block, including
+   fee tokens and recorded LP claims exactly once. Each balance takes `asset`,
+   `symbol`, `quantity` and, when supported, positive per-unit `price_usd` and
+   `source` (market, execution, curve or protocol_nav). Reuse Kira's supported
+   mainnet price references at the observation time. Exclude unsupported sources,
+   testnet values and double-counted receipts. Mark incomplete history partial,
+   including debt or derivative exposure that cannot be represented in the NAV.
+   Submit with a stable `idempotency_key`, then read back the summary and gaps.
+   Browser reads do not spend provider credits. See `kira describe pnl_publish`
+   for the exact schema. For large closing inventories, pipe local JSON into
+   `kira call pnl_publish --arguments - --json`.
+
 ## Optional h402 tools
 
 Inspect `kira integrations --json` or `kira info --json`. h402 is optional and

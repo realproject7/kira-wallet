@@ -50,3 +50,4 @@ site/.vercel/
 /.wallet-actions/
 /positions/
 /.job-launch.lock
+/pnl/

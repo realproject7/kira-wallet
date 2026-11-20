@@ -52,6 +52,12 @@ Human controls remain available without an agent. `kira start` opens the app;
 `kira stop` closes its server. `kira start --read-only` disables browser actions.
 Stopping the app or ending an agent session does not cancel accepted research.
 
+Home shows deposit-based USD profit and loss for the analyzed mainnets in your
+current portfolio or folder. Copy the agent request there to start or update an
+analysis. Wallet details show average entry cost, realized sales and unrealized
+returns by asset. Missing history, prices or closing balances stay visible.
+[Agent P&L workflow](skills/kira-wallet/SKILL.md#update-deposit-based-pl)
+
 ## Work from any agent session
 
 The CLI reads saved data even when the web server is stopped. The default

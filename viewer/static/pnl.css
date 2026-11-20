@@ -1,0 +1,21 @@
+.pnl-panel { margin:12px 0 22px; padding:18px 22px; background:var(--bg); border:1px solid var(--line); border-radius:12px; }
+.pnl-panel[hidden], #wallet-view[data-tab=tokens] #wallet-pnl {display:none}
+.pnl-panel h2,.pnl-panel h3,.pnl-token-detail h2 {margin:0;font-size:15px;font-weight:650;color:var(--ink)}
+.pnl-heading,.pnl-empty {display:flex;align-items:center;justify-content:space-between;gap:16px}
+.pnl-amount {display:block;margin-top:4px;font-size:clamp(21px,2.5vw,30px);line-height:1.22;letter-spacing:-.035em;font-variant-numeric:tabular-nums}
+.pnl-gain {color:#146448}.pnl-loss {color:#aa3540}
+.pnl-meta,.pnl-empty p {color:var(--secondary);font-size:12px;line-height:1.5}
+.pnl-meta {display:grid;text-align:right}.pnl-empty p {margin:4px 0 0}
+.pnl-panel details {margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.pnl-panel summary {cursor:pointer;font-size:13px;font-weight:600;width:fit-content}
+.pnl-metrics {display:flex;gap:14px 36px;flex-wrap:wrap;margin:14px 0}
+.pnl-metrics dt,.pnl-table small {font-size:12px;color:var(--secondary)}
+.pnl-metrics dd {margin:4px 0 0;font-size:15px;font-variant-numeric:tabular-nums;font-weight:600}
+.pnl-notice {font-size:12px;margin:8px 0;color:#845517}
+.pnl-scroll {overflow-x:auto;margin:10px 0;max-width:100%}
+.pnl-table {width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.pnl-table th,.pnl-table td {padding:8px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+.pnl-table th:first-child {text-align:left}.pnl-table small {display:block;font-weight:400}
+.pnl-table thead th {font-size:12px;color:var(--secondary);font-weight:500}
+.pnl-panel details .pnl-copy {display:block;margin-top:12px}
+@media(max-width:620px){.pnl-panel{padding:14px}.pnl-heading,.pnl-empty{align-items:flex-start;flex-direction:column;gap:8px}.pnl-meta{text-align:left}.pnl-metrics{gap:12px 22px}}
