@@ -1,6 +1,11 @@
 # Kira release status
 
-Updated: 2026-11-18. The operator published Kira 1.16.1. It skips stablecoin
+Updated November 20, 2026. The operator published Kira 1.17.0 with deposit-based
+USD performance and moving-average token costs. Candidate 1.17.1 adds dated
+chain coverage, token-specific verification, closed token history and larger
+transfer pages. See the [1.17.1 release notes](RELEASE.md#candidate-1171).
+
+The operator published Kira 1.16.1. It skips stablecoin
 DEX output prices outside 0.9 to 1.1 in sell estimates, falls back to the next
 eligible source, and shows the full active task count on Home. The registry
 archive matched the frozen archive, and both fixes passed on the installed
@@ -51,10 +56,6 @@ earlier repository prepared
 bounded worker admission, wallet search and folders, and a consistent local
 workspace design, including corrected main-pool sell quotes on Base bounded sell-route retries, PancakeSwap BNB quotes, upgraded Aero pools, recoverable bulk wallet removal, visible token markets, and saved protocol positions with exclusive platform allocation. Previous snapshots and frozen archives remain preserved.
 Earlier plans and reports preserve historical evidence, not active release gates.
-
-Candidate 1.17.0 adds deposit-based USD performance and moving-average token
-returns from the external agent's saved research. The viewer reads these
-observations locally. Registry publication is pending. Review not selected.
 
 ## Completed release scope
 

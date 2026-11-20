@@ -19,12 +19,11 @@ Kira supplies wallet tools and a full-window
 management app. Your agent host manages its own conversations, models, files and
 approvals. Kira does not launch a model CLI or require a model login.
 
-Published npm release: **1.16.1**. It skips outlying stablecoin DEX prices in
-sell estimates and shows the full active task count on Home.
+Published npm release **1.17.0** adds deposit-based USD profit and loss for portfolios, folders, wallets and tokens.
 [Release notes](docs/RELEASE.md) ·
 [Implementation status and follow-ups](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_NEXT_STEPS.md).
 
-Candidate **1.17.0** adds deposit-based profit and loss for portfolios, folders, wallets and tokens.
+Candidate **1.17.1** shows which chains have verified returns, keeps closed token histories accessible and fetches more transfers per research request.
 
 ## Get started
 
