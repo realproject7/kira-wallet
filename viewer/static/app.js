@@ -552,6 +552,7 @@ function renderDetail(){
   const content=token?accounts+tokenMarkets(token)+risk+reference:typeof networkPanels==='function'?networkPanels(network,holdings,accounts):holdings+accounts;
   const pnl=token && typeof KiraPnl!=='undefined' ? KiraPnl.tokenPanel(token) : '';
   $('detail-view').innerHTML=header+stats+pnl+content;
+  if(pnl)KiraPnl.paintChart($('detail-view'));
   if(disclosures)restoreDisclosures($('detail-view'),disclosures);
   if(token)for(const button of $('detail-view').querySelectorAll('[data-token-pool-page]'))button.addEventListener('click',()=>{const direction=button.dataset.tokenPoolPage;tokenPoolPage+=direction==='next'?1:-1;renderDetail();$('detail-view').querySelector('[data-token-pool-page="'+direction+'"]')?.focus({preventScroll:true});});
   if(!token){$('network-token-status').value=networkStatus;$('network-token-status').addEventListener('change',e=>{networkStatus=e.target.value;networkOffset=0;loadRoute();});$('network-token-sort').value=networkSort;$('network-token-sort').addEventListener('change',e=>{networkSort=e.target.value;networkOffset=0;loadRoute();});$('network-switch').addEventListener('change',e=>navigate(networkHref(e.target.value)));$('network-token-search').addEventListener('input',e=>{tokenSearch=e.target.value;networkOffset=0;clearTimeout(networkSearchTimer);networkSearchTimer=setTimeout(()=>loadRoute(),160);});renderNetworkTokens(network);}

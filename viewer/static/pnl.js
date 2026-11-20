@@ -27,37 +27,78 @@ const KiraPnl = (() => {
       (value == null ? '—' : amount(value)) + '</span>';
   }
 
-  function bar(label,value,max,variant) {
-    return '<div class="pnl-bar '+variant+'"><div><span>'+label+'</span><strong>'+money(Number(value))+
-      '</strong></div><progress aria-hidden="true" max="'+max+'" value="'+Number(value)+'"></progress></div>';
+  const axisMoney = new Intl.NumberFormat('en-US', {
+    style:'currency', currency:'USD', notation:'compact', maximumSignificantDigits:3
+  });
+
+  // All three steps share a dollar scale, including zero and any negative balance.
+  function waterfall(title, steps) {
+    const values=steps.flatMap(step=>[step.start,step.end]);
+    const min=Math.min(0,...values), max=Math.max(0,...values);
+    const target=(max-min)/3 || 1;
+    const magnitude=10 ** Math.floor(Math.log10(target));
+    const interval=[1,2,2.5,5,10].find(n=>n*magnitude>=target)*magnitude;
+    const low=Math.floor(min/interval), high=Math.ceil(max/interval);
+    const position=value=>high===low?50:100*(value/interval-low)/(high-low);
+    const rules=[];
+    for(let n=low;n<=high;n++){
+      rules.push(`<div class="pnl-rule${n===0?' pnl-zero':''}" data-pnl-y="${position(n*interval)}"><span>${escapeHTML(axisMoney.format(n*interval))}</span></div>`);
+    }
+    const bars=steps.map((step,index)=>{
+      const a=position(step.start), b=position(step.end);
+      const connector=index===steps.length-1?'':`<i class="pnl-connector" data-pnl-y="${b}"></i>`;
+      return `<div class="pnl-column">${connector}<i class="pnl-block ${step.style}" data-pnl-y="${Math.min(a,b)}" data-pnl-height="${Math.abs(b-a)}"></i></div>`;
+    }).join('');
+    const legend=steps.map(step=>`<div><dt>${escapeHTML(step.label)}</dt><dd>${step.signed?amount(step.raw):escapeHTML(money(Number(step.raw)))}</dd></div>`).join('');
+    return `<figure class="pnl-chart"><figcaption>${title}<span>USD</span></figcaption><div class="pnl-plot" aria-hidden="true">${rules.join('')}<div class="pnl-columns">${bars}</div></div><dl class="pnl-key">${legend}</dl></figure>`;
+  }
+
+  function paintChart(node) {
+    for(const mark of node.querySelectorAll('[data-pnl-y]')){
+      mark.style.bottom=mark.dataset.pnlY+'%';
+      if(mark.dataset.pnlHeight!==undefined)mark.style.height=mark.dataset.pnlHeight+'%';
+    }
   }
 
   function capitalChart(p) {
-    if (p.pnl_usd == null) return '';
     const capital=p.capital_in_usd, returned=p.value_and_withdrawals_usd;
-    if (capital == null || returned == null) return '';
-    const max=Math.max(Number(capital),Number(returned)) || 1;
-    return '<div class="pnl-chart" role="group" aria-label="Capital comparison">'+
-      bar(Number(p.opening_usd) ? 'Opening value + deposits' : 'Deposits',capital,max,'pnl-basis')+
-      bar(Number(p.withdrawals_usd) ? 'Value + withdrawals' : 'Portfolio value',returned,max,tone(p.pnl_usd))+'</div>';
+    if(capital==null || returned==null || p.pnl_usd==null)return '';
+    const start=Number(capital), end=Number(returned);
+    return waterfall('Capital movement',[
+      {label:Number(p.opening_usd)?'Opening + deposits':'Deposits',start:0,end:start,raw:capital,style:'pnl-base'},
+      {label:'Net P&L',start,end,raw:p.pnl_usd,signed:true,style:'pnl-change '+tone(p.pnl_usd)},
+      {label:Number(p.withdrawals_usd)?'Value + withdrawals':'Portfolio value',start:0,end,raw:returned,style:'pnl-total'}
+    ]);
   }
 
-  function component(label,value,max) {
-    const scale = value == null ? '' : '<div class="pnl-axis" aria-hidden="true"><progress class="pnl-negative" max="'+max+'" value="'+
-      Math.max(0,-Number(value))+'"></progress><progress max="'+max+'" value="'+Math.max(0,Number(value))+'"></progress></div>';
-    return '<div class="pnl-component"><div><span>'+label+'</span>'+amount(value)+'</div>'+scale+'</div>';
+  function tradingChart(p) {
+    if(p.total==null || p.realized==null || p.unrealized==null){
+      return '<dl class="pnl-components">'+['realized','unrealized'].map(k=>'<div><dt>'+k+'</dt><dd>'+amount(p[k])+'</dd></div>').join('')+'</dl>';
+    }
+    const realized=Number(p.realized), total=Number(p.total);
+    return waterfall('Trading breakdown',[
+      {label:'Realized',start:0,end:realized,raw:p.realized,signed:true,style:'pnl-base '+tone(p.realized)},
+      {label:'Unrealized',start:realized,end:total,raw:p.unrealized,signed:true,style:'pnl-change '+tone(p.unrealized)},
+      {label:'Total P&L',start:0,end:total,raw:p.total,signed:true,style:'pnl-total '+tone(p.total)}
+    ]);
+  }
+
+  function capitalChange(p) {
+    if(p.pnl_usd==null || !(Number(p.capital_in_usd)>0))return '';
+    const percent=Number(p.pnl_usd)/Number(p.capital_in_usd)*100;
+    const digits=percent && Math.abs(percent)<.01?'&lt;0.01':Math.abs(percent).toLocaleString('en-US',{maximumFractionDigits:2});
+    const sign=percent>0?'+':percent<0?'−':'';
+    return `<div class="pnl-relative"><span class="pnl-chip ${tone(p.pnl_usd)}">${sign}${digits}%</span><span>of capital in</span></div>`;
   }
 
   function tokenPanel(token) {
     if (token.environment !== 'mainnet') return '';
     const p=token.pnl, rows=token.pnl_assets || [];
     if (!p) return '<section class="pnl-panel pnl-empty"><div><h2>Token performance</h2><p>No P&amp;L analysis saved for this token in this scope.</p></div></section>';
-    const max=Math.max(Math.abs(Number(p.realized)),Math.abs(Number(p.unrealized))) || 1;
     const coverage=p.reporting_wallets+(p.reporting_wallets === 1 ? ' reporting wallet' : ' reporting wallets');
     const missing=p.missing_holders ? '<p class="pnl-notice">Awaiting analysis for '+p.missing_holders+(p.missing_holders === 1 ? ' holder.' : ' holders.')+'</p>' : '';
     const summary='<div class="pnl-layout"><div class="pnl-lead"><h2>Trading P&amp;L</h2><strong class="pnl-amount">'+amount(p.total)+
-      '</strong><span class="pnl-caption">'+escapeHTML(coverage)+'</span></div><div class="pnl-chart" role="group" aria-label="Trading P&amp;L components">'+
-      component('Realized',p.realized,max)+component('Unrealized',p.unrealized,max)+'</div></div>';
+      '</strong><span class="pnl-caption">'+escapeHTML(coverage)+'</span></div>'+tradingChart(p)+'</div>';
     return '<section class="pnl-panel pnl-token-detail" aria-label="Token performance">'+summary+missing+
       '<div class="pnl-section-head"><h3>By wallet</h3><span>Valued '+escapeHTML(dateRange(p.as_of,p.latest_as_of))+'</span></div>'+
       assetTable(rows,token.id,true)+'</section>';
@@ -115,12 +156,12 @@ const KiraPnl = (() => {
     if(p.value_usd==null||p.deposits_usd==null||p.withdrawals_usd==null||p.opening_usd==null)issues.push('USD valuation incomplete');
     const opening=p.first_deposit?'':metric('Opening value',p.opening_usd);
     const visual=p.pnl_usd==null?'<div class="pnl-chart pnl-coverage"><span>Wallet analysis</span><strong>'+p.analyzed_wallets+' of '+p.wallet_count+'</strong><progress aria-label="Wallets analyzed" value="'+p.analyzed_wallets+'" max="'+p.wallet_count+'"></progress></div>':capitalChart(p);
-    node.innerHTML='<div class="pnl-layout"><div class="pnl-lead"><h2>'+title+'</h2><strong class="pnl-amount">'+amount(p.pnl_usd)+'</strong><span class="pnl-caption">From '+escapeHTML(day(p.started_at))+'</span></div>'+visual+'</div>'+
+    node.innerHTML='<div class="pnl-layout"><div class="pnl-lead"><h2>'+title+'</h2><strong class="pnl-amount">'+amount(p.pnl_usd)+'</strong>'+capitalChange(p)+'<span class="pnl-caption">From '+escapeHTML(day(p.started_at))+'</span></div>'+visual+'</div>'+
       (issues.length?'<p class="pnl-notice">'+escapeHTML(issues.join(' · '))+'</p>':'')+
       '<div class="pnl-foot"><span>'+escapeHTML(coverage)+'</span><span>Valued '+escapeHTML(at)+'</span></div>'+
       '<details'+(opened?' open':'')+'><summary>Calculation details</summary><dl class="pnl-metrics">'+metric('Analyzed value',p.value_usd)+metric('Deposits',p.deposits_usd)+metric('Withdrawals',p.withdrawals_usd)+opening+'</dl>'+action+'</details>'+
       (rows?.length?'<div class="pnl-section-head"><h3>Token performance</h3><span>'+rowCount+(rowCount===1?' token':' tokens')+'</span></div>'+assetTable(rows,scope,false,rowCount):'');
-
+    paintChart(node);
   }
 
   document.addEventListener('click',async event=>{
@@ -154,5 +195,5 @@ const KiraPnl = (() => {
     try { await navigator.clipboard.writeText(request); button.textContent='Copied'; }
     catch { window.prompt('Copy this request to your agent',request); }
   });
-  return {render,tokenPanel,listValue,amount};
+  return {render,tokenPanel,listValue,amount,paintChart};
 })();

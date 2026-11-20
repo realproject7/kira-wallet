@@ -178,3 +178,29 @@ test('fast refresh sits beside each full refresh, with its explanation behind an
  assert.equal(vm.runInContext("activityTask({operation:'wallet.refresh',input:{wallet:'a',scope:'fast'}})",ctx),'Fast refresh');
  assert.equal(vm.runInContext("activityTask({operation:'wallet.refresh',input:{wallet:'a'}})",ctx),'Holdings refresh');
 });
+
+test('trading waterfall crosses zero, preserves break-even and omits bars for incomplete returns',()=>{
+ const pnl=vm.runInNewContext(fs.readFileSync('viewer/static/pnl.js','utf8')+'\nKiraPnl',{
+  document:{addEventListener(){}},money:n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n),
+  escapeHTML:String
+ });
+ const chart=(realized,unrealized,total)=>pnl.tokenPanel({environment:'mainnet',pnl:{
+  realized,unrealized,total,reporting_wallets:1,as_of:'2026-01-02',latest_as_of:'2026-01-02'
+ }});
+ const blocks=markup=>[...markup.matchAll(/class="pnl-block ([^"]+)" data-pnl-y="([^"]+)" data-pnl-height="([^"]+)"/g)]
+  .map(([,style,y,height])=>({style,y:Number(y),height:Number(height)}));
+ const mixed=chart('200','-300','-100');
+ const [realized,unrealized,total]=blocks(mixed);
+ assert.match(unrealized.style,/pnl-loss/);
+ assert.match(total.style,/pnl-loss/);
+ assert.equal(unrealized.y,total.y);
+ assert.equal(realized.y+realized.height,unrealized.y+unrealized.height);
+ assert.equal(total.y+total.height,realized.y);
+ assert.match(mixed,/-\$300\.00/);
+ assert.equal(blocks(chart('250','-250','0'))[2].height,0);
+ assert.ok(blocks(chart('0','0','0')).every(b=>b.height===0 && Number.isFinite(b.y)));
+ const partial=chart('250',null,null);
+ assert.equal(blocks(partial).length,0);
+ assert.match(partial,/Pending/);
+ assert.match(partial,/\+\$250\.00/);
+});
