@@ -417,7 +417,7 @@ def dashboard(wallets):
         'prices_from':min(dates,default=None),'prices_to':max(dates,default=None),
         'networks':network_rows,'largest_holdings':[a for a in asset_rows if a['value_usd'] is not None][:5]}
 
-def load_state(root=ROOT, *, include_details=True, encode=True, wallet_cache=None):
+def load_state(root=ROOT, *, include_details=True, encode=True, wallet_cache=None, wallet_key=None):
     from copy import deepcopy
     from sell_analysis import analysis_index, assess, quantities, reuse_estimates, signature
     registry=read(root/'wallets.json');wallets=[];images=read_catalog(root)
@@ -436,6 +436,7 @@ def load_state(root=ROOT, *, include_details=True, encode=True, wallet_cache=Non
         if wallet_cache is not None:wallet_cache[key]=(version,deepcopy(wallet))
         return wallet
     for entry in registry.get('wallets',[]):
+        if wallet_key is not None and entry['address_key']!=wallet_key:continue
         latest=entry.get('latest_snapshot')
         if latest and latest.get('result'):
             wallet=project(entry,'current')

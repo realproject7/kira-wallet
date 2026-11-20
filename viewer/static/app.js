@@ -118,7 +118,7 @@ function readRoute(){
   areaWallet=null;walletTab='overview';
   if(parts[0]==='wallet'&&/^0x[0-9a-f]{40}$/i.test(parts[1]||'')){selectedWallet=parts[1].toLowerCase();areaWallet=selectedWallet;selectedView=parts[2]==='activity'?'activity':'wallet';walletTab=parts[2]==='tokens'?'tokens':'overview';}
   else if(parts[0]==='network'&&/^\d+$/.test(parts[1]||'')){selectedNetwork=Number(parts[1]);selectedView='network';tokenSearch='';}
-  else if(parts[0]==='token'&&/^\d+$/.test(parts[1]||'')&&/^(native|0x[0-9a-f]{40})$/i.test(parts[2]||'')){selectedToken=Number(parts[1])+':'+parts[2].toLowerCase();selectedView='token';}
+  else if(parts[0]==='token'&&/^\d+$/.test(parts[1]||'')&&/^(native|0x[0-9a-f]{40}(?:#[0-9]{1,78})?)$/i.test(parts[2]||'')){selectedToken=Number(parts[1])+':'+parts[2].toLowerCase();selectedView='token';}
   else if(['tokens','activity'].includes(parts[0])){selectedView=parts[0];}
   else if(location.hash){selectedView='home';}
   localStorage.setItem('wallet-view',selectedView);if(selectedWallet)localStorage.setItem('wallet-selection',selectedWallet);
@@ -529,6 +529,13 @@ function renderDetail(){
   const value=excluded?record.value_usd:record.capital_allocation?record.capital_allocation.known_value_usd:record.value_usd;
   const address=token?.address?`<span class="address-chip"><code title="${escapeHTML(token.address)}">${escapeHTML(shortAddress(token.address))}</code><button type="button" class="icon-button" data-copy-record="${escapeHTML(token.address)}" aria-label="Copy token address" title="Copy token address"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="11" height="12" rx="2"/><path d="M15 8V5H4v12h4"/></svg></button></span>`:'';
   const header=`<section class="detail-heading page-bar"><div class="detail-identity">${token?coinIcon(token):chainIcon(network)}<div><div class="token-title-line"><h1>${escapeHTML(label)}</h1>${isTestnet?'<span class="chip">Testnet</span>':''}${token?policyBadge(token):''}</div>${token?`<p class="detail-sub"><span>${escapeHTML(token.name)}</span><a href="${networkHref(network.id)}">${escapeHTML(network.name)}</a>${address}${explorerLink(token)}</p>`:''}</div></div>${!token?`<label class="chain-select"><span class="sr-only">Open another network</span><select id="network-switch">${context.details.networks.map(c=>({...c,value_usd:c.capital_allocation?c.capital_allocation.known_value_usd:c.value_usd})).sort((a,b)=>(b.value_usd??-1)-(a.value_usd??-1)).map(c=>`<option value="${c.id}" data-chain-id="${c.id}" ${c.id===network.id?'selected':''}>${escapeHTML(c.name)}${c.environment==='testnet'?' · Testnet':''}</option>`).join('')}</select></label>`:''}</section>`;
+  if(token?.history_only){
+    const detail=$('detail-view');
+    detail.innerHTML=header+'<p class="detail-sub">No current holding recorded in this view.</p>'+KiraPnl.tokenPanel(token);
+    KiraPnl.paintChart(detail);
+    bindImages();
+    return;
+  }
   const heldPrices=token&&!isTestnet?token.wallets.filter(r=>r.asset).map(r=>r.asset.price?.usd).filter(p=>p!=null):[];
   const low=heldPrices.length?Math.min(...heldPrices):null,high=heldPrices.length?Math.max(...heldPrices):null;
   const basis=token?token.wallets.find(r=>r.asset?.price?.usd!=null)?.asset.price.basis:null;
