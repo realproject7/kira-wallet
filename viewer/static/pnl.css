@@ -1,0 +1,85 @@
+/* Shared surfaces, typography and plum emphasis follow the released summary cards. */
+.pnl-panel {
+  margin: 0 0 20px; padding: 26px 28px;
+  border: 1px solid var(--line); border-radius: 20px;
+  background: #fff; color: var(--ink); font-variant-numeric: tabular-nums;
+}
+.pnl-panel[hidden], #wallet-view[data-tab=tokens] #wallet-pnl { display: none }
+.pnl-layout { display: grid; grid-template-columns: minmax(0,.7fr) minmax(0,1.3fr); align-items: center; gap: clamp(24px,4vw,64px) }
+.pnl-lead, .pnl-chart { min-width: 0 }
+.pnl-panel h2, .pnl-panel h3 { margin: 0; font-size: var(--text-ui); font-weight: 600; line-height: 1.35 }
+.pnl-amount { display: block; margin: 4px 0 8px; font-size: clamp(2.1rem,3.3vw,2.9rem); font-weight: 550; letter-spacing: -.04em; line-height: 1.1; overflow-wrap: anywhere }
+.pnl-gain { color: var(--accent) }
+.pnl-loss { color: #93513f }
+.pnl-amount .pnl-number { color: var(--ink) }
+.pnl-caption, .pnl-foot, .pnl-section-head > span, .pnl-empty p, .pnl-table small, .pnl-metrics dt,
+.pnl-relative, .pnl-key dt, .pnl-components dt { color: var(--secondary); font-size: var(--text-caption); line-height: 1.45 }
+.pnl-relative { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; margin: 0 0 9px }
+.pnl-chip { display: inline-block; padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); font-weight: 600 }
+.pnl-chip.pnl-loss { background: #f7e9e5 }
+.pnl-chart { --axis-width: 3.5rem; margin: 0; padding: 0; }
+.pnl-chart figcaption { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 14px; font-size: var(--text-secondary); font-weight: 600 }
+.pnl-chart figcaption span { color: var(--secondary); font-size: var(--text-caption); font-weight: 400 }
+.pnl-plot { position: relative; height: 106px; margin: 0 0 10px var(--axis-width) }
+.pnl-rule { position: absolute; inset-inline: 0; border-top: 1px dashed var(--line) }
+.pnl-rule span { position: absolute; right: calc(100% + 8px); transform: translateY(-50%); font-size: 11px; color: var(--secondary); line-height: 1; white-space: nowrap }
+.pnl-zero { border-top: 1px solid var(--muted) }
+.pnl-columns, .pnl-key { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)) }
+.pnl-columns { position: absolute; inset: 0 }
+.pnl-column { --bar-width: min(52%, 82px); position: relative }
+.pnl-block { position: absolute; left: calc((100% - var(--bar-width)) / 2); width: var(--bar-width); min-height: 2px; border-radius: 3px; }
+.pnl-base { background: color-mix(in srgb, var(--accent) 42%, white) }
+.pnl-change { background: repeating-linear-gradient(135deg, var(--accent) 0 3px, var(--accent-soft) 3px 5px); border: 1px solid var(--accent) }
+.pnl-total { background: var(--accent) }
+.pnl-base.pnl-loss { background: #d8b5aa }
+.pnl-change.pnl-loss { background: repeating-linear-gradient(135deg,#93513f 0 3px,#f7e9e5 3px 5px); border-color: #93513f }
+.pnl-total.pnl-loss { background: #93513f }
+.pnl-connector { position: absolute; left: calc((100% + var(--bar-width)) / 2); width: calc(100% - var(--bar-width)); border-top: 1px dashed var(--muted) }
+.pnl-key { margin: 0 0 0 var(--axis-width); text-align: center; gap: 4px }
+.pnl-key > div, .pnl-components > div { min-width: 0 }
+.pnl-key dd, .pnl-components dd { margin: 2px 0 0; font-size: var(--text-ui); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere }
+.pnl-key dt { line-height: 1.25; overflow-wrap: anywhere }
+.pnl-components { display: flex; flex-wrap: wrap; gap: 16px 38px; margin: 0; padding: 14px 0 }
+.pnl-components dt { text-transform: capitalize }
+.pnl-coverage { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; color: var(--secondary); font-size: var(--text-secondary) }
+.pnl-coverage progress { width: 100%; height: 7px; grid-column: 1 / -1; accent-color: var(--accent) }
+.pnl-section-head, .pnl-empty, .pnl-foot { display: flex; justify-content: space-between; align-items: baseline; gap: 8px 16px }
+.pnl-foot { flex-wrap: wrap; margin-top: 16px }
+.pnl-panel details, .pnl-section-head { margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line) }
+.pnl-panel summary { width: fit-content; cursor: pointer; font-size: 13px; font-weight: 600 }
+.pnl-metrics { display: flex; gap: 14px 36px; flex-wrap: wrap; margin: 14px 0 }
+.pnl-metrics dd { margin: 3px 0 0; font-size: 15px; font-weight: 600 }
+.pnl-notice { margin: 12px 0 0; padding: 8px 12px; border-radius: 8px; background: #fbf1dc; color: #7a5a17; font-size: 13px }
+.pnl-section-head { flex-wrap: wrap }
+.pnl-section-head > span { text-align: right }
+.pnl-scroll { max-width: 100%; overflow: auto; margin-top: 6px }
+.pnl-table { width: 100%; border-collapse: collapse; font-size: 13px }
+.pnl-table th, .pnl-table td { padding: 9px 8px; text-align: right; border-bottom: 1px solid var(--line) }
+.pnl-table th:first-child { text-align: left; padding-left: 0; overflow-wrap: anywhere }
+.pnl-table td:last-child, .pnl-table thead th:last-child { padding-right: 0 }
+.pnl-table tbody tr:last-child > * { border-bottom: none }
+.pnl-table small { display: block; font-weight: 400 }
+.pnl-table thead th { font-size: 12px; color: var(--secondary); font-weight: 500 }
+.pnl-empty { align-items: center }
+.pnl-empty p { margin: 4px 0 0 }
+.pnl-inline { display: block; margin-top: 2px; color: var(--secondary); font-size: 12px; line-height: 1.4; font-variant-numeric: tabular-nums }
+.pnl-inline .pnl-number { font-weight: 600 }
+@media (max-width: 740px) {
+  .pnl-layout { grid-template-columns: 1fr; gap: 20px }
+  .pnl-chart { border-top: 1px solid var(--line); padding-top: 14px }
+}
+@media (max-width: 600px) {
+  .pnl-panel { padding: 16px; border-radius: 16px }
+  .pnl-chart { --axis-width: 2.6rem }
+  .pnl-plot { height: 104px }
+  .pnl-key dt { font-size: 12px }
+  .pnl-empty { flex-wrap: wrap }
+  .pnl-foot { gap: 3px 16px }
+  .pnl-table thead { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden }
+  .pnl-table, .pnl-table tbody { display: block }
+  .pnl-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 9px 14px; padding: 10px 0; border-top: 1px solid var(--line) }
+  .pnl-table tbody tr:first-child { border: 0 }
+  .pnl-table tbody th, .pnl-table tbody td { padding: 0; border: none; text-align: left; overflow-wrap: anywhere }
+  .pnl-table tbody th { grid-column: 1 / -1; display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px }
+  .pnl-table td::before { content: attr(data-label); display: block; margin-bottom: 2px; color: var(--secondary); font-size: 12px }
+}

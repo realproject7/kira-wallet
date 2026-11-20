@@ -1,6 +1,6 @@
 {
   "name": "kira-wallet",
-  "version": "1.16.1",
+  "version": "1.17.0",
   "description": "Local wallet research for your agent session and a human-controlled web workspace.",
   "license": "MIT",
   "private": false,
@@ -123,6 +123,10 @@
     "kira_folders.py",
     "kira_state.py",
     "kira_service.py",
+    "kira_pnl.py",
+    "pnl_activity.py",
+    "viewer/static/pnl.js",
+    "viewer/static/pnl.css",
     "kira_archive.py",
     "skills/kira-wallet",
     "dex-adapters.cjs",

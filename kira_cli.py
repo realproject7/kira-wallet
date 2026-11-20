@@ -218,7 +218,7 @@ def main():
     wallets=sub.add_parser('wallets',help='List wallets or change their names.');walletsub=wallets.add_subparsers(dest='wallet_action')
     tags=walletsub.add_parser('tags');tags.add_argument('wallet');tags.add_argument('--tag',action='append',required=True);tags.add_argument('--idempotency-key')
     tools=sub.add_parser('tools',help='Serve Kira tools over MCP stdio.');tools.add_argument('--allow-writes',action='store_true')
-    call=sub.add_parser('call',help='Run one Kira tool with JSON arguments.');call.add_argument('tool');call.add_argument('--arguments',default='{}')
+    call=sub.add_parser('call',help='Run one Kira tool with JSON arguments.');call.add_argument('tool');call.add_argument('--arguments',default='{}',help='JSON object, or - to read JSON from standard input.')
     sub.add_parser('skill',help='Print the agent instructions.')
     describe=sub.add_parser('describe',help='List tool schemas or describe one tool without starting research.');describe.add_argument('tool',nargs='?')
     integrations=sub.add_parser('integrations',help='Check optional h402 tools or save the workspace preference.');integrations.add_argument('integration',nargs='?',choices=['h402'])
@@ -303,7 +303,9 @@ def main():
                 'data_dir':str(root),**app.call('workspace_status'), 'ui':live_record(root) is not None,
                 'skill':str(ASSETS/'skills/kira-wallet/SKILL.md')},allow_nan=False))
         elif args.command=='call':
-            try:value=json.loads(args.arguments,parse_constant=lambda _:(_ for _ in ()).throw(ValueError()))
+            raw=sys.stdin.read(4_000_001) if args.arguments=='-' else args.arguments
+            if len(raw)>4_000_000:raise ValueError('Keep tool arguments below 4 MB or split the block range.')
+            try:value=json.loads(raw,parse_constant=lambda _:(_ for _ in ()).throw(ValueError()))
             except ValueError:raise ValueError('Expected JSON tool arguments.') from None
             print(json.dumps(app.call(args.tool,value,allow_write=True),allow_nan=False))
         elif args.command=='skill':print((ASSETS/'skills/kira-wallet/SKILL.md').read_text())

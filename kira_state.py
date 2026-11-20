@@ -10,6 +10,7 @@ from collections import OrderedDict
 from decimal import Decimal, InvalidOperation
 from kira_jobs import JobError
 from asset_policy import STATUSES
+import kira_pnl
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'viewer'))
 from model import load_state, within, dashboard
@@ -125,7 +126,7 @@ class StateCache:
             current = signature(registry)
             if current != self.registry_signature or not self.paths:
                 value = json.loads(registry.read_text())
-                paths = {registry, self.root / 'networks.json', self.root / 'cache/token-images.json', self.root / 'token-policy.json', self.root / 'wallet-folders.json',self.root/'positions/index.json'}
+                paths = {registry, kira_pnl.database(self.root), self.root / 'networks.json', self.root / 'cache/token-images.json', self.root / 'token-policy.json', self.root / 'wallet-folders.json',self.root/'positions/index.json'}
                 folders=[]
                 for entry in value.get('wallets', []):
                     latest = entry.get('latest_snapshot') or {}
@@ -164,6 +165,18 @@ class StateCache:
             try:
                 for _ in range(3):
                     state, _, _ = load_state(self.root, include_details=False, encode=False, wallet_cache=self.wallet_cache)
+                    pnl_heads=kira_pnl.read_heads(self.root)
+                    wallets = []
+                    for w in state['wallets']:
+                        reports = pnl_heads.get(w['key'], [])
+                        pnl_assets = kira_pnl.asset_rows(reports)
+                        by_id = {f"{r['chain_id']}:{r['asset']}": {'unrealized': r['unrealized'], 'as_of': r['as_of']}
+                                 for r in pnl_assets}
+                        assets = [{**a, 'pnl': by_id[a['id']]} if a['id'] in by_id else a for a in w['assets']]
+                        wallets.append({**w, 'assets': assets, 'pnl': kira_pnl.summary([w], pnl_heads),
+                                        'pnl_chains': [kira_pnl.cursor(r) for r in reports], 'pnl_assets': pnl_assets})
+                    state['wallets'] = wallets
+                    state['dashboard']={**state['dashboard'],'pnl':kira_pnl.summary(state['wallets'],pnl_heads)}
                     state['details'] = project_details(state['wallets'], self.root, include_wallets=False)
                     from kira_folders import catalog
                     state['wallet_folders'] = catalog(self.root,state['wallets'])
@@ -176,6 +189,7 @@ class StateCache:
             except (OSError, ValueError, KeyError):
                 if self.state is None:raise
                 return self.state
+            self.pnl_heads = pnl_heads
             self.state, self.body, self.revision = state, body, revision
             self.overview_state = summary
             self.scope_cache.clear()
@@ -191,7 +205,7 @@ class StateCache:
         wallets=[]
         for wallet in state['wallets']:
             mainnet=[a for a in wallet['assets'] if a.get('environment')=='mainnet']
-            wallets.append({**wallet,'assets':[],'positions':[],'asset_count':len(wallet['assets']),
+            wallets.append({**wallet,'pnl_assets':[],'assets':[],'positions':[],'asset_count':len(wallet['assets']),
                             'mainnet_asset_count':len(mainnet),
                             'mainnet_unpriced_count':sum(a.get('value_usd') is None for a in mainnet)})
         networks=[{k:v for k,v in n.items() if k not in ('wallets','token_ids')} for n in state['details']['networks']]
@@ -205,7 +219,7 @@ class StateCache:
             if folder_id not in self.scope_cache:
                 from kira_folders import members
                 wallets=members(state['wallet_folders'],state['wallets'],folder_id)
-                selected={**state,'wallets':wallets,'folder_id':folder_id,'dashboard':dashboard(wallets),
+                selected={**state,'wallets':wallets,'folder_id':folder_id,'dashboard':{**dashboard(wallets),'pnl':kira_pnl.summary(wallets,self.pnl_heads)},
                           'details':project_details(wallets,self.root,include_wallets=False)}
                 self.scope_cache[folder_id]=(selected,self.compact(selected,self.revision))
                 self.scope_builds+=1
@@ -226,7 +240,7 @@ class StateCache:
             key = JobStore(self.root).wallet(selector)['address_key']
             wallet = next(w for w in state['wallets'] if w['key'] == key)
             receipts = receipt_platforms([wallet])
-            result = {**wallet, 'positions':[], **page(filter_assets(wallet['assets'], platforms=receipts, **filters), offset, limit),
+            result = {**wallet, 'positions':[],'pnl_assets':wallet['pnl_assets'][:20],'pnl_asset_count':len(wallet['pnl_assets']), **page(filter_assets(wallet['assets'], platforms=receipts, **filters), offset, limit),
                       'unpriced_hidden_count': unpriced_hidden(wallet['assets'], platforms=receipts, **filters),
                       'asset_count': len(wallet['assets']), 'data_revision': self.revision}
             return platform_rows(result, [wallet], receipts, filters.get('platform'))
@@ -285,7 +299,11 @@ class StateCache:
                 catalog=json.loads((Path(__file__).resolve().parent/'sources/known-tokens.json').read_text())['tokens']
                 pools,via=native_markets(chain_id,recorded,catalog)
             from positions import allocation
+            reports = {w['key']: {**r, 'wallet': w['name']} for w in state['wallets'] for r in w['pnl_assets']
+                       if r['chain_id'] == chain_id and r['asset'] == address}
+            pnl = token['pnl'] if 'pnl' in token else kira_pnl.token_performance(reports, set())
             return {**token,'capital_allocation':allocation(state['wallets'],token_id=identity),'market_pools':pools,'market_via':via,'links':market.get('links',[]),'curve_reserve':market.get('curve_reserve'),
+                    'pnl':pnl, 'pnl_assets':list(reports.values()),
                     'market_scope':'workspace', 'wallets': rows, 'data_revision': self.revision}
 
     def network(self, chain_id, *, folder_id=None):

@@ -19,11 +19,12 @@ Kira supplies wallet tools and a full-window
 management app. Your agent host manages its own conversations, models, files and
 approvals. Kira does not launch a model CLI or require a model login.
 
-Published npm release: **1.16.0**.
-Candidate **1.16.1** skips outlying stablecoin DEX prices in sell estimates and
-shows the full active task count on Home. Registry publication is pending.
+Published npm release: **1.16.1**. It skips outlying stablecoin DEX prices in
+sell estimates and shows the full active task count on Home.
 [Release notes](docs/RELEASE.md) ·
 [Implementation status and follow-ups](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_NEXT_STEPS.md).
+
+Candidate **1.17.0** adds deposit-based profit and loss for portfolios, folders, wallets and tokens.
 
 ## Get started
 
@@ -51,6 +52,12 @@ kira setup
 Human controls remain available without an agent. `kira start` opens the app;
 `kira stop` closes its server. `kira start --read-only` disables browser actions.
 Stopping the app or ending an agent session does not cancel accepted research.
+
+Home shows deposit-based USD profit and loss for the analyzed mainnets in your
+current portfolio or folder. Copy the agent request there to start or update an
+analysis. Wallet details show average entry cost, realized sales and unrealized
+returns by asset. Missing history, prices or closing balances stay visible.
+[Agent P&L workflow](skills/kira-wallet/SKILL.md#update-deposit-based-pl)
 
 ## Work from any agent session
 

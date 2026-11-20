@@ -1,15 +1,33 @@
 # Releases and preparation
 
-Published npm release: **1.16.0**.
+Published npm release: **1.16.1**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
+
+## Candidate 1.17.0
+
+Home, folder and wallet views show cumulative USD profit and loss from the
+first deposit or a recorded opening value. A waterfall chart reconciles
+contributed capital with the saved value and withdrawals. Token details show
+realized and unrealized returns and each wallet's moving-average entry cost.
+
+The external agent can resume from its last finalized block, reuse saved
+evidence and publish a reconciled observation. Incomplete history, transfers
+or valuations leave affected amounts pending. Viewing P&L reads local data.
+Registry publication is pending. Review not selected.
 
 Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and
 numbers in this repository start again at 1.
 
-## Candidate 1.16.1
+## Published 1.16.1
+
+The operator published 1.16.1 on November 18, 2026. The npm `latest` tag points
+to 1.16.1. The registry archive is byte-identical to the frozen one, and a
+clean installation from that archive matched all 135 files. PR #23 merged at
+`7ab627519d8d7cddc66003864b9b6b1ffe1be42b`. The archive SHA-256 is
+`1e1e1e4921473f45986908cfc1369761425f2db7537e3682fc2f02f5f35536fb`.
 
 - **Stablecoin output prices skip DEX outliers.** Sell estimates ignore a DEX
   USD price below 0.9 or above 1.1 for catalogued USDC, USDT and DAI contracts,

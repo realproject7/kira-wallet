@@ -139,7 +139,7 @@ class JobsHTTPTest(unittest.TestCase):
         from kira_cli import sample
         atomic(self.root/'wallets.json',{'schema_version':1,'wallets':[]});sample(self.root)
         self.http.controls=False
-        paths=('/api/state','/api/status','/api/wallet?wallet=Demo%20wallet','/api/token?chain_id=8453&address=0x'+'0'*39+'2','/api/network?chain_id=8453','/api/holdings?limit=1')
+        paths=('/api/state','/api/status','/api/pnl?wallet=Demo%20wallet','/api/wallet?wallet=Demo%20wallet','/api/token?chain_id=8453&address=0x'+'0'*39+'2','/api/network?chain_id=8453','/api/holdings?limit=1')
         for path in paths:
             self.assertEqual(self.request(path,method='GET')[0],200)
             self.assertEqual(self.request(path,method='GET',headers={'Origin':'https://foreign.test'})[0],403)

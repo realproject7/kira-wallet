@@ -38,8 +38,9 @@ kira call wallet_read --arguments '{"wallet":"Daily wallet","offset":0,"limit":1
 kira call holdings_refresh --arguments '{"wallet":"Daily wallet","idempotency_key":"refresh-daily-001"}' --json
 ```
 
-`call` supports the full shared catalogue. Mutations require an idempotency key
-and normally return a durable job receipt. Token preferences and risk checks return immediate durable action receipts. Reuse a key only for the same intended request.
+`call` supports the full shared catalogue. Publications and job submissions take an idempotency key. Most job submissions
+return a durable receipt. The two P&L evidence fetches use their query and
+finalized range as a cache key and require a daily CU ceiling. Token preferences and risk checks return immediate durable action receipts. Reuse a key only for the same intended request.
 The short `add`, `refresh`, `prices`, `wallets tags` and `jobs` commands use the
 same service. `--json` is accepted before or after the command.
 
@@ -60,15 +61,21 @@ same view is still open.
 | `token_read`, `network_read` | Exact asset or network evidence |
 | `snapshots_list`, `snapshot_read`, `snapshots_compare` | Saved history and comparisons |
 | `job_list`, `job_read` | Paged/filterable job list and a job's state/receipts |
+| `pnl_read`, `pnl_evidence` | Wallet P&L, continuation blocks, moving-average token costs and original dated evidence |
 | `ui_context` | Last recorded web selection |
 
 | Mutations | Purpose |
 |---|---|
+| `pnl_publish` | Save a reconciled agent evidence batch locally, with a revision check and durable retry key |
+| `pnl_fetch_transfers`, `pnl_fetch_reference` | Explicit, budgeted Alchemy transfer pages, finalized blocks, receipts, balances and historical prices |
 | `wallet_add`, `wallet_tags` | Add a supplied public address or update exact names |
 | `holdings_refresh`, `prices_refresh` | Explicit provider research |
 | `job_cancel`, `job_resume`, `job_deepen` | Control an identified job |
 | `settings_rpc`, `settings_discovery`, `settings_provider` | Configure references through the shared job queue |
 | `settings_h402` | Save optional h402 discovery preference; does not install or call h402 |
+
+For the full P&L workflow, evidence fields, correction and budget behavior see the
+[P&L agent instructions](../skills/kira-wallet/SKILL.md#update-deposit-based-pl).
 
 Read schemas and write schemas are defined in `kira_service.py`. The MCP
 `tools/list` response exposes the active JSON Schemas. Required fields reject

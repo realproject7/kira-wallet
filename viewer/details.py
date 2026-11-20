@@ -92,8 +92,13 @@ def project_details(wallets, root, *, include_wallets=True):
         c['image_url'] = chain_image(c['id'])
         c['lifecycle'] = lifecycle(c['id'])
 
+    from kira_pnl import token_performance
     groups = {}
+    reports = {}
     for wallet in wallets:
+        for row in wallet.get('pnl_assets', []):
+            token_id = f"{row['chain_id']}:{row['asset']}"
+            reports.setdefault(token_id, {})[wallet['key']] = row
         for asset in wallet['assets']:
             groups.setdefault(asset['id'], []).append((wallet, asset))
     tokens = []
@@ -102,6 +107,7 @@ def project_details(wallets, root, *, include_wallets=True):
         network = catalog.get(first['chain_id'], {'id': first['chain_id'], 'name': str(first['chain_id']), 'environment': 'unknown'})
         assets = [a for _, a in holdings]
         token = {k: first.get(k) for k in ('id', 'chain_id', 'symbol', 'name', 'address', 'is_native', 'image_url', 'curve_reserve', 'portfolio_status', 'included_in_totals', 'valuation_policy', 'risk_check')}
+        token['pnl'] = token_performance(reports.get(identity, {}), {w['key'] for w, _ in holdings})
         token['portfolio_status']=first.get('portfolio_status') or 'portfolio'
         token['included_in_totals']=included(first)
         token.update({'network': network, 'environment': network['environment'],
