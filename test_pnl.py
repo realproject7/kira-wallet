@@ -208,6 +208,121 @@ class PnlTests(unittest.TestCase):
         self.assertEqual(new_http['pnl']['pnl_usd'],'500')
         self.assertEqual(new_http['pnl']['started_at'],'2026-01-01T16:00:00.000000+00:00')
 
+    def test_missing_holding_chains_and_older_cutoffs_across_readers(self):
+        self.save(sequence())
+        path=self.root/'snapshots/demo/initial/results.json'
+        snapshot=json.loads(path.read_text())
+        snapshot['coverage'].append({**snapshot['coverage'][0],'chain_id':1,'network':'ethereum','native_balance':'1'})
+        atomic(path,snapshot)
+        folder=self.app.submit({'schema_version':1,'operation':'folder.create','input':{'name':'Group'},
+                                'idempotency_key':'scope-folder-create'})['folder_id']
+        self.app.submit({'schema_version':1,'operation':'folder.assign','input':{'folder_id':folder,'wallets':[WALLET]},
+                         'idempotency_key':'scope-folder-assign'})
+        for result in (self.read()['summary'],self.app.views.wallet(WALLET)['pnl'],
+                       self.app.views.overview()['dashboard']['pnl'],self.app.views.overview(folder)['dashboard']['pnl']):
+            self.assertEqual(result['missing_chain_ids'],[1])
+            self.assertIsNone(result['pnl_usd'])
+        self.assertEqual(self.read()['chains'][0]['pnl_usd'],'500')
+        batch={**sequence(),'chain_id':1,'idempotency_key':'scope-second-chain'}
+        self.save(batch)
+        self.assertEqual(self.read()['summary']['pnl_usd'],'1000')
+        self.save({**batch,'expected_revision':1,'as_of':'2026-01-03T00:00:00Z','idempotency_key':'scope-mixed-date'})
+        result=self.read()['summary']
+        self.assertFalse(result['valuation_dates_aligned'])
+        self.assertIsNone(result['value_usd'])
+        self.assertIsNone(result['pnl_usd'])
+        snapshot['coverage'][0]['native_block_number']='2'
+        atomic(path,snapshot)
+        self.assertEqual(self.read()['summary']['behind_chain_count'],1)
+
+    def test_missing_position_chain_and_different_blocks_on_one_chain(self):
+        import kira_pnl
+        self.save(sequence())
+        heads=kira_pnl.read_heads(self.root)
+        wallet={'key':WALLET,'chains':[{'id':1,'environment':'mainnet'}],'positions':[{'chain_id':1}]}
+        self.assertEqual(kira_pnl.summary([wallet],heads)['missing_chain_ids'],[1])
+        report=heads[WALLET][0]
+        heads[OTHER]=[{**report,'block_hash':tx(98)}]
+        summary=kira_pnl.summary([{'key':WALLET},{'key':OTHER}],heads)
+        self.assertIsNone(summary['pnl_usd'])
+        rows={owner:kira_pnl.asset_rows(reports)[0] for owner,reports in heads.items()}
+        self.assertIsNone(kira_pnl.token_performance(rows,set())['total'])
+
+    def test_partial_asset_attestation_and_observed_quantity(self):
+        import sqlite3
+        from contextlib import closing
+        import kira_pnl
+        batch=sequence()
+        batch.update(coverage='partial',unclassified=[tx(44)])
+        batch['balances'][0]['history_verified']=True
+        batch['balances'][1]['quantity']='1800'
+        self.save(batch)
+        result=self.read()
+        assets={a['asset']:a for a in result['assets']}
+        self.assertIsNone(result['summary']['pnl_usd'])
+        self.assertEqual((assets['native']['realized'],assets['native']['unrealized']),('300','200'))
+        self.assertEqual(self.app.views.token(CHAIN,'native')['pnl']['total'],'500')
+        self.assertIsNone(assets[STABLE]['realized'])
+        self.assertEqual((assets[STABLE]['quantity'],assets[STABLE]['ledger_quantity']),('1800','1700'))
+        batch['balances'][1]['history_verified']=True
+        with self.assertRaises(JobError):
+            self.save({**batch,'expected_revision':1,'idempotency_key':'mismatched-attestation'})
+        later={**batch,'expected_revision':1,'base_revision':1,'from_block':2,'to_block':2,'events':[],
+               'unclassified':[],'coverage':'verified','from_time':batch['as_of'],'idempotency_key':'later-attestation'}
+        later['balances'][1]['quantity']='1700'
+        self.save(later)
+        latest={a['asset']:a for a in self.read()['assets']}
+        self.assertEqual(latest['native']['unrealized'],'200')
+        self.assertIsNone(latest[STABLE]['average_cost'])
+        # Read a pre-upgrade head that only persisted book quantities in its computed state.
+        with closing(sqlite3.connect(kira_pnl.database(self.root))) as db, db:
+            db.execute('UPDATE heads SET revision=1')
+            raw=json.loads(db.execute('SELECT state FROM reports WHERE revision=1').fetchone()[0])
+            for row in raw['assets']:row.pop('observed_quantity')
+            db.execute('UPDATE reports SET state=? WHERE revision=1',(json.dumps(raw),))
+        rows=kira_pnl.asset_rows(kira_pnl.read_heads(self.root)[WALLET])
+        self.assertEqual(next(a for a in rows if a['asset']==STABLE)['quantity'],'1800')
+
+    def test_last_holder_sold_token_remains_reachable(self):
+        extra='0x'+format(5,'040x')
+        batch=sequence()
+        batch.update(events=[leg(0,'deposit',extra,1,200,PEER),leg(1,'sell',extra,1,250),
+                             {**leg(2,'buy',STABLE,250,250),'tx_hash':tx(1)}],
+                     balances=[mark(STABLE,'DEMO',250,1),mark(extra,'CLOSED',0,None)])
+        self.save(batch)
+        token=self.app.views.token(CHAIN,extra)
+        self.assertEqual((token['symbol'],token['wallet_count'],token['pnl']['realized']),('CLOSED',0,'50'))
+        self.assertFalse(any(a['address']==extra for a in self.app.views.holdings()['assets']))
+        with self.assertRaises(JobError):self.app.views.token(CHAIN,PEER)
+
+    def test_saved_nft_identity_links_to_its_own_history(self):
+        nft=STABLE+'#7'
+        batch=sequence()
+        batch.update(events=[leg(0,'deposit',nft,1,120,PEER)],balances=[mark(nft,'ART',1,150)])
+        self.save(batch)
+        token=self.app.views.token(CHAIN,nft)
+        self.assertTrue(token['history_only'])
+        self.assertEqual((token['id'],token['address'],token['pnl']['total']),(str(CHAIN)+':'+nft,STABLE,'30'))
+
+    def test_transfer_page_size_and_legacy_cursors(self):
+        import pnl_activity
+        args={'wallet':WALLET,'chain_id':CHAIN,'from_block':1,'to_block':2,'block_hash':tx(2),
+              'direction':'incoming','daily_budget_cu':120}
+        result={'next_page_key':'abc','transfers':[]}
+        with patch('pnl_activity.collect',return_value=result) as collect:
+            first=pnl_activity.fetch(self.root,WALLET,args)
+            self.assertEqual(collect.call_args.args[2]['params'][0]['maxCount'],'0x3e8')
+            for cursor,expected in [(first['next_page_key'],1000),('abc',50)]:
+                pnl_activity.fetch(self.root,WALLET,{**args,'page_key':cursor})
+                params=collect.call_args.args[2]['params'][0]
+                self.assertEqual((params['pageKey'],int(params['maxCount'],16)),('abc',expected))
+            with self.assertRaises(JobError):pnl_activity.fetch(self.root,WALLET,{**args,'page_key':'1000.abc','page_size':25})
+            pnl_activity.fetch(self.root,WALLET,{**args,'page_size':50})
+            _,network,request,_,_,scope,_=collect.call_args.args
+            atomic(pnl_activity.cache_path(self.root,network,request,scope),result)
+        cached=pnl_activity.fetch(self.root,WALLET,args)
+        self.assertEqual((cached['cu'],cached['page_size'],cached['next_page_key']),(0,50,'50.abc'))
+
     def test_fetch_cache_cost_and_limits(self):
         import pnl_activity
         args={'wallet':WALLET,'chain_id':CHAIN,'from_block':1,'to_block':2,'block_hash':tx(2),'direction':'incoming','daily_budget_cu':120}

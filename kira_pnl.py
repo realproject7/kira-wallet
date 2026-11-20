@@ -26,7 +26,7 @@ def items(schema, limit):
 LEG = obj({'asset':{'type':'string','pattern':'^'+ASSET+'$'},'kind':{'type':'string','enum':KINDS},
            'quantity':S,'usd':S,'usd_source':{'type':'string','enum':[*SOURCES,'carried_cost']},'at':S,'block':N,'order':N,'tx_hash':S,'peer':S,'bridge_id':S},
           ['asset','kind','quantity','block','order','at','tx_hash'])
-MARK = obj({'asset':S,'symbol':S,'quantity':S,'price_usd':S,'source':{'type':'string','enum':SOURCES}},
+MARK = obj({'asset':S,'symbol':S,'quantity':S,'history_verified':{'type':'boolean'},'price_usd':S,'source':{'type':'string','enum':SOURCES}},
            ['asset','symbol','quantity'])
 BATCH = {'wallet':S,'chain_id':N,'expected_revision':N,'base_revision':N,'from_block':N,'to_block':N,
          'from_time':S,'as_of':S,'block_hash':S,'basis':{'type':'string','enum':['first_deposit','tracking_start']},
@@ -69,10 +69,22 @@ def read_heads(root, wallet=None):
     with closing(sqlite3.connect(path.as_uri()+'?mode=ro',uri=True)) as db:
         if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='heads'").fetchone():
             return {}
-        sql='SELECT wallet, state FROM heads CROSS JOIN reports USING (wallet,chain,revision)'
+        sql='SELECT wallet, state, chain, revision FROM heads CROSS JOIN reports USING (wallet,chain,revision)'
         rows=db.execute(sql+' WHERE wallet=?',(wallet,)) if wallet else db.execute(sql)
         out={}
-        for wallet,state in rows:out.setdefault(wallet,[]).append(json.loads(state))
+        for owner,state,chain,revision in rows:
+            report=json.loads(state)
+            # Older rows kept only the book quantity. Recover the observed balance from the same revision.
+            partial=report['partial_history'] or report['unclassified_count']
+            legacy=[r for r in report['assets'] if 'observed_quantity' not in r and
+                    (not r['matched'] or (partial and num(r['quantity'])==0))]
+            if legacy:
+                evidence=db.execute('SELECT evidence FROM reports WHERE wallet=? AND chain=? AND revision=?',
+                                    (owner,chain,revision)).fetchone()[0]
+                marks={asset_id(m['asset']):m['quantity'] for m in json.loads(evidence)['balances']}
+                for row in legacy:
+                    row['observed_quantity']=marks.get(row['asset'])
+            out.setdefault(owner,[]).append(report)
         return out
 
 def add(a,b):
@@ -170,6 +182,7 @@ def apply_batch(value, parent, revision):
         require(all(kinds=={'buy','sell'} for kinds in trades.values()),
                 'Record both settlement legs of each swap, or mark its history partial.')
     marks={}
+    verified_assets=set()
     for mark in value['balances']:
         checked_fields(mark,MARK)
         key=asset_id(mark['asset'])
@@ -178,28 +191,36 @@ def apply_batch(value, parent, revision):
                 'Pair each observed market, execution, curve or protocol price with its source.')
         px=amount(mark['price_usd']) if 'price_usd' in mark else None
         require(px is None or px>0,'Omit an unavailable price.')
+        if 'history_verified' in mark:
+            require(type(mark['history_verified']) is bool,'Asset history verification must be a boolean.')
+            if mark['history_verified']:verified_assets.add(key)
         marks[key]=(amount(mark['quantity']),px)
         symbols[key]=mark['symbol']
     rows=[]
     unmatched=0
     nav=ZERO
+    previous_rows={r['asset']:r for r in previous.get('assets',[])}
+    previous_complete=not (previous.get('unclassified_count') or previous.get('partial_history'))
+    batch_complete=value['coverage']=='verified' and not value['unclassified']
     for key in sorted(assets.keys()|marks.keys()):
         row=assets.get(key,{'quantity':ZERO,'cost':ZERO,'realized':ZERO})
         qty=row['quantity']
         observed,px=marks.get(key,(None,None))
         matched=observed==qty if observed is not None else qty==0
+        require(key not in verified_assets or matched,'An independently verified asset needs a matching closing balance.')
+        prior=previous_rows.get(key,{})
+        history_verified=(matched and prior.get('history_verified',previous_complete and prior.get('matched',True))
+                          and (batch_complete or key in verified_assets))
         unmatched+=int(not matched)
         worth=ZERO if not qty else qty*px if px is not None else None
         nav=add(nav,worth if matched else None)
-        rows.append({'asset':key,'symbol':symbols.get(key,key),'quantity':qty,'cost':row['cost'],'realized':row['realized'] if matched else None,
-                     'average_cost':row['cost']/qty if matched and qty and row['cost'] is not None else None,
-                     'unrealized':worth-row['cost'] if matched and worth is not None and row['cost'] is not None else None,
+        rows.append({'asset':key,'symbol':symbols.get(key,key),'quantity':qty,'observed_quantity':observed,'history_verified':bool(history_verified),
+                     'cost':row['cost'],'realized':row['realized'] if history_verified else None,
+                     'average_cost':row['cost']/qty if history_verified and qty and row['cost'] is not None else None,
+                     'unrealized':worth-row['cost'] if history_verified and worth is not None and row['cost'] is not None else None,
                      'matched':matched})
     gaps=previous.get('unclassified_count',0)+len(set(value['unclassified']))
     partial=bool(previous.get('partial_history') or previous.get('balance_gaps') or value['coverage']=='partial')
-    if gaps or partial:
-        for row in rows:
-            row.update(average_cost=None, unrealized=None, realized=None)
     return {'chain_id':value['chain_id'],'revision':revision,'to_block':end,'block_hash':value['block_hash'].lower(),
             'first_deposit_at':first_deposit,'started_at':previous.get('started_at',start_time),'as_of':as_of,'basis':basis,'opening':opening,
             'nav':nav,'bridges':bridges,'flows':flows,'flow_signatures':signatures,'partial_history':partial,'assets':rows,'unclassified_count':gaps,'balance_gaps':unmatched}
@@ -240,6 +261,30 @@ def publish(root, request, wallet):
         db.execute('INSERT OR REPLACE INTO heads VALUES (?,?,?)',(wallet,chain,expected+1))
     return {'wallet':wallet,'chain_id':chain,'revision':expected+1,'status':'saved'}
 
+def valuation_dates_align(reports):
+    # Chains close at different times. Combine marks on one UTC date and one block per chain.
+    return (len({r['as_of'][:10] for r in reports})<=1 and
+            len({(r['chain_id'],r['block_hash']) for r in reports})==len({r['chain_id'] for r in reports}))
+
+
+def coverage(wallets, heads):
+    missing=[]
+    behind=[]
+    for w in wallets:
+        reports={r['chain_id']:r for r in heads.get(w['key'],[])}
+        chains={c['id']:c for c in w.get('chains',[]) if c['environment']=='mainnet'}
+        active={a['chain_id'] for a in w.get('assets',[]) if a['environment']=='mainnet'}
+        active.update(p['chain_id'] for p in w.get('positions',[]) if p['chain_id'] in chains)
+        missing.extend(sorted(active-reports.keys()))
+        for chain in reports.keys() & chains.keys():
+            recorded=(chains[chain].get(k) for k in ('native_block_number','registry_block_number'))
+            heights=[int(str(n),16 if str(n).startswith('0x') else 10) for n in recorded
+                     if re.fullmatch(r'(?:[0-9]{1,20}|0x[0-9a-fA-F]{1,16})',str(n))]
+            if heights and max(heights)>reports[chain]['to_block']:
+                behind.append(chain)
+    return missing,behind
+
+
 def summary(wallets, heads):
     """Net external capital for exactly this selection, including recorded protocol NAV."""
     with localcontext() as ctx:
@@ -270,10 +315,14 @@ def summary(wallets, heads):
         unmatched_flows=sum(s['deposit'] is None or s['deposit']!=s['withdrawal'] or s['deposit_id']!=s['withdrawal_id'] for s in internal.values())
         pending_bridges=sum(sorted(legs)!=['convert_in','convert_out'] for legs in bridges.values())
         count=sum(bool(heads.get(w['key'])) for w in wallets)
+        missing,behind=coverage(wallets,heads)
+        aligned=valuation_dates_align([r for _,r in reports])
         pnl=None
-        if (count==len(wallets) and not (gaps or unmatched or unmatched_flows or partial or pending_bridges)
+        if (not missing and not behind and aligned and count==len(wallets) and not (gaps or unmatched or unmatched_flows or partial or pending_bridges)
                 and all(v is not None for v in (nav,opening,deposits,withdrawals))):
             pnl=nav+withdrawals-deposits-opening
+        if not aligned:
+            nav=opening=deposits=withdrawals=None
         starts=[r['first_deposit_at'] if r['basis']=='first_deposit' else r['started_at'] for _,r in reports]
         first_deposit=any(starts) and all(r['basis']=='first_deposit' for _,r in reports)
         started_at=min((t for t in starts if t),default=min(r['started_at'] for _,r in reports))
@@ -282,12 +331,23 @@ def summary(wallets, heads):
             'capital_in_usd':add(opening,deposits),'value_and_withdrawals_usd':add(nav,withdrawals),
             'started_at':started_at,'as_of':min(r['as_of'] for _,r in reports),
             'latest_as_of':max(r['as_of'] for _,r in reports),'wallet_count':len(wallets),'analyzed_wallets':count,
+            'missing_chain_count':len(missing),'missing_chain_ids':sorted(set(missing)),
+            'behind_chain_count':len(behind),'valuation_dates_aligned':aligned,
             'chain_ids':sorted({r['chain_id'] for _,r in reports}), 'unclassified_count':gaps,
             'pending_bridges':pending_bridges,'partial_chains':partial,'balance_gaps':unmatched,'unmatched_transfers':unmatched_flows}))
 
 def asset_rows(reports):
-    return [{**row,'chain_id':r['chain_id'],'as_of':r['as_of']} for r in sorted(reports,key=lambda r:r['chain_id'])
-            for row in r['assets']]
+    rows=[]
+    for report in sorted(reports,key=lambda r:r['chain_id']):
+        for row in report['assets']:
+            verified=row.get('history_verified',not (report['partial_history'] or report['unclassified_count']))
+            quantity=row['quantity'] if row['matched'] else None
+            if not row['matched'] or (not verified and 'observed_quantity' in row):
+                quantity=row.get('observed_quantity')
+            rows.append({**row,'quantity':quantity,'ledger_quantity':row['quantity'],'chain_id':report['chain_id'],
+                         'block_hash':report['block_hash'],'as_of':report['as_of']})
+    return rows
+
 
 def token_performance(reports, holder_keys):
     """Sum the saved positions, including closed trades. An unreported holder makes the total unknown."""
@@ -297,18 +357,29 @@ def token_performance(reports, holder_keys):
     rows = list(reports.values())
     with localcontext() as ctx:
         ctx.prec = 160
+        aligned=valuation_dates_align(rows)
         def component(key):
-            if missing or any(r[key] is None for r in rows):
+            if missing or not aligned or any(r[key] is None for r in rows):
                 return None
             return sum((Decimal(r[key]) for r in rows), ZERO)
         realized, unrealized = component('realized'), component('unrealized')
         return json.loads(encode({'realized': realized, 'unrealized': unrealized,
             'total': add(realized, unrealized), 'reporting_wallets': len(rows),
-            'missing_holders': missing, 'as_of': min(r['as_of'] for r in rows),
+            'missing_holders': missing, 'valuation_dates_aligned':aligned, 'as_of': min(r['as_of'] for r in rows),
             'latest_as_of': max(r['as_of'] for r in rows)}))
 
 def cursor(r):
     return {k:r[k] for k in ('chain_id','revision','basis','started_at','first_deposit_at','to_block','block_hash','as_of','unclassified_count','balance_gaps','partial_history')}
+
+def wallet_performance(wallet, heads):
+    owner=wallet['key']
+    reports=heads.get(owner,[])
+    chains=[]
+    for r in reports:
+        result=summary([{'key':owner}],{owner:[r]})
+        chains.append({**cursor(r),'pnl_usd':result['pnl_usd']})
+    return {'pnl':summary([wallet],heads),'pnl_chains':chains,'pnl_assets':asset_rows(reports)}
+
 
 def evidence(root,wallet,chain_id,revision,offset,limit):
     from kira_state import page_bounds

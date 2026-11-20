@@ -257,10 +257,9 @@ class Application:
             return collect(self.root,self.jobs.wallet(arguments['wallet'])['address_key'],arguments)
         if name=='pnl_read':
             key=self.jobs.wallet(arguments['wallet'])['address_key']
-            heads=kira_pnl.read_heads(self.root,key)
-            reports=heads.get(key,[])
-            return {'wallet':key,'summary':kira_pnl.summary([{'key':key}],heads),'chains':[kira_pnl.cursor(r) for r in reports],
-                    **page(kira_pnl.asset_rows(reports),arguments.get('offset',0),arguments.get('limit',50))}
+            wallet=self.views.wallet_performance(key)
+            return {'wallet':key,'summary':wallet['pnl'],'chains':wallet['pnl_chains'],
+                    **page(wallet['pnl_assets'],arguments.get('offset',0),arguments.get('limit',50))}
         if name=='pnl_evidence':
             args={**arguments,'wallet':self.jobs.wallet(arguments['wallet'])['address_key']}
             return kira_pnl.evidence(self.root,**{'offset':0,'limit':50,**args})

@@ -1,7 +1,7 @@
 'use strict';
 
 const KiraPnl = (() => {
-  const day = raw => new Date(raw).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  const day = raw => new Date(raw).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'});
   function signed(raw) {
     if (raw == null) return 'Pending';
     const value = Number(raw);
@@ -14,7 +14,12 @@ const KiraPnl = (() => {
   const limits = new Map();
   let walletPage=null;
 
-  const dateRange = (from,to) => day(from) === day(to) ? day(from) : day(from) + ' to ' + day(to);
+  function dateRange(from,to) {
+    if(from===to)return day(from);
+    if(day(from)!==day(to))return day(from)+' to '+day(to);
+    const utcTime=value=>new Date(value).toISOString().slice(11,19);
+    return day(from)+' · '+utcTime(from)+' to '+utcTime(to)+' UTC';
+  }
   function amount(raw) {
     return '<span class="pnl-number ' + tone(raw) + '">' + escapeHTML(signed(raw)) + '</span>';
   }
@@ -96,10 +101,11 @@ const KiraPnl = (() => {
     const p=token.pnl, rows=token.pnl_assets || [];
     if (!p) return '<section class="pnl-panel pnl-empty"><div><h2>Token performance</h2><p>No P&amp;L analysis saved for this token in this scope.</p></div></section>';
     const coverage=p.reporting_wallets+(p.reporting_wallets === 1 ? ' reporting wallet' : ' reporting wallets');
+    const dates=p.valuation_dates_aligned===false?'<p class="pnl-notice">Wallet reports have different valuation cutoffs.</p>':'';
     const missing=p.missing_holders ? '<p class="pnl-notice">Awaiting analysis for '+p.missing_holders+(p.missing_holders === 1 ? ' holder.' : ' holders.')+'</p>' : '';
     const summary='<div class="pnl-layout"><div class="pnl-lead"><h2>Trading P&amp;L</h2><strong class="pnl-amount">'+amount(p.total)+
       '</strong><span class="pnl-caption">'+escapeHTML(coverage)+'</span></div>'+tradingChart(p)+'</div>';
-    return '<section class="pnl-panel pnl-token-detail" aria-label="Token performance">'+summary+missing+
+    return '<section class="pnl-panel pnl-token-detail" aria-label="Token performance">'+summary+missing+dates+
       '<div class="pnl-section-head"><h3>By wallet</h3><span>Valued '+escapeHTML(dateRange(p.as_of,p.latest_as_of))+'</span></div>'+
       assetTable(rows,token.id,true)+'</section>';
   }
@@ -112,8 +118,11 @@ const KiraPnl = (() => {
       const title=token?r.wallet:r.symbol;
       const secondary=token?day(r.as_of):networkName(r.chain_id)+' · '+(r.asset==='native'?'Native':shortAddress(r.asset.split('#')[0])+(r.asset.includes('#')?' #'+r.asset.split('#')[1]:''));
       const result=v=>v==null?'—':amount(v);
-      return '<tr><th scope="row"><strong>'+escapeHTML(title)+'</strong><small>'+escapeHTML(secondary)+'</small></th>'+
-        '<td data-label="Quantity">'+quantity(r.quantity)+'</td><td data-label="Avg. cost">'+(r.average_cost==null?'—':unitPrice(Number(r.average_cost)))+
+      const label=!token?'<a href="'+escapeHTML(tokenHref(r.chain_id+':'+r.asset))+'">'+escapeHTML(title)+'</a>':escapeHTML(title);
+      const observed=r.quantity==null?'—':quantity(r.quantity);
+      const gap=r.matched===false?'<small>Balance mismatch</small>':'';
+      return '<tr><th scope="row"><strong>'+label+'</strong><small>'+escapeHTML(secondary)+'</small></th>'+
+        '<td data-label="Quantity">'+observed+gap+'</td><td data-label="Avg. cost">'+(r.average_cost==null?'—':unitPrice(Number(r.average_cost)))+
         '</td><td data-label="Realized">'+result(r.realized)+'</td><td data-label="Unrealized">'+result(r.unrealized)+'</td></tr>';
     }).join('');
     const more=total>limit?'<button type="button" class="text-button" data-pnl-more="'+escapeHTML(scope)+'">Show more ('+(total-limit)+')</button>':'';
@@ -148,6 +157,9 @@ const KiraPnl = (() => {
     const coverage=p.analyzed_wallets+' of '+p.wallet_count+(p.wallet_count===1?' wallet':' wallets')+' · '+networks;
     const issues=[];
     if(p.analyzed_wallets<p.wallet_count)issues.push('Wallet research missing');
+    if(p.missing_chain_count)issues.push('Missing chain reports: '+p.missing_chain_ids.map(networkName).join(', '));
+    if(p.behind_chain_count)issues.push('Holdings were observed after the P&L cutoff');
+    if(p.valuation_dates_aligned===false)issues.push('Reports have different valuation cutoffs');
     if(p.partial_chains)issues.push('Transaction history incomplete');
     if(p.unclassified_count)issues.push(p.unclassified_count+' unclassified transactions');
     if(p.pending_bridges)issues.push('Bridge transfer awaiting its other leg');
@@ -155,11 +167,14 @@ const KiraPnl = (() => {
     if(p.unmatched_transfers)issues.push('Internal transfers need matching');
     if(p.value_usd==null||p.deposits_usd==null||p.withdrawals_usd==null||p.opening_usd==null)issues.push('USD valuation incomplete');
     const opening=p.first_deposit?'':metric('Opening value',p.opening_usd);
-    const visual=p.pnl_usd==null?'<div class="pnl-chart pnl-coverage"><span>Wallet analysis</span><strong>'+p.analyzed_wallets+' of '+p.wallet_count+'</strong><progress aria-label="Wallets analyzed" value="'+p.analyzed_wallets+'" max="'+p.wallet_count+'"></progress></div>':capitalChart(p);
+    const chains=id==='wallet-pnl' && p.pnl_usd==null ? routeData.wallet?.pnl_chains || [] : [];
+    const breakdown=chains.length?'<div class="pnl-section-head"><h3>By network</h3></div><dl class="pnl-components">'+chains.map(r=>
+      '<div><dt>'+escapeHTML(networkName(r.chain_id))+' · '+escapeHTML(day(r.as_of))+'</dt><dd>'+amount(r.pnl_usd)+'</dd></div>').join('')+'</dl>':'';
+    const visual=p.pnl_usd==null?'<div class="pnl-chart pnl-coverage"><span>Wallets with reports</span><strong>'+p.analyzed_wallets+' of '+p.wallet_count+'</strong><progress aria-label="Wallets with reports" value="'+p.analyzed_wallets+'" max="'+p.wallet_count+'"></progress></div>':capitalChart(p);
     node.innerHTML='<div class="pnl-layout"><div class="pnl-lead"><h2>'+title+'</h2><strong class="pnl-amount">'+amount(p.pnl_usd)+'</strong>'+capitalChange(p)+'<span class="pnl-caption">From '+escapeHTML(day(p.started_at))+'</span></div>'+visual+'</div>'+
       (issues.length?'<p class="pnl-notice">'+escapeHTML(issues.join(' · '))+'</p>':'')+
       '<div class="pnl-foot"><span>'+escapeHTML(coverage)+'</span><span>Valued '+escapeHTML(at)+'</span></div>'+
-      '<details'+(opened?' open':'')+'><summary>Calculation details</summary><dl class="pnl-metrics">'+metric('Analyzed value',p.value_usd)+metric('Deposits',p.deposits_usd)+metric('Withdrawals',p.withdrawals_usd)+opening+'</dl>'+action+'</details>'+
+      '<details'+(opened?' open':'')+'><summary>Calculation details</summary><dl class="pnl-metrics">'+metric('Analyzed value',p.value_usd)+metric('Reported deposits',p.deposits_usd)+metric('Reported withdrawals',p.withdrawals_usd)+opening+'</dl>'+action+'</details>'+breakdown+
       (rows?.length?'<div class="pnl-section-head"><h3>Token performance</h3><span>'+rowCount+(rowCount===1?' token':' tokens')+'</span></div>'+assetTable(rows,scope,false,rowCount):'');
     paintChart(node);
   }

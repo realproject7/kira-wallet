@@ -11,7 +11,7 @@ from kira_pnl import HASH, N, S, asset_id, date, encode, mainnet, require
 
 ARGS={'wallet':S,'chain_id':N,'from_block':N,'to_block':N,'block_hash':S,
       'direction':{'type':'string','enum':['incoming','outgoing']},'include_internal':{'type':'boolean'},
-      'page_key':S,'renew_cursor':{'type':'boolean'},'daily_budget_cu':N}
+      'page_size':{'type':'integer','minimum':1,'maximum':1000},'page_key':S,'renew_cursor':{'type':'boolean'},'daily_budget_cu':N}
 REQUIRED=['wallet','chain_id','from_block','to_block','block_hash','direction','daily_budget_cu']
 PAGE_CU=120
 
@@ -22,15 +22,32 @@ def fetch(root, address, args):
     require(network and type(args['from_block']) is int and 0<=args['from_block']<=args['to_block']<=N['maximum'],
             'Choose an Alchemy-supported mainnet and an ordered, finalized block range.')
     require(re.fullmatch(HASH,args['block_hash']) and args['direction'] in ('incoming','outgoing'),'Supply the closing block hash and transfer direction.')
-    require('page_key' not in args or re.fullmatch(r'[A-Za-z0-9_-]{1,200}',args['page_key']), 'Use the returned page key.')
+    cursor=args.get('page_key')
+    size=args.get('page_size',1000)
+    require(type(size) is int and 1<=size<=1000,'Choose a transfer page size from 1 to 1000.')
+    if cursor is not None:
+        parsed=re.fullmatch(r'(?:(\d{1,4})\.)?([A-Za-z0-9_-]{1,200})',cursor)
+        require(parsed,'Use the returned page key.')
+        # Bare keys from earlier versions belong to 50-row requests.
+        cursor_size=int(parsed[1]) if parsed[1] else 50
+        require(1<=cursor_size<=1000 and args.get('page_size',cursor_size)==cursor_size,'Keep the page size of the returned cursor.')
+        size=cursor_size
+        cursor=parsed[2]
     categories=['external','erc20','erc721','erc1155']
     if args.get('include_internal'):categories.append('internal')
     params={'fromBlock':hex(args['from_block']),'toBlock':hex(args['to_block']),
             ('toAddress' if args['direction']=='incoming' else 'fromAddress'):address,'category':categories,
-            'withMetadata':True,'maxCount':hex(50),'order':'asc','excludeZeroValue':False}
-    if args.get('page_key'):params['pageKey']=args['page_key']
+            'withMetadata':True,'maxCount':hex(size),'order':'asc','excludeZeroValue':False}
+    if cursor:params['pageKey']=cursor
     request={'jsonrpc':'2.0','id':1,'method':'alchemy_getAssetTransfers','params':[params]}
-    return collect(root,network,request,PAGE_CU,args['daily_budget_cu'],args['block_hash'].lower(),args.get('renew_cursor',False))
+    scope=args['block_hash'].lower()
+    if cursor is None and 'page_size' not in args and not cache_path(root,network,request,scope).exists():
+        legacy={**request,'params':[{**params,'maxCount':hex(50)}]}
+        if cache_path(root,network,legacy,scope).exists():
+            request,size=legacy,50
+    result=collect(root,network,request,PAGE_CU,args['daily_budget_cu'],scope,args.get('renew_cursor',False))
+    next_key=result.get('next_page_key')
+    return {**result,'page_size':size,'next_page_key':f'{size}.{next_key}' if next_key else None}
 
 
 KINDS=['finalized_block','block','receipt','balance','historical_price']
@@ -84,15 +101,19 @@ def reference(root, address, args):
     return collect(root,network,{'jsonrpc':'2.0','id':1,'method':method,'params':params},cu,args['daily_budget_cu'],cache_scope)
 
 
+def cache_path(root,network,request,scope):
+    key=hashlib.sha256(encode([network,scope,request]).encode()).hexdigest()
+    return root/'pnl'/'activity'/(key+'.json')
+
+
 def collect(root,network,request,cu,budget,cache_scope='',renew=False):
     from kira_config import load_config, secret_values
     from kira_usage import append
     from public_discovery import fetch_bounded
     method=request.get('method','tokens/historical')
-    key=hashlib.sha256(encode([network,cache_scope,request]).encode()).hexdigest()
-    folder=root/'pnl'/'activity'
+    page=cache_path(root,network,request,cache_scope)
+    folder=page.parent
     folder.mkdir(mode=0o700,parents=True,exist_ok=True)
-    page=folder/(key+'.json')
     # Only this small lane is serialized; ordinary wallet jobs do not take this lock.
     with (folder/'.lock').open('a') as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)

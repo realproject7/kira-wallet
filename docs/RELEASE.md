@@ -1,11 +1,27 @@
 # Releases and preparation
 
-Published npm release: **1.16.1**.
+The latest published npm release is **1.17.0**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
 
-## Candidate 1.17.0
+## Candidate 1.17.1
+
+Wallet and folder P&L stays pending when a known holding or position chain lacks
+a report, a newer holdings block exists, or valuation cutoffs differ. Wallets
+show the dated result for each reported chain. The same rules apply on Home
+and through the agent tools.
+
+An agent can record independently verified token history inside a partial chain
+report. The viewer displays observed quantities and flags differences from the
+ledger. Token and NFT histories remain accessible from the performance table
+after the last holder sells.
+
+New transfer scans request up to 1,000 transfers per page. Agents can select a
+smaller page size. Cached pages, older continuation keys and the daily CU ceiling
+remain supported. Review not selected.
+
+## Published 1.17.0
 
 Home, folder and wallet views show cumulative USD profit and loss from the
 first deposit or a recorded opening value. A waterfall chart reconciles
@@ -15,7 +31,8 @@ realized and unrealized returns and each wallet's moving-average entry cost.
 The external agent can resume from its last finalized block, reuse saved
 evidence and publish a reconciled observation. Incomplete history, transfers
 or valuations leave affected amounts pending. Viewing P&L reads local data.
-Registry publication is pending. Review not selected.
+The operator published 1.17.0 on November 20, 2026. The registry archive matched
+the frozen package and all 139 members of a clean installation. Review not selected.
 
 Pull request and issue numbers up to 63 refer to the earlier repository. It was
 replaced on November 14, 2026 and is not public. Commit ids are unchanged, and

@@ -168,13 +168,11 @@ class StateCache:
                     pnl_heads=kira_pnl.read_heads(self.root)
                     wallets = []
                     for w in state['wallets']:
-                        reports = pnl_heads.get(w['key'], [])
-                        pnl_assets = kira_pnl.asset_rows(reports)
+                        performance=kira_pnl.wallet_performance(w,pnl_heads)
                         by_id = {f"{r['chain_id']}:{r['asset']}": {'unrealized': r['unrealized'], 'as_of': r['as_of']}
-                                 for r in pnl_assets}
+                                 for r in performance['pnl_assets']}
                         assets = [{**a, 'pnl': by_id[a['id']]} if a['id'] in by_id else a for a in w['assets']]
-                        wallets.append({**w, 'assets': assets, 'pnl': kira_pnl.summary([w], pnl_heads),
-                                        'pnl_chains': [kira_pnl.cursor(r) for r in reports], 'pnl_assets': pnl_assets})
+                        wallets.append({**w,'assets':assets,**performance})
                     state['wallets'] = wallets
                     state['dashboard']={**state['dashboard'],'pnl':kira_pnl.summary(state['wallets'],pnl_heads)}
                     state['details'] = project_details(state['wallets'], self.root, include_wallets=False)
@@ -245,6 +243,17 @@ class StateCache:
                       'asset_count': len(wallet['assets']), 'data_revision': self.revision}
             return platform_rows(result, [wallet], receipts, filters.get('platform'))
 
+    def wallet_performance(self, key):
+        with self.lock:
+            if self.state is not None:
+                return next(w for w in self.refresh()['wallets'] if w['key']==key)
+            heads=kira_pnl.read_heads(self.root,key)
+            wallet={'key':key}
+            if heads:
+                state,_,_=load_state(self.root,encode=False,include_details=False,wallet_key=key)
+                wallet=state['wallets'][0]
+            return kira_pnl.wallet_performance(wallet,heads)
+
     def holdings(self, offset=0, limit=100, *, folder_id=None, **filters):
         from positions import receipt_platforms
         with self.lock:
@@ -269,20 +278,24 @@ class StateCache:
             return {**read_positions(self.root,wallets,offset,limit,token_id=token_id.lower() if token_id else None,chain_id=chain_id,platform=platform),'data_revision':self.revision}
 
     def token(self, chain_id, address, *, folder_id=None):
-        from kira_jobs import ADDRESS
         if type(chain_id) is not int or chain_id < 1 or not isinstance(address, str):
             raise JobError('invalid_token', 'Expected a chain and contract identity.')
         address = address.lower()
-        if address != 'native' and not ADDRESS.fullmatch(address):raise JobError('invalid_token', 'Use native or an EVM contract address.')
+        if not re.fullmatch(kira_pnl.ASSET,address):raise JobError('invalid_token', 'Use native, an EVM contract or a recorded token ID.')
         identity = str(chain_id) + ':' + address
         with self.lock:
             state = self.scoped(folder_id)
+            reports = {w['key']: {**r, 'wallet': w['name']} for w in state['wallets'] for r in w['pnl_assets']
+                       if r['chain_id'] == chain_id and r['asset'] == address}
             token = next((t for t in state['details']['tokens'] if t['id'] == identity), None)
             if token is None:
                 a=next((a for w in state['wallets'] for p in w.get('positions',[]) if p['chain_id']==chain_id for a in p['assets'] if a['address'].lower()==address),None)
-                if a:
-                    networks=json.loads((self.root/'networks.json').read_text())['networks'];name=next((n.get('name',n['network']) for n in networks if n['chain_id']==chain_id),str(chain_id))
-                    token={'id':identity,'chain_id':chain_id,'address':None if address=='native' else address,'is_native':address=='native','symbol':a['symbol'],'name':a['symbol'],'balance':'0','value_usd':None,'wallet_count':0,'unpriced_count':0,'environment':'mainnet','network':{'id':chain_id,'name':name},'balance_times':{},'price_times':{},'market_pools':[],'links':[]}
+                if a or reports:
+                    symbol=a['symbol'] if a else max(reports.values(),key=lambda r:r['as_of'])['symbol']
+                    network=next((n for n in state['details']['networks'] if n['id']==chain_id),None)
+                    name=network['name'] if network else str(chain_id)
+                    contract,_,token_id=address.partition('#')
+                    token={'id':identity,'chain_id':chain_id,'address':None if address=='native' else contract,'is_native':address=='native','symbol':symbol,'name':f'{symbol} #{token_id}' if token_id else symbol,'history_only':a is None,'balance':'0' if a else None,'value_usd':None,'wallet_count':0,'unpriced_count':0,'environment':'mainnet','network':{'id':chain_id,'name':name},'balance_times':{},'price_times':{},'market_pools':[],'links':[]}
             if token is None:raise JobError('not_found', 'No saved token evidence. Missing data is unknown.')
             rows = []
             for wallet in state['wallets']:
@@ -299,8 +312,6 @@ class StateCache:
                 catalog=json.loads((Path(__file__).resolve().parent/'sources/known-tokens.json').read_text())['tokens']
                 pools,via=native_markets(chain_id,recorded,catalog)
             from positions import allocation
-            reports = {w['key']: {**r, 'wallet': w['name']} for w in state['wallets'] for r in w['pnl_assets']
-                       if r['chain_id'] == chain_id and r['asset'] == address}
             pnl = token['pnl'] if 'pnl' in token else kira_pnl.token_performance(reports, set())
             return {**token,'capital_allocation':allocation(state['wallets'],token_id=identity),'market_pools':pools,'market_via':via,'links':market.get('links',[]),'curve_reserve':market.get('curve_reserve'),
                     'pnl':pnl, 'pnl_assets':list(reports.values()),

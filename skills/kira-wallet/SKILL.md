@@ -90,7 +90,7 @@ The Home and wallet pages read the latest publications automatically.
    budget for the first pass (e.g. 2,400 CUs per UTC day). Share it across
    wallets. For explicit research, use `pnl_fetch_reference` with `kind: finalized_block` to pin a closing height and hash. Reuse Kira snapshots, price observations and
    previous evidence first. `pnl_fetch_transfers` retrieves one fixed-range page
-   and direction for 120 estimated CU. Supply `daily_budget_cu`, the closing
+   and direction for 120 estimated CU. New scans request up to 1,000 transfers per page. Use a smaller `page_size` for unusually large responses. Keep the returned cursor intact when continuing a scan. Supply `daily_budget_cu`, the closing
    `block_hash`, and both inclusive block numbers. Page both directions using
    `next_page_key` as `page_key`; split busy ranges. If the provider expires a cursor,
    use `renew_cursor: true` on the preceding page. Use `pnl_fetch_reference` for a receipt, pinned native/ERC-20 balance or a shared
@@ -131,6 +131,15 @@ The Home and wallet pages read the latest publications automatically.
    mainnet price references at the observation time. Exclude unsupported sources,
    testnet values and double-counted receipts. Mark incomplete history partial,
    including debt or derivative exposure that cannot be represented in the NAV.
+   In a partial batch, set `history_verified: true` on a closing balance only
+   after proving that this asset's complete movements, including fees and disposals,
+   are classified and every unresolved transaction is unrelated to it. A matching
+   quantity alone cannot establish its cost basis. Earlier gaps require replay
+   from the last sound revision. The chain total stays pending.
+   For wallet and folder totals, cover every known holding and position chain.
+   Use a common finalized block per chain across wallets and one UTC valuation
+   date across chains. A newer saved holdings block makes an older chain report
+   historical. Its dated result remains available under the wallet's networks.
    Submit with a stable `idempotency_key`, then read back the summary and gaps.
    Browser reads do not spend provider credits. See `kira describe pnl_publish`
    for the exact schema. For large closing inventories, pipe local JSON into
