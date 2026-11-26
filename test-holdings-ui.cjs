@@ -113,6 +113,7 @@ wallet.assets=savedAssets;wallet.analysed_at=savedAnalysis;
 
 context.unitPrice=n=>'$'+n;context.quantity=String;context.tokenHref=String;context.coinIcon=()=>'';
 context.shortAddress=s=>s.slice(0,6)+'…'+s.slice(-4);
+vm.runInContext(source.slice(source.indexOf('function coinWithChain('),source.indexOf('function bindImages(')),context);
 vm.runInContext(source.slice(source.indexOf('function venueMark('),source.indexOf('function accountCard(')),context);
 vm.runInContext(source.slice(source.indexOf('function sellOutNote(a){'),source.indexOf('function renderHoldings(){')),context);
 const historic=context.assetRow({id:'fixture',symbol:'Fixture',name:'Fixture',balance:'1',value_usd:100,links:[],
@@ -134,7 +135,7 @@ assert.match(context.explorerLink({symbol:'Example',chain_id:1,links:[{label:'Ex
 assert.equal(context.explorerLink({is_native:true,links:[{label:'Explorer',url:'https://etherscan.io/address/wallet'}]}),'','A wallet address explorer is not a native token explorer.');
 console.log('Holding rows stay one line; the token page keeps every market and preserves unknown liquidity.');
 context.safeImage=()=>null;
-vm.runInContext(source.slice(source.indexOf('function icon(asset){'),source.indexOf('function bindImages(){')),context);
+vm.runInContext(source.slice(source.indexOf('function icon(asset){'),source.indexOf('function coinWithChain(')),context);
 const malformed=context.tokenMarkets({...tokenRecord,id:'1:malformed',market_pools:[{...pools[0],pair:[{symbol:123},{}]}]});
 assert.match(malformed,/coin-fallback">\?<\/span>/);
 console.log('Malformed pool symbols cannot crash the real artwork renderer.');

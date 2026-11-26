@@ -71,6 +71,21 @@
 .pnl-table tbody tr:last-child > * { border-bottom: none }
 .pnl-table small { display: block; font-weight: 400 }
 .pnl-table thead th { font-size: 12px; color: var(--secondary); font-weight: 500 }
+.pnl-token-table thead th { background: color-mix(in srgb, var(--accent-soft) 40%, white); padding-block: 8px; border: 0 }
+.pnl-token-table thead th:first-child { width: 34%; border-radius: 8px 0 0 8px }
+.pnl-token-table thead th:last-child { border-radius: 0 8px 8px 0 }
+.pnl-token-table th:first-child { padding-inline-start: 8px }
+.pnl-token-table th:last-child, .pnl-token-table td:last-child { padding-inline-end: 8px }
+.pnl-token-table tbody td { color: var(--secondary); font-size: var(--text-ui); white-space: nowrap }
+.pnl-token-link { width: fit-content; max-width: 100%; text-align: left }
+.pnl-token-link .coin-icon { width: 32px; height: 32px }
+.pnl-token-link .symbol { display: block; max-width: 100%; color: var(--ink); line-height: 1.35 }
+.pnl-token-link:hover .symbol { color: var(--accent) }
+.pnl-token-link .token-description { margin-top: 2px; max-width: 100% }
+.pnl-token-table .pnl-result .pnl-number { display: inline-block; padding: 3px 7px; border-radius: 6px; font-weight: 600 }
+.pnl-token-table .pnl-result .pnl-gain { background: var(--accent-soft) }
+.pnl-token-table .pnl-result .pnl-loss { background: #f7e9e5 }
+.pnl-token-table .pnl-result .pnl-number:not(.pnl-gain,.pnl-loss) { padding-inline: 0 }
 .pnl-inline { display: block; margin-top: 2px; color: var(--secondary); font-size: 12px; line-height: 1.4; font-variant-numeric: tabular-nums }
 .pnl-inline .pnl-number { font-weight: 600 }
 @media (max-width: 740px) {
@@ -91,4 +106,8 @@
   .pnl-table tbody th, .pnl-table tbody td { padding: 0; border: none; text-align: left; overflow-wrap: anywhere }
   .pnl-table tbody th { grid-column: 1 / -1; display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px }
   .pnl-table td::before { content: attr(data-label); display: block; margin-bottom: 2px; color: var(--secondary); font-size: 12px }
+  .pnl-token-table tbody th:first-child, .pnl-token-table tbody td:last-child { padding-inline: 0 }
+  .pnl-token-table tbody tr { gap: 9px 14px; padding: 12px 0 }
+  .pnl-token-table tbody td { white-space: normal }
+  .pnl-token-table .pnl-result { grid-row: 2 }
 }

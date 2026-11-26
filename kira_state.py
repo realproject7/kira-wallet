@@ -15,6 +15,8 @@ import kira_pnl
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'viewer'))
 from model import load_state, within, dashboard
 from details import project_details, wallet_identity, coverage_for, coverage_status, native_markets
+from native_assets import NATIVE_ASSETS
+from token_images import image_for, read_catalog
 
 
 def signature(path):
@@ -201,6 +203,7 @@ class StateCache:
                 return self.state
             self.pnl_heads = pnl_heads
             self.hidden_pnl = hidden_pnl
+            self.pnl_tokens = {asset['id']: asset for asset in state['details']['tokens']}
             self.state, self.body, self.revision = state, body, revision
             self.overview_state = summary
             self.scope_cache.clear()
@@ -243,6 +246,24 @@ class StateCache:
             self.scoped(folder_id)
             return self.overview_state if folder_id in (None,'all') else self.scope_cache[folder_id][1]
 
+    def _pnl_positions(self, wallet, offset, limit):
+        """Attach the holdings list's artwork to one page of saved returns."""
+        positions = page(kira_pnl.performance_rows(wallet['pnl_assets'], self.hidden_pnl), offset, limit)
+        holdings = {asset['id']: asset for asset in wallet['assets']}
+        catalog = None
+        for index, row in enumerate(positions['assets']):
+            chain, address = row['chain_id'], row['asset']
+            identity = f'{chain}:{address}'
+            holding, known = holdings.get(identity, {}), self.pnl_tokens.get(identity, {})
+            logo = holding.get('image_url') or known.get('image_url')
+            if not logo and '#' not in address:
+                if catalog is None:
+                    catalog = read_catalog(self.root)
+                native = NATIVE_ASSETS.get(chain) if address == 'native' else None
+                logo = image_for(catalog, chain, address, native_symbol=native[0] if native else None)
+            positions['assets'][index] = {**row, 'name': holding.get('name') or known.get('name'), 'image_url': logo}
+        return positions
+
     def wallet(self, selector, offset=0, limit=100, *, performance_only=False, **filters):
         from kira_jobs import JobStore
         from positions import receipt_platforms
@@ -251,10 +272,8 @@ class StateCache:
             key = JobStore(self.root).wallet(selector)['address_key']
             wallet = next(w for w in state['wallets'] if w['key'] == key)
             receipts = receipt_platforms([wallet])
-            pnl_rows = wallet['pnl_assets']
-            if performance_only:
-                pnl_rows = kira_pnl.performance_rows(pnl_rows, self.hidden_pnl)
-            result = {**wallet, 'positions':[],'pnl_assets':pnl_rows[:20],'pnl_asset_count':len(pnl_rows), **page(filter_assets(wallet['assets'], platforms=receipts, **filters), offset, limit),
+            pnl_page = self._pnl_positions(wallet, 0, 20) if performance_only else page(wallet['pnl_assets'], 0, 20)
+            result = {**wallet, 'positions':[],'pnl_assets':pnl_page['assets'],'pnl_asset_count':pnl_page['matched_count'], **page(filter_assets(wallet['assets'], platforms=receipts, **filters), offset, limit),
                       'unpriced_hidden_count': unpriced_hidden(wallet['assets'], platforms=receipts, **filters),
                       'asset_count': len(wallet['assets']), 'data_revision': self.revision}
             return platform_rows(result, [wallet], receipts, filters.get('platform'))
@@ -264,8 +283,7 @@ class StateCache:
         with self.lock:
             key = JobStore(self.root).wallet(selector)['address_key']
             wallet = next(w for w in self.refresh()['wallets'] if w['key'] == key)
-            rows = kira_pnl.performance_rows(wallet['pnl_assets'], self.hidden_pnl)
-            return {**page(rows, offset, limit), 'data_revision': self.revision}
+            return {**self._pnl_positions(wallet, offset, limit), 'data_revision': self.revision}
 
     def wallet_performance(self, key):
         with self.lock:

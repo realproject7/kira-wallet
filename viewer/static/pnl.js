@@ -116,22 +116,32 @@ const KiraPnl = (() => {
       '<div class="pnl-section-head"><h3>By wallet</h3><span>'+escapeHTML(dates)+'</span></div>'+assetTable(rows,token.id,true)+'</section>';
   }
 
+  function tokenIdentity(row) {
+    const [address, tokenId]=row.asset.split('#');
+    const chain=networkName(row.chain_id);
+    const native=address==='native';
+    const name=(row.name && row.name!==row.symbol)?row.name:native?'Native asset':shortAddress(address);
+    const description=name+' · '+chain;
+    const label=row.symbol+(tokenId?' #'+tokenId:'');
+    const title=[label,description,native?null:address].filter(Boolean).join(' · ');
+    const artwork=coinWithChain({...row,address:native||tokenId?null:address});
+    return `<a class="token-name token-link pnl-token-link" href="${escapeHTML(tokenHref(row.chain_id+':'+row.asset))}" title="${escapeHTML(title)}">${artwork}<span class="coin-title"><strong class="symbol">${escapeHTML(label)}</strong><small class="token-description">${escapeHTML(description)}</small></span></a>`;
+  }
+
   function assetTable(rows, scope, token=false, total=rows?.length||0) {
     if (!rows?.length) return '';
     const limit=limits.get(scope)||tableLimit;
     const head=token?'Wallet':'Token';
     const cells=rows.slice(0,limit).map(r=>{
-      const title=token?r.wallet:r.symbol;
-      const secondary=token?day(r.as_of):networkName(r.chain_id)+' · '+(r.asset==='native'?'Native':shortAddress(r.asset.split('#')[0])+(r.asset.includes('#')?' #'+r.asset.split('#')[1]:''));
+      const identity=token?'<strong>'+escapeHTML(r.wallet)+'</strong><small>'+escapeHTML(day(r.as_of))+'</small>':tokenIdentity(r);
       const result=v=>v==null?'—':amount(v);
-      const label=!token?'<a href="'+escapeHTML(tokenHref(r.chain_id+':'+r.asset))+'">'+escapeHTML(title)+'</a>':escapeHTML(title);
       const observed=r.quantity==null?'—':quantity(r.quantity);
-      return '<tr><th scope="row"><strong>'+label+'</strong><small>'+escapeHTML(secondary)+'</small></th>'+
+      return '<tr><th scope="row">'+identity+'</th>'+
         '<td data-label="Quantity">'+observed+'</td><td data-label="Avg. cost">'+(r.average_cost==null?'—':unitPrice(Number(r.average_cost)))+
-        '</td><td data-label="Realized">'+result(r.realized)+'</td><td data-label="Unrealized">'+result(r.unrealized)+'</td></tr>';
+        '</td><td class="pnl-result" data-label="Realized">'+result(r.realized)+'</td><td class="pnl-result" data-label="Unrealized">'+result(r.unrealized)+'</td></tr>';
     }).join('');
     const more=total>limit?'<button type="button" class="text-button" data-pnl-more="'+escapeHTML(scope)+'">Show more ('+(total-limit)+')</button>':'';
-    return '<div class="pnl-scroll"><table class="pnl-table" aria-label="Token cost and returns"><thead><tr><th>'+head+'</th><th>Quantity</th><th>Avg. cost</th><th>Realized</th><th>Unrealized</th></tr></thead><tbody>'+cells+'</tbody></table></div>'+more;
+    return '<div class="pnl-scroll"><table class="pnl-table'+(token?'':' pnl-token-table')+'" aria-label="Token cost and returns"><thead><tr><th scope="col">'+head+'</th><th scope="col">Quantity</th><th scope="col">Avg. cost</th><th scope="col">Realized</th><th scope="col">Unrealized</th></tr></thead><tbody>'+cells+'</tbody></table></div>'+more;
   }
 
   function render(id, result, scope, rows, visible) {
@@ -185,6 +195,7 @@ const KiraPnl = (() => {
       disclosure(details,{title:pending?title:undefined,opened})+
       (rows?.length?'<div class="pnl-section-head"><h3>Token performance</h3><span>'+rowCount+(rowCount===1?' token':' tokens')+'</span></div>'+assetTable(rows,scope,false,rowCount):'');
     paintChart(node);
+    if(rows?.length)bindImages(node);
   }
 
   document.addEventListener('click',async event=>{
