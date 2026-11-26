@@ -1,11 +1,19 @@
 # Releases and preparation
 
-The latest published npm release is **1.17.0**.
+The latest published npm release is **1.17.1**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
 
-## Candidate 1.17.1
+## Candidate 1.17.2
+
+Pending P&L uses a compact status with coverage and calculation details available
+on demand. Token performance shows reconciled positions with USD returns, including
+closed trades and positions with realized returns awaiting a new quote. Tokens
+marked for review or excluded from the portfolio are hidden from the table.
+Review not selected.
+
+## Published 1.17.1
 
 Wallet and folder P&L stays pending when a known holding or position chain lacks
 a report, a newer holdings block exists, or valuation cutoffs differ. Wallets
@@ -20,6 +28,9 @@ after the last holder sells.
 New transfer scans request up to 1,000 transfers per page. Agents can select a
 smaller page size. Cached pages, older continuation keys and the daily CU ceiling
 remain supported. Review not selected.
+
+The operator published 1.17.1 on November 20, 2026. The registry archive matched
+the frozen package and all 139 members of a clean installation.
 
 ## Published 1.17.0
 

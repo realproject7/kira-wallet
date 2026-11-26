@@ -23,7 +23,7 @@ Published npm release **1.17.0** adds deposit-based USD profit and loss for port
 [Release notes](docs/RELEASE.md) ·
 [Implementation status and follow-ups](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_NEXT_STEPS.md).
 
-Candidate **1.17.1** shows which chains have verified returns, keeps closed token histories accessible and fetches more transfers per research request.
+**1.17.1** shows which chains have verified returns, keeps closed token histories accessible and fetches more transfers per research request. Candidate **1.17.2** compacts pending P&L and limits the performance table to verifiable returns.
 
 ## Get started
 

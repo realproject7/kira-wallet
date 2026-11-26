@@ -122,13 +122,15 @@ class Handler(BaseHTTPRequestHandler):
                 if path=='/api/status':
                     self.json(app.status() if getattr(self.server,'controls',False) else {'schema_version':1,'data_revision':app.views.data_revision(),'jobs_revision':'','active_job_count':0,'active_jobs':[]});return
                 if path=='/api/overview':result=app.views.overview(text('folder_id'))
-                elif path=='/api/pnl':result=app.call('pnl_read',{'wallet':text('wallet'),'offset':integer('offset',0),'limit':integer('limit',20)})
+                elif path=='/api/pnl':
+                    args={'wallet':text('wallet'),'offset':integer('offset',0),'limit':integer('limit',20)}
+                    result=app.views.pnl_page(args['wallet'],args['offset'],args['limit']) if text('pnl_view')=='performance' else app.call('pnl_read',args)
                 elif path=='/api/positions':result=app.views.positions(wallet=text('wallet'),folder_id=text('folder_id'),token_id=text('token_id'),platform=text('platform'),chain_id=integer('chain_id') if text('chain_id') else None,offset=integer('offset',0),limit=integer('limit',50))
                 elif path=='/api/folders':
                     from kira_folders import catalog
                     result=catalog(app.root)
-                elif path=='/api/wallet':result=app.views.wallet(text('wallet'),integer('offset',0),integer('limit',100),**filters())
-                elif path=='/api/token':result=app.views.token(integer('chain_id'),text('address'),folder_id=text('folder_id'))
+                elif path=='/api/wallet':result=app.views.wallet(text('wallet'),integer('offset',0),integer('limit',100),performance_only=text('pnl_view')=='performance',**filters())
+                elif path=='/api/token':result=app.views.token(integer('chain_id'),text('address'),folder_id=text('folder_id'),performance_only=text('pnl_view')=='performance')
                 elif path=='/api/network':result=app.views.network(integer('chain_id'),folder_id=text('folder_id'))
                 else:result=app.views.holdings(integer('offset',0),integer('limit',100),folder_id=text('folder_id'),**filters())
                 self.json(result);return
