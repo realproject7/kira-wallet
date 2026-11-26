@@ -1,9 +1,9 @@
 # Kira release status
 
-Updated November 26, 2026. Candidate 1.17.2 compacts pending P&L and shows only
+Updated November 26, 2026. Published 1.17.2 compacts pending P&L and shows only
 reconciled positions with USD returns in the performance table. The operator
 published 1.17.1 with dated chain coverage, token-specific verification, closed
-token history and larger transfer pages. See the [release notes](RELEASE.md#candidate-1172).
+token history and larger transfer pages. See the [release notes](RELEASE.md#published-1172).
 
 The operator published Kira 1.16.1. It skips stablecoin
 DEX output prices outside 0.9 to 1.1 in sell estimates, falls back to the next
