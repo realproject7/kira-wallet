@@ -1,16 +1,21 @@
 # Releases and preparation
 
-The latest published npm release is **1.17.2**.
+The latest published npm release is **1.17.3**.
 For implementation status and optional follow-ups,
 see [release status](KIRA_NEXT_STEPS.md). Older sections retain the evidence and
 scope of their original release; they are not a current task list.
 
-## Candidate 1.17.3
+## Published 1.17.3
 
 Wallet P&L uses the same token artwork and network badge as the holdings list.
 Artwork comes from saved holdings and the local catalog, including for closed
 positions and later pages. Signed returns stand out in the table. On mobile,
 realized and unrealized returns appear above quantity and average cost.
+
+The operator published 1.17.3 on November 26, 2026. The registry archive matched
+the frozen package from PR #29 byte for byte. All 139 installed files matched.
+The local upgrade preserved saved P&L reports. Browser verification covered
+token artwork, network badges, artwork fallback and later pages.
 Review not selected.
 
 ## Published 1.17.2
