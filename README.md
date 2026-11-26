@@ -24,7 +24,7 @@ Published npm release **1.17.0** adds deposit-based USD profit and loss for port
 [Implementation status and follow-ups](https://github.com/realproject7/kira-wallet/blob/codex/kira-release/docs/KIRA_NEXT_STEPS.md).
 
 **1.17.2** compacts pending P&L and limits the performance table to verifiable returns.
-Candidate **1.17.3** adds token artwork and network badges to wallet P&L and makes returns easier to scan on mobile.
+**1.17.3** adds token artwork and network badges to wallet P&L and makes returns easier to scan on mobile.
 
 ## Get started
 
