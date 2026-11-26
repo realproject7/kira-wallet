@@ -76,7 +76,7 @@ test('network, token, catalog and home load only their focused records and bound
   const h=routeHarness();h.run("selectedView='network';selectedNetwork=1;networkOffset=100;tokenSearch='ETH';minimum=10");await h.run('loadRoute()');
   const paths=h.requests.map(request=>new URL(request.path,'http://localhost'));
   assert.equal(paths[0].pathname,'/api/network');assert.deepEqual(Object.fromEntries(paths[1].searchParams),{chain_id:'1',offset:'100',limit:'100',query:'ETH',minimum_value_usd:'10',pricing:'priced',include_testnets:'1',sort:'value',portfolio_status:'portfolio'});
-  h.run("selectedView='token';selectedToken='1:native'");await h.run('loadRoute()');assert.equal(h.requests.at(-1).path,'/api/token?chain_id=1&address=native');
+  h.run("selectedView='token';selectedToken='1:native'");await h.run('loadRoute()');assert.equal(h.requests.at(-1).path,'/api/token?chain_id=1&address=native&pnl_view=performance');
   h.run("selectedView='tokens'");await h.run('loadRoute()');
   assert.deepEqual(Object.fromEntries(new URL(h.requests.at(-1).path,'http://localhost').searchParams),{offset:'100',limit:'50',chain_id:'1',query:'saved token',minimum_value_usd:'5',sort:'wallets',pricing:'unpriced',include_testnets:'1'});
   h.run("selectedView='home'");await h.run('loadRoute()');assert.equal(h.requests.at(-1).path,'/api/holdings?offset=0&limit=5&sort=value&include_testnets=0');
@@ -141,8 +141,8 @@ test('RPC edits retain untouched references, reject secrets and write only a rev
 test('a wallet Overview reads its five largest tokens; a platform narrows every list it shows',async()=>{
   const h=routeHarness(),last=()=>Object.fromEntries(new URL(h.requests.at(-1).path,'http://localhost').searchParams);
   h.run("walletTab='overview'");await h.run('loadRoute()');
-  assert.deepEqual(last(),{wallet:A,offset:'0',limit:'5',sort:'value',include_testnets:'0'});
-  h.run("selectedPlatform='mintclub'");await h.run('loadRoute()');assert.equal(last().platform,'mintclub');
+  assert.deepEqual(last(),{wallet:A,offset:'0',limit:'5',sort:'value',include_testnets:'0',pnl_view:'performance'});
+  h.run("selectedPlatform='mintclub'");await h.run('loadRoute()');assert.equal(last().platform,'mintclub');assert.equal(last().pnl_view,undefined);
   h.run("walletTab='tokens'");await h.run('loadRoute()');assert.equal(last().platform,'mintclub');assert.equal(last().limit,'100');
   h.run("selectedView='home';homeTokenSort='sell_out'");await h.run('loadRoute()');
   assert.deepEqual(last(),{offset:'0',limit:'5',sort:'sell_out',include_testnets:'0',platform:'mintclub'});

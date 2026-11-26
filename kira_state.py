@@ -9,7 +9,7 @@ import threading
 from collections import OrderedDict
 from decimal import Decimal, InvalidOperation
 from kira_jobs import JobError
-from asset_policy import STATUSES
+from asset_policy import STATUSES, included, load as load_asset_policy
 import kira_pnl
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'viewer'))
@@ -37,6 +37,17 @@ def page(rows, offset=0, limit=100, *, key='assets'):
     end = offset + len(selected)
     return {key: selected, 'matched_count': len(rows), 'offset': offset,
             'next_offset': end if end < len(rows) else None}
+
+
+def hidden_pnl_assets(tokens, policy):
+    hidden = {token['id'] for token in tokens if not included(token)}
+    for identity, entry in policy['overrides'].items():
+        if entry['mode'] == 'exclude':
+            hidden.add(identity)
+    for identity, risk in policy['risk_checks'].items():
+        if risk.get('review_reasons') and policy['overrides'].get(identity, {}).get('mode') != 'include':
+            hidden.add(identity)
+    return hidden
 
 
 def filter_assets(rows, *, query='', chain_id=None, minimum_value_usd='0',
@@ -176,6 +187,7 @@ class StateCache:
                     state['wallets'] = wallets
                     state['dashboard']={**state['dashboard'],'pnl':kira_pnl.summary(state['wallets'],pnl_heads)}
                     state['details'] = project_details(state['wallets'], self.root, include_wallets=False)
+                    hidden_pnl = hidden_pnl_assets(state['details']['tokens'], load_asset_policy(self.root))
                     from kira_folders import catalog
                     state['wallet_folders'] = catalog(self.root,state['wallets'])
                     after = self.data_revision()
@@ -188,6 +200,7 @@ class StateCache:
                 if self.state is None:raise
                 return self.state
             self.pnl_heads = pnl_heads
+            self.hidden_pnl = hidden_pnl
             self.state, self.body, self.revision = state, body, revision
             self.overview_state = summary
             self.scope_cache.clear()
@@ -230,7 +243,7 @@ class StateCache:
             self.scoped(folder_id)
             return self.overview_state if folder_id in (None,'all') else self.scope_cache[folder_id][1]
 
-    def wallet(self, selector, offset=0, limit=100, **filters):
+    def wallet(self, selector, offset=0, limit=100, *, performance_only=False, **filters):
         from kira_jobs import JobStore
         from positions import receipt_platforms
         with self.lock:
@@ -238,10 +251,21 @@ class StateCache:
             key = JobStore(self.root).wallet(selector)['address_key']
             wallet = next(w for w in state['wallets'] if w['key'] == key)
             receipts = receipt_platforms([wallet])
-            result = {**wallet, 'positions':[],'pnl_assets':wallet['pnl_assets'][:20],'pnl_asset_count':len(wallet['pnl_assets']), **page(filter_assets(wallet['assets'], platforms=receipts, **filters), offset, limit),
+            pnl_rows = wallet['pnl_assets']
+            if performance_only:
+                pnl_rows = kira_pnl.performance_rows(pnl_rows, self.hidden_pnl)
+            result = {**wallet, 'positions':[],'pnl_assets':pnl_rows[:20],'pnl_asset_count':len(pnl_rows), **page(filter_assets(wallet['assets'], platforms=receipts, **filters), offset, limit),
                       'unpriced_hidden_count': unpriced_hidden(wallet['assets'], platforms=receipts, **filters),
                       'asset_count': len(wallet['assets']), 'data_revision': self.revision}
             return platform_rows(result, [wallet], receipts, filters.get('platform'))
+
+    def pnl_page(self, selector, offset, limit):
+        from kira_jobs import JobStore
+        with self.lock:
+            key = JobStore(self.root).wallet(selector)['address_key']
+            wallet = next(w for w in self.refresh()['wallets'] if w['key'] == key)
+            rows = kira_pnl.performance_rows(wallet['pnl_assets'], self.hidden_pnl)
+            return {**page(rows, offset, limit), 'data_revision': self.revision}
 
     def wallet_performance(self, key):
         with self.lock:
@@ -277,7 +301,7 @@ class StateCache:
             if platform is not None and platform not in PLATFORMS:raise JobError('invalid_platform','Choose a recorded platform ID.')
             return {**read_positions(self.root,wallets,offset,limit,token_id=token_id.lower() if token_id else None,chain_id=chain_id,platform=platform),'data_revision':self.revision}
 
-    def token(self, chain_id, address, *, folder_id=None):
+    def token(self, chain_id, address, *, folder_id=None, performance_only=False):
         if type(chain_id) is not int or chain_id < 1 or not isinstance(address, str):
             raise JobError('invalid_token', 'Expected a chain and contract identity.')
         address = address.lower()
@@ -313,8 +337,11 @@ class StateCache:
                 pools,via=native_markets(chain_id,recorded,catalog)
             from positions import allocation
             pnl = token['pnl'] if 'pnl' in token else kira_pnl.token_performance(reports, set())
+            pnl_rows = list(reports.values())
+            if performance_only:
+                pnl_rows = kira_pnl.performance_rows(pnl_rows, self.hidden_pnl)
             return {**token,'capital_allocation':allocation(state['wallets'],token_id=identity),'market_pools':pools,'market_via':via,'links':market.get('links',[]),'curve_reserve':market.get('curve_reserve'),
-                    'pnl':pnl, 'pnl_assets':list(reports.values()),
+                    'pnl':pnl, 'pnl_assets':pnl_rows,
                     'market_scope':'workspace', 'wallets': rows, 'data_revision': self.revision}
 
     def network(self, chain_id, *, folder_id=None):

@@ -295,6 +295,41 @@ class PnlTests(unittest.TestCase):
         self.assertFalse(any(a['address']==extra for a in self.app.views.holdings()['assets']))
         with self.assertRaises(JobError):self.app.views.token(CHAIN,PEER)
 
+    def test_performance_view_filters_before_paging_and_keeps_the_full_ledger(self):
+        batch=sequence()
+        batch.update(coverage='partial',unclassified=[tx(99)])
+        for balance in batch['balances']:
+            balance['history_verified']=True
+        for i in range(10, 35):
+            asset='0x'+format(i,'040x')
+            batch['balances'].append(mark(asset,'Unpriced '+str(i),5,None))
+        closed='0x'+format(40,'040x')
+        batch['events'].extend([leg(10,'buy',closed,1,10),leg(11,'sell',closed,1,20)])
+        batch['balances'].append({**mark(closed,'Closed',0,None),'history_verified':True})
+        unpriced='0x'+format(41,'040x')
+        batch['events'].extend([leg(12,'buy',unpriced,2,20),leg(13,'sell',unpriced,1,15)])
+        batch['balances'].append({**mark(unpriced,'Realized only',1,None),'history_verified':True})
+        self.save(batch)
+        page=self.app.views.wallet(WALLET,performance_only=True)
+        expected=[STABLE,closed,unpriced,'native']
+        self.assertEqual([row['asset'] for row in page['pnl_assets']],expected)
+        self.assertEqual(page['pnl_asset_count'],4)
+        first=self.app.views.pnl_page(WALLET,0,2)
+        second=self.app.views.pnl_page(WALLET,first['next_offset'],2)
+        self.assertEqual([r['asset'] for r in first['assets']+second['assets']],expected)
+        self.assertEqual(first['data_revision'],page['data_revision'])
+        self.assertIsNone(second['next_offset'])
+        self.assertIsNone(page['pnl']['pnl_usd'])
+        self.assertEqual(self.read()['matched_count'],29)
+        raw=self.app.views.token(CHAIN,closed)
+        self.app.submit({'schema_version':1,'operation':'token.policy','idempotency_key':'hide-closed-test',
+                         'input':{'chain_id':CHAIN,'address':closed,'mode':'exclude'}})
+        self.assertEqual(self.app.views.token(CHAIN,closed,performance_only=True)['pnl_assets'],[])
+        self.assertEqual(self.app.views.token(CHAIN,closed)['pnl_assets'],raw['pnl_assets'])
+        updated=self.app.views.pnl_page(WALLET,0,20)
+        self.assertNotEqual(updated['data_revision'],first['data_revision'])
+        self.assertEqual([row['asset'] for row in updated['assets']],[STABLE,unpriced,'native'])
+
     def test_saved_nft_identity_links_to_its_own_history(self):
         nft=STABLE+'#7'
         batch=sequence()

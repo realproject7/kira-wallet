@@ -349,6 +349,14 @@ def asset_rows(reports):
     return rows
 
 
+def performance_rows(rows, hidden_assets):
+    """Select saved positions with a dollar return worth displaying."""
+    return [row for row in rows
+            if row['matched'] and row.get('history_verified', True)
+            and f"{row['chain_id']}:{row['asset']}" not in hidden_assets
+            and (row['unrealized'] is not None or num(row['realized']) not in (None, ZERO))]
+
+
 def token_performance(reports, holder_keys):
     """Sum the saved positions, including closed trades. An unreported holder makes the total unknown."""
     if not reports:

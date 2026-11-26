@@ -182,9 +182,10 @@ test('fast refresh sits beside each full refresh, with its explanation behind an
 test('trading waterfall crosses zero, preserves break-even and omits bars for incomplete returns',()=>{
  const pnl=vm.runInNewContext(fs.readFileSync('viewer/static/pnl.js','utf8')+'\nKiraPnl',{
   document:{addEventListener(){}},money:n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n),
-  escapeHTML:String
+  escapeHTML:String, quantity:String, unitPrice:String
  });
- const chart=(realized,unrealized,total)=>pnl.tokenPanel({environment:'mainnet',pnl:{
+ const chart=(realized,unrealized,total)=>pnl.tokenPanel({
+  environment:'mainnet',pnl_assets:[{wallet:'Demo',as_of:'2026-01-02',quantity:'1',average_cost:'20',realized,unrealized}],pnl:{
   realized,unrealized,total,reporting_wallets:1,as_of:'2026-01-02',latest_as_of:'2026-01-02'
  }});
  const blocks=markup=>[...markup.matchAll(/class="pnl-block ([^"]+)" data-pnl-y="([^"]+)" data-pnl-height="([^"]+)"/g)]
@@ -201,6 +202,11 @@ test('trading waterfall crosses zero, preserves break-even and omits bars for in
  assert.ok(blocks(chart('0','0','0')).every(b=>b.height===0 && Number.isFinite(b.y)));
  const partial=chart('250',null,null);
  assert.equal(blocks(partial).length,0);
- assert.match(partial,/Pending/);
+ assert.match(partial,/<span class="pnl-status">Pending<\/span>/);
+ assert.doesNotMatch(partial,/pnl-amount|pnl-notice|<progress/);
  assert.match(partial,/\+\$250\.00/);
+ assert.equal(pnl.tokenPanel({environment:'mainnet',pnl:{total:null},pnl_assets:[]}), '');
+ assert.equal(pnl.listValue({environment:'mainnet',pnl:{unrealized:null}}), '');
+ assert.equal(pnl.listValue({environment:'mainnet',pnl:{unrealized:'0'},included_in_totals:false}), '');
+ assert.match(pnl.listValue({environment:'mainnet',pnl:{unrealized:'0'}}), /\$0\.00/);
 });

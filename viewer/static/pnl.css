@@ -12,7 +12,7 @@
 .pnl-gain { color: var(--accent) }
 .pnl-loss { color: #93513f }
 .pnl-amount .pnl-number { color: var(--ink) }
-.pnl-caption, .pnl-foot, .pnl-section-head > span, .pnl-empty p, .pnl-table small, .pnl-metrics dt,
+.pnl-caption, .pnl-foot, .pnl-section-head > span, .pnl-table small, .pnl-metrics dt,
 .pnl-relative, .pnl-key dt, .pnl-components dt { color: var(--secondary); font-size: var(--text-caption); line-height: 1.45 }
 .pnl-relative { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; margin: 0 0 9px }
 .pnl-chip { display: inline-block; padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); font-weight: 600 }
@@ -41,16 +41,27 @@
 .pnl-key dt { line-height: 1.25; overflow-wrap: anywhere }
 .pnl-components { display: flex; flex-wrap: wrap; gap: 16px 38px; margin: 0; padding: 14px 0 }
 .pnl-components dt { text-transform: capitalize }
-.pnl-coverage { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; color: var(--secondary); font-size: var(--text-secondary) }
-.pnl-coverage progress { width: 100%; height: 7px; grid-column: 1 / -1; accent-color: var(--accent) }
-.pnl-section-head, .pnl-empty, .pnl-foot { display: flex; justify-content: space-between; align-items: baseline; gap: 8px 16px }
-.pnl-foot { flex-wrap: wrap; margin-top: 16px }
-.pnl-panel details, .pnl-section-head { margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line) }
-.pnl-panel summary { width: fit-content; cursor: pointer; font-size: 13px; font-weight: 600 }
+.pnl-section-head, .pnl-foot { display: flex; justify-content: space-between; align-items: baseline; gap: 6px 16px; flex-wrap: wrap }
+.pnl-disclosure, .pnl-section-head { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line) }
+.pnl-disclosure summary { width: fit-content; cursor: pointer; font-size: 13px; font-weight: 600 }
+.pnl-details-body { padding-top: 10px }
+.pnl-details-body p { margin: 6px 0 }
+.pnl-compact-panel { padding-block: 14px }
+.pnl-disclosure-compact { margin: 0; padding: 0; border: 0 }
+.pnl-disclosure-compact summary {
+  display: flex; align-items: center; flex-wrap: wrap; column-gap: 10px; row-gap: 4px;
+  width: 100%; min-height: 28px; list-style: none;
+}
+.pnl-disclosure-compact summary::-webkit-details-marker { display: none }
+.pnl-compact-title { font-size: var(--text-ui); line-height: 1.35 }
+.pnl-status { padding: 2px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--secondary); font-size: 12px; font-weight: 500; line-height: 1.4 }
+.pnl-details-label { display: inline-flex; align-items: center; gap: 7px; margin-inline-start: auto; color: var(--secondary) }
+.pnl-details-label::after { content: ''; width: 5px; height: 5px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg) }
+.pnl-disclosure-compact[open] .pnl-details-label::after { transform: translateY(1px) rotate(225deg) }
+.pnl-disclosure-compact summary:hover .pnl-details-label { color: var(--ink) }
+.pnl-disclosure-compact + .pnl-section-head { margin-top: 10px }
 .pnl-metrics { display: flex; gap: 14px 36px; flex-wrap: wrap; margin: 14px 0 }
 .pnl-metrics dd { margin: 3px 0 0; font-size: 15px; font-weight: 600 }
-.pnl-notice { margin: 12px 0 0; padding: 8px 12px; border-radius: 8px; background: #fbf1dc; color: #7a5a17; font-size: 13px }
-.pnl-section-head { flex-wrap: wrap }
 .pnl-section-head > span { text-align: right }
 .pnl-scroll { max-width: 100%; overflow: auto; margin-top: 6px }
 .pnl-table { width: 100%; border-collapse: collapse; font-size: 13px }
@@ -60,8 +71,6 @@
 .pnl-table tbody tr:last-child > * { border-bottom: none }
 .pnl-table small { display: block; font-weight: 400 }
 .pnl-table thead th { font-size: 12px; color: var(--secondary); font-weight: 500 }
-.pnl-empty { align-items: center }
-.pnl-empty p { margin: 4px 0 0 }
 .pnl-inline { display: block; margin-top: 2px; color: var(--secondary); font-size: 12px; line-height: 1.4; font-variant-numeric: tabular-nums }
 .pnl-inline .pnl-number { font-weight: 600 }
 @media (max-width: 740px) {
@@ -73,7 +82,7 @@
   .pnl-chart { --axis-width: 2.6rem }
   .pnl-plot { height: 104px }
   .pnl-key dt { font-size: 12px }
-  .pnl-empty { flex-wrap: wrap }
+  .pnl-compact-panel { padding-block: 12px }
   .pnl-foot { gap: 3px 16px }
   .pnl-table thead { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden }
   .pnl-table, .pnl-table tbody { display: block }
