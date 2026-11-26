@@ -330,6 +330,29 @@ class PnlTests(unittest.TestCase):
         self.assertNotEqual(updated['data_revision'],first['data_revision'])
         self.assertEqual([row['asset'] for row in updated['assets']],[STABLE,unpriced,'native'])
 
+    def test_performance_pages_reuse_saved_token_artwork(self):
+        batch=sequence()
+        closed='0x'+format(5,'040x')
+        batch['events'] += [leg(10,'deposit',closed,1,10,PEER),leg(11,'sell',closed,1,20),
+                            {**leg(12,'buy',STABLE,20,20),'tx_hash':tx(11)}]
+        batch['balances'][1]['quantity']='1720'
+        batch['balances'].append(mark(closed,'Closed',0,None))
+        path=self.root/'snapshots/demo/initial/results.json'
+        snapshot=json.loads(path.read_text())
+        snapshot['tokens'][0]['indexer_image_url']='https://mint.club/holding.png'
+        atomic(path,snapshot)
+        atomic(self.root/'cache/token-images.json', {'tokens':{
+            f'{CHAIN}:{closed}':{'image_url':'https://mint.club/closed.png'},
+            f'1:{closed}':{'image_url':'https://mint.club/other-chain.png'}}})
+        self.save(batch)
+        wallet=self.app.views.wallet(WALLET,limit=1,performance_only=True)
+        rows={r['asset']:r for r in wallet['pnl_assets']}
+        self.assertEqual(rows[STABLE]['image_url'],'https://mint.club/holding.png')
+        self.assertEqual(rows[closed]['image_url'],'https://mint.club/closed.png')
+        self.assertTrue(rows['native']['image_url'])
+        self.assertEqual(self.app.views.pnl_page(WALLET,1,1)['assets'],[rows[closed]])
+        self.assertTrue(all('image_url' not in r for r in self.read()['assets']))
+
     def test_saved_nft_identity_links_to_its_own_history(self):
         nft=STABLE+'#7'
         batch=sequence()
